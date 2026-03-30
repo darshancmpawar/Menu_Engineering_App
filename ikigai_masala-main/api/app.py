@@ -19,7 +19,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from api.config import (
-    DEFAULT_EXCEL_PATH, CLIENTS_CONFIG_PATH, MENU_RULES_CONFIG_PATH,
+    DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     HISTORY_LONG_PATH, HISTORY_WEEKS_PATH, API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
@@ -52,8 +52,7 @@ def _get_client_loader():
     if _client_loader is None:
         with _init_lock:
             if _client_loader is None:
-                # config_path is kept for backward compat; data comes from Supabase
-                _client_loader = ClientConfigLoader(CLIENTS_CONFIG_PATH)
+                _client_loader = ClientConfigLoader()
     return _client_loader
 
 
