@@ -75,8 +75,14 @@ def _get_supabase():
         with _sb_lock:
             if _sb_client is None:
                 from supabase import create_client
-                url = os.environ['SUPABASE_URL']
-                key = os.environ['SUPABASE_KEY']
+                # Try Streamlit secrets first, then fall back to env vars
+                try:
+                    import streamlit as st
+                    url = st.secrets['SUPABASE_URL']
+                    key = st.secrets['SUPABASE_KEY']
+                except Exception:
+                    url = os.environ['SUPABASE_URL']
+                    key = os.environ['SUPABASE_KEY']
                 _sb_client = create_client(url, key)
     return _sb_client
 
