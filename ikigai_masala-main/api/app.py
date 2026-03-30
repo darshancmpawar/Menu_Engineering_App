@@ -52,6 +52,7 @@ def _get_client_loader():
     if _client_loader is None:
         with _init_lock:
             if _client_loader is None:
+                # config_path is kept for backward compat; data comes from Supabase
                 _client_loader = ClientConfigLoader(CLIENTS_CONFIG_PATH)
     return _client_loader
 
@@ -348,7 +349,6 @@ def get_client_config(client_name):
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides)."""
-    global _client_loader
     try:
         data = request.get_json()
         loader = _get_client_loader()
@@ -362,10 +362,7 @@ def update_client_config(client_name):
         if 'menu_category' in data:
             loader.update_client_menu_category(client_name, data['menu_category'])
 
-        # Reload to pick up changes
-        with _init_lock:
-            _client_loader = None
-
+        # No reload needed — Supabase reads are always live
         return jsonify({'success': True, 'message': f'Config updated for {client_name}'})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -377,7 +374,6 @@ def update_client_config(client_name):
 @app.route('/api/v1/client', methods=['POST'])
 def create_client():
     """Create a new client."""
-    global _client_loader
     try:
         data = request.get_json()
         name = data.get('name', '').strip()
@@ -390,9 +386,7 @@ def create_client():
         loader = _get_client_loader()
         loader.create_client(name, menu_category)
 
-        with _init_lock:
-            _client_loader = None
-
+        # No reload needed — Supabase reads are always live
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -403,14 +397,11 @@ def create_client():
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
 def delete_client(client_name):
     """Delete a client."""
-    global _client_loader
     try:
         loader = _get_client_loader()
         loader.delete_client(client_name)
 
-        with _init_lock:
-            _client_loader = None
-
+        # No reload needed — Supabase reads are always live
         return jsonify({'success': True, 'message': f'Client {client_name} deleted'})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404

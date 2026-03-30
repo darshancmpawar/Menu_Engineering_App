@@ -66,7 +66,7 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
             else:
                 try:
                     api.create_client(name, new_cat)
-                    st.toast(f"Created {name}", icon="✓")
+                    st.toast(f"Created {name}", icon="✅")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Create failed: {e}")
