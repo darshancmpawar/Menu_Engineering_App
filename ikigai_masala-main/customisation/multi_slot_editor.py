@@ -14,6 +14,7 @@ def render_multi_slot_editor(
     active_base_slots: List[str],
     current_slot_counts: Dict[str, int],
     const_slots: List[str],
+    client_name: str = "",
 ) -> Dict[str, int]:
     """Render slot count editor. Returns updated slot_counts dict."""
 
@@ -45,7 +46,7 @@ def render_multi_slot_editor(
                 max_value=3,
                 value=current,
                 step=1,
-                key=f"editor_slotcount_{slot}",
+                key=f"editor_slotcount_{client_name}_{slot}",
             )
             updated[slot] = val
 

@@ -12,6 +12,7 @@ def render_slot_editor(
     all_base_slots: List[str],
     current_active: List[str],
     const_slots: List[str],
+    client_name: str = "",
 ) -> List[str]:
     """Render slot toggle UI. Returns the list of selected base slots."""
 
@@ -34,7 +35,7 @@ def render_slot_editor(
         options=toggleable,
         default=[s for s in toggleable if s in active_set],
         format_func=prettify_slot_name,
-        key="editor_slot_multiselect",
+        key=f"editor_slot_multiselect_{client_name}",
         label_visibility="collapsed",
     )
 

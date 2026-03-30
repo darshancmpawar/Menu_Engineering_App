@@ -103,7 +103,7 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     with st.container():
         st.markdown('<div class="editor-section">', unsafe_allow_html=True)
-        new_active_slots = render_slot_editor(all_base_slots, current_active, const_slots)
+        new_active_slots = render_slot_editor(all_base_slots, current_active, const_slots, selected_client)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============================================================
@@ -111,7 +111,7 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     with st.container():
         st.markdown('<div class="editor-section">', unsafe_allow_html=True)
-        new_slot_counts = render_multi_slot_editor(new_active_slots, current_counts, const_slots)
+        new_slot_counts = render_multi_slot_editor(new_active_slots, current_counts, const_slots, selected_client)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============================================================
@@ -119,7 +119,7 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     with st.container():
         st.markdown('<div class="editor-section">', unsafe_allow_html=True)
-        new_theme_map = render_theme_editor(current_theme, default_theme_map, available_themes)
+        new_theme_map = render_theme_editor(current_theme, default_theme_map, available_themes, selected_client)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ============================================================
