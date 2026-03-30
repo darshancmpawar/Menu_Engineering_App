@@ -1,0 +1,75 @@
+"""
+Cuisine menu rule: enforce cuisine-specific items on specific days.
+
+Uses cell-based context from the solver. For broad cuisine filtering
+(south/north/chinese/biryani), prefer ThemeSlotFilterRule instead.
+This rule is for fine-grained per-cuisine-per-day constraints.
+"""
+
+import logging
+from typing import Dict, Any
+
+from ortools.sat.python import cp_model
+from .base_menu_rule import BaseMenuRule, MenuRuleType
+from src.constants import EXEMPT_FROM_CUISINE
+from ..preprocessor.column_mapper import _norm_str
+
+logger = logging.getLogger(__name__)
+
+
+class CuisineMenuRule(BaseMenuRule):
+    """
+    Config:
+    {
+        "type": "cuisine",
+        "name": "italian_specific_days",
+        "cuisine_family": "italian",
+        "days_of_week": ["wednesday", "thursday"]
+    }
+    """
+
+    def __init__(self, rule_config: Dict[str, Any]):
+        super().__init__(rule_config)
+        self.rule_type = MenuRuleType.CUISINE
+        self.cuisine_family = _norm_str(
+            rule_config.get('cuisine_family', rule_config.get('cuisine_type', ''))
+        )
+        self.days_of_week = [d.lower() for d in rule_config.get('days_of_week', [])]
+
+    def validate_config(self) -> bool:
+        if not self.cuisine_family:
+            return False
+        return True
+
+    def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
+              menu_data: Any, context: Dict[str, Any]) -> None:
+        cells = context.get('cells', [])
+        dates = context.get('dates', [])
+        find_cells = context.get('find_cells_fn')
+        cfg = context.get('cfg')
+
+        if not cells or not find_cells or not cfg:
+            return
+
+        cuisine_col = cfg.cuisine_col
+
+        for di, d in enumerate(dates):
+            day_name = d.strftime('%A').lower()
+            if self.days_of_week and day_name not in self.days_of_week:
+                continue
+
+            # Collect all non-exempt base slots for this day
+            seen_bases = set()
+            for cell in cells:
+                if cell.d_idx != di or cell.base_slot in EXEMPT_FROM_CUISINE:
+                    continue
+                if cell.base_slot in seen_bases:
+                    continue
+                seen_bases.add(cell.base_slot)
+
+                cuisine_lits = [
+                    v for v, row in zip(cell.x_vars, cell.cand_rows)
+                    if _norm_str(row.get(cuisine_col, '')) == self.cuisine_family
+                ]
+                if cuisine_lits:
+                    model.Add(sum(cuisine_lits) >= 1)
