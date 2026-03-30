@@ -1,1 +1,0 @@
-"""Customisation editor UI modules."""
