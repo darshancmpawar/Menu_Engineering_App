@@ -107,9 +107,21 @@ def _weekdays_from(start_date, num_days):
 
 
 def _client_base_slots(client_cfg):
-    """Return only the base slots the client actually uses (excluding constants)."""
-    return [s for s in client_cfg.active_slots if s not in CONST_SLOTS
-            and '__' not in s]
+    """Return unique base slot names the client uses (excluding constants).
+
+    Handles expanded slot IDs like veg_dry__1, veg_dry__2 by extracting
+    the base name so the solver gets ['veg_dry'] not ['veg_dry__1', 'veg_dry__2'].
+    """
+    seen = set()
+    result = []
+    for s in client_cfg.active_slots:
+        if s in CONST_SLOTS:
+            continue
+        base = s.split('__')[0] if '__' in s else s
+        if base not in seen:
+            seen.add(base)
+            result.append(base)
+    return result
 
 
 def _build_solver_config(df, client_cfg, start_date, num_days, time_limit):
