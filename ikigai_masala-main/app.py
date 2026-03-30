@@ -365,7 +365,7 @@ if plan and plan_dates:
             try:
                 client.save(client_name=st.session_state.client_name,
                             week_plan=plan, week_start=plan_dates[0])
-                st.toast("Plan saved!", icon="✓")
+                st.toast("Plan saved!", icon="✅")
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.error(f"Save failed: {e}")
     with c2:
