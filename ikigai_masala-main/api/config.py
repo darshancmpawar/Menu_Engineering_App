@@ -22,15 +22,6 @@ OUTPUT_DIR = os.getenv(
     str(BASE_DIR / 'data/outputs')
 )
 
-CLIENTS_CONFIG_PATH = os.getenv(
-    'CLIENTS_CONFIG_PATH',
-    str(BASE_DIR / 'data/configs/clients.json')
-)
-
-# Supabase — set these in .env or environment
-SUPABASE_URL = os.getenv('SUPABASE_URL', '')
-SUPABASE_KEY = os.getenv('SUPABASE_KEY', '')
-
 MENU_RULES_CONFIG_PATH = os.getenv(
     'MENU_RULES_CONFIG_PATH',
     str(BASE_DIR / 'data/configs/indian_menu_rules.json')
