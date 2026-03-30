@@ -59,6 +59,10 @@ def render_customisation_editor(api: MenuApiClient):
 
     st.markdown("")
 
+    # --- Show success message from previous save/reset/delete ---
+    if st.session_state.get('editor_success_msg'):
+        st.success(st.session_state.pop('editor_success_msg'))
+
     # --- Load metadata ---
     try:
         metadata = api.get_editor_metadata()
@@ -185,7 +189,7 @@ def render_customisation_editor(api: MenuApiClient):
                         api.delete_client(selected_client)
                         st.session_state.editor_confirm_delete = False
                         st.session_state.pop('editor_client_select', None)
-                        st.toast(f"Deleted {selected_client}", icon="✅")
+                        st.session_state['editor_success_msg'] = f"Deleted {selected_client}"
                         st.rerun()
                     except Exception as e:
                         st.error(f"Delete failed: {e}")
@@ -205,7 +209,7 @@ def render_customisation_editor(api: MenuApiClient):
         payload['theme_map'] = new_theme_map
         try:
             api.update_client_config(selected_client, payload)
-            st.toast(f"Saved configuration for {selected_client}", icon="✅")
+            st.session_state['editor_success_msg'] = f"Configuration saved for {selected_client}"
             st.rerun()
         except Exception as e:
             st.error(f"Save failed: {e}")
@@ -219,7 +223,7 @@ def render_customisation_editor(api: MenuApiClient):
         }
         try:
             api.update_client_config(selected_client, payload)
-            st.toast(f"Reset {selected_client} to defaults", icon="✅")
+            st.session_state['editor_success_msg'] = f"Reset {selected_client} to defaults"
             st.rerun()
         except Exception as e:
             st.error(f"Reset failed: {e}")
