@@ -25,6 +25,7 @@ def render_theme_editor(
     current_theme_map: Dict[str, str],
     default_theme_map: Dict[str, str],
     available_themes: List[str],
+    client_name: str = "",
 ) -> Dict[str, str]:
     """Render theme day editor. Returns updated theme_map dict."""
 
@@ -61,7 +62,7 @@ def render_theme_editor(
                 available_themes,
                 index=default_idx,
                 format_func=lambda t: _THEME_DISPLAY.get(t, t.title()),
-                key=f"editor_theme_{day}",
+                key=f"editor_theme_{client_name}_{day}",
                 label_visibility="collapsed",
             )
             updated[day] = chosen
