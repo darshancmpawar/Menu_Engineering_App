@@ -30,7 +30,6 @@ import streamlit as st
 
 from ui.api_client import MenuApiClient
 from ui.formatters import (
-    theme_label,
     display_label_for_slot_id,
     format_item_for_ui,
     format_item_html,

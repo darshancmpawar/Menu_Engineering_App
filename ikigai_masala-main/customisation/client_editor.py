@@ -67,6 +67,8 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
                 try:
                     api.create_client(name, new_cat)
                     st.session_state['editor_success_msg'] = f"Client '{name}' created successfully"
+                    st.session_state.pop('editor_new_client_name', None)
+                    st.session_state.pop('editor_new_client_cat', None)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Create failed: {e}")
