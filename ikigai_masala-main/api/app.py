@@ -24,13 +24,14 @@ from api.config import (
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
 from src.preprocessor import ExcelReader, DataCleanser, ColumnMapper
-from src.preprocessor.pool_builder import PoolBuilder
+from src.preprocessor.pool_builder import PoolBuilder, _base_slot, _expand_slots_in_order
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
 from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
+from src.solver._helpers import weekday_type_for_config as _weekday_type_cfg
 from src.solver.solution_formatter import SolutionFormatter
 from src.solver.regenerator import MenuRegenerator
 
@@ -140,6 +141,58 @@ def _build_solver_config(df, client_cfg, start_date, num_days, time_limit):
     )
 
 
+def _validate_pools(pools, solver_config, menu_rules, dates):
+    """Check pool sizes after theme filtering vs required slot counts.
+
+    Returns a list of warning strings for any (day, slot) where the filtered
+    pool is smaller than needed.  An empty list means no issues detected.
+    """
+    warnings = []
+    base_slots = solver_config.active_base_slots or list(BASE_SLOT_NAMES)
+    slot_counts = solver_config.slot_counts or {s: 1 for s in base_slots}
+
+    filter_ctx_base = {
+        'cfg': solver_config,
+        'banned_by_date': {},
+        'ricebread_ban_day': {},
+        'pools': pools,
+    }
+
+    for d in dates:
+        day_type = _weekday_type_cfg(d, solver_config.theme_map)
+        for base in base_slots:
+            if base not in pools:
+                continue
+            pool = pools[base].copy()
+
+            # Exclude steamed rice etc.
+            if base in ('rice', 'healthy_rice') and len(pool) > 0:
+                pool = pool[~pool['item'].isin(solver_config.rice_exclude_items)]
+
+            # Apply rule pre-filters (theme slot filters, etc.)
+            ctx = {**filter_ctx_base, 'slot_num': None}
+            for rule in menu_rules:
+                pool = rule.pre_filter_pool(pool, d, base, day_type, ctx)
+
+            count_needed = slot_counts.get(base, 1)
+            pool_size = len(pool)
+            if pool_size < count_needed:
+                day_label = d.strftime('%A %d %b')
+                warnings.append(
+                    f"{day_type.capitalize()} {day_label}: "
+                    f"only {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
+                    f"available, need {count_needed}"
+                )
+            elif pool_size == count_needed:
+                day_label = d.strftime('%A %d %b')
+                warnings.append(
+                    f"{day_type.capitalize()} {day_label}: "
+                    f"exactly {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
+                    f"available for {count_needed} needed (no variety)"
+                )
+    return warnings
+
+
 @app.route('/api/v1/clients', methods=['GET'])
 def list_clients():
     try:
@@ -172,6 +225,11 @@ def plan_menu():
         banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, num_days)
         cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit)
 
+        weekday_dates = _weekdays_from(start_date, num_days)
+
+        # Pre-solve pool validation
+        pool_warnings = _validate_pools(pools, cfg, rules, weekday_dates)
+
         solver = MenuSolver(
             pools=pools,
             solver_config=cfg,
@@ -184,11 +242,14 @@ def plan_menu():
         week_plan, plan_dates = solver.solve()
 
         formatter = SolutionFormatter(week_plan, plan_dates, theme_map=client_cfg.theme_map or None)
-        return jsonify({
+        response = {
             'success': True,
             'message': f'Menu plan generated for {client_name}',
             'solution': formatter.to_dict(),
-        })
+        }
+        if pool_warnings:
+            response['pool_warnings'] = pool_warnings
+        return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -416,6 +477,32 @@ def delete_client(client_name):
         return jsonify({'success': True, 'message': f'Client {client_name} deleted'})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v1/validate-pools', methods=['POST'])
+def validate_pools():
+    """Check pool sizes after theme filtering — returns warnings without running solver."""
+    try:
+        data = request.get_json()
+        client_name = data.get('client_name')
+        start_date_str = data.get('start_date')
+        num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
+
+        if not client_name:
+            return jsonify({'success': False, 'error': 'client_name is required'}), 400
+
+        loader = _get_client_loader()
+        client_cfg = loader.get_client(client_name)
+        df, pools = _get_menu_data()
+        rules = _get_menu_rules()
+        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
+        cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180)
+        weekday_dates = _weekdays_from(start_date, num_days)
+
+        warnings = _validate_pools(pools, cfg, rules, weekday_dates)
+        return jsonify({'success': True, 'warnings': warnings})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
