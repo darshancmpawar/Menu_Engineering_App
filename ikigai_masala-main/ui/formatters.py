@@ -40,15 +40,6 @@ THEME_TAG_COLORS = {
     'north': ('#4c1d95', '#c4b5fd'),
 }
 
-# Theme badge colors keyed by weekday index (Mon=0): (bg, fg, label)
-WEEKDAY_THEME_BADGES = {
-    0: ("#22543d", "#86efac", "Mix"),
-    1: ("#7c2d12", "#fdba74", "Chinese"),
-    2: ("#7f1d1d", "#fca5a5", "Biryani"),
-    3: ("#1e3a5f", "#93c5fd", "South Indian"),
-    4: ("#4c1d95", "#c4b5fd", "North Indian"),
-}
-
 
 def theme_label(weekday: int) -> str:
     return THEME_LABELS.get(weekday, "")

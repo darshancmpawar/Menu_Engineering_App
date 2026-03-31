@@ -12,8 +12,6 @@ Endpoints:
 import datetime as dt
 import logging
 import threading
-import traceback
-from pathlib import Path
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -23,15 +21,15 @@ from api.config import (
     HISTORY_LONG_PATH, HISTORY_WEEKS_PATH, API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
-from src.preprocessor import ExcelReader, DataCleanser, ColumnMapper
-from src.preprocessor.pool_builder import PoolBuilder, _base_slot, _expand_slots_in_order
+from src.preprocessor import ExcelReader, DataCleanser
+from src.preprocessor.pool_builder import PoolBuilder
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
 from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
-from src.solver._helpers import weekday_type_for_config as _weekday_type_cfg
+from src.solver._helpers import weekday_type_for_config as _weekday_type_cfg, strip_color_suffix
 from src.solver.solution_formatter import SolutionFormatter
 from src.solver.regenerator import MenuRegenerator
 
@@ -364,11 +362,15 @@ def save_plan():
         dates = sorted(week_plan.keys())
         week_start = dt.date.fromisoformat(week_start_str)
 
-        sig = HistoryManager.compute_week_signature(week_plan, dates, const_slots=CONST_SLOTS)
+        sig = HistoryManager.compute_week_signature(
+            week_plan, dates, const_slots=CONST_SLOTS,
+            strip_color_fn=strip_color_suffix,
+        )
 
         hm = HistoryManager()
         hm.save(week_plan, dates, client_name, week_start, sig,
-                HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
+                HISTORY_LONG_PATH, HISTORY_WEEKS_PATH,
+                strip_color_fn=strip_color_suffix)
 
         return jsonify({'success': True, 'message': 'Plan saved to history'})
 
