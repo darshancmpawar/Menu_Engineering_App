@@ -27,18 +27,20 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
     # --- Tabs: Select / Create ---
     tab_select, tab_create = st.tabs(["Select Existing", "Create New"])
 
+    # Track what the user selected — DO NOT return early from inside a tab,
+    # because that would prevent subsequent tabs from rendering.
+    selected_client: Optional[str] = None
+
     with tab_select:
         if not clients:
-            st.info("No clients found.")
-            return None
-
-        selected = st.selectbox(
-            "Client",
-            clients,
-            key="editor_client_select",
-            label_visibility="collapsed",
-        )
-        return selected
+            st.info("No clients found. Switch to the **Create New** tab to add one.")
+        else:
+            selected_client = st.selectbox(
+                "Client",
+                clients,
+                key="editor_client_select",
+                label_visibility="collapsed",
+            )
 
     with tab_create:
         new_name = st.text_input("Client Name", key="editor_new_client_name",
@@ -73,4 +75,4 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
                 except Exception as e:
                     st.error(f"Create failed: {e}")
 
-        return None
+    return selected_client

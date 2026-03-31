@@ -323,6 +323,10 @@ plan = st.session_state.plan
 plan_dates = st.session_state.plan_dates
 
 if plan and plan_dates:
+    # --- Show save success message ---
+    if st.session_state.get('save_success_msg'):
+        st.success(st.session_state.pop('save_success_msg'))
+
     # --- Collect slots ---
     all_slots = set()
     for date_str in plan_dates:
@@ -385,7 +389,8 @@ if plan and plan_dates:
             try:
                 client.save(client_name=st.session_state.client_name,
                             week_plan=plan, week_start=plan_dates[0])
-                st.toast("Plan saved!", icon="✅")
+                st.session_state['save_success_msg'] = "Plan saved to history!"
+                st.rerun()
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.error(f"Save failed: {e}")
     with c2:
