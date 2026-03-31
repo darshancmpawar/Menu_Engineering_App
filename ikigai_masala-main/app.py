@@ -35,21 +35,31 @@ from ui.formatters import (
     format_item_for_ui,
     format_item_html,
     slot_sort_key,
-    WEEKDAY_THEME_BADGES,
+    THEME_TAG_COLORS,
 )
 from customisation.main import render_customisation_editor
 
 
-def _flatten_solution(raw_solution: dict) -> dict:
-    """Convert the nested API solution format into a flat {date: {slot: item}} dict."""
+def _flatten_solution(raw_solution: dict) -> tuple:
+    """Convert the nested API solution format.
+
+    Returns:
+        (flat_plan, day_types) where flat_plan = {date: {slot: item}}
+        and day_types = {date: day_type_string}.
+    """
     flat = {}
+    day_types = {}
     for date_key, day_data in raw_solution.items():
-        items = day_data.get("items", {}) if isinstance(day_data, dict) else {}
+        if isinstance(day_data, dict):
+            items = day_data.get("items", {})
+            day_types[date_key] = day_data.get("day_type", "")
+        else:
+            items = {}
         flat[date_key] = {
             slot_id: slot_val.get("item", "") if isinstance(slot_val, dict) else str(slot_val)
             for slot_id, slot_val in items.items()
         }
-    return flat
+    return flat, day_types
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +226,8 @@ client = MenuApiClient(_BACKEND_URL)
 _SESSION_DEFAULTS = {
     "plan": None,
     "plan_dates": [],
+    "day_types": {},
+    "pool_warnings": [],
     "client_name": None,
     "changes_log": [],
     "view": "planner",
@@ -257,7 +269,6 @@ with st.sidebar:
     start_date = st.date_input("Start date", value=dt.date.today())
     num_days = st.slider("Weekdays", min_value=1, max_value=20, value=5,
                          help="Number of weekdays (Sat/Sun are skipped)")
-    time_limit = st.slider("Solver time (sec)", min_value=10, max_value=600, value=240)
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -291,13 +302,15 @@ if generate_clicked:
                     client_name=selected_client,
                     start_date=start_date.isoformat(),
                     num_days=num_days,
-                    time_limit_seconds=time_limit,
+                    time_limit_seconds=180,
                 )
-                flat_plan = _flatten_solution(result.get("solution", {}))
+                flat_plan, day_types = _flatten_solution(result.get("solution", {}))
                 st.session_state.plan = flat_plan
                 st.session_state.plan_dates = sorted(flat_plan.keys())
+                st.session_state.day_types = day_types
                 st.session_state.client_name = selected_client
                 st.session_state.changes_log = []
+                st.session_state.pool_warnings = result.get("pool_warnings", [])
                 st.rerun()
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.error(f"Generation failed: {e}")
@@ -331,12 +344,20 @@ if plan and plan_dates:
             <div class="value">{total_items}</div></div>
     </div>""", unsafe_allow_html=True)
 
+    # --- Pool warnings ---
+    if st.session_state.pool_warnings:
+        with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=True):
+            for w in st.session_state.pool_warnings:
+                st.warning(w)
+
     # --- Table ---
+    _day_types = st.session_state.day_types
     header_html = '<tr><th>Slot</th>'
     for d_str in plan_dates:
         d = dt.date.fromisoformat(d_str)
-        wd = d.weekday()
-        bg, fg, label = WEEKDAY_THEME_BADGES.get(wd, ("#262626", "#a3a3a3", ""))
+        day_type = _day_types.get(d_str, "")
+        bg, fg = THEME_TAG_COLORS.get(day_type, ("#262626", "#a3a3a3"))
+        label = day_type.replace("_", " ").title() if day_type else ""
         header_html += (
             f'<th><span class="day-label">{d.strftime("%a %d %b")}</span>'
             f'<span class="theme-tag" style="background:{bg};color:{fg};">'
@@ -394,8 +415,9 @@ if plan and plan_dates:
         cols = st.columns(min(len(plan_dates), 5))
         for i, d_str in enumerate(plan_dates):
             d = dt.date.fromisoformat(d_str)
-            wd = d.weekday()
-            bg, fg, label = WEEKDAY_THEME_BADGES.get(wd, ("#262626", "#a3a3a3", ""))
+            day_type = _day_types.get(d_str, "")
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#262626", "#a3a3a3"))
+            label = day_type.replace("_", " ").title() if day_type else ""
             col = cols[i % len(cols)]
             with col:
                 st.markdown(
@@ -419,9 +441,11 @@ if plan and plan_dates:
                             base_plan=plan, replace_slots=regen_selections,
                             start_date=plan_dates[0],
                             num_days=len(plan_dates),
-                            time_limit_seconds=time_limit)
-                        flat_regen = _flatten_solution(result.get("solution", {}))
+                            time_limit_seconds=180)
+                        flat_regen, regen_day_types = _flatten_solution(result.get("solution", {}))
                         st.session_state.plan = flat_regen if flat_regen else plan
+                        if regen_day_types:
+                            st.session_state.day_types = regen_day_types
                         st.session_state.plan_dates = sorted(st.session_state.plan.keys())
                         n = sum(len(v) for v in regen_selections.values())
                         st.session_state.changes_log.append(f"Regenerated {n} cell{'s' if n != 1 else ''}")
