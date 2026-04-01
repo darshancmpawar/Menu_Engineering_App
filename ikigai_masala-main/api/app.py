@@ -372,10 +372,22 @@ def save_plan():
         if not week_start_str:
             return jsonify({'success': False, 'error': 'week_start is required'}), 400
 
-        # Convert string date keys to date objects
+        # Convert string date keys to date objects, extracting items from solution format
         week_plan = {}
-        for d_str, slots in week_plan_raw.items():
-            week_plan[dt.date.fromisoformat(d_str)] = slots
+        for d_str, day_data in week_plan_raw.items():
+            # Handle solution format: {theme, day_type, items: {slot: {item, ...}}}
+            if isinstance(day_data, dict) and 'items' in day_data:
+                items = day_data['items']
+                day_items = {}
+                for slot_id, val in items.items():
+                    if isinstance(val, dict):
+                        day_items[slot_id] = val.get('item', val.get('item_base', ''))
+                    else:
+                        day_items[slot_id] = str(val)
+                week_plan[dt.date.fromisoformat(d_str)] = day_items
+            else:
+                # Simple format: {slot: item_string}
+                week_plan[dt.date.fromisoformat(d_str)] = day_data
 
         dates = sorted(week_plan.keys())
         week_start = dt.date.fromisoformat(week_start_str)
@@ -401,6 +413,9 @@ def save_plan():
     except (FileNotFoundError, OSError) as e:
         logger.error("Save failed: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception as e:
+        logger.error("Unexpected save error: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
 
 
 @app.route('/api/v1/editor-metadata', methods=['GET'])

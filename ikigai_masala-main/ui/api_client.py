@@ -87,10 +87,9 @@ class MenuApiClient:
         resp = self.session.post(
             f"{self.base_url}/api/v1/save", json=payload, timeout=30
         )
-        resp.raise_for_status()
-        data = resp.json()
-        if not data.get("success"):
-            raise RuntimeError(data.get("error", "Save failed"))
+        data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        if not resp.ok or not data.get("success"):
+            raise RuntimeError(data.get("error", f"Save failed ({resp.status_code})"))
         return data
 
     # ----- Customisation editor endpoints -----
