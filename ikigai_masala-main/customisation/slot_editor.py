@@ -1,5 +1,5 @@
 """
-Slot Editor — Toggle base slots on/off for a client.
+Category Editor — Toggle categories on/off for a client.
 """
 
 import streamlit as st
@@ -14,24 +14,24 @@ def render_slot_editor(
     const_slots: List[str],
     client_name: str = "",
 ) -> List[str]:
-    """Render slot toggle UI. Returns the list of selected base slots."""
+    """Render category toggle UI. Returns the list of selected base categories."""
 
     st.markdown(
         '<p style="font-size:1.1rem;font-weight:700;color:#f5f5f5;margin:1.5rem 0 0.5rem;">'
-        'Customize Slots</p>'
+        'Customize Categories</p>'
         '<p style="font-size:0.78rem;color:#737373;margin:0 0 0.75rem;">'
-        'Toggle which slots this client uses. Constant items '
+        'Toggle which categories this client uses. Constant items '
         '(White Rice, Papad, Pickle, Chutney) are always included.</p>',
         unsafe_allow_html=True,
     )
 
-    # Show toggleable slots (base slots only, no constants)
+    # Show toggleable categories (base slots only, no constants)
     toggleable = [s for s in all_base_slots if s not in const_slots]
     active_set = set(current_active)
 
     # Use multiselect for clean UI
     selected = st.multiselect(
-        "Active Slots",
+        "Active Categories",
         options=toggleable,
         default=[s for s in toggleable if s in active_set],
         format_func=prettify_slot_name,
@@ -43,7 +43,7 @@ def render_slot_editor(
     if selected:
         st.markdown(
             f'<p style="font-size:0.75rem;color:#a3a3a3;margin:0.25rem 0 0;">'
-            f'{len(selected)} slots selected</p>',
+            f'{len(selected)} categories selected</p>',
             unsafe_allow_html=True,
         )
 

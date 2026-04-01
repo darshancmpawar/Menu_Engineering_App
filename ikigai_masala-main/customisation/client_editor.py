@@ -1,5 +1,9 @@
 """
 Client Editor — Create new clients or select existing ones.
+
+When creating a client, the user picks categories (slot types).
+The system auto-assigns an existing menu_category if one matches,
+or creates a new one transparently.
 """
 
 from __future__ import annotations
@@ -15,8 +19,8 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
     """Render the client management section. Returns the selected client name."""
 
     clients = metadata.get('clients', [])
-    categories = metadata.get('menu_categories', {})
-    cat_names = sorted(categories.keys())
+    base_slot_names = metadata.get('base_slot_names', [])
+    const_slots = set(metadata.get('const_slots', []))
 
     st.markdown(
         '<p style="font-size:1.1rem;font-weight:700;color:#f5f5f5;margin:0 0 0.75rem;">'
@@ -27,8 +31,6 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
     # --- Tabs: Select / Create ---
     tab_select, tab_create = st.tabs(["Select Existing", "Create New"])
 
-    # Track what the user selected — DO NOT return early from inside a tab,
-    # because that would prevent subsequent tabs from rendering.
     selected_client: Optional[str] = None
 
     with tab_select:
@@ -46,17 +48,21 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
         new_name = st.text_input("Client Name", key="editor_new_client_name",
                                  placeholder="e.g. Acme Corp")
 
-        cat_labels = {k: f"{k} ({len(v)} slots)" for k, v in categories.items()}
-        new_cat = st.selectbox(
-            "Menu Category",
-            cat_names,
-            format_func=lambda k: cat_labels.get(k, k),
-            key="editor_new_client_cat",
+        # Category picker — user selects which categories (slot types) the client needs
+        choosable = [s for s in base_slot_names if s not in const_slots]
+        new_categories = st.multiselect(
+            "Select Categories",
+            options=choosable,
+            default=choosable,
+            format_func=prettify_slot_name,
+            key="editor_new_client_categories",
         )
 
-        if new_cat:
-            slots = categories.get(new_cat, [])
-            st.caption(f"Slots: {', '.join(prettify_slot_name(s) for s in slots)}")
+        if new_categories:
+            st.caption(
+                f"{len(new_categories)} categories selected: "
+                f"{', '.join(prettify_slot_name(s) for s in new_categories)}"
+            )
 
         if st.button("Create Client", type="primary", key="editor_create_client_btn",
                      use_container_width=True):
@@ -65,12 +71,14 @@ def render_client_editor(api: MenuApiClient, metadata: dict) -> Optional[str]:
                 st.error("Enter a client name.")
             elif name in clients:
                 st.error(f"Client '{name}' already exists.")
+            elif not new_categories:
+                st.error("Select at least one category.")
             else:
                 try:
-                    api.create_client(name, new_cat)
+                    api.create_client(name, new_categories)
                     st.session_state['editor_success_msg'] = f"Client '{name}' created successfully"
                     st.session_state.pop('editor_new_client_name', None)
-                    st.session_state.pop('editor_new_client_cat', None)
+                    st.session_state.pop('editor_new_client_categories', None)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Create failed: {e}")

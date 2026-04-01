@@ -52,7 +52,7 @@ def render_customisation_editor(api: MenuApiClient):
     with col_title:
         st.markdown(
             '<div><p class="editor-title">Customisation Editor</p>'
-            '<p class="editor-subtitle">Create or edit clients, slots, multi-slots, and day themes</p>'
+            '<p class="editor-subtitle">Create or edit clients, categories, multi-categories, and day themes</p>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -135,11 +135,11 @@ def render_customisation_editor(api: MenuApiClient):
     # Unsaved changes indicator
     changes = []
     if set(new_active_slots) != set(current_active):
-        changes.append("slots")
+        changes.append("categories")
     count_changes = {k: v for k, v in new_slot_counts.items()
                      if v != current_counts.get(k, 1) and k in new_active_slots}
     if count_changes:
-        changes.append("multi-slots")
+        changes.append("multi-categories")
     theme_changes = {k: v for k, v in new_theme_map.items()
                      if v != current_theme.get(k)}
     if theme_changes:

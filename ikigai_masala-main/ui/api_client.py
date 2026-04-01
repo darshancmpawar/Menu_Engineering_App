@@ -123,10 +123,10 @@ class MenuApiClient:
             raise RuntimeError(data.get("error", f"Save failed ({resp.status_code})"))
         return data
 
-    def create_client(self, name: str, menu_category: str) -> Dict[str, Any]:
+    def create_client(self, name: str, active_slots: list) -> Dict[str, Any]:
         resp = self.session.post(
             f"{self.base_url}/api/v1/client",
-            json={"name": name, "menu_category": menu_category}, timeout=10
+            json={"name": name, "active_slots": active_slots}, timeout=10
         )
         data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
         if not resp.ok or not data.get("success"):

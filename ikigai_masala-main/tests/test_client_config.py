@@ -18,26 +18,23 @@ from src.constants import BASE_SLOT_NAMES, CONST_SLOTS
 # Fixtures — fake Supabase responses
 # ---------------------------------------------------------------------------
 
+FAKE_CATEGORIES = {
+    'menu_cat_1': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'nonveg_main', 'dal',
+                   'sambar', 'rasam', 'curd_side', 'dessert', 'salad'],
+    'menu_cat_3': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar', 'rasam',
+                   'curd_side', 'dessert', 'welcome_drink'],
+    'menu_cat_4': ['bread', 'veg_dry', 'welcome_drink', 'rice', 'veg_gravy', 'nonveg_main',
+                   'soup', 'dal', 'sambar', 'rasam', 'curd_side', 'dessert'],
+    'menu_cat_9': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar', 'nonveg_main',
+                   'rasam', 'curd_side', 'dessert', 'welcome_drink'],
+}
+
 FAKE_CLIENTS = [
     {'name': 'Rippling', 'menu_category': 'menu_cat_4'},
     {'name': 'Tekion', 'menu_category': 'menu_cat_1'},
     {'name': 'Vector', 'menu_category': 'menu_cat_3'},
     {'name': 'Stripe', 'menu_category': 'menu_cat_9'},
 ]
-
-FAKE_CATEGORIES = {
-    'menu_cat_1': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'nonveg_main', 'dal',
-                   'sambar', 'rasam', 'white_rice', 'papad', 'pickle', 'curd_side',
-                   'dessert', 'salad'],
-    'menu_cat_3': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar', 'rasam',
-                   'white_rice', 'papad', 'pickle', 'curd_side', 'dessert', 'welcome_drink'],
-    'menu_cat_4': ['bread', 'veg_dry', 'welcome_drink', 'rice', 'veg_gravy', 'nonveg_main',
-                   'soup', 'dal', 'sambar', 'rasam', 'white_rice', 'papad', 'pickle',
-                   'curd_side', 'dessert'],
-    'menu_cat_9': ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar', 'nonveg_main',
-                   'rasam', 'white_rice', 'papad', 'pickle', 'curd_side', 'dessert',
-                   'welcome_drink'],
-}
 
 FAKE_SLOT_OVERRIDES = {
     'Rippling': [{'client_name': 'Rippling', 'slot': 'veg_dry', 'count': 2}],
@@ -66,7 +63,6 @@ def _build_mock_sb():
     def table_side_effect(table_name):
         tbl = MagicMock()
 
-        # Chain .select().eq().maybe_single().execute() etc.
         def select_side_effect(cols='*'):
             chain = MagicMock()
 
@@ -80,7 +76,9 @@ def _build_mock_sb():
                         ms_chain.execute.return_value = _make_response(match[0] if match else None)
                     elif table_name == 'menu_categories':
                         if val in FAKE_CATEGORIES:
-                            ms_chain.execute.return_value = _make_response({'name': val, 'slots': FAKE_CATEGORIES[val]})
+                            ms_chain.execute.return_value = _make_response(
+                                {'name': val, 'slots': FAKE_CATEGORIES[val]}
+                            )
                         else:
                             ms_chain.execute.return_value = _make_response(None)
                     elif table_name == 'app_settings':
@@ -92,7 +90,6 @@ def _build_mock_sb():
 
                 eq_chain.maybe_single.side_effect = maybe_single_side_effect
 
-                # For .select().eq().execute() (no maybe_single)
                 if table_name == 'slot_count_overrides':
                     eq_chain.execute.return_value = _make_response(
                         FAKE_SLOT_OVERRIDES.get(val, [])
@@ -115,12 +112,11 @@ def _build_mock_sb():
             chain.eq.side_effect = eq_side_effect
             chain.order.side_effect = order_side_effect
 
-            # For .select().execute() — return all rows
-            if table_name == 'menu_categories':
-                rows = [{'name': k, 'slots': v} for k, v in FAKE_CATEGORIES.items()]
-                chain.execute.return_value = _make_response(rows)
-            elif table_name == 'clients':
+            if table_name == 'clients':
                 chain.execute.return_value = _make_response(FAKE_CLIENTS)
+            elif table_name == 'menu_categories':
+                cat_rows = [{'name': k, 'slots': v} for k, v in FAKE_CATEGORIES.items()]
+                chain.execute.return_value = _make_response(cat_rows)
             elif table_name == 'slot_count_overrides':
                 all_sco = []
                 for v in FAKE_SLOT_OVERRIDES.values():
@@ -133,7 +129,6 @@ def _build_mock_sb():
 
         tbl.select.side_effect = select_side_effect
 
-        # Mutation methods
         def insert_side_effect(data):
             m = MagicMock()
             m.execute.return_value = _make_response([data] if isinstance(data, dict) else data)
@@ -154,7 +149,6 @@ def _build_mock_sb():
         tbl.insert.side_effect = insert_side_effect
         tbl.delete.side_effect = delete_side_effect
         tbl.update.side_effect = update_side_effect
-        tbl.upsert = tbl.insert  # upsert behaves like insert for mock
 
         return tbl
 
@@ -178,10 +172,17 @@ class TestClientConfigLoader:
     def test_load(self, loader):
         assert len(loader.client_names) == 4
 
+    def test_menu_categories_property(self, loader):
+        cats = loader.menu_categories
+        assert 'menu_cat_1' in cats
+        assert 'bread' in cats['menu_cat_1']
+
+    def test_fallback_menu_category(self, loader):
+        assert loader.fallback_menu_category == 'menu_cat_3'
+
     def test_get_client_rippling(self, loader):
         cfg = loader.get_client('Rippling')
         assert cfg.name == 'Rippling'
-        assert cfg.menu_category == 'menu_cat_4'
         # Rippling has veg_dry: 2, so should have veg_dry__1 and veg_dry__2
         assert 'veg_dry__1' in cfg.active_slots
         assert 'veg_dry__2' in cfg.active_slots
@@ -194,7 +195,6 @@ class TestClientConfigLoader:
 
     def test_get_client_vector_no_overrides(self, loader):
         cfg = loader.get_client('Vector')
-        # No overrides, so veg_dry should be single
         assert 'veg_dry' in cfg.active_slots
 
     def test_unknown_client_raises(self, loader):
@@ -206,20 +206,34 @@ class TestClientConfigLoader:
         assert counts['veg_dry'] == 2
         assert counts['rice'] == 1
 
-    def test_validate(self, loader):
-        loader.validate()  # Should not raise
+    def test_get_client_menu_category(self, loader):
+        cat = loader.get_client_menu_category('Rippling')
+        assert cat == 'menu_cat_4'
 
-    def test_menu_categories_property(self, loader):
-        cats = loader.menu_categories
-        assert 'menu_cat_1' in cats
-        assert isinstance(cats['menu_cat_1'], list)
+    def test_active_slots_for_client(self, loader):
+        slots = loader.get_active_slots_for_client('Rippling')
+        assert 'bread' in slots
+        assert 'veg_dry' in slots
+        assert isinstance(slots, list)
+
+    def test_slots_for_menu_category(self, loader):
+        slots = loader.get_slots_for_menu_category('menu_cat_1')
+        assert 'bread' in slots
+        assert 'nonveg_main' in slots
+
+    def test_find_or_create_existing_category(self, loader):
+        # menu_cat_3 has these exact slots
+        slots = ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar', 'rasam',
+                 'curd_side', 'dessert', 'welcome_drink']
+        cat_name = loader.find_or_create_menu_category(slots)
+        assert cat_name == 'menu_cat_3'
+
+    def test_validate(self, loader):
+        loader.validate()
 
     def test_theme_map_defaults(self, loader):
         theme = loader.get_theme_map_for_client('Rippling')
         assert theme == DEFAULT_THEME_MAP
-
-    def test_fallback_menu_category(self, loader):
-        assert loader.fallback_menu_category == 'menu_cat_3'
 
     def test_core_min_one_slots(self, loader):
         slots = loader.core_min_one_slots

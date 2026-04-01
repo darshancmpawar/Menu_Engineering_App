@@ -25,7 +25,7 @@ from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
-from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES
+from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: used in editor-metadata
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
@@ -79,8 +79,26 @@ def _get_menu_rules():
 
 
 def _build_history_context(df, client_name, start_date, num_days):
-    """Shared helper to build history-based solver inputs."""
-    hm = HistoryManager().load(HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
+    """Shared helper to build history-based solver inputs.
+
+    Loads from Supabase first, falls back to local CSV if Supabase is empty.
+    """
+    import pandas as pd
+    from src.client.client_config import _get_supabase
+
+    hm = HistoryManager()
+    try:
+        sb = _get_supabase()
+        long_resp = sb.table('menu_history').select('*').execute()
+        weeks_resp = sb.table('week_signatures').select('*').execute()
+        long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
+        weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
+        if long_df is not None or weeks_df is not None:
+            hm.load_from_dataframes(long_df, weeks_df)
+        else:
+            hm.load(HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
+    except Exception:
+        hm.load(HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
     hm = hm.filter_by_client(client_name)
 
     dates = _weekdays_from(start_date, num_days)
@@ -368,9 +386,13 @@ def save_plan():
         )
 
         hm = HistoryManager()
+        # Get Supabase client for persistent storage
+        from src.client.client_config import _get_supabase
+        sb = _get_supabase()
         hm.save(week_plan, dates, client_name, week_start, sig,
                 HISTORY_LONG_PATH, HISTORY_WEEKS_PATH,
-                strip_color_fn=strip_color_suffix)
+                strip_color_fn=strip_color_suffix,
+                supabase_client=sb)
 
         return jsonify({'success': True, 'message': 'Plan saved to history'})
 
@@ -392,8 +414,8 @@ def editor_metadata():
             'const_slots': list(CONST_SLOTS),
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
-            'menu_categories': loader.menu_categories,
             'clients': loader.client_names,
+            'menu_categories': loader.menu_categories,
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -404,13 +426,14 @@ def get_client_config(client_name):
     """Return the full editable config for one client."""
     try:
         loader = _get_client_loader()
+        base_slots = loader.get_active_slots_for_client(client_name)
+        menu_category = loader.get_client_menu_category(client_name)
         cfg = loader.get_client(client_name)
-        cat_slots = loader.get_slots_for_menu_category(cfg.menu_category)
         return jsonify({
             'success': True,
             'name': cfg.name,
-            'menu_category': cfg.menu_category,
-            'active_base_slots': [s for s in cat_slots if s not in CONST_SLOTS],
+            'menu_category': menu_category,
+            'active_base_slots': [s for s in base_slots if s not in CONST_SLOTS],
             'slot_counts': cfg.slot_counts,
             'theme_map': cfg.theme_map,
         })
@@ -433,8 +456,6 @@ def update_client_config(client_name):
             loader.update_client_slot_counts(client_name, data['slot_counts'])
         if 'theme_map' in data:
             loader.update_client_theme_overrides(client_name, data['theme_map'])
-        if 'menu_category' in data:
-            loader.update_client_menu_category(client_name, data['menu_category'])
 
         # No reload needed — Supabase reads are always live
         return jsonify({'success': True, 'message': f'Config updated for {client_name}'})
@@ -451,16 +472,13 @@ def create_client():
     try:
         data = request.get_json()
         name = data.get('name', '').strip()
-        menu_category = data.get('menu_category', '')
+        active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
         if not name:
             return jsonify({'success': False, 'error': 'name is required'}), 400
-        if not menu_category:
-            return jsonify({'success': False, 'error': 'menu_category is required'}), 400
 
         loader = _get_client_loader()
-        loader.create_client(name, menu_category)
+        loader.create_client(name, active_slots)
 
-        # No reload needed — Supabase reads are always live
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400

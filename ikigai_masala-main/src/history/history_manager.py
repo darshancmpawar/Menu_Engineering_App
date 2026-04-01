@@ -172,9 +172,10 @@ class HistoryManager:
         long_csv_path: str,
         weeks_csv_path: str,
         strip_color_fn=None,
+        supabase_client=None,
     ):
-        """Append a completed week plan to the history CSVs."""
-        # Append to long history
+        """Append a completed week plan to history (CSV + Supabase)."""
+        # Build long-history rows
         long_rows = []
         for d in dates:
             day_map = week_plan.get(d, {})
@@ -186,21 +187,29 @@ class HistoryManager:
                     'item_base': _norm_str(item_base),
                     'client_name': _norm_str(client_name),
                 })
+
+        # --- Write to local CSV (fallback/backup) ---
         if long_rows:
             long_df = pd.DataFrame(long_rows)
             long_path = Path(long_csv_path)
             header = not long_path.exists()
             long_df.to_csv(long_path, mode='a', header=header, index=False)
 
-        # Append to weeks history
-        weeks_row = pd.DataFrame([{
+        weeks_row_dict = {
             'week_start': week_start.isoformat(),
             'week_signature': week_signature,
             'client_name': _norm_str(client_name),
-        }])
+        }
+        weeks_df = pd.DataFrame([weeks_row_dict])
         weeks_path = Path(weeks_csv_path)
         header = not weeks_path.exists()
-        weeks_row.to_csv(weeks_path, mode='a', header=header, index=False)
+        weeks_df.to_csv(weeks_path, mode='a', header=header, index=False)
+
+        # --- Write to Supabase ---
+        if supabase_client is not None:
+            if long_rows:
+                supabase_client.table('menu_history').insert(long_rows).execute()
+            supabase_client.table('week_signatures').insert(weeks_row_dict).execute()
 
     # ----- Signature computation -----
 
