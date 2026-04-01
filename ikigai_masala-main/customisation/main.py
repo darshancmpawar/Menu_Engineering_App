@@ -69,7 +69,7 @@ def render_customisation_editor(api: MenuApiClient):
     menu_categories = metadata.get('menu_categories', {})
 
     # ============================================================
-    # Section 1: Client Management (Tabs)
+    # Section 1: Client Management
     # ============================================================
     st.markdown(
         '<p style="font-size:1.1rem;font-weight:700;color:#f5f5f5;margin:0 0 0.75rem;">'
@@ -77,29 +77,32 @@ def render_customisation_editor(api: MenuApiClient):
         unsafe_allow_html=True,
     )
 
-    tab_select, tab_create = st.tabs(["Select Existing", "Create New"])
+    mode = st.radio(
+        "Mode",
+        ["Select Existing", "Create New"],
+        horizontal=True,
+        key="editor_mode",
+        label_visibility="collapsed",
+    )
+    is_create_mode = (mode == "Create New")
 
     selected_client = None
-    with tab_select:
-        if not clients:
-            st.info("No clients found. Switch to the **Create New** tab to add one.")
-        else:
-            selected_client = st.selectbox(
-                "Client", clients,
-                key="editor_client_select",
-                label_visibility="collapsed",
-            )
-
     new_client_name = ""
-    with tab_create:
+
+    if not is_create_mode:
+        if not clients:
+            st.info("No clients found. Switch to **Create New** to add one.")
+            return
+        selected_client = st.selectbox(
+            "Client", clients,
+            key="editor_client_select",
+            label_visibility="collapsed",
+        )
+    else:
         new_client_name = st.text_input(
             "Client Name", key="editor_new_client_name",
             placeholder="e.g. Acme Corp",
         )
-
-    # Determine mode: if on Create New tab, selected_client is None
-    # Streamlit sets selected_client to None when Create tab is active
-    is_create_mode = selected_client is None
 
     # For Select Existing: load config from DB
     # For Create New: use defaults
