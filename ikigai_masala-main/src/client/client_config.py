@@ -3,6 +3,13 @@ Client configuration loader — Supabase backend.
 
 Every read queries Supabase directly so any change made via the UI,
 API, or dashboard is immediately reflected on the next call.
+
+Schema:
+    menu_categories (name TEXT PK, slots TEXT[])
+    clients         (name TEXT PK, menu_category TEXT FK → menu_categories.name)
+    slot_count_overrides (client_name, slot, count)
+    theme_overrides      (client_name, day, theme)
+    app_settings         (key, value)
 """
 
 from __future__ import annotations
@@ -11,7 +18,6 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from src.constants import (
@@ -19,8 +25,6 @@ from src.constants import (
     CONST_SLOTS,
     SLOT_SUFFIX_SEP,
 )
-
-ALL_SLOTS: List[str] = list(BASE_SLOTS) + list(CONST_SLOTS)
 
 DEFAULT_THEME_MAP: Dict[str, str] = {
     'monday': 'mix',
@@ -36,7 +40,6 @@ AVAILABLE_THEMES: List[str] = ['mix', 'chinese', 'biryani', 'south', 'north']
 @dataclass
 class ClientConfig:
     name: str
-    menu_category: str
     active_slots: List[str] = field(default_factory=list)
     slot_counts: Dict[str, int] = field(default_factory=dict)
     theme_map: Dict[str, str] = field(default_factory=dict)
@@ -75,7 +78,6 @@ def _get_supabase():
         with _sb_lock:
             if _sb_client is None:
                 from supabase import create_client
-                # Try Streamlit secrets first, then fall back to env vars
                 try:
                     import streamlit as st
                     url = st.secrets['SUPABASE_URL']
@@ -100,13 +102,6 @@ class ClientConfigLoader:
     """
 
     def __init__(self, config_path: str = ''):
-        """
-        Parameters
-        ----------
-        config_path : str
-            Kept for backward-compatibility with call sites that pass the old
-            JSON path.  The value is ignored; all data comes from Supabase.
-        """
         self._sb = _get_supabase()
 
     # ---- internal helpers --------------------------------------------------
@@ -123,9 +118,6 @@ class ClientConfigLoader:
         if row.data is None:
             return None
         val = row.data['value']
-        # value is stored as JSONB — supabase-py normally returns it already
-        # parsed.  If it arrives as a raw JSON string (e.g. '["a","b"]'),
-        # try to parse it; plain strings like 'menu_cat_3' are returned as-is.
         if isinstance(val, str):
             try:
                 return json.loads(val)
@@ -147,17 +139,13 @@ class ClientConfigLoader:
 
     @property
     def menu_categories(self) -> Dict[str, List[str]]:
+        """Return {category_name: [slot, ...]} from menu_categories table."""
         rows = (
             self._sb.table('menu_categories')
             .select('name, slots')
             .execute()
         )
         return {r['name']: r['slots'] for r in rows.data}
-
-    @property
-    def fallback_menu_category(self) -> str:
-        val = self._setting('fallback_menu_category')
-        return val if val else 'menu_cat_3'
 
     @property
     def core_min_one_slots(self) -> List[str]:
@@ -168,6 +156,11 @@ class ClientConfigLoader:
     def constant_slots(self) -> List[str]:
         val = self._setting('constant_slots')
         return val if val else list(CONST_SLOTS)
+
+    @property
+    def fallback_menu_category(self) -> Optional[str]:
+        val = self._setting('fallback_menu_category')
+        return val if isinstance(val, str) else None
 
     # ---- client read methods -----------------------------------------------
 
@@ -184,29 +177,29 @@ class ClientConfigLoader:
             raise ValueError(f"Unknown client: {name}")
 
         entry = row.data
-        cat = entry['menu_category']
+        base_slots = self.get_slots_for_menu_category(entry.get('menu_category', ''))
         slot_counts = self.get_slot_counts_for_client(name)
 
-        base_to_show = self.get_slots_for_menu_category(cat)
-        active: List[str] = []
-        for slot in base_to_show:
+        # Expand base slots using slot counts (e.g. veg_dry x2 → veg_dry__1, veg_dry__2)
+        expanded: List[str] = []
+        for slot in base_slots:
             if slot in CONST_SLOTS:
-                active.append(slot)
+                expanded.append(slot)
             else:
-                active.extend(_expand_slot_ids(slot, slot_counts.get(slot, 1)))
-        active = _dedupe_preserve_order(active)
+                expanded.extend(_expand_slot_ids(slot, slot_counts.get(slot, 1)))
+        expanded = _dedupe_preserve_order(expanded)
 
         theme_map = self.get_theme_map_for_client(name)
 
         return ClientConfig(
             name=name,
-            menu_category=cat,
-            active_slots=active,
+            active_slots=expanded,
             slot_counts=slot_counts,
             theme_map=theme_map,
         )
 
     def get_client_menu_category(self, name: str) -> str:
+        """Return the menu_category name for a client."""
         row = (
             self._sb.table('clients')
             .select('menu_category')
@@ -215,28 +208,32 @@ class ClientConfigLoader:
             .execute()
         )
         if not row.data:
-            return self.fallback_menu_category
-        return row.data['menu_category']
+            raise ValueError(f"Unknown client: {name}")
+        return row.data.get('menu_category', '')
 
-    def get_slots_for_menu_category(self, category: str) -> List[str]:
+    def get_active_slots_for_client(self, name: str) -> List[str]:
+        """Return the base active slots for a client (via its menu_category)."""
+        cat_name = self.get_client_menu_category(name)
+        return self.get_slots_for_menu_category(cat_name)
+
+    def get_slots_for_menu_category(self, cat_name: str) -> List[str]:
+        """Return slots for a menu_category; falls back to defaults."""
+        if not cat_name:
+            return list(BASE_SLOTS)
         row = (
             self._sb.table('menu_categories')
             .select('slots')
-            .eq('name', category)
+            .eq('name', cat_name)
             .maybe_single()
             .execute()
         )
-        if row.data:
-            return _dedupe_preserve_order(row.data['slots'])
-        # Fallback category
-        fb = (
-            self._sb.table('menu_categories')
-            .select('slots')
-            .eq('name', self.fallback_menu_category)
-            .maybe_single()
-            .execute()
-        )
-        return _dedupe_preserve_order(fb.data['slots']) if fb.data else []
+        if row.data and row.data.get('slots'):
+            return row.data['slots']
+        # Fallback: try the fallback category
+        fb = self.fallback_menu_category
+        if fb and fb != cat_name:
+            return self.get_slots_for_menu_category(fb)
+        return list(BASE_SLOTS)
 
     def get_slot_counts_for_client(self, name: str) -> Dict[str, int]:
         counts = {s: 1 for s in BASE_SLOTS}
@@ -252,9 +249,6 @@ class ClientConfigLoader:
         for must in self.core_min_one_slots:
             counts[must] = max(1, int(counts.get(must, 1)))
         return counts
-
-    def get_slots_for_client(self, name: str) -> List[str]:
-        return self.get_client(name).active_slots
 
     def get_theme_map_for_client(self, name: str) -> Dict[str, str]:
         """Return merged theme map (global defaults + per-client overrides)."""
@@ -272,22 +266,45 @@ class ClientConfigLoader:
         return merged
 
     # ---- mutation methods --------------------------------------------------
-    # These write directly to Supabase.  The next read from *any* process
-    # (this one, another API replica, or even the Supabase dashboard) will
-    # see the updated data immediately.
 
-    def create_client(self, name: str, menu_category: str) -> None:
-        cats = self.menu_categories
-        if menu_category not in cats:
-            raise ValueError(f"Unknown menu category: {menu_category}")
-        # Supabase PK constraint will reject duplicates
+    def find_or_create_menu_category(self, slots: List[str]) -> str:
+        """Find an existing menu_category whose slots match exactly, or create a new one.
+
+        Returns the category name.
+        """
+        sorted_slots = sorted(slots)
+        categories = self.menu_categories
+        for cat_name, cat_slots in categories.items():
+            if sorted(cat_slots) == sorted_slots:
+                return cat_name
+
+        # No match — create a new category
+        # Name: menu_cat_N where N is next available number
+        existing_nums = []
+        for cat_name in categories:
+            if cat_name.startswith('menu_cat_'):
+                try:
+                    existing_nums.append(int(cat_name.split('_')[-1]))
+                except ValueError:
+                    pass
+        next_num = max(existing_nums, default=0) + 1
+        new_name = f'menu_cat_{next_num}'
+
+        self._sb.table('menu_categories').insert({
+            'name': new_name,
+            'slots': list(slots),
+        }).execute()
+        return new_name
+
+    def create_client(self, name: str, active_slots: List[str]) -> None:
+        """Create a new client. Auto-assigns or creates a menu_category."""
+        cat_name = self.find_or_create_menu_category(active_slots)
         self._sb.table('clients').insert({
             'name': name,
-            'menu_category': menu_category,
+            'menu_category': cat_name,
         }).execute()
 
     def delete_client(self, name: str) -> None:
-        # Verify client exists first
         row = (
             self._sb.table('clients')
             .select('name')
@@ -300,18 +317,15 @@ class ClientConfigLoader:
         # CASCADE on FK deletes slot_count_overrides & theme_overrides
         self._sb.table('clients').delete().eq('name', name).execute()
 
-    def update_client_menu_category(self, name: str, menu_category: str) -> None:
-        cats = self.menu_categories
-        if menu_category not in cats:
-            raise ValueError(f"Unknown menu category: {menu_category}")
+    def update_client_slots(self, name: str, active_slots: List[str]) -> None:
+        """Update a client's active slots by finding/creating a matching menu_category."""
+        cat_name = self.find_or_create_menu_category(active_slots)
         self._sb.table('clients').update({
-            'menu_category': menu_category,
+            'menu_category': cat_name,
         }).eq('name', name).execute()
 
     def update_client_slot_counts(self, name: str, overrides: Dict[str, int]) -> None:
-        # Clear existing overrides for this client
         self._sb.table('slot_count_overrides').delete().eq('client_name', name).execute()
-        # Insert only non-default (count != 1) overrides
         rows = [
             {'client_name': name, 'slot': k, 'count': int(v)}
             for k, v in overrides.items()
@@ -321,9 +335,7 @@ class ClientConfigLoader:
             self._sb.table('slot_count_overrides').insert(rows).execute()
 
     def update_client_theme_overrides(self, name: str, theme_map: Dict[str, str]) -> None:
-        # Clear existing overrides for this client
         self._sb.table('theme_overrides').delete().eq('client_name', name).execute()
-        # Insert only values that differ from global defaults
         rows = [
             {'client_name': name, 'day': day, 'theme': theme}
             for day, theme in theme_map.items()
@@ -334,89 +346,41 @@ class ClientConfigLoader:
         if rows:
             self._sb.table('theme_overrides').insert(rows).execute()
 
-    def update_client_slots(self, name: str, active_base_slots: List[str]) -> None:
-        """Update a client's active slots.
-
-        If an existing menu category matches the slot set, re-use it.
-        Otherwise create a new category.
-        """
-        cats = self.menu_categories
-        target_set = set(active_base_slots)
-
-        # Check for an existing match
-        for cat_name, cat_slots in cats.items():
-            if set(cat_slots) == target_set:
-                self._sb.table('clients').update({
-                    'menu_category': cat_name,
-                }).eq('name', name).execute()
-                return
-
-        # Create a new custom category
-        existing_nums = []
-        for k in cats:
-            if k.startswith('menu_cat_'):
-                try:
-                    existing_nums.append(int(k.split('_')[-1]))
-                except ValueError:
-                    pass
-        new_cat = f'menu_cat_{max(existing_nums, default=0) + 1}'
-
-        self._sb.table('menu_categories').insert({
-            'name': new_cat,
-            'slots': list(active_base_slots),
-        }).execute()
-
-        self._sb.table('clients').update({
-            'menu_category': new_cat,
-        }).eq('name', name).execute()
-
     # ---- validation --------------------------------------------------------
 
     def validate(self):
-        """Validate configuration consistency.  Raises ValueError on problems."""
-        # DB primary keys enforce unique client names, so just check referential
-        # integrity and slot validity.
+        """Validate configuration consistency. Raises ValueError on problems."""
+        all_slots_set = set(BASE_SLOTS) | set(CONST_SLOTS)
 
+        # Validate menu_categories
         cats = self.menu_categories
-        rows = self._sb.table('clients').select('name, menu_category').execute()
-        for r in rows.data:
-            if r['menu_category'] not in cats:
-                raise ValueError(
-                    f"Client '{r['name']}' references unknown category: {r['menu_category']}"
-                )
-
-        all_slots_set = set(ALL_SLOTS)
-        for cat_name, slots in cats.items():
-            bad = [s for s in slots if s not in all_slots_set]
+        for cat_name, cat_slots in cats.items():
+            bad = [s for s in cat_slots if s not in all_slots_set]
             if bad:
                 raise ValueError(f"Category '{cat_name}' has unknown slot(s): {bad}")
 
-        # Validate slot_count_overrides reference valid clients and slots
-        sco_rows = self._sb.table('slot_count_overrides').select('client_name, slot').execute()
-        client_set = {r['name'] for r in rows.data}
+        # Validate clients
+        rows = self._sb.table('clients').select('name, menu_category').execute()
+        client_set = set()
+        for r in rows.data:
+            client_set.add(r['name'])
+            cat = r.get('menu_category', '')
+            if cat and cat not in cats:
+                raise ValueError(f"Client '{r['name']}' references unknown category: {cat}")
+
         base_set = set(BASE_SLOTS)
+        sco_rows = self._sb.table('slot_count_overrides').select('client_name, slot').execute()
         for r in sco_rows.data:
             if r['client_name'] not in client_set:
-                raise ValueError(
-                    f"slot_count_overrides has unknown client: {r['client_name']}"
-                )
+                raise ValueError(f"slot_count_overrides has unknown client: {r['client_name']}")
             if r['slot'] not in base_set:
-                raise ValueError(
-                    f"slot_count_overrides[{r['client_name']}] has unknown slot: {r['slot']}"
-                )
+                raise ValueError(f"slot_count_overrides[{r['client_name']}] has unknown slot: {r['slot']}")
 
-        # Validate theme_overrides
         to_rows = self._sb.table('theme_overrides').select('client_name, day, theme').execute()
         for r in to_rows.data:
             if r['client_name'] not in client_set:
-                raise ValueError(
-                    f"theme_overrides has unknown client: {r['client_name']}"
-                )
+                raise ValueError(f"theme_overrides has unknown client: {r['client_name']}")
             if r['day'].lower() not in DEFAULT_THEME_MAP:
-                raise ValueError(
-                    f"theme_overrides[{r['client_name']}] has invalid day: {r['day']}"
-                )
+                raise ValueError(f"theme_overrides[{r['client_name']}] has invalid day: {r['day']}")
             if r['theme'] not in AVAILABLE_THEMES:
-                raise ValueError(
-                    f"theme_overrides[{r['client_name']}] has invalid theme: {r['theme']}"
-                )
+                raise ValueError(f"theme_overrides[{r['client_name']}] has invalid theme: {r['theme']}")

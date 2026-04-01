@@ -39,12 +39,11 @@ def main():
     with open(args.json) as f:
         data = json.load(f)
 
-    # 1. Upsert menu categories
-    cat_rows = [
-        {"name": name, "slots": slots}
-        for name, slots in data["menu_categories"].items()
-    ]
-    sb.table("menu_categories").upsert(cat_rows).execute()
+    # 1. Upsert menu categories (must be done first — clients FK references them)
+    categories = data.get("menu_categories", {})
+    cat_rows = [{"name": name, "slots": slots} for name, slots in categories.items()]
+    if cat_rows:
+        sb.table("menu_categories").upsert(cat_rows).execute()
     print(f"  Upserted {len(cat_rows)} menu categories")
 
     # 2. Upsert clients
@@ -85,7 +84,7 @@ def main():
     settings = [
         {"key": "core_min_one_slots", "value": json.dumps(data.get("core_min_one_slots", []))},
         {"key": "constant_slots", "value": json.dumps(data.get("constant_slots", []))},
-        {"key": "fallback_menu_category", "value": json.dumps(data.get("fallback_menu_category", "menu_cat_3"))},
+        {"key": "fallback_menu_category", "value": json.dumps(data.get("fallback_menu_category", ""))},
     ]
     sb.table("app_settings").upsert(settings).execute()
     print(f"  Upserted {len(settings)} app settings")
