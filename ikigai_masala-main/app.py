@@ -230,8 +230,6 @@ _SESSION_DEFAULTS = {
     "client_name": None,
     "changes_log": [],
     "view": "planner",
-    # Editor state
-    "editor_confirm_delete": False,
 }
 for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
