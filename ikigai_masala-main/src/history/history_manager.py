@@ -205,11 +205,19 @@ class HistoryManager:
         header = not weeks_path.exists()
         weeks_df.to_csv(weeks_path, mode='a', header=header, index=False)
 
-        # --- Write to Supabase ---
+        # --- Write to Supabase (use original client_name to match FK) ---
         if supabase_client is not None:
-            if long_rows:
-                supabase_client.table('menu_history').insert(long_rows).execute()
-            supabase_client.table('week_signatures').insert(weeks_row_dict).execute()
+            sb_long_rows = [
+                {**row, 'client_name': client_name}
+                for row in long_rows
+            ]
+            if sb_long_rows:
+                supabase_client.table('menu_history').insert(sb_long_rows).execute()
+            supabase_client.table('week_signatures').insert({
+                'week_start': week_start.isoformat(),
+                'week_signature': week_signature,
+                'client_name': client_name,
+            }).execute()
 
     # ----- Signature computation -----
 
