@@ -23,3 +23,16 @@ BEGIN
   END IF;
 END
 $$;
+
+-- =============================================================================
+-- Seed default super_admin user
+-- Login: Darshan.Pawar@thesmartq.com / Menu@123
+-- =============================================================================
+INSERT INTO users (email, profile_name, password_hash, role)
+VALUES (
+    'darshan.pawar@thesmartq.com',
+    'Darshan',
+    'ae0be011e63f13c5d5702a3a8b397379:e4568f3d5c655723b3b67b305933882b19975694b4502a05719860ef2e4af961',
+    'super_admin'
+)
+ON CONFLICT (email) DO NOTHING;
