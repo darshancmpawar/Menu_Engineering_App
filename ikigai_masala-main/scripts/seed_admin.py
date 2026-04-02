@@ -16,9 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from user_authentication.auth_manager import AuthManager
 
-DEFAULT_EMAIL = "admin@ikigai.com"
-DEFAULT_NAME = "Admin"
-DEFAULT_PASSWORD = "admin123"
+DEFAULT_EMAIL = "Darshan.Pawar@thesmartq.com"
+DEFAULT_NAME = "Darshan"
+DEFAULT_PASSWORD = "Menu@123"
 DEFAULT_ROLE = "super_admin"
 
 
