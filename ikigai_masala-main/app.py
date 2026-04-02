@@ -37,6 +37,16 @@ from ui.formatters import (
     THEME_TAG_COLORS,
 )
 from customisation.main import render_customisation_editor
+from user_authentication.session import (
+    init_auth_state,
+    is_authenticated,
+    current_user,
+    logout_user,
+    require_role,
+)
+from user_authentication.login_ui import render_login_form
+from user_authentication.user_manager_ui import render_user_manager
+from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 
 def _flatten_solution(raw_solution: dict) -> tuple:
@@ -214,6 +224,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
+# Authentication gate
+# ---------------------------------------------------------------------------
+init_auth_state()
+
+if not is_authenticated():
+    render_login_form()
+    st.stop()
+
+# ---------------------------------------------------------------------------
 # Backend + client
 # ---------------------------------------------------------------------------
 backend_ok = _ensure_backend_running()
@@ -236,10 +255,41 @@ for key, default in _SESSION_DEFAULTS.items():
         st.session_state[key] = default
 
 # ---------------------------------------------------------------------------
-# Editor view — full page, no sidebar
+# Editor view — full page, no sidebar (role-gated)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "editor":
-    render_customisation_editor(client)
+    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+        render_customisation_editor(client)
+    else:
+        st.error("You don't have permission to configure clients.")
+        if st.button("Back to Menu"):
+            st.session_state.view = "planner"
+            st.rerun()
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# User manager view — full page, no sidebar (role-gated)
+# ---------------------------------------------------------------------------
+if st.session_state.view == "user_manager":
+    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+        col_back, col_title = st.columns([1, 5])
+        with col_back:
+            if st.button("< Back to Menu", key="um_back_btn", use_container_width=True):
+                st.session_state.view = "planner"
+                st.rerun()
+        with col_title:
+            st.markdown(
+                '<p style="font-size:1.4rem;font-weight:700;color:#f5f5f5;margin:0;">'
+                'User Management</p>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("")
+        render_user_manager()
+    else:
+        st.error("You don't have permission to manage users.")
+        if st.button("Back to Menu"):
+            st.session_state.view = "planner"
+            st.rerun()
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -250,6 +300,20 @@ with st.sidebar:
         <h2>Ikigai Masala</h2>
         <p>Weekly Menu Planner</p>
     </div>""", unsafe_allow_html=True)
+
+    # --- User info & logout ---
+    _user = current_user()
+    if _user:
+        st.markdown(
+            f'<p style="font-size:0.8rem;color:#a3a3a3;margin:0 0 0.25rem;">'
+            f'Signed in as <b style="color:#f5f5f5;">{_user.profile_name}</b>'
+            f' <span style="color:#737373;">({_user.role})</span></p>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Logout", key="sidebar_logout", use_container_width=True):
+            logout_user()
+            st.rerun()
+        st.divider()
 
     if not backend_ok:
         st.error("Backend API failed to start.")
@@ -274,7 +338,7 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Page header
 # ---------------------------------------------------------------------------
-_hdr_col1, _hdr_col2 = st.columns([5, 1])
+_hdr_col1, _hdr_col2, _hdr_col3 = st.columns([5, 1, 1])
 with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
     if st.session_state.client_name:
@@ -284,9 +348,15 @@ with _hdr_col1:
         st.markdown('<p class="page-subtitle">Generate a plan to get started</p>',
                     unsafe_allow_html=True)
 with _hdr_col2:
-    if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
-        st.session_state.view = "editor"
-        st.rerun()
+    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+        if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
+            st.session_state.view = "editor"
+            st.rerun()
+with _hdr_col3:
+    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+        if st.button("Manage Users", key="open_users_btn", use_container_width=True):
+            st.session_state.view = "user_manager"
+            st.rerun()
 
 # ---------------------------------------------------------------------------
 # Generate
