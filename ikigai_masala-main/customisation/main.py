@@ -14,6 +14,8 @@ from ui.formatters import prettify_slot_name
 from customisation.slot_editor import render_slot_editor
 from customisation.multi_slot_editor import render_multi_slot_editor
 from customisation.theme_editor import render_theme_editor
+from user_authentication.session import require_role
+from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 
 def _inject_editor_css():
@@ -253,8 +255,12 @@ def render_customisation_editor(api: MenuApiClient):
             st.rerun()
 
     else:
-        # --- Select Existing flow: Save | Reset ---
-        col_save, col_reset = st.columns(2)
+        # --- Select Existing flow: Save | Reset | Delete ---
+        can_delete = require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN)
+        if can_delete:
+            col_save, col_reset, col_delete = st.columns(3)
+        else:
+            col_save, col_reset = st.columns(2)
 
         with col_save:
             save_clicked = st.button(
@@ -267,6 +273,22 @@ def render_customisation_editor(api: MenuApiClient):
                 "Reset to Defaults",
                 key="editor_reset_all", use_container_width=True,
             )
+
+        delete_clicked = False
+        if can_delete:
+            with col_delete:
+                delete_clicked = st.button(
+                    "Delete Client",
+                    key="editor_delete_btn", use_container_width=True,
+                )
+
+        if delete_clicked:
+            try:
+                api.delete_client(selected_client)
+                st.session_state['editor_success_msg'] = f"Client '{selected_client}' deleted."
+                st.rerun()
+            except Exception as e:
+                st.error(f"Delete failed: {e}")
 
         if save_clicked:
             payload = {}

@@ -1,0 +1,231 @@
+"""Tests for user authentication module — models, password hashing, AuthManager."""
+
+import pytest
+from unittest.mock import MagicMock, patch
+
+from user_authentication.models import (
+    User,
+    ROLE_SUPER_ADMIN,
+    ROLE_ADMIN,
+    ROLE_USER,
+    ALL_ROLES,
+    CAN_CREATE_ROLES,
+)
+from user_authentication.auth_manager import (
+    _hash_password,
+    _verify_password,
+    AuthManager,
+)
+
+
+# ---------------------------------------------------------------------------
+# Model tests
+# ---------------------------------------------------------------------------
+
+class TestUser:
+    def test_super_admin_permissions(self):
+        u = User(email="sa@test.com", profile_name="SA", role=ROLE_SUPER_ADMIN)
+        assert u.can_configure_clients is True
+        assert u.can_manage_users is True
+        assert set(u.creatable_roles) == {ROLE_SUPER_ADMIN, ROLE_ADMIN, ROLE_USER}
+
+    def test_admin_permissions(self):
+        u = User(email="a@test.com", profile_name="A", role=ROLE_ADMIN)
+        assert u.can_configure_clients is True
+        assert u.can_manage_users is True
+        assert u.creatable_roles == [ROLE_USER]
+
+    def test_user_permissions(self):
+        u = User(email="u@test.com", profile_name="U", role=ROLE_USER)
+        assert u.can_configure_clients is False
+        assert u.can_manage_users is False
+        assert u.creatable_roles == []
+
+    def test_all_roles_defined(self):
+        assert ROLE_SUPER_ADMIN in ALL_ROLES
+        assert ROLE_ADMIN in ALL_ROLES
+        assert ROLE_USER in ALL_ROLES
+
+    def test_can_create_roles_hierarchy(self):
+        assert ROLE_SUPER_ADMIN in CAN_CREATE_ROLES[ROLE_SUPER_ADMIN]
+        assert ROLE_ADMIN in CAN_CREATE_ROLES[ROLE_SUPER_ADMIN]
+        assert ROLE_USER in CAN_CREATE_ROLES[ROLE_SUPER_ADMIN]
+        assert CAN_CREATE_ROLES[ROLE_ADMIN] == [ROLE_USER]
+        assert CAN_CREATE_ROLES[ROLE_USER] == []
+
+
+# ---------------------------------------------------------------------------
+# Password hashing tests
+# ---------------------------------------------------------------------------
+
+class TestPasswordHashing:
+    def test_hash_produces_salt_colon_hash(self):
+        result = _hash_password("secret")
+        assert ":" in result
+        salt, h = result.split(":", 1)
+        assert len(salt) == 32  # 16 bytes hex
+        assert len(h) == 64     # sha256 hex
+
+    def test_same_salt_produces_same_hash(self):
+        salt = "a" * 32
+        h1 = _hash_password("pass", salt)
+        h2 = _hash_password("pass", salt)
+        assert h1 == h2
+
+    def test_different_passwords_differ(self):
+        salt = "b" * 32
+        h1 = _hash_password("pass1", salt)
+        h2 = _hash_password("pass2", salt)
+        assert h1 != h2
+
+    def test_verify_correct_password(self):
+        stored = _hash_password("mypassword")
+        assert _verify_password("mypassword", stored) is True
+
+    def test_verify_wrong_password(self):
+        stored = _hash_password("mypassword")
+        assert _verify_password("wrongpassword", stored) is False
+
+    def test_verify_malformed_hash(self):
+        assert _verify_password("any", "nocolon") is False
+
+
+# ---------------------------------------------------------------------------
+# AuthManager tests (mocked Supabase)
+# ---------------------------------------------------------------------------
+
+def _mock_supabase():
+    """Create a mock Supabase client with chainable table methods."""
+    sb = MagicMock()
+    return sb
+
+
+def _make_response(data):
+    resp = MagicMock()
+    resp.data = data
+    return resp
+
+
+class TestAuthManager:
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_authenticate_success(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+
+        stored_hash = _hash_password("secret123")
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response({
+            "email": "test@test.com",
+            "profile_name": "Tester",
+            "password_hash": stored_hash,
+            "role": "admin",
+        })
+
+        auth = AuthManager()
+        user = auth.authenticate("test@test.com", "secret123")
+        assert user is not None
+        assert user.email == "test@test.com"
+        assert user.role == "admin"
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_authenticate_wrong_password(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+
+        stored_hash = _hash_password("secret123")
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response({
+            "email": "test@test.com",
+            "profile_name": "Tester",
+            "password_hash": stored_hash,
+            "role": "admin",
+        })
+
+        auth = AuthManager()
+        user = auth.authenticate("test@test.com", "wrongpass")
+        assert user is None
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_authenticate_user_not_found(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+
+        auth = AuthManager()
+        user = auth.authenticate("nobody@test.com", "pass")
+        assert user is None
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_create_user_success(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+
+        # No existing user
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+        sb.table().insert().execute.return_value = _make_response({})
+
+        auth = AuthManager()
+        user = auth.create_user("new@test.com", "New User", "pass123", "user")
+        assert user.email == "new@test.com"
+        assert user.role == "user"
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_create_user_duplicate(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response({"email": "dup@test.com"})
+
+        auth = AuthManager()
+        with pytest.raises(ValueError, match="already exists"):
+            auth.create_user("dup@test.com", "Dup", "pass", "user")
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_create_user_invalid_role(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+
+        auth = AuthManager()
+        with pytest.raises(ValueError, match="Invalid role"):
+            auth.create_user("x@test.com", "X", "pass", "invalid_role")
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_create_user_missing_fields(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+
+        auth = AuthManager()
+        with pytest.raises(ValueError, match="required"):
+            auth.create_user("", "Name", "pass", "user")
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_list_users(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+        sb.table().select().order().execute.return_value = _make_response([
+            {"email": "a@test.com", "profile_name": "Alice", "role": "admin"},
+            {"email": "b@test.com", "profile_name": "Bob", "role": "user"},
+        ])
+
+        auth = AuthManager()
+        users = auth.list_users()
+        assert len(users) == 2
+        assert users[0].profile_name == "Alice"
+        assert users[1].role == "user"
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_delete_user_success(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response({"email": "del@test.com"})
+        sb.table().delete().eq().execute.return_value = _make_response({})
+
+        auth = AuthManager()
+        auth.delete_user("del@test.com")  # should not raise
+
+    @patch("user_authentication.auth_manager._get_supabase")
+    def test_delete_user_not_found(self, mock_get_sb):
+        sb = _mock_supabase()
+        mock_get_sb.return_value = sb
+        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+
+        auth = AuthManager()
+        with pytest.raises(ValueError, match="not found"):
+            auth.delete_user("ghost@test.com")
