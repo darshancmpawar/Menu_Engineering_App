@@ -3,7 +3,7 @@ UI formatting utilities for menu plan display.
 """
 
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, CONST_SLOTS, BASE_SLOT_NAMES
 
@@ -19,25 +19,33 @@ THEME_LABELS = {
     6: "Weekend Special",
 }
 
-# Map color initial -> (full name, CSS color for display)
-_COLOR_MAP = {
-    'R': ('Red', '#ef4444'),
-    'G': ('Green', '#22c55e'),
-    'B': ('Brown', '#a16207'),
-    'Y': ('Yellow', '#eab308'),
-    'W': ('White', '#a1a1aa'),
-    'O': ('Orange', '#f97316'),
-    'K': ('Black', '#71717a'),
+# Map color initial -> (full name, CSS bg color, CSS text color)
+_COLOR_MAP: Dict[str, Tuple[str, str, str]] = {
+    'R': ('Red',    '#3b1114', '#fca5a5'),
+    'G': ('Green',  '#0f2a1d', '#86efac'),
+    'B': ('Brown',  '#2a1a08', '#d4a56a'),
+    'Y': ('Yellow', '#2a2308', '#fde68a'),
+    'W': ('White',  '#1f1f23', '#d4d4d8'),
+    'O': ('Orange', '#2a1508', '#fdba74'),
+    'K': ('Black',  '#18181b', '#a1a1aa'),
 }
 
 
-# Theme badge colors keyed by theme name: (background, foreground)
+# Theme badge colors keyed by theme name: (background, foreground, icon)
 THEME_TAG_COLORS = {
-    'mix': ('#22543d', '#86efac'),
-    'chinese': ('#7c2d12', '#fdba74'),
-    'biryani': ('#7f1d1d', '#fca5a5'),
-    'south': ('#1e3a5f', '#93c5fd'),
-    'north': ('#4c1d95', '#c4b5fd'),
+    'mix':     ('#0f2a1d', '#86efac'),
+    'chinese': ('#2a1508', '#fdba74'),
+    'biryani': ('#3b1114', '#fca5a5'),
+    'south':   ('#0f1a2e', '#93c5fd'),
+    'north':   ('#1e0a3a', '#c4b5fd'),
+}
+
+THEME_ICONS = {
+    'mix':     '&#9670;',   # diamond
+    'chinese': '&#9672;',   # circle
+    'biryani': '&#9733;',   # star
+    'south':   '&#9650;',   # triangle up
+    'north':   '&#9632;',   # square
 }
 
 
@@ -50,25 +58,12 @@ def display_label_for_slot_id(slot_id: str) -> str:
 
 
 def prettify_slot_name(name: str) -> str:
-    """Convert underscore-separated slot/item names to readable title case.
-
-    Examples:
-        'veg_dry' -> 'Veg Dry'
-        'nonveg_main' -> 'Nonveg Main'
-    """
     if not name:
         return ""
     return name.replace("_", " ").strip().title()
 
 
 def _prettify_item_name(name: str) -> str:
-    """Convert underscore-separated item names to readable title case.
-
-    Examples:
-        'veg_fried_rice' -> 'Veg Fried Rice'
-        'hydrabad_chicken_biryani' -> 'Hydrabad Chicken Biryani'
-        'dal_tadka' -> 'Dal Tadka'
-    """
     if not name:
         return ""
     return name.replace("_", " ").strip().title()
@@ -83,23 +78,26 @@ def format_item_for_ui(item_str: str) -> str:
 
 
 def format_item_html(item_str: str) -> str:
-    """Format item string as HTML with colored color tag.
+    """Format item string as HTML with colored pill for the color tag.
 
     Input:  'veg_fried_rice(Y)'
-    Output: 'Veg Fried Rice <span style="color:#eab308;">(Yellow)</span>'
+    Output: 'Veg Fried Rice <span class="color-pill" ...>(Yellow)</span>'
     """
     if not item_str:
-        return ""
+        return '<span class="cell-empty">&mdash;</span>'
     m = re.search(r'\(([A-Z])\)\s*$', item_str)
     cleaned = re.sub(r'\s*\([A-Z]\)\s*$', '', item_str)
     name = _prettify_item_name(cleaned)
 
     if m:
         initial = m.group(1)
-        color_name, css_color = _COLOR_MAP.get(initial, (initial, '#a1a1aa'))
-        return (f'{name} <span style="color:{css_color};font-weight:600;'
-                f'font-size:0.75em;">({color_name})</span>')
-    return name
+        color_name, bg, fg = _COLOR_MAP.get(initial, (initial, '#1f1f23', '#a1a1aa'))
+        return (
+            f'<span class="item-name">{name}</span>'
+            f'<span class="color-pill" style="background:{bg};color:{fg};">'
+            f'{color_name}</span>'
+        )
+    return f'<span class="item-name">{name}</span>'
 
 
 def pretty_text(item_str: str) -> str:

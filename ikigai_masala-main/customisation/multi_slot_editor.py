@@ -1,5 +1,5 @@
 """
-Multi-Category Editor — Configure double (or more) items per category.
+Multi-Category Editor -- Configure double (or more) items per category.
 
 Example: Rippling has veg_dry x2, Stripe has nonveg_main x2.
 """
@@ -19,10 +19,10 @@ def render_multi_slot_editor(
     """Render category count editor. Returns updated slot_counts dict."""
 
     st.markdown(
-        '<p style="font-size:1.1rem;font-weight:700;color:#f5f5f5;margin:1.5rem 0 0.5rem;">'
-        'Multi-Category Configuration</p>'
-        '<p style="font-size:0.78rem;color:#737373;margin:0 0 0.75rem;">'
-        'Set count to 2 for categories that need duplicates '
+        '<div class="section-card">'
+        '<p class="section-title">Item Frequency</p>'
+        '<p class="section-desc">'
+        'Set count to 2+ for categories that need duplicates '
         '(e.g. Veg Dry 1 &amp; Veg Dry 2).</p>',
         unsafe_allow_html=True,
     )
@@ -31,11 +31,11 @@ def render_multi_slot_editor(
 
     if not editable:
         st.info("No active categories to configure.")
+        st.markdown('</div>', unsafe_allow_html=True)
         return current_slot_counts
 
     updated = dict(current_slot_counts)
 
-    # 3-column grid
     cols = st.columns(3)
     for idx, slot in enumerate(editable):
         with cols[idx % 3]:
@@ -50,16 +50,17 @@ def render_multi_slot_editor(
             )
             updated[slot] = val
 
-    # Highlight changes
     multi_slots = [s for s in editable if updated.get(s, 1) > 1]
     if multi_slots:
         tags = ', '.join(
             f"**{prettify_slot_name(s)}** x{updated[s]}" for s in multi_slots
         )
         st.markdown(
-            f'<p style="font-size:0.78rem;color:#86efac;margin:0.5rem 0 0;">'
+            f'<p style="font-size:0.75rem;color:#86efac;margin:0.5rem 0 0;">'
             f'Multi-categories: {tags}</p>',
             unsafe_allow_html=True,
         )
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     return updated
