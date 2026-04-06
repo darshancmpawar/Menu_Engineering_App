@@ -474,7 +474,8 @@ class MenuSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(self.cfg.time_limit_sec)
         solver.parameters.random_seed = int(self.cfg.seed)
-        solver.parameters.num_search_workers = 1 if self.cfg.deterministic else 8
+        # Use fewer workers per solve to leave CPU headroom for concurrent users
+        solver.parameters.num_search_workers = 1 if self.cfg.deterministic else 2
         solver.parameters.cp_model_presolve = True
 
         status = solver.Solve(model)

@@ -76,7 +76,8 @@ def _start_flask_backend():
     from api.app import app as flask_app
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    flask_app.run(host="127.0.0.1", port=_BACKEND_PORT, debug=False, use_reloader=False)
+    flask_app.run(host="127.0.0.1", port=_BACKEND_PORT, debug=False,
+                  use_reloader=False, threaded=True)
 
 
 def _ensure_backend_running():

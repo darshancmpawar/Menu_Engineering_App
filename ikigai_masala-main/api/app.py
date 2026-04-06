@@ -45,6 +45,13 @@ _pools = None
 _df = None
 _menu_rules = None
 
+# Concurrency control — allow up to MAX_CONCURRENT_SOLVES solver runs at once.
+# Additional requests get a 503 instead of queueing indefinitely.
+MAX_CONCURRENT_SOLVES = 5
+_solver_semaphore = threading.Semaphore(MAX_CONCURRENT_SOLVES)
+_active_solves = 0
+_active_solves_lock = threading.Lock()
+
 
 def _get_client_loader():
     global _client_loader
@@ -220,6 +227,14 @@ def list_clients():
 
 @app.route('/api/v1/plan', methods=['POST'])
 def plan_menu():
+    global _active_solves
+    if not _solver_semaphore.acquire(blocking=False):
+        return jsonify({
+            'success': False,
+            'error': f'Server busy — {MAX_CONCURRENT_SOLVES} menus are being generated. Please try again in a moment.',
+        }), 503
+    with _active_solves_lock:
+        _active_solves += 1
     try:
         data = request.get_json()
         client_name = data.get('client_name')
@@ -278,10 +293,22 @@ def plan_menu():
     except Exception as e:
         logger.error("Unexpected error in plan: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
+    finally:
+        with _active_solves_lock:
+            _active_solves -= 1
+        _solver_semaphore.release()
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
 def regenerate_cells():
+    global _active_solves
+    if not _solver_semaphore.acquire(blocking=False):
+        return jsonify({
+            'success': False,
+            'error': f'Server busy — {MAX_CONCURRENT_SOLVES} menus are being generated. Please try again in a moment.',
+        }), 503
+    with _active_solves_lock:
+        _active_solves += 1
     try:
         data = request.get_json()
         client_name = data.get('client_name')
@@ -355,6 +382,10 @@ def regenerate_cells():
     except Exception as e:
         logger.error("Unexpected error in regenerate: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
+    finally:
+        with _active_solves_lock:
+            _active_solves -= 1
+        _solver_semaphore.release()
 
 
 @app.route('/api/v1/save', methods=['POST'])
@@ -544,7 +575,13 @@ def validate_pools():
 
 @app.route('/api/v1/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy'})
+    with _active_solves_lock:
+        active = _active_solves
+    return jsonify({
+        'status': 'healthy',
+        'active_solves': active,
+        'max_concurrent_solves': MAX_CONCURRENT_SOLVES,
+    })
 
 
 @app.route('/')
