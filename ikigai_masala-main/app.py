@@ -159,12 +159,10 @@ st.markdown("""
         padding: 1.5rem 2rem 2rem;
         max-width: 1400px;
     }
+    /* Hide toolbar ribbon but keep header functional for sidebar toggle */
     header[data-testid="stHeader"] {
         background: var(--bg-primary) !important;
-        height: 2.5rem !important;
-        min-height: 0 !important;
     }
-    /* Hide only the toolbar ribbon (Share, Star, Edit, GitHub) */
     [data-testid="stToolbar"] {
         display: none !important;
     }
@@ -173,16 +171,29 @@ st.markdown("""
     #MainMenu, footer, .stDeployButton { display: none !important; }
 
     /* ================================================================
-       SIDEBAR
+       SIDEBAR — force always visible
        ================================================================ */
     [data-testid="stSidebar"] {
         background: var(--bg-secondary);
         border-right: 1px solid var(--border-subtle);
         z-index: 999 !important;
+        min-width: 300px !important;
+        width: 300px !important;
+        transform: none !important;
     }
-    [data-testid="stSidebar"][aria-expanded="true"] {
-        min-width: 300px;
-        max-width: 300px;
+    /* Override Streamlit's collapse behavior */
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        min-width: 300px !important;
+        width: 300px !important;
+        margin-left: 0 !important;
+        transform: none !important;
+    }
+    /* Hide the collapse arrow since sidebar is always visible */
+    [data-testid="stSidebar"] button[kind="header"] {
+        display: none !important;
+    }
+    [data-testid="collapsedControl"] {
+        display: none !important;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
