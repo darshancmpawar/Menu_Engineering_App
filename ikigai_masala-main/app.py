@@ -156,13 +156,16 @@ st.markdown("""
     }
 
     /* ================================================================
-       STREAMLIT CHROME — hide toolbar & branding only
+       STREAMLIT HEADER — keep visible for sidebar toggle, style it
        ================================================================ */
     header[data-testid="stHeader"] {
-        background: transparent !important;
-        border: none !important;
+        background: var(--bg-primary) !important;
+        border-bottom: 1px solid var(--border-subtle) !important;
+        height: 3rem !important;
     }
+    /* Hide only the right-side toolbar (Share, Star, Fork, etc) */
     [data-testid="stToolbar"] { display: none !important; }
+    /* Hide branding */
     #MainMenu, footer, .stDeployButton,
     [data-testid="stDecoration"] { display: none !important; }
     ._profileContainer_gzau3_53,
@@ -186,33 +189,9 @@ st.markdown("""
         letter-spacing: 0.02em;
     }
 
-    /* Custom sidebar open button — always visible when sidebar closed */
-    .sidebar-open-btn {
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        z-index: 999999;
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        background: #1c1c1f;
-        border: 1px solid #3f3f46;
-        color: #a1a1aa;
-        font-size: 1.1rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        transition: all 0.2s ease;
-        padding: 0;
-        line-height: 1;
-    }
-    .sidebar-open-btn:hover {
-        background: #27272a;
-        color: #fafafa;
-        border-color: #52525b;
-        box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    /* Pad main content below the fixed header so nothing is covered */
+    .block-container {
+        padding-top: 2rem !important;
     }
 
     /* Brand block */
@@ -556,78 +535,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# Sidebar toggle — a fixed button that opens the sidebar via JS
-# This works across Streamlit versions and Streamlit Cloud.
-# ---------------------------------------------------------------------------
-import streamlit.components.v1 as components
-components.html("""
-<button class="sidebar-open-btn" id="ikigaiSidebarBtn" title="Open sidebar">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
-    </svg>
-</button>
-<style>
-    .sidebar-open-btn {
-        position: fixed; top: 12px; left: 12px; z-index: 999999;
-        width: 40px; height: 40px; border-radius: 10px;
-        background: #1c1c1f; border: 1px solid #3f3f46;
-        color: #a1a1aa; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        transition: all 0.2s ease; padding: 0;
-    }
-    .sidebar-open-btn:hover {
-        background: #27272a; color: #fafafa; border-color: #52525b;
-    }
-</style>
-<script>
-(function() {
-    var btn = document.getElementById('ikigaiSidebarBtn');
-    if (!btn) return;
-    function findSidebar() {
-        var doc = window.parent.document || document;
-        // Check if sidebar is already open
-        var sb = doc.querySelector('[data-testid="stSidebar"]');
-        if (sb && sb.getAttribute('aria-expanded') === 'true') {
-            btn.style.display = 'none';
-            return;
-        }
-        btn.style.display = 'flex';
-    }
-    function openSidebar() {
-        var doc = window.parent.document || document;
-        // Try multiple selectors for cross-version support
-        var triggers = [
-            '[data-testid="collapsedControl"] button',
-            '[data-testid="stSidebarCollapsedControl"] button',
-            '[data-testid="baseButton-header"]',
-        ];
-        for (var i = 0; i < triggers.length; i++) {
-            var el = doc.querySelector(triggers[i]);
-            if (el) { el.click(); btn.style.display = 'none'; return; }
-        }
-        // Fallback: set sidebar attribute directly
-        var sb = doc.querySelector('[data-testid="stSidebar"]');
-        if (sb) {
-            sb.setAttribute('aria-expanded', 'true');
-            sb.style.display = '';
-            sb.style.transform = 'none';
-            sb.style.marginLeft = '0';
-            btn.style.display = 'none';
-        }
-    }
-    btn.addEventListener('click', openSidebar);
-    // Poll to show/hide based on sidebar state
-    setInterval(findSidebar, 500);
-    findSidebar();
-})();
-</script>
-""", height=0)
 
 # ---------------------------------------------------------------------------
 # Authentication gate — before anything else
