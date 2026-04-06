@@ -160,6 +160,12 @@ st.markdown("""
         max-width: 1400px;
     }
     header[data-testid="stHeader"] {
+        background: var(--bg-primary) !important;
+        height: 2.5rem !important;
+        min-height: 0 !important;
+    }
+    /* Hide only the toolbar ribbon (Share, Star, Edit, GitHub) */
+    [data-testid="stToolbar"] {
         display: none !important;
     }
 
@@ -172,6 +178,11 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background: var(--bg-secondary);
         border-right: 1px solid var(--border-subtle);
+        z-index: 999 !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        min-width: 300px;
+        max-width: 300px;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
