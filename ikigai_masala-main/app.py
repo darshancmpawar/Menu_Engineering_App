@@ -163,15 +163,18 @@ st.markdown("""
        HIDE STREAMLIT CHROME — toolbar, branding, deploy
        ================================================================ */
     header[data-testid="stHeader"] {
+        background: transparent !important;
         height: 0 !important;
         min-height: 0 !important;
         padding: 0 !important;
-        overflow: hidden !important;
-        background: transparent !important;
-        visibility: hidden !important;
+        border: none !important;
+        /* keep visible so collapsedControl still renders */
+        visibility: visible !important;
+        overflow: visible !important;
     }
     [data-testid="stToolbar"],
-    #MainMenu, footer, .stDeployButton {
+    #MainMenu, footer, .stDeployButton,
+    header[data-testid="stHeader"] [data-testid="stDecoration"] {
         display: none !important;
     }
 
@@ -187,7 +190,7 @@ st.markdown("""
         min-width: 300px !important;
         max-width: 300px !important;
     }
-    /* The native collapse/expand arrow — restyle it */
+    /* The native collapse arrow inside sidebar */
     [data-testid="stSidebar"] button[kind="header"] {
         background: var(--bg-elevated) !important;
         border: 1px solid var(--border-subtle) !important;
@@ -200,27 +203,34 @@ st.markdown("""
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
     }
-    /* The collapsed sidebar open button — make it look nice */
+    /* The re-open button when sidebar is collapsed */
     [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        position: fixed !important;
+        top: 0.75rem !important;
+        left: 0.75rem !important;
+        z-index: 1100 !important;
         background: transparent !important;
         border: none !important;
-        top: 0.65rem !important;
-        left: 0.65rem !important;
     }
     [data-testid="collapsedControl"] button {
         background: var(--bg-elevated) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-sm) !important;
         color: var(--text-secondary) !important;
-        box-shadow: var(--shadow-sm) !important;
-        width: 36px !important;
-        height: 36px !important;
+        box-shadow: var(--shadow-md) !important;
+        width: 38px !important;
+        height: 38px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     [data-testid="collapsedControl"] button:hover {
         background: var(--bg-hover) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
-        box-shadow: var(--shadow-md) !important;
+        box-shadow: var(--shadow-lg) !important;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
@@ -546,21 +556,74 @@ st.markdown("""
         border-color: var(--border-default) !important;
     }
     /* Form inputs — dark theme */
-    .stTextInput > div > div > input,
-    .stSelectbox > div > div,
-    .stNumberInput > div > div > input,
-    .stDateInput > div > div > input,
-    .stTextArea > div > div > textarea {
+    .stTextInput input,
+    .stNumberInput input,
+    .stDateInput input,
+    .stTextArea textarea,
+    .stSelectbox [data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"],
+    .stMultiSelect [data-baseweb="select"] > div,
+    [data-baseweb="input"] input,
+    [data-baseweb="base-input"] input,
+    [data-baseweb="textarea"] textarea {
         background: var(--bg-tertiary) !important;
+        background-color: var(--bg-tertiary) !important;
         border-color: var(--border-subtle) !important;
-        color: var(--text-primary) !important;
+        color: #fafafa !important;
+        -webkit-text-fill-color: #fafafa !important;
         border-radius: var(--radius-sm) !important;
+        caret-color: #fafafa !important;
     }
-    .stTextInput > div > div > input:focus,
-    .stNumberInput > div > div > input:focus,
-    .stTextArea > div > div > textarea:focus {
+    /* Placeholder text */
+    .stTextInput input::placeholder,
+    .stNumberInput input::placeholder,
+    .stTextArea textarea::placeholder,
+    [data-baseweb="input"] input::placeholder {
+        color: #52525b !important;
+        -webkit-text-fill-color: #52525b !important;
+        opacity: 1 !important;
+    }
+    /* Select dropdown text */
+    .stSelectbox [data-baseweb="select"] span,
+    .stMultiSelect [data-baseweb="select"] span {
+        color: #fafafa !important;
+        -webkit-text-fill-color: #fafafa !important;
+    }
+    /* Dropdown menu */
+    [data-baseweb="popover"],
+    [data-baseweb="menu"],
+    [data-baseweb="popover"] ul,
+    [data-baseweb="menu"] ul {
+        background: var(--bg-elevated) !important;
+        border-color: var(--border-subtle) !important;
+    }
+    [data-baseweb="menu"] li {
+        color: #fafafa !important;
+        background: transparent !important;
+    }
+    [data-baseweb="menu"] li:hover {
+        background: var(--bg-hover) !important;
+    }
+    /* Focus ring */
+    .stTextInput input:focus,
+    .stNumberInput input:focus,
+    .stTextArea textarea:focus,
+    [data-baseweb="input"]:focus-within {
         border-color: var(--accent) !important;
         box-shadow: 0 0 0 1px var(--accent-dim) !important;
+    }
+    /* Labels */
+    .stTextInput label,
+    .stNumberInput label,
+    .stDateInput label,
+    .stTextArea label,
+    .stSelectbox label,
+    .stMultiSelect label,
+    .stSlider label,
+    .stCheckbox label,
+    .stRadio label {
+        color: var(--text-secondary) !important;
     }
 
     /* Slider */
