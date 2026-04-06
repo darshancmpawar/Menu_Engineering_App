@@ -156,10 +156,35 @@ st.markdown("""
     }
 
     /* ================================================================
-       STREAMLIT HEADER — keep default, only hide footer/deploy badge
+       STREAMLIT HEADER — dark-themed to match app
        ================================================================ */
+    header[data-testid="stHeader"] {
+        background: var(--bg-secondary) !important;
+        border-bottom: 1px solid var(--border-subtle) !important;
+    }
+    /* Style the toolbar buttons to match dark theme */
+    [data-testid="stToolbar"] button,
+    [data-testid="stToolbar"] a {
+        color: var(--text-secondary) !important;
+    }
+    [data-testid="stToolbar"] button:hover,
+    [data-testid="stToolbar"] a:hover {
+        color: var(--text-primary) !important;
+    }
+    /* Sidebar toggle button color */
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapsedControl"] button {
+        color: var(--text-secondary) !important;
+    }
+    [data-testid="collapsedControl"] button:hover,
+    [data-testid="stSidebarCollapsedControl"] button:hover {
+        color: var(--text-primary) !important;
+    }
+    /* Hide footer & deploy badge */
     footer, .stDeployButton,
     [data-testid="stDecoration"] { display: none !important; }
+    ._profileContainer_gzau3_53,
+    [data-testid="manage-app-button"] { display: none !important; }
 
     /* ================================================================
        SIDEBAR
@@ -181,7 +206,7 @@ st.markdown("""
 
     /* Pad main content below the fixed header so nothing is covered */
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 3.5rem !important;
     }
 
     /* Brand block */
@@ -520,7 +545,7 @@ st.markdown("""
     /* --- RESPONSIVE --- */
     @media (max-width: 768px) {
         .metrics-grid { grid-template-columns: repeat(2, 1fr); }
-        .block-container { padding: 1rem; }
+        .block-container { padding: 3.5rem 1rem 1rem; }
         .menu-table { font-size: 0.75rem; }
     }
 </style>
