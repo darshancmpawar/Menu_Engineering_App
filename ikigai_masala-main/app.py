@@ -160,10 +160,7 @@ st.markdown("""
         max-width: 1400px;
     }
     header[data-testid="stHeader"] {
-        background: transparent;
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border-bottom: 1px solid var(--border-subtle);
+        display: none !important;
     }
 
     /* Hide Streamlit branding */
