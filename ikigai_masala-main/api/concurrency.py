@@ -19,8 +19,8 @@ from flask import jsonify
 MAX_RUNNING = 2          # at most 2 solves executing simultaneously
 MAX_QUEUED = 8           # max requests waiting in the pipeline
 WORKERS_BY_LOAD = {      # active_count → CP-SAT workers per solve
-    1: 8,
-    2: 4,
+    1: 9,
+    2: 5,
 }
 DEFAULT_WORKERS = 2      # fallback (shouldn't happen with MAX_RUNNING=2)
 QUEUE_TIMEOUT = 300      # seconds a queued request waits before giving up
