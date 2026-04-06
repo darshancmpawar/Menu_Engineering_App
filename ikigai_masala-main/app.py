@@ -1,18 +1,16 @@
 """
 Streamlit frontend for Ikigai Masala Menu Planning.
 
-Single entry point — auto-starts the Flask API backend in a background thread.
+Single entry point - auto-starts the Flask API backend in a background thread.
 
 Run with:
-    cd Rebuild_ikigai_masala_new-main/ikigai_masala-main
+    cd ikigai_masala-main
     streamlit run app.py
 """
 
 import os
 import sys
 
-# Ensure the app directory is on sys.path (needed when Streamlit Cloud
-# launches from the repo root instead of this subdirectory).
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if _APP_DIR not in sys.path:
     sys.path.insert(0, _APP_DIR)
@@ -35,6 +33,7 @@ from ui.formatters import (
     format_item_html,
     slot_sort_key,
     THEME_TAG_COLORS,
+    THEME_ICONS,
 )
 from customisation.main import render_customisation_editor
 from user_authentication.session import (
@@ -109,117 +108,449 @@ def _ensure_backend_running():
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Ikigai Masala - Menu Planner",
-    page_icon="🍛",
+    page_icon="https://em-content.zobj.net/source/apple/391/curry-rice_1f35b.png",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
-# Dark Theme CSS
+# Premium Dark Theme CSS
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
-    /* --- Global dark --- */
-    .stApp { background-color: #0f0f0f; }
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 1200px; }
-    header[data-testid="stHeader"] { background: #0f0f0f; }
+    /* ================================================================
+       DESIGN SYSTEM TOKENS
+       ================================================================ */
+    :root {
+        --bg-primary:    #09090b;
+        --bg-secondary:  #111113;
+        --bg-tertiary:   #18181b;
+        --bg-elevated:   #1c1c1f;
+        --bg-hover:      #222225;
+        --border-subtle: #27272a;
+        --border-default:#3f3f46;
+        --text-primary:  #fafafa;
+        --text-secondary:#a1a1aa;
+        --text-tertiary: #71717a;
+        --text-muted:    #52525b;
+        --accent:        #a78bfa;
+        --accent-dim:    #7c3aed;
+        --success:       #34d399;
+        --warning:       #fbbf24;
+        --danger:        #f87171;
+        --radius-sm:     6px;
+        --radius-md:     10px;
+        --radius-lg:     14px;
+        --radius-xl:     20px;
+        --shadow-sm:     0 1px 2px rgba(0,0,0,0.3);
+        --shadow-md:     0 4px 12px rgba(0,0,0,0.4);
+        --shadow-lg:     0 8px 30px rgba(0,0,0,0.5);
+        --transition:    all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-    /* --- Sidebar --- */
-    [data-testid="stSidebar"] { background: #171717; border-right: 1px solid #262626; }
-    [data-testid="stSidebar"] label { color: #a3a3a3 !important; }
+    /* ================================================================
+       GLOBAL
+       ================================================================ */
+    .stApp {
+        background: var(--bg-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .block-container {
+        padding: 1.5rem 2rem 2rem;
+        max-width: 1400px;
+    }
+    header[data-testid="stHeader"] {
+        background: transparent;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-subtle);
+    }
 
+    /* Hide Streamlit branding */
+    #MainMenu, footer, .stDeployButton { display: none !important; }
+
+    /* ================================================================
+       SIDEBAR
+       ================================================================ */
+    [data-testid="stSidebar"] {
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-subtle);
+    }
+    [data-testid="stSidebar"] label {
+        color: var(--text-secondary) !important;
+        font-size: 0.78rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.02em;
+    }
+    [data-testid="stSidebar"] .stSelectbox > div > div,
+    [data-testid="stSidebar"] .stDateInput > div > div > input {
+        background: var(--bg-tertiary) !important;
+        border-color: var(--border-subtle) !important;
+        color: var(--text-primary) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+
+    /* Brand block in sidebar */
     .sidebar-brand {
-        padding: 0.75rem 0 1.25rem; border-bottom: 1px solid #262626;
-        margin-bottom: 1.25rem;
+        padding: 0.5rem 0 1.5rem;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 1.5rem;
+    }
+    .sidebar-brand-row {
+        display: flex; align-items: center; gap: 0.65rem;
+    }
+    .sidebar-brand-icon {
+        width: 36px; height: 36px; border-radius: var(--radius-md);
+        background: linear-gradient(135deg, var(--accent-dim), #a78bfa);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; flex-shrink: 0;
+        box-shadow: 0 0 20px rgba(124,58,237,0.25);
     }
     .sidebar-brand h2 {
-        margin: 0; font-size: 1.2rem; color: #f5f5f5; font-weight: 700;
-        letter-spacing: -0.3px;
+        margin: 0; font-size: 1.15rem; color: var(--text-primary);
+        font-weight: 700; letter-spacing: -0.4px; line-height: 1.2;
     }
-    .sidebar-brand p { margin: 0.2rem 0 0; font-size: 0.75rem; color: #737373; }
+    .sidebar-brand p {
+        margin: 0; font-size: 0.7rem; color: var(--text-tertiary);
+        font-weight: 400; letter-spacing: 0.02em;
+    }
 
-    /* --- Page header --- */
+    /* Sidebar user chip */
+    .user-chip {
+        display: flex; align-items: center; gap: 0.55rem;
+        padding: 0.55rem 0.7rem; background: var(--bg-tertiary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+        margin-bottom: 0.75rem;
+    }
+    .user-avatar {
+        width: 30px; height: 30px; border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #a78bfa);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.72rem; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .user-chip-info { flex: 1; min-width: 0; }
+    .user-chip-name {
+        font-size: 0.8rem; font-weight: 600; color: var(--text-primary);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .user-chip-role {
+        font-size: 0.65rem; color: var(--text-tertiary);
+        text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500;
+    }
+
+    /* ================================================================
+       PAGE HEADER
+       ================================================================ */
+    .page-header {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        margin-bottom: 1.75rem; gap: 1rem;
+    }
     .page-title {
-        font-size: 1.5rem; font-weight: 700; color: #f5f5f5;
-        margin: 0 0 0.15rem; letter-spacing: -0.3px;
+        font-size: 1.65rem; font-weight: 800; color: var(--text-primary);
+        margin: 0; letter-spacing: -0.5px; line-height: 1.2;
     }
-    .page-subtitle { font-size: 0.85rem; color: #737373; margin: 0 0 1.25rem; }
+    .page-subtitle {
+        font-size: 0.82rem; color: var(--text-tertiary); margin: 0.2rem 0 0;
+        font-weight: 400;
+    }
+    .page-actions {
+        display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center;
+    }
+    .action-btn {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.45rem 0.85rem; border-radius: var(--radius-sm);
+        font-size: 0.78rem; font-weight: 500; cursor: pointer;
+        border: 1px solid var(--border-subtle); background: var(--bg-tertiary);
+        color: var(--text-secondary); text-decoration: none;
+        transition: var(--transition);
+    }
+    .action-btn:hover {
+        background: var(--bg-hover); color: var(--text-primary);
+        border-color: var(--border-default);
+    }
 
-    /* --- Metric cards --- */
-    .metric-row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+    /* ================================================================
+       METRIC CARDS
+       ================================================================ */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1.75rem;
+    }
     .metric-card {
-        flex: 1; background: #171717; border: 1px solid #262626;
-        border-radius: 10px; padding: 0.7rem 1rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        padding: 1rem 1.15rem;
+        position: relative;
+        overflow: hidden;
+        transition: var(--transition);
     }
-    .metric-card .label {
-        font-size: 0.65rem; color: #737373; text-transform: uppercase;
-        letter-spacing: 0.5px; font-weight: 600;
+    .metric-card:hover {
+        border-color: var(--border-default);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
     }
-    .metric-card .value {
-        font-size: 1.2rem; font-weight: 700; color: #f5f5f5; margin-top: 0.15rem;
+    .metric-card::before {
+        content: '';
+        position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .metric-card:nth-child(1)::before { background: linear-gradient(90deg, #a78bfa, #6366f1); }
+    .metric-card:nth-child(2)::before { background: linear-gradient(90deg, #34d399, #059669); }
+    .metric-card:nth-child(3)::before { background: linear-gradient(90deg, #fbbf24, #d97706); }
+    .metric-card:nth-child(4)::before { background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+    .metric-label {
+        font-size: 0.65rem; color: var(--text-tertiary);
+        text-transform: uppercase; letter-spacing: 0.06em;
+        font-weight: 600; margin-bottom: 0.3rem;
+    }
+    .metric-value {
+        font-size: 1.5rem; font-weight: 800; color: var(--text-primary);
+        letter-spacing: -0.5px; line-height: 1;
     }
 
-    /* --- Menu table --- */
+    /* ================================================================
+       MENU TABLE
+       ================================================================ */
+    .menu-table-wrap {
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        background: var(--bg-secondary);
+    }
     .menu-table {
         width: 100%; border-collapse: collapse; font-size: 0.82rem;
-        border: 1px solid #262626; border-radius: 10px; overflow: hidden;
     }
     .menu-table thead th {
-        background: #1a1a1a; color: #d4d4d4; padding: 0.6rem 0.75rem;
-        text-align: center; font-weight: 600; font-size: 0.78rem;
-        border-right: 1px solid #262626; border-bottom: 1px solid #262626;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        padding: 0.75rem 0.85rem;
+        text-align: center;
+        font-weight: 600;
+        font-size: 0.76rem;
+        border-bottom: 1px solid var(--border-subtle);
+        border-right: 1px solid var(--border-subtle);
+        letter-spacing: 0.01em;
     }
-    .menu-table thead th:first-child { text-align: left; }
+    .menu-table thead th:first-child {
+        text-align: left;
+        min-width: 120px;
+        background: var(--bg-elevated);
+    }
     .menu-table thead th:last-child { border-right: none; }
-    .menu-table thead .day-label { display: block; color: #e5e5e5; }
-    .menu-table thead .theme-tag {
-        display: inline-block; margin-top: 4px; padding: 2px 8px;
-        border-radius: 4px; font-size: 0.6rem; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 0.4px;
+
+    /* Day column headers */
+    .day-label {
+        display: block; color: var(--text-primary); font-weight: 700;
+        font-size: 0.82rem; margin-bottom: 4px;
     }
+    .theme-tag {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 8px; border-radius: 99px;
+        font-size: 0.6rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.04em;
+        line-height: 1.6;
+    }
+
+    /* Table body */
     .menu-table tbody td {
-        padding: 0.5rem 0.75rem; border-bottom: 1px solid #1f1f1f;
-        border-right: 1px solid #1f1f1f; color: #d4d4d4;
-        background: #0f0f0f;
+        padding: 0.55rem 0.85rem;
+        border-bottom: 1px solid rgba(39,39,42,0.6);
+        border-right: 1px solid rgba(39,39,42,0.6);
+        color: var(--text-secondary);
+        background: var(--bg-secondary);
+        vertical-align: middle;
+        transition: background 0.15s ease;
     }
     .menu-table tbody td:first-child {
-        font-weight: 600; color: #a3a3a3; background: #141414;
-        white-space: nowrap; min-width: 110px; font-size: 0.78rem;
+        font-weight: 600; color: var(--text-tertiary);
+        background: var(--bg-tertiary);
+        font-size: 0.76rem; letter-spacing: 0.01em;
+        white-space: nowrap; min-width: 120px;
+        border-right: 1px solid var(--border-subtle);
     }
     .menu-table tbody td:last-child { border-right: none; }
     .menu-table tbody tr:last-child td { border-bottom: none; }
-    .menu-table tbody tr:hover td { background: #171717; }
-    .menu-table tbody tr:hover td:first-child { background: #1a1a1a; }
+    .menu-table tbody tr:hover td { background: var(--bg-hover); }
+    .menu-table tbody tr:hover td:first-child { background: var(--bg-elevated); }
 
-    /* --- Empty state --- */
+    /* Item cells */
+    .item-name {
+        color: var(--text-primary); font-weight: 500;
+        font-size: 0.8rem; line-height: 1.4;
+    }
+    .color-pill {
+        display: inline-block; margin-left: 5px;
+        padding: 1px 6px; border-radius: 99px;
+        font-size: 0.6rem; font-weight: 600;
+        letter-spacing: 0.02em; vertical-align: middle;
+    }
+    .cell-empty {
+        color: var(--text-muted); font-size: 0.8rem;
+    }
+
+    /* ================================================================
+       POOL WARNINGS
+       ================================================================ */
+    .pool-warn-bar {
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.6rem 1rem; margin-bottom: 1rem;
+        background: rgba(251,191,36,0.06);
+        border: 1px solid rgba(251,191,36,0.15);
+        border-radius: var(--radius-md);
+        font-size: 0.78rem; color: #fbbf24;
+    }
+
+    /* ================================================================
+       EMPTY STATE
+       ================================================================ */
     .empty-state {
-        text-align: center; padding: 4rem 2rem; border: 2px dashed #262626;
-        border-radius: 12px; margin: 2rem 0;
+        text-align: center; padding: 5rem 2rem;
+        border: 2px dashed var(--border-subtle);
+        border-radius: var(--radius-xl);
+        margin: 3rem auto; max-width: 500px;
     }
-    .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
-    .empty-state h3 { color: #d4d4d4; margin: 0 0 0.3rem; font-size: 1.1rem; }
-    .empty-state p { color: #737373; font-size: 0.85rem; margin: 0; }
+    .empty-icon {
+        width: 64px; height: 64px; margin: 0 auto 1rem;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent-dim), #a78bfa);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.6rem;
+        box-shadow: 0 0 40px rgba(124,58,237,0.2);
+    }
+    .empty-state h3 {
+        color: var(--text-primary); margin: 0 0 0.4rem;
+        font-size: 1.15rem; font-weight: 700;
+    }
+    .empty-state p {
+        color: var(--text-tertiary); font-size: 0.85rem; margin: 0;
+        line-height: 1.5;
+    }
 
-    /* --- Log entry --- */
+    /* ================================================================
+       CHANGES LOG
+       ================================================================ */
     .log-entry {
-        padding: 0.35rem 0.7rem; background: #171717;
-        border-left: 3px solid #525252; border-radius: 0 4px 4px 0;
-        margin-bottom: 0.35rem; font-size: 0.8rem; color: #a3a3a3;
+        display: flex; align-items: center; gap: 0.5rem;
+        padding: 0.4rem 0.75rem; background: var(--bg-tertiary);
+        border-left: 3px solid var(--accent);
+        border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        margin-bottom: 0.35rem; font-size: 0.78rem; color: var(--text-secondary);
     }
 
-    /* --- Regen header --- */
+    /* ================================================================
+       REGEN SECTION
+       ================================================================ */
     .regen-day-header {
-        font-weight: 600; font-size: 0.82rem; color: #e5e5e5;
-        margin-bottom: 0.25rem;
+        font-weight: 700; font-size: 0.82rem; color: var(--text-primary);
+        margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem;
     }
 
-    /* --- Streamlit overrides for dark --- */
-    .stMarkdown, .stMarkdown p, .stCaption { color: #a3a3a3; }
-    .stExpander { border-color: #262626 !important; }
-    div[data-testid="stExpander"] details {
-        background: #141414; border: 1px solid #262626; border-radius: 8px;
+    /* ================================================================
+       ACTION BAR
+       ================================================================ */
+    .action-bar {
+        display: flex; gap: 0.65rem; align-items: center;
+        padding: 1rem 0; margin-top: 0.5rem;
     }
-    div[data-testid="stExpander"] summary span { color: #d4d4d4 !important; }
+
+    /* ================================================================
+       STREAMLIT COMPONENT OVERRIDES
+       ================================================================ */
+    /* Buttons */
+    .stButton > button {
+        border-radius: var(--radius-sm) !important;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        letter-spacing: 0.01em !important;
+        transition: var(--transition) !important;
+        border: 1px solid var(--border-subtle) !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, var(--accent-dim), #8b5cf6) !important;
+        border: none !important;
+        color: #fff !important;
+        box-shadow: 0 2px 8px rgba(124,58,237,0.3) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 4px 16px rgba(124,58,237,0.45) !important;
+        transform: translateY(-1px);
+    }
+    .stButton > button:not([kind="primary"]) {
+        background: var(--bg-tertiary) !important;
+        color: var(--text-secondary) !important;
+    }
+    .stButton > button:not([kind="primary"]):hover {
+        background: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border-default) !important;
+    }
+
+    /* Slider */
+    [data-testid="stSidebar"] .stSlider > div > div > div {
+        color: var(--text-primary) !important;
+    }
+
+    /* Expanders */
+    .stExpander {
+        border-color: var(--border-subtle) !important;
+    }
+    div[data-testid="stExpander"] details {
+        background: var(--bg-secondary) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-md) !important;
+    }
+    div[data-testid="stExpander"] summary span {
+        color: var(--text-secondary) !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+    }
+    div[data-testid="stExpander"] summary:hover span {
+        color: var(--text-primary) !important;
+    }
+
+    /* Divider */
+    hr { border-color: var(--border-subtle) !important; opacity: 0.5; }
+
+    /* Toasts / alerts */
+    .stAlert { border-radius: var(--radius-md) !important; }
+    [data-testid="stMarkdownContainer"] p { color: var(--text-secondary); }
+
+    /* Multiselect */
+    .stMultiSelect > div > div {
+        background: var(--bg-tertiary) !important;
+        border-color: var(--border-subtle) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+
+    /* Download button */
+    .stDownloadButton > button {
+        border-radius: var(--radius-sm) !important;
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        background: var(--bg-tertiary) !important;
+        border: 1px solid var(--border-subtle) !important;
+        color: var(--text-secondary) !important;
+    }
+    .stDownloadButton > button:hover {
+        background: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border-default) !important;
+    }
+
+    /* Spinner */
+    .stSpinner > div { color: var(--accent) !important; }
+
+    /* ================================================================
+       RESPONSIVE
+       ================================================================ */
+    @media (max-width: 768px) {
+        .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        .block-container { padding: 1rem; }
+        .menu-table { font-size: 0.75rem; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -255,7 +586,7 @@ for key, default in _SESSION_DEFAULTS.items():
         st.session_state[key] = default
 
 # ---------------------------------------------------------------------------
-# Editor view — full page, no sidebar (role-gated)
+# Editor view (role-gated)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "editor":
     if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
@@ -268,7 +599,7 @@ if st.session_state.view == "editor":
     st.stop()
 
 # ---------------------------------------------------------------------------
-# User manager view — full page, no sidebar (role-gated)
+# User manager view (role-gated)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "user_manager":
     if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
@@ -279,8 +610,7 @@ if st.session_state.view == "user_manager":
                 st.rerun()
         with col_title:
             st.markdown(
-                '<p style="font-size:1.4rem;font-weight:700;color:#f5f5f5;margin:0;">'
-                'User Management</p>',
+                '<p class="page-title">User Management</p>',
                 unsafe_allow_html=True,
             )
         st.markdown("")
@@ -293,21 +623,30 @@ if st.session_state.view == "user_manager":
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Sidebar (planner view only)
+# Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("""<div class="sidebar-brand">
-        <h2>Ikigai Masala</h2>
-        <p>Weekly Menu Planner</p>
+        <div class="sidebar-brand-row">
+            <div class="sidebar-brand-icon">&#127835;</div>
+            <div>
+                <h2>Ikigai Masala</h2>
+                <p>Weekly Menu Planner</p>
+            </div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
-    # --- User info & logout ---
+    # User chip
     _user = current_user()
     if _user:
+        initials = ''.join(w[0] for w in _user.profile_name.split()[:2]).upper() if _user.profile_name else '?'
         st.markdown(
-            f'<p style="font-size:0.8rem;color:#a3a3a3;margin:0 0 0.25rem;">'
-            f'Signed in as <b style="color:#f5f5f5;">{_user.profile_name}</b>'
-            f' <span style="color:#737373;">({_user.role})</span></p>',
+            f'<div class="user-chip">'
+            f'<div class="user-avatar">{initials}</div>'
+            f'<div class="user-chip-info">'
+            f'<div class="user-chip-name">{_user.profile_name}</div>'
+            f'<div class="user-chip-role">{_user.role}</div>'
+            f'</div></div>',
             unsafe_allow_html=True,
         )
         if st.button("Logout", key="sidebar_logout", use_container_width=True):
@@ -336,27 +675,31 @@ with st.sidebar:
                                  use_container_width=True)
 
 # ---------------------------------------------------------------------------
-# Page header
+# Page header with action buttons
 # ---------------------------------------------------------------------------
-_hdr_col1, _hdr_col2, _hdr_col3 = st.columns([5, 1, 1])
+_hdr_col1, _hdr_col2 = st.columns([5, 2])
 with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
     if st.session_state.client_name:
-        st.markdown(f'<p class="page-subtitle">{st.session_state.client_name}</p>',
-                    unsafe_allow_html=True)
+        st.markdown(
+            f'<p class="page-subtitle">Generated plan for {st.session_state.client_name}</p>',
+            unsafe_allow_html=True)
     else:
-        st.markdown('<p class="page-subtitle">Generate a plan to get started</p>',
-                    unsafe_allow_html=True)
+        st.markdown(
+            '<p class="page-subtitle">Select a client and generate a plan to get started</p>',
+            unsafe_allow_html=True)
 with _hdr_col2:
-    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
-        if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
-            st.session_state.view = "editor"
-            st.rerun()
-with _hdr_col3:
-    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
-        if st.button("Manage Users", key="open_users_btn", use_container_width=True):
-            st.session_state.view = "user_manager"
-            st.rerun()
+    btn_cols = st.columns(2)
+    with btn_cols[0]:
+        if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+            if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
+                st.session_state.view = "editor"
+                st.rerun()
+    with btn_cols[1]:
+        if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+            if st.button("Users", key="open_users_btn", use_container_width=True):
+                st.session_state.view = "user_manager"
+                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Generate
@@ -391,7 +734,7 @@ plan = st.session_state.plan
 plan_dates = st.session_state.plan_dates
 
 if plan and plan_dates:
-    # --- Show save success message ---
+    # --- Show save success ---
     if st.session_state.get('save_success_msg'):
         st.success(st.session_state.pop('save_success_msg'))
 
@@ -404,22 +747,35 @@ if plan and plan_dates:
     # --- Metrics ---
     total_items = sum(1 for d in plan_dates for s in sorted_slots
                       if plan.get(d, {}).get(s, ""))
-    st.markdown(f"""<div class="metric-row">
-        <div class="metric-card"><div class="label">Client</div>
-            <div class="value">{st.session_state.client_name}</div></div>
-        <div class="metric-card"><div class="label">Days</div>
-            <div class="value">{len(plan_dates)}</div></div>
-        <div class="metric-card"><div class="label">Slots</div>
-            <div class="value">{len(sorted_slots)}</div></div>
-        <div class="metric-card"><div class="label">Items</div>
-            <div class="value">{total_items}</div></div>
+    unique_themes = set(st.session_state.day_types.get(d, '') for d in plan_dates)
+    unique_themes.discard('')
+
+    st.markdown(f"""<div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Client</div>
+            <div class="metric-value">{st.session_state.client_name}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Days</div>
+            <div class="metric-value">{len(plan_dates)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Slots per day</div>
+            <div class="metric-value">{len(sorted_slots)}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Total items</div>
+            <div class="metric-value">{total_items}</div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
     # --- Pool warnings ---
     if st.session_state.pool_warnings:
-        with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=True):
+        with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=False):
             for w in st.session_state.pool_warnings:
-                st.warning(w)
+                st.markdown(
+                    f'<div class="pool-warn-bar">&#9888; {w}</div>',
+                    unsafe_allow_html=True)
 
     # --- Table ---
     _day_types = st.session_state.day_types
@@ -427,12 +783,13 @@ if plan and plan_dates:
     for d_str in plan_dates:
         d = dt.date.fromisoformat(d_str)
         day_type = _day_types.get(d_str, "")
-        bg, fg = THEME_TAG_COLORS.get(day_type, ("#262626", "#a3a3a3"))
+        bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
+        icon = THEME_ICONS.get(day_type, "")
         label = day_type.replace("_", " ").title() if day_type else ""
         header_html += (
             f'<th><span class="day-label">{d.strftime("%a %d %b")}</span>'
             f'<span class="theme-tag" style="background:{bg};color:{fg};">'
-            f'{label}</span></th>')
+            f'{icon} {label}</span></th>')
     header_html += '</tr>'
 
     body_html = ''
@@ -444,8 +801,9 @@ if plan and plan_dates:
         body_html += '</tr>'
 
     st.markdown(
-        f'<table class="menu-table"><thead>{header_html}</thead>'
-        f'<tbody>{body_html}</tbody></table>',
+        f'<div class="menu-table-wrap"><table class="menu-table">'
+        f'<thead>{header_html}</thead>'
+        f'<tbody>{body_html}</tbody></table></div>',
         unsafe_allow_html=True)
 
     st.markdown("")
@@ -488,14 +846,15 @@ if plan and plan_dates:
         for i, d_str in enumerate(plan_dates):
             d = dt.date.fromisoformat(d_str)
             day_type = _day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#262626", "#a3a3a3"))
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
+            icon = THEME_ICONS.get(day_type, "")
             label = day_type.replace("_", " ").title() if day_type else ""
             col = cols[i % len(cols)]
             with col:
                 st.markdown(
                     f'<div class="regen-day-header">{d.strftime("%a %d %b")} '
                     f'<span class="theme-tag" style="background:{bg};color:{fg};'
-                    f'font-size:0.6rem;">{label}</span></div>',
+                    f'font-size:0.6rem;">{icon} {label}</span></div>',
                     unsafe_allow_html=True)
                 day_slots = sorted(plan.get(d_str, {}).keys(), key=slot_sort_key)
                 selected = st.multiselect(f"Slots for {d_str}", day_slots,
@@ -535,7 +894,7 @@ if plan and plan_dates:
 
 else:
     st.markdown("""<div class="empty-state">
-        <div class="icon">🍛</div>
+        <div class="empty-icon">&#127835;</div>
         <h3>No menu plan yet</h3>
-        <p>Select a client and click <b>Generate Menu Plan</b> in the sidebar.</p>
+        <p>Select a client and click <b>Generate Menu Plan</b><br>in the sidebar to get started.</p>
     </div>""", unsafe_allow_html=True)

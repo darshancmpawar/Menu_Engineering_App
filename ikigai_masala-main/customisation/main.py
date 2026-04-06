@@ -1,9 +1,9 @@
 """
-Customisation Editor — Main page that orchestrates all editor sections.
+Customisation Editor -- Main page that orchestrates all editor sections.
 
 Two flows:
-  Select Existing: select client → edit categories/frequency/themes → Save | Reset
-  Create New:      enter name → pick categories/frequency/themes → Create Client | Reset Setup
+  Select Existing: select client -> edit categories/frequency/themes -> Save | Reset
+  Create New:      enter name -> pick categories/frequency/themes -> Create Client | Reset Setup
 
 Called from app.py when st.session_state.view == "editor".
 """
@@ -21,12 +21,43 @@ from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 def _inject_editor_css():
     st.markdown("""
     <style>
+        .editor-header {
+            display: flex; align-items: center; gap: 1rem;
+            margin-bottom: 1.75rem;
+        }
         .editor-title {
-            font-size: 1.4rem; font-weight: 700; color: #f5f5f5;
-            letter-spacing: -0.3px; margin: 0;
+            font-size: 1.55rem; font-weight: 800; color: #fafafa;
+            letter-spacing: -0.5px; margin: 0; line-height: 1.2;
         }
         .editor-subtitle {
-            font-size: 0.78rem; color: #737373; margin: 0.15rem 0 0;
+            font-size: 0.8rem; color: #71717a; margin: 0.15rem 0 0;
+            font-weight: 400;
+        }
+        .section-card {
+            background: #111113; border: 1px solid #27272a;
+            border-radius: 14px; padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .section-title {
+            font-size: 1rem; font-weight: 700; color: #fafafa;
+            margin: 0 0 0.15rem; letter-spacing: -0.2px;
+        }
+        .section-desc {
+            font-size: 0.75rem; color: #71717a; margin: 0 0 1rem;
+        }
+        .status-pill {
+            display: inline-block; padding: 2px 8px;
+            border-radius: 99px; font-size: 0.68rem; font-weight: 600;
+        }
+        .status-pill.match { background: #0f2a1d; color: #86efac; }
+        .status-pill.new   { background: #2a1508; color: #fdba74; }
+        .status-pill.warn  { background: #2a1508; color: #fdba74; }
+        .changes-indicator {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            padding: 0.3rem 0.75rem; background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.15); border-radius: 99px;
+            font-size: 0.75rem; color: #fbbf24; font-weight: 500;
+            margin-bottom: 0.75rem;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -74,8 +105,9 @@ def render_customisation_editor(api: MenuApiClient):
     # Section 1: Client Management
     # ============================================================
     st.markdown(
-        '<p style="font-size:1.1rem;font-weight:700;color:#f5f5f5;margin:0 0 0.75rem;">'
-        'Client Management</p>',
+        '<div class="section-card">'
+        '<p class="section-title">Client</p>'
+        '<p class="section-desc">Select an existing client or create a new one</p>',
         unsafe_allow_html=True,
     )
 
@@ -94,6 +126,7 @@ def render_customisation_editor(api: MenuApiClient):
     if not is_create_mode:
         if not clients:
             st.info("No clients found. Switch to **Create New** to add one.")
+            st.markdown('</div>', unsafe_allow_html=True)
             return
         selected_client = st.selectbox(
             "Client", clients,
@@ -106,6 +139,8 @@ def render_customisation_editor(api: MenuApiClient):
             placeholder="e.g. Acme Corp",
         )
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # For Select Existing: load config from DB
     # For Create New: use defaults
     if not is_create_mode:
@@ -117,16 +152,15 @@ def render_customisation_editor(api: MenuApiClient):
         current_active = config.get('active_base_slots', [])
         current_counts = config.get('slot_counts', {})
         current_theme = config.get('theme_map', dict(default_theme_map))
-        client_key = selected_client  # for widget keys
+        client_key = selected_client
     else:
         if not new_client_name.strip():
             st.markdown(
-                '<p style="color:#737373;text-align:center;padding:2rem;">'
-                'Enter a client name above to start configuring.</p>',
+                '<div style="text-align:center;padding:2rem;color:#52525b;">'
+                'Enter a client name above to start configuring.</div>',
                 unsafe_allow_html=True,
             )
             return
-        # Defaults for new client: all non-constant categories active
         current_active = [s for s in all_base_slots if s not in set(const_slots)]
         current_counts = {s: 1 for s in all_base_slots}
         current_theme = dict(default_theme_map)
@@ -135,12 +169,11 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     # Section 2: Customize Categories
     # ============================================================
-    st.divider()
     new_active_slots = render_slot_editor(
         all_base_slots, current_active, const_slots, client_key,
     )
 
-    # --- Show auto-mapped menu category ---
+    # Show auto-mapped menu category
     if new_active_slots:
         sorted_selected = sorted(new_active_slots)
         matched_cat = None
@@ -150,21 +183,18 @@ def render_customisation_editor(api: MenuApiClient):
                 break
         if matched_cat:
             st.markdown(
-                f'<p style="font-size:0.75rem;color:#86efac;margin:0.25rem 0 0;">'
-                f'Mapped to existing menu category: <b>{matched_cat}</b></p>',
+                f'<span class="status-pill match">Mapped to {matched_cat}</span>',
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                '<p style="font-size:0.75rem;color:#fdba74;margin:0.25rem 0 0;">'
-                'New menu category will be created for this combination.</p>',
+                '<span class="status-pill new">New category will be created</span>',
                 unsafe_allow_html=True,
             )
 
     # ============================================================
-    # Section 3: Item Frequency (Multi-Category)
+    # Section 3: Item Frequency
     # ============================================================
-    st.divider()
     new_slot_counts = render_multi_slot_editor(
         new_active_slots, current_counts, const_slots, client_key,
     )
@@ -172,7 +202,6 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     # Section 4: Day-wise Theme Override
     # ============================================================
-    st.divider()
     new_theme_map = render_theme_editor(
         current_theme, default_theme_map, available_themes, client_key,
     )
@@ -180,9 +209,9 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     # Action bar
     # ============================================================
-    st.divider()
+    st.markdown("")
 
-    # Unsaved changes indicator (only for select mode)
+    # Unsaved changes indicator
     if not is_create_mode:
         changes = []
         if set(new_active_slots) != set(current_active):
@@ -197,13 +226,11 @@ def render_customisation_editor(api: MenuApiClient):
             changes.append("themes")
         if changes:
             st.markdown(
-                f'<p style="color:#fdba74;font-size:0.82rem;margin:0 0 0.5rem;">'
-                f'Unsaved changes: {", ".join(changes)}</p>',
+                f'<div class="changes-indicator">&#9679; Unsaved: {", ".join(changes)}</div>',
                 unsafe_allow_html=True,
             )
 
     if is_create_mode:
-        # --- Create New flow: Create Client | Reset Setup ---
         col_create, col_reset = st.columns(2)
 
         with col_create:
@@ -229,7 +256,6 @@ def render_customisation_editor(api: MenuApiClient):
             else:
                 try:
                     api.create_client(name, new_active_slots)
-                    # Save frequency overrides if any differ from 1
                     freq_overrides = {k: v for k, v in new_slot_counts.items()
                                       if k in new_active_slots and v != 1}
                     theme_overrides = {k: v for k, v in new_theme_map.items()
@@ -248,14 +274,12 @@ def render_customisation_editor(api: MenuApiClient):
                     st.error(f"Create failed: {e}")
 
         if reset_clicked:
-            # Clear all create-mode widget state
             for key in list(st.session_state.keys()):
                 if '_new_' in key or key == 'editor_new_client_name':
                     st.session_state.pop(key, None)
             st.rerun()
 
     else:
-        # --- Select Existing flow: Save | Reset | Delete ---
         can_delete = require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN)
         if can_delete:
             col_save, col_reset, col_delete = st.columns(3)
