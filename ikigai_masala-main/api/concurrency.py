@@ -107,8 +107,8 @@ def solver_gate(fn):
         finally:
             with _lock:
                 _running -= 1
-                # Wake the next queued request
-                if _queue:
+                # Fill all available slots from the queue
+                while _running < MAX_RUNNING and _queue:
                     next_event = _queue.popleft()
                     _running += 1
                     next_event.set()
