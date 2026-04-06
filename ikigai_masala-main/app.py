@@ -49,12 +49,7 @@ from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 
 def _flatten_solution(raw_solution: dict) -> tuple:
-    """Convert the nested API solution format.
-
-    Returns:
-        (flat_plan, day_types) where flat_plan = {date: {slot: item}}
-        and day_types = {date: day_type_string}.
-    """
+    """Convert the nested API solution format."""
     flat = {}
     day_types = {}
     for date_key, day_data in raw_solution.items():
@@ -104,7 +99,7 @@ def _ensure_backend_running():
 
 
 # ---------------------------------------------------------------------------
-# Page config
+# Page config — MUST be first Streamlit command
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Ikigai Masala - Menu Planner",
@@ -114,19 +109,19 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Premium Dark Theme CSS
+# CSS Design System
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
     /* ================================================================
-       DESIGN SYSTEM TOKENS
+       DESIGN TOKENS
        ================================================================ */
     :root {
         --bg-primary:    #09090b;
         --bg-secondary:  #111113;
         --bg-tertiary:   #18181b;
         --bg-elevated:   #1c1c1f;
-        --bg-hover:      #222225;
+        --bg-hover:      #27272a;
         --border-subtle: #27272a;
         --border-default:#3f3f46;
         --text-primary:  #fafafa;
@@ -159,22 +154,28 @@ st.markdown("""
         padding: 1.5rem 2rem 2rem;
         max-width: 1400px;
     }
+
     /* ================================================================
-       HIDE STREAMLIT CHROME — toolbar, branding, deploy
+       STREAMLIT CHROME — hide toolbar & branding, keep header functional
+       The header MUST remain in the DOM for sidebar toggle to work.
+       We make it invisible but don't remove it.
        ================================================================ */
     header[data-testid="stHeader"] {
         background: transparent !important;
-        height: 0 !important;
-        min-height: 0 !important;
-        padding: 0 !important;
         border: none !important;
-        /* keep visible so collapsedControl still renders */
-        visibility: visible !important;
-        overflow: visible !important;
     }
-    [data-testid="stToolbar"],
+    /* Hide only the toolbar buttons (Share, Star, etc) */
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    /* Hide branding elements */
     #MainMenu, footer, .stDeployButton,
-    header[data-testid="stHeader"] [data-testid="stDecoration"] {
+    [data-testid="stDecoration"] {
+        display: none !important;
+    }
+    /* Streamlit's "Manage app" bottom-right button */
+    ._profileContainer_gzau3_53,
+    [data-testid="manage-app-button"] {
         display: none !important;
     }
 
@@ -184,53 +185,56 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background: var(--bg-secondary) !important;
         border-right: 1px solid var(--border-subtle) !important;
-        z-index: 999 !important;
     }
     [data-testid="stSidebar"][aria-expanded="true"] {
         min-width: 300px !important;
         max-width: 300px !important;
     }
-    /* The native collapse arrow inside sidebar */
+    /* Restyle the native collapse X button inside sidebar */
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button,
     [data-testid="stSidebar"] button[kind="header"] {
         background: var(--bg-elevated) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-sm) !important;
         color: var(--text-secondary) !important;
         opacity: 1 !important;
+        transition: var(--transition) !important;
     }
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover,
     [data-testid="stSidebar"] button[kind="header"]:hover {
         background: var(--bg-hover) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
     }
-    /* The re-open button when sidebar is collapsed */
-    [data-testid="collapsedControl"] {
-        display: flex !important;
+    /* Restyle the > arrow that appears when sidebar is collapsed */
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] {
+        display: block !important;
         visibility: visible !important;
-        position: fixed !important;
-        top: 0.75rem !important;
-        left: 0.75rem !important;
-        z-index: 1100 !important;
-        background: transparent !important;
-        border: none !important;
     }
-    [data-testid="collapsedControl"] button {
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapsedControl"] button {
         background: var(--bg-elevated) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-sm) !important;
         color: var(--text-secondary) !important;
         box-shadow: var(--shadow-md) !important;
-        width: 38px !important;
-        height: 38px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        transition: var(--transition) !important;
     }
-    [data-testid="collapsedControl"] button:hover {
+    [data-testid="collapsedControl"] button:hover,
+    [data-testid="stSidebarCollapsedControl"] button:hover {
         background: var(--bg-hover) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
         box-shadow: var(--shadow-lg) !important;
+    }
+    /* SVG arrows in sidebar controls */
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg,
+    [data-testid="stSidebar"] button[kind="header"] svg,
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapsedControl"] svg {
+        fill: currentColor !important;
+        stroke: currentColor !important;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
@@ -238,23 +242,14 @@ st.markdown("""
         font-weight: 500 !important;
         letter-spacing: 0.02em;
     }
-    [data-testid="stSidebar"] .stSelectbox > div > div,
-    [data-testid="stSidebar"] .stDateInput > div > div > input {
-        background: var(--bg-tertiary) !important;
-        border-color: var(--border-subtle) !important;
-        color: var(--text-primary) !important;
-        border-radius: var(--radius-sm) !important;
-    }
 
-    /* Brand block in sidebar */
+    /* Brand block */
     .sidebar-brand {
         padding: 0.5rem 0 1.5rem;
         border-bottom: 1px solid var(--border-subtle);
         margin-bottom: 1.5rem;
     }
-    .sidebar-brand-row {
-        display: flex; align-items: center; gap: 0.65rem;
-    }
+    .sidebar-brand-row { display: flex; align-items: center; gap: 0.65rem; }
     .sidebar-brand-icon {
         width: 36px; height: 36px; border-radius: var(--radius-md);
         background: linear-gradient(135deg, var(--accent-dim), #a78bfa);
@@ -271,7 +266,7 @@ st.markdown("""
         font-weight: 400; letter-spacing: 0.02em;
     }
 
-    /* Sidebar user chip */
+    /* User chip */
     .user-chip {
         display: flex; align-items: center; gap: 0.55rem;
         padding: 0.55rem 0.7rem; background: var(--bg-tertiary);
@@ -297,10 +292,6 @@ st.markdown("""
     /* ================================================================
        PAGE HEADER
        ================================================================ */
-    .page-header {
-        display: flex; align-items: flex-start; justify-content: space-between;
-        margin-bottom: 1.75rem; gap: 1rem;
-    }
     .page-title {
         font-size: 1.65rem; font-weight: 800; color: var(--text-primary);
         margin: 0; letter-spacing: -0.5px; line-height: 1.2;
@@ -309,48 +300,25 @@ st.markdown("""
         font-size: 0.82rem; color: var(--text-tertiary); margin: 0.2rem 0 0;
         font-weight: 400;
     }
-    .page-actions {
-        display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center;
-    }
-    .action-btn {
-        display: inline-flex; align-items: center; gap: 0.35rem;
-        padding: 0.45rem 0.85rem; border-radius: var(--radius-sm);
-        font-size: 0.78rem; font-weight: 500; cursor: pointer;
-        border: 1px solid var(--border-subtle); background: var(--bg-tertiary);
-        color: var(--text-secondary); text-decoration: none;
-        transition: var(--transition);
-    }
-    .action-btn:hover {
-        background: var(--bg-hover); color: var(--text-primary);
-        border-color: var(--border-default);
-    }
 
     /* ================================================================
        METRIC CARDS
        ================================================================ */
     .metrics-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 0.75rem;
-        margin-bottom: 1.75rem;
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 0.75rem; margin-bottom: 1.75rem;
     }
     .metric-card {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-lg);
-        padding: 1rem 1.15rem;
-        position: relative;
-        overflow: hidden;
-        transition: var(--transition);
+        background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg); padding: 1rem 1.15rem;
+        position: relative; overflow: hidden; transition: var(--transition);
     }
     .metric-card:hover {
         border-color: var(--border-default);
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-md);
+        transform: translateY(-1px); box-shadow: var(--shadow-md);
     }
     .metric-card::before {
-        content: '';
-        position: absolute; top: 0; left: 0; right: 0; height: 2px;
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
     }
     .metric-card:nth-child(1)::before { background: linear-gradient(90deg, #a78bfa, #6366f1); }
     .metric-card:nth-child(2)::before { background: linear-gradient(90deg, #34d399, #059669); }
@@ -370,34 +338,20 @@ st.markdown("""
        MENU TABLE
        ================================================================ */
     .menu-table-wrap {
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-lg);
-        overflow: hidden;
-        box-shadow: var(--shadow-sm);
-        background: var(--bg-secondary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+        overflow: hidden; box-shadow: var(--shadow-sm); background: var(--bg-secondary);
     }
-    .menu-table {
-        width: 100%; border-collapse: collapse; font-size: 0.82rem;
-    }
+    .menu-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     .menu-table thead th {
-        background: var(--bg-tertiary);
-        color: var(--text-secondary);
-        padding: 0.75rem 0.85rem;
-        text-align: center;
-        font-weight: 600;
-        font-size: 0.76rem;
-        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-tertiary); color: var(--text-secondary);
+        padding: 0.75rem 0.85rem; text-align: center; font-weight: 600;
+        font-size: 0.76rem; border-bottom: 1px solid var(--border-subtle);
         border-right: 1px solid var(--border-subtle);
-        letter-spacing: 0.01em;
     }
     .menu-table thead th:first-child {
-        text-align: left;
-        min-width: 120px;
-        background: var(--bg-elevated);
+        text-align: left; min-width: 120px; background: var(--bg-elevated);
     }
     .menu-table thead th:last-child { border-right: none; }
-
-    /* Day column headers */
     .day-label {
         display: block; color: var(--text-primary); font-weight: 700;
         font-size: 0.82rem; margin-bottom: 4px;
@@ -406,128 +360,86 @@ st.markdown("""
         display: inline-flex; align-items: center; gap: 4px;
         padding: 2px 8px; border-radius: 99px;
         font-size: 0.6rem; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 0.04em;
-        line-height: 1.6;
+        text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.6;
     }
-
-    /* Table body */
     .menu-table tbody td {
         padding: 0.55rem 0.85rem;
         border-bottom: 1px solid rgba(39,39,42,0.6);
         border-right: 1px solid rgba(39,39,42,0.6);
-        color: var(--text-secondary);
-        background: var(--bg-secondary);
-        vertical-align: middle;
-        transition: background 0.15s ease;
+        color: var(--text-secondary); background: var(--bg-secondary);
+        vertical-align: middle; transition: background 0.15s ease;
     }
     .menu-table tbody td:first-child {
-        font-weight: 600; color: var(--text-tertiary);
-        background: var(--bg-tertiary);
-        font-size: 0.76rem; letter-spacing: 0.01em;
-        white-space: nowrap; min-width: 120px;
+        font-weight: 600; color: var(--text-tertiary); background: var(--bg-tertiary);
+        font-size: 0.76rem; white-space: nowrap; min-width: 120px;
         border-right: 1px solid var(--border-subtle);
     }
     .menu-table tbody td:last-child { border-right: none; }
     .menu-table tbody tr:last-child td { border-bottom: none; }
     .menu-table tbody tr:hover td { background: var(--bg-hover); }
     .menu-table tbody tr:hover td:first-child { background: var(--bg-elevated); }
-
-    /* Item cells */
-    .item-name {
-        color: var(--text-primary); font-weight: 500;
-        font-size: 0.8rem; line-height: 1.4;
-    }
+    .item-name { color: var(--text-primary); font-weight: 500; font-size: 0.8rem; }
     .color-pill {
-        display: inline-block; margin-left: 5px;
-        padding: 1px 6px; border-radius: 99px;
-        font-size: 0.6rem; font-weight: 600;
-        letter-spacing: 0.02em; vertical-align: middle;
+        display: inline-block; margin-left: 5px; padding: 1px 6px;
+        border-radius: 99px; font-size: 0.6rem; font-weight: 600;
     }
-    .cell-empty {
-        color: var(--text-muted); font-size: 0.8rem;
-    }
+    .cell-empty { color: var(--text-muted); font-size: 0.8rem; }
 
-    /* ================================================================
-       POOL WARNINGS
-       ================================================================ */
+    /* Pool warnings */
     .pool-warn-bar {
         display: flex; align-items: center; gap: 0.5rem;
         padding: 0.6rem 1rem; margin-bottom: 1rem;
         background: rgba(251,191,36,0.06);
         border: 1px solid rgba(251,191,36,0.15);
-        border-radius: var(--radius-md);
-        font-size: 0.78rem; color: #fbbf24;
+        border-radius: var(--radius-md); font-size: 0.78rem; color: #fbbf24;
     }
 
-    /* ================================================================
-       EMPTY STATE
-       ================================================================ */
+    /* Empty state */
     .empty-state {
         text-align: center; padding: 5rem 2rem;
         border: 2px dashed var(--border-subtle);
-        border-radius: var(--radius-xl);
-        margin: 3rem auto; max-width: 500px;
+        border-radius: var(--radius-xl); margin: 3rem auto; max-width: 500px;
     }
     .empty-icon {
-        width: 64px; height: 64px; margin: 0 auto 1rem;
-        border-radius: 50%;
+        width: 64px; height: 64px; margin: 0 auto 1rem; border-radius: 50%;
         background: linear-gradient(135deg, var(--accent-dim), #a78bfa);
         display: flex; align-items: center; justify-content: center;
-        font-size: 1.6rem;
-        box-shadow: 0 0 40px rgba(124,58,237,0.2);
+        font-size: 1.6rem; box-shadow: 0 0 40px rgba(124,58,237,0.2);
     }
     .empty-state h3 {
-        color: var(--text-primary); margin: 0 0 0.4rem;
-        font-size: 1.15rem; font-weight: 700;
+        color: var(--text-primary); margin: 0 0 0.4rem; font-size: 1.15rem; font-weight: 700;
     }
-    .empty-state p {
-        color: var(--text-tertiary); font-size: 0.85rem; margin: 0;
-        line-height: 1.5;
-    }
+    .empty-state p { color: var(--text-tertiary); font-size: 0.85rem; margin: 0; line-height: 1.5; }
 
-    /* ================================================================
-       CHANGES LOG
-       ================================================================ */
+    /* Changes log */
     .log-entry {
-        display: flex; align-items: center; gap: 0.5rem;
         padding: 0.4rem 0.75rem; background: var(--bg-tertiary);
         border-left: 3px solid var(--accent);
         border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
         margin-bottom: 0.35rem; font-size: 0.78rem; color: var(--text-secondary);
     }
-
-    /* ================================================================
-       REGEN SECTION
-       ================================================================ */
     .regen-day-header {
         font-weight: 700; font-size: 0.82rem; color: var(--text-primary);
         margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem;
     }
 
     /* ================================================================
-       ACTION BAR
-       ================================================================ */
-    .action-bar {
-        display: flex; gap: 0.65rem; align-items: center;
-        padding: 1rem 0; margin-top: 0.5rem;
-    }
-
-    /* ================================================================
        STREAMLIT COMPONENT OVERRIDES
        ================================================================ */
-    /* Buttons — all variants */
+
+    /* --- BUTTONS --- */
     .stButton > button,
     .stFormSubmitButton > button,
     .stDownloadButton > button,
     button[data-testid="baseButton-secondary"],
-    button[data-testid="baseButton-primary"] {
+    button[data-testid="baseButton-primary"],
+    button[data-testid="baseButton-minimal"] {
         border-radius: var(--radius-sm) !important;
         font-weight: 600 !important;
         font-size: 0.8rem !important;
-        letter-spacing: 0.01em !important;
         transition: var(--transition) !important;
     }
-    /* Primary (purple gradient) */
+    /* Primary buttons — purple gradient */
     .stButton > button[kind="primary"],
     .stFormSubmitButton > button,
     button[data-testid="baseButton-primary"] {
@@ -542,32 +454,31 @@ st.markdown("""
         box-shadow: 0 4px 16px rgba(124,58,237,0.45) !important;
         transform: translateY(-1px);
     }
-    /* Secondary (dark with border) */
+    /* Secondary buttons — dark */
     .stButton > button:not([kind="primary"]),
+    .stDownloadButton > button,
     button[data-testid="baseButton-secondary"] {
         background: var(--bg-tertiary) !important;
         color: var(--text-secondary) !important;
         border: 1px solid var(--border-subtle) !important;
     }
     .stButton > button:not([kind="primary"]):hover,
+    .stDownloadButton > button:hover,
     button[data-testid="baseButton-secondary"]:hover {
         background: var(--bg-hover) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
     }
-    /* Form inputs — dark theme */
+
+    /* --- INPUTS --- force white text on dark backgrounds */
+    input, textarea, select,
     .stTextInput input,
     .stNumberInput input,
     .stDateInput input,
     .stTextArea textarea,
-    .stSelectbox [data-baseweb="select"],
-    .stSelectbox [data-baseweb="select"] > div,
-    .stMultiSelect [data-baseweb="select"],
-    .stMultiSelect [data-baseweb="select"] > div,
     [data-baseweb="input"] input,
     [data-baseweb="base-input"] input,
     [data-baseweb="textarea"] textarea {
-        background: var(--bg-tertiary) !important;
         background-color: var(--bg-tertiary) !important;
         border-color: var(--border-subtle) !important;
         color: #fafafa !important;
@@ -575,112 +486,97 @@ st.markdown("""
         border-radius: var(--radius-sm) !important;
         caret-color: #fafafa !important;
     }
+    /* Select boxes — the outer wrapper */
+    .stSelectbox [data-baseweb="select"],
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"],
+    .stMultiSelect [data-baseweb="select"] > div {
+        background-color: var(--bg-tertiary) !important;
+        border-color: var(--border-subtle) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    /* Select text */
+    .stSelectbox [data-baseweb="select"] span,
+    .stSelectbox [data-baseweb="select"] [data-testid="stMarkdownContainer"],
+    .stMultiSelect [data-baseweb="select"] span,
+    [data-baseweb="select"] .css-1dimb5e-singleValue {
+        color: #fafafa !important;
+        -webkit-text-fill-color: #fafafa !important;
+    }
+    /* Select dropdown arrow */
+    .stSelectbox svg, .stMultiSelect svg,
+    [data-baseweb="select"] svg {
+        fill: #a1a1aa !important;
+    }
     /* Placeholder text */
-    .stTextInput input::placeholder,
-    .stNumberInput input::placeholder,
-    .stTextArea textarea::placeholder,
+    input::placeholder, textarea::placeholder,
     [data-baseweb="input"] input::placeholder {
         color: #52525b !important;
         -webkit-text-fill-color: #52525b !important;
         opacity: 1 !important;
     }
-    /* Select dropdown text */
-    .stSelectbox [data-baseweb="select"] span,
-    .stMultiSelect [data-baseweb="select"] span {
-        color: #fafafa !important;
-        -webkit-text-fill-color: #fafafa !important;
-    }
-    /* Dropdown menu */
-    [data-baseweb="popover"],
-    [data-baseweb="menu"],
-    [data-baseweb="popover"] ul,
-    [data-baseweb="menu"] ul {
+    /* Dropdown menus */
+    [data-baseweb="popover"], [data-baseweb="menu"],
+    [data-baseweb="popover"] ul, [data-baseweb="menu"] ul,
+    [data-baseweb="popover"] > div, [role="listbox"] {
         background: var(--bg-elevated) !important;
+        background-color: var(--bg-elevated) !important;
         border-color: var(--border-subtle) !important;
     }
-    [data-baseweb="menu"] li {
+    [data-baseweb="menu"] li, [role="option"] {
         color: #fafafa !important;
         background: transparent !important;
     }
-    [data-baseweb="menu"] li:hover {
+    [data-baseweb="menu"] li:hover, [role="option"]:hover,
+    [role="option"][aria-selected="true"] {
         background: var(--bg-hover) !important;
     }
     /* Focus ring */
-    .stTextInput input:focus,
-    .stNumberInput input:focus,
-    .stTextArea textarea:focus,
-    [data-baseweb="input"]:focus-within {
+    input:focus, textarea:focus,
+    [data-baseweb="input"]:focus-within,
+    [data-baseweb="select"]:focus-within {
         border-color: var(--accent) !important;
         box-shadow: 0 0 0 1px var(--accent-dim) !important;
     }
+    /* Password eye toggle */
+    .stTextInput button, [data-baseweb="input"] button {
+        color: var(--text-tertiary) !important;
+        background: transparent !important;
+    }
+    .stTextInput button:hover, [data-baseweb="input"] button:hover {
+        color: var(--text-primary) !important;
+    }
     /* Labels */
-    .stTextInput label,
-    .stNumberInput label,
-    .stDateInput label,
-    .stTextArea label,
-    .stSelectbox label,
-    .stMultiSelect label,
-    .stSlider label,
-    .stCheckbox label,
-    .stRadio label {
+    .stTextInput label, .stNumberInput label, .stDateInput label,
+    .stTextArea label, .stSelectbox label, .stMultiSelect label,
+    .stSlider label, .stCheckbox label, .stRadio label {
         color: var(--text-secondary) !important;
     }
 
-    /* Slider */
-    [data-testid="stSidebar"] .stSlider > div > div > div {
-        color: var(--text-primary) !important;
-    }
+    /* --- SLIDER --- */
+    .stSlider > div > div > div { color: var(--text-primary) !important; }
 
-    /* Expanders */
-    .stExpander {
-        border-color: var(--border-subtle) !important;
-    }
+    /* --- EXPANDERS --- */
+    .stExpander { border-color: var(--border-subtle) !important; }
     div[data-testid="stExpander"] details {
         background: var(--bg-secondary) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-md) !important;
     }
     div[data-testid="stExpander"] summary span {
-        color: var(--text-secondary) !important;
-        font-weight: 600 !important;
-        font-size: 0.85rem !important;
+        color: var(--text-secondary) !important; font-weight: 600 !important;
     }
     div[data-testid="stExpander"] summary:hover span {
         color: var(--text-primary) !important;
     }
 
-    /* Divider */
+    /* --- MISC --- */
     hr { border-color: var(--border-subtle) !important; opacity: 0.5; }
-
-    /* Toasts / alerts */
     .stAlert { border-radius: var(--radius-md) !important; }
     [data-testid="stMarkdownContainer"] p { color: var(--text-secondary); }
-
-    /* Multiselect */
-    .stMultiSelect > div > div {
-        background: var(--bg-tertiary) !important;
-        border-color: var(--border-subtle) !important;
-        border-radius: var(--radius-sm) !important;
-    }
-
-    /* Download button */
-    .stDownloadButton > button {
-        background: var(--bg-tertiary) !important;
-        color: var(--text-secondary) !important;
-        border: 1px solid var(--border-subtle) !important;
-    }
-    .stDownloadButton > button:hover {
-        background: var(--bg-hover) !important;
-        color: var(--text-primary) !important;
-        border-color: var(--border-default) !important;
-    }
-
-    /* Spinner */
     .stSpinner > div { color: var(--accent) !important; }
 
-    /* ================================================================
-       RESPONSIVE
-       ================================================================ */
+    /* --- RESPONSIVE --- */
     @media (max-width: 768px) {
         .metrics-grid { grid-template-columns: repeat(2, 1fr); }
         .block-container { padding: 1rem; }
@@ -690,7 +586,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Authentication gate
+# Authentication gate — before anything else
 # ---------------------------------------------------------------------------
 init_auth_state()
 
@@ -699,13 +595,13 @@ if not is_authenticated():
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Backend + client
+# Backend + API client
 # ---------------------------------------------------------------------------
 backend_ok = _ensure_backend_running()
 client = MenuApiClient(_BACKEND_URL)
 
 # ---------------------------------------------------------------------------
-# Session state
+# Session state initialization (only after auth)
 # ---------------------------------------------------------------------------
 _SESSION_DEFAULTS = {
     "plan": None,
@@ -720,45 +616,35 @@ for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
+# Safety: if somehow view is set but user lacks permission, reset
+if st.session_state.view in ("editor", "user_manager"):
+    if not require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
+        st.session_state.view = "planner"
+
 # ---------------------------------------------------------------------------
-# Editor view (role-gated)
+# Editor view (role-gated, full-page)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "editor":
-    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
-        render_customisation_editor(client)
-    else:
-        st.error("You don't have permission to configure clients.")
-        if st.button("Back to Menu"):
-            st.session_state.view = "planner"
-            st.rerun()
+    render_customisation_editor(client)
     st.stop()
 
 # ---------------------------------------------------------------------------
-# User manager view (role-gated)
+# User manager view (role-gated, full-page)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "user_manager":
-    if require_role(ROLE_SUPER_ADMIN, ROLE_ADMIN):
-        col_back, col_title = st.columns([1, 5])
-        with col_back:
-            if st.button("< Back to Menu", key="um_back_btn", use_container_width=True):
-                st.session_state.view = "planner"
-                st.rerun()
-        with col_title:
-            st.markdown(
-                '<p class="page-title">User Management</p>',
-                unsafe_allow_html=True,
-            )
-        st.markdown("")
-        render_user_manager()
-    else:
-        st.error("You don't have permission to manage users.")
-        if st.button("Back to Menu"):
+    col_back, col_title = st.columns([1, 5])
+    with col_back:
+        if st.button("< Back to Menu", key="um_back_btn", use_container_width=True):
             st.session_state.view = "planner"
             st.rerun()
+    with col_title:
+        st.markdown('<p class="page-title">User Management</p>', unsafe_allow_html=True)
+    st.markdown("")
+    render_user_manager()
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Sidebar
+# Sidebar (planner view)
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("""<div class="sidebar-brand">
@@ -810,7 +696,7 @@ with st.sidebar:
                                  use_container_width=True)
 
 # ---------------------------------------------------------------------------
-# Page header with action buttons
+# Page header
 # ---------------------------------------------------------------------------
 _hdr_col1, _hdr_col2 = st.columns([5, 2])
 with _hdr_col1:
@@ -869,21 +755,16 @@ plan = st.session_state.plan
 plan_dates = st.session_state.plan_dates
 
 if plan and plan_dates:
-    # --- Show save success ---
     if st.session_state.get('save_success_msg'):
         st.success(st.session_state.pop('save_success_msg'))
 
-    # --- Collect slots ---
     all_slots = set()
     for date_str in plan_dates:
         all_slots.update(plan.get(date_str, {}).keys())
     sorted_slots = sorted(all_slots, key=slot_sort_key)
 
-    # --- Metrics ---
     total_items = sum(1 for d in plan_dates for s in sorted_slots
                       if plan.get(d, {}).get(s, ""))
-    unique_themes = set(st.session_state.day_types.get(d, '') for d in plan_dates)
-    unique_themes.discard('')
 
     st.markdown(f"""<div class="metrics-grid">
         <div class="metric-card">
@@ -904,15 +785,12 @@ if plan and plan_dates:
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # --- Pool warnings ---
     if st.session_state.pool_warnings:
         with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=False):
             for w in st.session_state.pool_warnings:
-                st.markdown(
-                    f'<div class="pool-warn-bar">&#9888; {w}</div>',
-                    unsafe_allow_html=True)
+                st.markdown(f'<div class="pool-warn-bar">&#9888; {w}</div>', unsafe_allow_html=True)
 
-    # --- Table ---
+    # Menu table
     _day_types = st.session_state.day_types
     header_html = '<tr><th>Slot</th>'
     for d_str in plan_dates:
@@ -943,7 +821,7 @@ if plan and plan_dates:
 
     st.markdown("")
 
-    # --- Actions ---
+    # Action buttons
     c1, c2, c3, _ = st.columns([1, 1, 1, 3])
     with c1:
         if st.button("Save to History", use_container_width=True):
@@ -973,7 +851,7 @@ if plan and plan_dates:
             st.session_state.changes_log = []
             st.rerun()
 
-    # --- Regeneration ---
+    # Regeneration
     with st.expander("Regenerate cells"):
         st.caption("Pick slots to replace with fresh items.")
         regen_selections = {}
@@ -1021,7 +899,6 @@ if plan and plan_dates:
             else:
                 st.warning("Select at least one cell.")
 
-    # --- Changes log ---
     if st.session_state.changes_log:
         with st.expander("Changes log"):
             for entry in st.session_state.changes_log:
