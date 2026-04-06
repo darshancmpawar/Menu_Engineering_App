@@ -159,75 +159,68 @@ st.markdown("""
         padding: 1.5rem 2rem 2rem;
         max-width: 1400px;
     }
-    /* Hide toolbar ribbon but keep header functional for sidebar toggle */
+    /* ================================================================
+       HIDE STREAMLIT CHROME — toolbar, branding, deploy
+       ================================================================ */
     header[data-testid="stHeader"] {
-        background: var(--bg-primary) !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: transparent !important;
+        visibility: hidden !important;
     }
-    [data-testid="stToolbar"] {
+    [data-testid="stToolbar"],
+    #MainMenu, footer, .stDeployButton {
         display: none !important;
     }
-
-    /* Hide Streamlit branding */
-    #MainMenu, footer, .stDeployButton { display: none !important; }
 
     /* ================================================================
-       SIDEBAR — custom toggle via JS
+       SIDEBAR
        ================================================================ */
-    /* Hide Streamlit's default sidebar controls */
-    [data-testid="stSidebar"] button[kind="header"],
-    [data-testid="collapsedControl"] {
-        display: none !important;
-    }
-
     [data-testid="stSidebar"] {
-        background: var(--bg-secondary);
-        border-right: 1px solid var(--border-subtle);
+        background: var(--bg-secondary) !important;
+        border-right: 1px solid var(--border-subtle) !important;
         z-index: 999 !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="true"] {
         min-width: 300px !important;
-        width: 300px !important;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                    opacity 0.3s ease !important;
-        transform: translateX(0) !important;
+        max-width: 300px !important;
     }
-
-    /* Collapsed state — slide off-screen */
-    [data-testid="stSidebar"].sidebar-collapsed {
-        transform: translateX(-100%) !important;
-        opacity: 0;
-        pointer-events: none;
+    /* The native collapse/expand arrow — restyle it */
+    [data-testid="stSidebar"] button[kind="header"] {
+        background: var(--bg-elevated) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-sm) !important;
+        color: var(--text-secondary) !important;
+        opacity: 1 !important;
     }
-
-    /* Custom toggle button */
-    .sidebar-toggle {
-        position: fixed;
-        top: 14px;
-        left: 14px;
-        z-index: 1100;
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-subtle);
-        color: var(--text-secondary);
-        font-size: 1rem;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: var(--shadow-sm);
-        padding: 0;
-        line-height: 1;
+    [data-testid="stSidebar"] button[kind="header"]:hover {
+        background: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border-default) !important;
     }
-    .sidebar-toggle:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-        border-color: var(--border-default);
-        box-shadow: var(--shadow-md);
+    /* The collapsed sidebar open button — make it look nice */
+    [data-testid="collapsedControl"] {
+        background: transparent !important;
+        border: none !important;
+        top: 0.65rem !important;
+        left: 0.65rem !important;
     }
-    /* When sidebar is open, push toggle to the right of it */
-    .sidebar-toggle.is-open {
-        left: 308px;
+    [data-testid="collapsedControl"] button {
+        background: var(--bg-elevated) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-sm) !important;
+        color: var(--text-secondary) !important;
+        box-shadow: var(--shadow-sm) !important;
+        width: 36px !important;
+        height: 36px !important;
+    }
+    [data-testid="collapsedControl"] button:hover {
+        background: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border-default) !important;
+        box-shadow: var(--shadow-md) !important;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
@@ -512,33 +505,62 @@ st.markdown("""
     /* ================================================================
        STREAMLIT COMPONENT OVERRIDES
        ================================================================ */
-    /* Buttons */
-    .stButton > button {
+    /* Buttons — all variants */
+    .stButton > button,
+    .stFormSubmitButton > button,
+    .stDownloadButton > button,
+    button[data-testid="baseButton-secondary"],
+    button[data-testid="baseButton-primary"] {
         border-radius: var(--radius-sm) !important;
         font-weight: 600 !important;
         font-size: 0.8rem !important;
         letter-spacing: 0.01em !important;
         transition: var(--transition) !important;
-        border: 1px solid var(--border-subtle) !important;
     }
-    .stButton > button[kind="primary"] {
+    /* Primary (purple gradient) */
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button,
+    button[data-testid="baseButton-primary"] {
         background: linear-gradient(135deg, var(--accent-dim), #8b5cf6) !important;
         border: none !important;
         color: #fff !important;
         box-shadow: 0 2px 8px rgba(124,58,237,0.3) !important;
     }
-    .stButton > button[kind="primary"]:hover {
+    .stButton > button[kind="primary"]:hover,
+    .stFormSubmitButton > button:hover,
+    button[data-testid="baseButton-primary"]:hover {
         box-shadow: 0 4px 16px rgba(124,58,237,0.45) !important;
         transform: translateY(-1px);
     }
-    .stButton > button:not([kind="primary"]) {
+    /* Secondary (dark with border) */
+    .stButton > button:not([kind="primary"]),
+    button[data-testid="baseButton-secondary"] {
         background: var(--bg-tertiary) !important;
         color: var(--text-secondary) !important;
+        border: 1px solid var(--border-subtle) !important;
     }
-    .stButton > button:not([kind="primary"]):hover {
+    .stButton > button:not([kind="primary"]):hover,
+    button[data-testid="baseButton-secondary"]:hover {
         background: var(--bg-hover) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-default) !important;
+    }
+    /* Form inputs — dark theme */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div,
+    .stNumberInput > div > div > input,
+    .stDateInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background: var(--bg-tertiary) !important;
+        border-color: var(--border-subtle) !important;
+        color: var(--text-primary) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    .stTextInput > div > div > input:focus,
+    .stNumberInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 1px var(--accent-dim) !important;
     }
 
     /* Slider */
@@ -580,12 +602,9 @@ st.markdown("""
 
     /* Download button */
     .stDownloadButton > button {
-        border-radius: var(--radius-sm) !important;
-        font-weight: 600 !important;
-        font-size: 0.8rem !important;
         background: var(--bg-tertiary) !important;
-        border: 1px solid var(--border-subtle) !important;
         color: var(--text-secondary) !important;
+        border: 1px solid var(--border-subtle) !important;
     }
     .stDownloadButton > button:hover {
         background: var(--bg-hover) !important;
@@ -605,52 +624,6 @@ st.markdown("""
         .menu-table { font-size: 0.75rem; }
     }
 </style>
-""", unsafe_allow_html=True)
-
-# ---------------------------------------------------------------------------
-# Sidebar toggle button (HTML + JS)
-# ---------------------------------------------------------------------------
-st.markdown("""
-<button class="sidebar-toggle is-open" id="sidebarToggle" title="Toggle sidebar">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-         stroke-width="2" stroke-linecap="round">
-        <path d="M10 3L5 8L10 13"/>
-    </svg>
-</button>
-<script>
-(function() {
-    const btn = document.getElementById('sidebarToggle');
-    if (!btn || btn.dataset.init) return;
-    btn.dataset.init = '1';
-
-    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]')
-                  || document.querySelector('[data-testid="stSidebar"]');
-    if (!sidebar) return;
-
-    // Check saved state
-    const saved = localStorage.getItem('ikigai_sidebar');
-    if (saved === 'closed') {
-        sidebar.classList.add('sidebar-collapsed');
-        btn.classList.remove('is-open');
-        btn.querySelector('svg').style.transform = 'rotate(180deg)';
-    }
-
-    btn.addEventListener('click', function() {
-        const isOpen = !sidebar.classList.contains('sidebar-collapsed');
-        if (isOpen) {
-            sidebar.classList.add('sidebar-collapsed');
-            btn.classList.remove('is-open');
-            btn.querySelector('svg').style.transform = 'rotate(180deg)';
-            localStorage.setItem('ikigai_sidebar', 'closed');
-        } else {
-            sidebar.classList.remove('sidebar-collapsed');
-            btn.classList.add('is-open');
-            btn.querySelector('svg').style.transform = 'rotate(0deg)';
-            localStorage.setItem('ikigai_sidebar', 'open');
-        }
-    });
-})();
-</script>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------

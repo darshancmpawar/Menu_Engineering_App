@@ -70,21 +70,22 @@ class AuthManager:
 
     def authenticate(self, email: str, password: str) -> Optional[User]:
         """Verify credentials and return a User on success, None on failure."""
-        row = (
+        resp = (
             self._sb.table("users")
             .select("email, profile_name, password_hash, role")
             .eq("email", email.strip().lower())
             .maybe_single()
             .execute()
         )
-        if not row.data:
+        row = resp.data if resp else None
+        if not row:
             return None
-        if not _verify_password(password, row.data["password_hash"]):
+        if not _verify_password(password, row["password_hash"]):
             return None
         return User(
-            email=row.data["email"],
-            profile_name=row.data["profile_name"],
-            role=row.data["role"],
+            email=row["email"],
+            profile_name=row["profile_name"],
+            role=row["role"],
         )
 
     # ---- user CRUD --------------------------------------------------------
@@ -113,7 +114,7 @@ class AuthManager:
             .maybe_single()
             .execute()
         )
-        if existing.data:
+        if existing and existing.data:
             raise ValueError(f"User with email '{email}' already exists.")
 
         password_hash = _hash_password(password)
@@ -141,14 +142,14 @@ class AuthManager:
 
     def delete_user(self, email: str) -> None:
         """Delete a user by email. Raises ValueError if not found."""
-        row = (
+        resp = (
             self._sb.table("users")
             .select("email")
             .eq("email", email)
             .maybe_single()
             .execute()
         )
-        if not row.data:
+        if not resp or not resp.data:
             raise ValueError(f"User '{email}' not found.")
         self._sb.table("users").delete().eq("email", email).execute()
 
