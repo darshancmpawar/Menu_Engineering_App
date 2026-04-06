@@ -16,6 +16,8 @@ import threading
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+from api.concurrency import solver_gate, get_stats as _solver_stats
+
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     HISTORY_LONG_PATH, HISTORY_WEEKS_PATH, API_HOST, API_PORT, DEBUG,
@@ -219,6 +221,7 @@ def list_clients():
 
 
 @app.route('/api/v1/plan', methods=['POST'])
+@solver_gate
 def plan_menu():
     try:
         data = request.get_json()
@@ -281,6 +284,7 @@ def plan_menu():
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
+@solver_gate
 def regenerate_cells():
     try:
         data = request.get_json()
@@ -544,7 +548,7 @@ def validate_pools():
 
 @app.route('/api/v1/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy'})
+    return jsonify({'status': 'healthy', **_solver_stats()})
 
 
 @app.route('/')
