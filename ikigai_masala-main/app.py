@@ -171,29 +171,63 @@ st.markdown("""
     #MainMenu, footer, .stDeployButton { display: none !important; }
 
     /* ================================================================
-       SIDEBAR — force always visible
+       SIDEBAR — custom toggle via JS
        ================================================================ */
+    /* Hide Streamlit's default sidebar controls */
+    [data-testid="stSidebar"] button[kind="header"],
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+
     [data-testid="stSidebar"] {
         background: var(--bg-secondary);
         border-right: 1px solid var(--border-subtle);
         z-index: 999 !important;
         min-width: 300px !important;
         width: 300px !important;
-        transform: none !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.3s ease !important;
+        transform: translateX(0) !important;
     }
-    /* Override Streamlit's collapse behavior */
-    [data-testid="stSidebar"][aria-expanded="false"] {
-        min-width: 300px !important;
-        width: 300px !important;
-        margin-left: 0 !important;
-        transform: none !important;
+
+    /* Collapsed state — slide off-screen */
+    [data-testid="stSidebar"].sidebar-collapsed {
+        transform: translateX(-100%) !important;
+        opacity: 0;
+        pointer-events: none;
     }
-    /* Hide the collapse arrow since sidebar is always visible */
-    [data-testid="stSidebar"] button[kind="header"] {
-        display: none !important;
+
+    /* Custom toggle button */
+    .sidebar-toggle {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 1100;
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-secondary);
+        font-size: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: var(--shadow-sm);
+        padding: 0;
+        line-height: 1;
     }
-    [data-testid="collapsedControl"] {
-        display: none !important;
+    .sidebar-toggle:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        border-color: var(--border-default);
+        box-shadow: var(--shadow-md);
+    }
+    /* When sidebar is open, push toggle to the right of it */
+    .sidebar-toggle.is-open {
+        left: 308px;
     }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
@@ -571,6 +605,52 @@ st.markdown("""
         .menu-table { font-size: 0.75rem; }
     }
 </style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Sidebar toggle button (HTML + JS)
+# ---------------------------------------------------------------------------
+st.markdown("""
+<button class="sidebar-toggle is-open" id="sidebarToggle" title="Toggle sidebar">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round">
+        <path d="M10 3L5 8L10 13"/>
+    </svg>
+</button>
+<script>
+(function() {
+    const btn = document.getElementById('sidebarToggle');
+    if (!btn || btn.dataset.init) return;
+    btn.dataset.init = '1';
+
+    const sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]')
+                  || document.querySelector('[data-testid="stSidebar"]');
+    if (!sidebar) return;
+
+    // Check saved state
+    const saved = localStorage.getItem('ikigai_sidebar');
+    if (saved === 'closed') {
+        sidebar.classList.add('sidebar-collapsed');
+        btn.classList.remove('is-open');
+        btn.querySelector('svg').style.transform = 'rotate(180deg)';
+    }
+
+    btn.addEventListener('click', function() {
+        const isOpen = !sidebar.classList.contains('sidebar-collapsed');
+        if (isOpen) {
+            sidebar.classList.add('sidebar-collapsed');
+            btn.classList.remove('is-open');
+            btn.querySelector('svg').style.transform = 'rotate(180deg)';
+            localStorage.setItem('ikigai_sidebar', 'closed');
+        } else {
+            sidebar.classList.remove('sidebar-collapsed');
+            btn.classList.add('is-open');
+            btn.querySelector('svg').style.transform = 'rotate(0deg)';
+            localStorage.setItem('ikigai_sidebar', 'open');
+        }
+    });
+})();
+</script>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
