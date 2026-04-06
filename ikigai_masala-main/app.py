@@ -156,20 +156,10 @@ st.markdown("""
     }
 
     /* ================================================================
-       STREAMLIT HEADER — keep visible for sidebar toggle, style it
+       STREAMLIT HEADER — keep default, only hide footer/deploy badge
        ================================================================ */
-    header[data-testid="stHeader"] {
-        background: var(--bg-primary) !important;
-        border-bottom: 1px solid var(--border-subtle) !important;
-        height: 3rem !important;
-    }
-    /* Hide only the right-side toolbar (Share, Star, Fork, etc) */
-    [data-testid="stToolbar"] { display: none !important; }
-    /* Hide branding */
-    #MainMenu, footer, .stDeployButton,
+    footer, .stDeployButton,
     [data-testid="stDecoration"] { display: none !important; }
-    ._profileContainer_gzau3_53,
-    [data-testid="manage-app-button"] { display: none !important; }
 
     /* ================================================================
        SIDEBAR
