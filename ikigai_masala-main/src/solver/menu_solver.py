@@ -474,7 +474,14 @@ class MenuSolver:
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(self.cfg.time_limit_sec)
         solver.parameters.random_seed = int(self.cfg.seed)
-        solver.parameters.num_search_workers = 1 if self.cfg.deterministic else 4
+        if self.cfg.deterministic:
+            solver.parameters.num_search_workers = 1
+        else:
+            try:
+                from api.concurrency import get_worker_count
+                solver.parameters.num_search_workers = get_worker_count()
+            except ImportError:
+                solver.parameters.num_search_workers = 8
         solver.parameters.cp_model_presolve = True
 
         status = solver.Solve(model)
