@@ -156,28 +156,17 @@ st.markdown("""
     }
 
     /* ================================================================
-       STREAMLIT CHROME — hide toolbar & branding, keep header functional
-       The header MUST remain in the DOM for sidebar toggle to work.
-       We make it invisible but don't remove it.
+       STREAMLIT CHROME — hide toolbar & branding only
        ================================================================ */
     header[data-testid="stHeader"] {
         background: transparent !important;
         border: none !important;
     }
-    /* Hide only the toolbar buttons (Share, Star, etc) */
-    [data-testid="stToolbar"] {
-        display: none !important;
-    }
-    /* Hide branding elements */
+    [data-testid="stToolbar"] { display: none !important; }
     #MainMenu, footer, .stDeployButton,
-    [data-testid="stDecoration"] {
-        display: none !important;
-    }
-    /* Streamlit's "Manage app" bottom-right button */
+    [data-testid="stDecoration"] { display: none !important; }
     ._profileContainer_gzau3_53,
-    [data-testid="manage-app-button"] {
-        display: none !important;
-    }
+    [data-testid="manage-app-button"] { display: none !important; }
 
     /* ================================================================
        SIDEBAR
@@ -190,57 +179,40 @@ st.markdown("""
         min-width: 300px !important;
         max-width: 300px !important;
     }
-    /* Restyle the native collapse X button inside sidebar */
-    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button,
-    [data-testid="stSidebar"] button[kind="header"] {
-        background: var(--bg-elevated) !important;
-        border: 1px solid var(--border-subtle) !important;
-        border-radius: var(--radius-sm) !important;
-        color: var(--text-secondary) !important;
-        opacity: 1 !important;
-        transition: var(--transition) !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover,
-    [data-testid="stSidebar"] button[kind="header"]:hover {
-        background: var(--bg-hover) !important;
-        color: var(--text-primary) !important;
-        border-color: var(--border-default) !important;
-    }
-    /* Restyle the > arrow that appears when sidebar is collapsed */
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] {
-        display: block !important;
-        visibility: visible !important;
-    }
-    [data-testid="collapsedControl"] button,
-    [data-testid="stSidebarCollapsedControl"] button {
-        background: var(--bg-elevated) !important;
-        border: 1px solid var(--border-subtle) !important;
-        border-radius: var(--radius-sm) !important;
-        color: var(--text-secondary) !important;
-        box-shadow: var(--shadow-md) !important;
-        transition: var(--transition) !important;
-    }
-    [data-testid="collapsedControl"] button:hover,
-    [data-testid="stSidebarCollapsedControl"] button:hover {
-        background: var(--bg-hover) !important;
-        color: var(--text-primary) !important;
-        border-color: var(--border-default) !important;
-        box-shadow: var(--shadow-lg) !important;
-    }
-    /* SVG arrows in sidebar controls */
-    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg,
-    [data-testid="stSidebar"] button[kind="header"] svg,
-    [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapsedControl"] svg {
-        fill: currentColor !important;
-        stroke: currentColor !important;
-    }
     [data-testid="stSidebar"] label {
         color: var(--text-secondary) !important;
         font-size: 0.78rem !important;
         font-weight: 500 !important;
         letter-spacing: 0.02em;
+    }
+
+    /* Custom sidebar open button — always visible when sidebar closed */
+    .sidebar-open-btn {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 999999;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: #1c1c1f;
+        border: 1px solid #3f3f46;
+        color: #a1a1aa;
+        font-size: 1.1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        transition: all 0.2s ease;
+        padding: 0;
+        line-height: 1;
+    }
+    .sidebar-open-btn:hover {
+        background: #27272a;
+        color: #fafafa;
+        border-color: #52525b;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.6);
     }
 
     /* Brand block */
@@ -584,6 +556,78 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Sidebar toggle — a fixed button that opens the sidebar via JS
+# This works across Streamlit versions and Streamlit Cloud.
+# ---------------------------------------------------------------------------
+import streamlit.components.v1 as components
+components.html("""
+<button class="sidebar-open-btn" id="ikigaiSidebarBtn" title="Open sidebar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+</button>
+<style>
+    .sidebar-open-btn {
+        position: fixed; top: 12px; left: 12px; z-index: 999999;
+        width: 40px; height: 40px; border-radius: 10px;
+        background: #1c1c1f; border: 1px solid #3f3f46;
+        color: #a1a1aa; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        transition: all 0.2s ease; padding: 0;
+    }
+    .sidebar-open-btn:hover {
+        background: #27272a; color: #fafafa; border-color: #52525b;
+    }
+</style>
+<script>
+(function() {
+    var btn = document.getElementById('ikigaiSidebarBtn');
+    if (!btn) return;
+    function findSidebar() {
+        var doc = window.parent.document || document;
+        // Check if sidebar is already open
+        var sb = doc.querySelector('[data-testid="stSidebar"]');
+        if (sb && sb.getAttribute('aria-expanded') === 'true') {
+            btn.style.display = 'none';
+            return;
+        }
+        btn.style.display = 'flex';
+    }
+    function openSidebar() {
+        var doc = window.parent.document || document;
+        // Try multiple selectors for cross-version support
+        var triggers = [
+            '[data-testid="collapsedControl"] button',
+            '[data-testid="stSidebarCollapsedControl"] button',
+            '[data-testid="baseButton-header"]',
+        ];
+        for (var i = 0; i < triggers.length; i++) {
+            var el = doc.querySelector(triggers[i]);
+            if (el) { el.click(); btn.style.display = 'none'; return; }
+        }
+        // Fallback: set sidebar attribute directly
+        var sb = doc.querySelector('[data-testid="stSidebar"]');
+        if (sb) {
+            sb.setAttribute('aria-expanded', 'true');
+            sb.style.display = '';
+            sb.style.transform = 'none';
+            sb.style.marginLeft = '0';
+            btn.style.display = 'none';
+        }
+    }
+    btn.addEventListener('click', openSidebar);
+    // Poll to show/hide based on sidebar state
+    setInterval(findSidebar, 500);
+    findSidebar();
+})();
+</script>
+""", height=0)
 
 # ---------------------------------------------------------------------------
 # Authentication gate — before anything else
