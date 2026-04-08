@@ -83,8 +83,4 @@ def render_login_form():
                 st.error(f"Login error: {e}")
             return False
 
-        st.markdown(
-            '<div class="login-footer">Ikigai Masala Menu Planning System</div>',
-            unsafe_allow_html=True,
-        )
     return False
