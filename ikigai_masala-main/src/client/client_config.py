@@ -15,16 +15,15 @@ Schema:
 from __future__ import annotations
 
 import json
-import os
-import threading
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
-    SLOT_SUFFIX_SEP,
 )
+from src.db import get_supabase
+from src.preprocessor.pool_builder import _expand_slots_in_order
 
 DEFAULT_THEME_MAP: Dict[str, str] = {
     'monday': 'mix',
@@ -55,40 +54,6 @@ def _dedupe_preserve_order(values: List[str]) -> List[str]:
     return out
 
 
-def _expand_slot_ids(base_slot: str, count: int) -> List[str]:
-    n = int(count)
-    if n <= 0:
-        return []
-    if n == 1:
-        return [base_slot]
-    return [f'{base_slot}{SLOT_SUFFIX_SEP}{i}' for i in range(1, n + 1)]
-
-
-# ---------------------------------------------------------------------------
-# Supabase client — shared across all loader instances
-# ---------------------------------------------------------------------------
-_sb_client = None
-_sb_lock = threading.Lock()
-
-
-def _get_supabase():
-    """Return a module-level Supabase client (created once, reused)."""
-    global _sb_client
-    if _sb_client is None:
-        with _sb_lock:
-            if _sb_client is None:
-                from supabase import create_client
-                try:
-                    import streamlit as st
-                    url = st.secrets['SUPABASE_URL']
-                    key = st.secrets['SUPABASE_KEY']
-                except Exception:
-                    url = os.environ['SUPABASE_URL']
-                    key = os.environ['SUPABASE_KEY']
-                _sb_client = create_client(url, key)
-    return _sb_client
-
-
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
@@ -102,7 +67,7 @@ class ClientConfigLoader:
     """
 
     def __init__(self, config_path: str = ''):
-        self._sb = _get_supabase()
+        self._sb = get_supabase()
 
     # ---- internal helpers --------------------------------------------------
 
@@ -157,11 +122,6 @@ class ClientConfigLoader:
         val = self._setting('constant_slots')
         return val if val else list(CONST_SLOTS)
 
-    @property
-    def fallback_menu_category(self) -> Optional[str]:
-        val = self._setting('fallback_menu_category')
-        return val if isinstance(val, str) else None
-
     # ---- client read methods -----------------------------------------------
 
     def get_client(self, name: str) -> ClientConfig:
@@ -186,7 +146,9 @@ class ClientConfigLoader:
             if slot in CONST_SLOTS:
                 expanded.append(slot)
             else:
-                expanded.extend(_expand_slot_ids(slot, slot_counts.get(slot, 1)))
+                expanded.extend(
+                    _expand_slots_in_order([slot], {slot: slot_counts.get(slot, 1)})
+                )
         expanded = _dedupe_preserve_order(expanded)
 
         theme_map = self.get_theme_map_for_client(name)
@@ -217,9 +179,13 @@ class ClientConfigLoader:
         return self.get_slots_for_menu_category(cat_name)
 
     def get_slots_for_menu_category(self, cat_name: str) -> List[str]:
-        """Return slots for a menu_category; falls back to defaults."""
+        """Return slots for a menu_category. Raises ValueError when missing/empty."""
         if not cat_name:
-            return list(BASE_SLOTS)
+            raise ValueError(
+                "Client has no menu category assigned. "
+                "Please assign a menu category with slots to this client, "
+                "or delete the client."
+            )
         row = (
             self._sb.table('menu_categories')
             .select('slots')
@@ -227,13 +193,13 @@ class ClientConfigLoader:
             .maybe_single()
             .execute()
         )
-        if row.data and row.data.get('slots'):
-            return row.data['slots']
-        # Fallback: try the fallback category
-        fb = self.fallback_menu_category
-        if fb and fb != cat_name:
-            return self.get_slots_for_menu_category(fb)
-        return list(BASE_SLOTS)
+        if not row.data or not row.data.get('slots'):
+            raise ValueError(
+                f"Menu category '{cat_name}' has no slots configured. "
+                f"Please configure slots for this category in the "
+                f"customisation editor, or delete the client."
+            )
+        return row.data['slots']
 
     def get_slot_counts_for_client(self, name: str) -> Dict[str, int]:
         counts = {s: 1 for s in BASE_SLOTS}

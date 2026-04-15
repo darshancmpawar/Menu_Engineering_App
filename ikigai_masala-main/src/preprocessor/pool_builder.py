@@ -13,7 +13,7 @@ from .column_mapper import _norm_str
 from src.constants import (
     SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, CONST_SLOTS, OUTPUT_SLOTS,
     CONSTANT_ITEMS, EXEMPT_FROM_CUISINE, REPEATABLE_ITEM_BASES,
-    PULAO_SUBCATS, THEME_FALLBACK_SLOTS, DISPLAY_SLOT_NAME,
+    PULAO_SUBCATS, THEME_FALLBACK_SLOTS,
 )
 
 # course_type -> slot mapping for simple 1:1 cases
@@ -68,12 +68,6 @@ def _expand_slots_in_order(base_slots: List[str], slot_counts: Dict[str, int]) -
         else:
             out.extend(f'{s}{SLOT_SUFFIX_SEP}{i}' for i in range(1, n + 1))
     return out
-
-
-def _display_slot(slot_id: str) -> str:
-    base, num = _base_slot(slot_id), _slot_num(slot_id)
-    base_disp = DISPLAY_SLOT_NAME.get(base, base)
-    return base_disp if num is None else f'{base_disp} {num}'
 
 
 # ---------------------------------------------------------------------------

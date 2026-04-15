@@ -1,14 +1,14 @@
 """
 History manager for menu planning.
 
-Loads history from CSV files, filters by client, computes bans and signatures.
+Loads history from Supabase dataframes, filters by client, computes bans
+and signatures, and persists completed weeks back to Supabase.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import re
-from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 import pandas as pd
@@ -28,18 +28,6 @@ class HistoryManager:
         self._weeks: Optional[pd.DataFrame] = None
 
     # ----- Loading -----
-
-    def load(
-        self,
-        long_csv_path: Optional[str] = None,
-        weeks_csv_path: Optional[str] = None,
-    ) -> 'HistoryManager':
-        """Load history from CSV files. Returns self for chaining."""
-        if long_csv_path and Path(long_csv_path).exists():
-            self._long = self._ensure_long(pd.read_csv(long_csv_path))
-        if weeks_csv_path and Path(weeks_csv_path).exists():
-            self._weeks = self._ensure_weeks(pd.read_csv(weeks_csv_path))
-        return self
 
     def load_from_dataframes(
         self,
@@ -169,13 +157,14 @@ class HistoryManager:
         client_name: str,
         week_start: dt.date,
         week_signature: str,
-        long_csv_path: str,
-        weeks_csv_path: str,
+        supabase_client,
         strip_color_fn=None,
-        supabase_client=None,
     ):
-        """Append a completed week plan to history (CSV + Supabase)."""
-        # Build long-history rows
+        """Persist a completed week plan to Supabase."""
+        if supabase_client is None:
+            raise ValueError("supabase_client is required to save history.")
+
+        # Build long-history rows (keep original client_name to match FK)
         long_rows = []
         for d in dates:
             day_map = week_plan.get(d, {})
@@ -185,39 +174,16 @@ class HistoryManager:
                     'service_date': d.isoformat(),
                     'slot': slot_id,
                     'item_base': _norm_str(item_base),
-                    'client_name': _norm_str(client_name),
+                    'client_name': client_name,
                 })
 
-        # --- Write to local CSV (fallback/backup) ---
         if long_rows:
-            long_df = pd.DataFrame(long_rows)
-            long_path = Path(long_csv_path)
-            header = not long_path.exists()
-            long_df.to_csv(long_path, mode='a', header=header, index=False)
-
-        weeks_row_dict = {
+            supabase_client.table('menu_history').insert(long_rows).execute()
+        supabase_client.table('week_signatures').insert({
             'week_start': week_start.isoformat(),
             'week_signature': week_signature,
-            'client_name': _norm_str(client_name),
-        }
-        weeks_df = pd.DataFrame([weeks_row_dict])
-        weeks_path = Path(weeks_csv_path)
-        header = not weeks_path.exists()
-        weeks_df.to_csv(weeks_path, mode='a', header=header, index=False)
-
-        # --- Write to Supabase (use original client_name to match FK) ---
-        if supabase_client is not None:
-            sb_long_rows = [
-                {**row, 'client_name': client_name}
-                for row in long_rows
-            ]
-            if sb_long_rows:
-                supabase_client.table('menu_history').insert(sb_long_rows).execute()
-            supabase_client.table('week_signatures').insert({
-                'week_start': week_start.isoformat(),
-                'week_signature': week_signature,
-                'client_name': client_name,
-            }).execute()
+            'client_name': client_name,
+        }).execute()
 
     # ----- Signature computation -----
 

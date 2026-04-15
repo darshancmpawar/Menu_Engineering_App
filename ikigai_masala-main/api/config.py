@@ -17,16 +17,6 @@ MENU_RULES_CONFIG_PATH = os.getenv(
     str(BASE_DIR / 'data/configs/indian_menu_rules.json')
 )
 
-HISTORY_LONG_PATH = os.getenv(
-    'HISTORY_LONG_PATH',
-    str(BASE_DIR / 'data/history_long.csv')
-)
-
-HISTORY_WEEKS_PATH = os.getenv(
-    'HISTORY_WEEKS_PATH',
-    str(BASE_DIR / 'data/history_weeks.csv')
-)
-
 MIN_TIME_LIMIT_SECONDS = 10
 MAX_TIME_LIMIT_SECONDS = 600
 

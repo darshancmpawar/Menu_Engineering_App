@@ -39,3 +39,25 @@ def theme_label(day_type: str) -> str:
 def strip_color_suffix(s: str) -> str:
     """Remove trailing color suffix like '(R)' from an item string."""
     return re.sub(r'\([A-Z]\)\s*$', '', (s or '').strip()).strip()
+
+
+def items_from_day(day_data) -> Dict[str, str]:
+    """Extract ``{slot_id: item_str}`` from a day payload.
+
+    Accepts either the rich solution format
+        ``{'theme': ..., 'day_type': ..., 'items': {slot: {item, item_base, ...}}}``
+    or a flat legacy format
+        ``{slot: item_str}``
+    and returns ``{slot: item_str}`` in both cases.
+    """
+    if isinstance(day_data, dict) and 'items' in day_data:
+        source = day_data['items']
+    else:
+        source = day_data or {}
+    out: Dict[str, str] = {}
+    for slot_id, val in source.items():
+        if isinstance(val, dict):
+            out[slot_id] = val.get('item', val.get('item_base', ''))
+        else:
+            out[slot_id] = str(val)
+    return out

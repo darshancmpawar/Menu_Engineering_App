@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 from src.client.client_config import (
     ClientConfigLoader,
     _dedupe_preserve_order,
-    _expand_slot_ids,
     DEFAULT_THEME_MAP,
 )
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS
@@ -45,7 +44,6 @@ FAKE_SETTINGS = {
     'core_min_one_slots': ['bread', 'rice', 'starter', 'veg_dry', 'welcome_drink',
                             'curd_side', 'nonveg_main', 'veg_gravy'],
     'constant_slots': ['white_rice', 'papad', 'pickle', 'chutney'],
-    'fallback_menu_category': 'menu_cat_3',
 }
 
 
@@ -160,7 +158,7 @@ def _build_mock_sb():
 def loader():
     """Return a ClientConfigLoader backed by a mocked Supabase client."""
     mock_sb = _build_mock_sb()
-    with patch('src.client.client_config._get_supabase', return_value=mock_sb):
+    with patch('src.client.client_config.get_supabase', return_value=mock_sb):
         return ClientConfigLoader()
 
 
@@ -176,9 +174,6 @@ class TestClientConfigLoader:
         cats = loader.menu_categories
         assert 'menu_cat_1' in cats
         assert 'bread' in cats['menu_cat_1']
-
-    def test_fallback_menu_category(self, loader):
-        assert loader.fallback_menu_category == 'menu_cat_3'
 
     def test_get_client_rippling(self, loader):
         cfg = loader.get_client('Rippling')
@@ -244,12 +239,3 @@ class TestClientConfigLoader:
 class TestHelpers:
     def test_dedupe_preserve_order(self):
         assert _dedupe_preserve_order(['a', 'b', 'a', 'c']) == ['a', 'b', 'c']
-
-    def test_expand_slot_ids_single(self):
-        assert _expand_slot_ids('veg_dry', 1) == ['veg_dry']
-
-    def test_expand_slot_ids_multi(self):
-        assert _expand_slot_ids('veg_dry', 2) == ['veg_dry__1', 'veg_dry__2']
-
-    def test_expand_slot_ids_zero(self):
-        assert _expand_slot_ids('veg_dry', 0) == []

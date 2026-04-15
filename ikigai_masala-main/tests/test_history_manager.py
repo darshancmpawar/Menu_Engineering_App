@@ -99,20 +99,43 @@ class TestHistoryManager:
         assert result[('2026-03-16', 'rice')] == 'jeera rice'
         assert result[('2026-03-17', 'rice')] == 'lemon rice'
 
-    def test_save_and_reload(self, tmp_path):
+    def test_save_writes_to_supabase(self):
+        """save() inserts long rows + week signature into Supabase tables."""
         plan = {
             dt.date(2026, 3, 16): {'rice': 'jeera rice', 'bread': 'naan'},
         }
         dates = [dt.date(2026, 3, 16)]
-        long_path = str(tmp_path / 'history_long.csv')
-        weeks_path = str(tmp_path / 'history_weeks.csv')
+
+        inserts = []
+
+        class _FakeTable:
+            def __init__(self, name):
+                self.name = name
+
+            def insert(self, rows):
+                inserts.append((self.name, rows))
+                return self
+
+            def execute(self):
+                return None
+
+        class _FakeClient:
+            def table(self, name):
+                return _FakeTable(name)
 
         hm = HistoryManager()
-        hm.save(plan, dates, 'Rippling', dt.date(2026, 3, 16), 'test_sig', long_path, weeks_path)
+        hm.save(plan, dates, 'Rippling', dt.date(2026, 3, 16), 'test_sig',
+                supabase_client=_FakeClient())
 
-        # Reload and verify
-        hm2 = HistoryManager().load(long_path, weeks_path)
-        assert hm2._long is not None
-        assert len(hm2._long) == 2  # rice + bread
-        assert hm2._weeks is not None
-        assert len(hm2._weeks) == 1
+        names = [n for n, _ in inserts]
+        assert 'menu_history' in names
+        assert 'week_signatures' in names
+        long_rows = next(rows for n, rows in inserts if n == 'menu_history')
+        assert len(long_rows) == 2  # rice + bread
+        assert all(r['client_name'] == 'Rippling' for r in long_rows)
+
+    def test_save_requires_supabase_client(self):
+        hm = HistoryManager()
+        with pytest.raises(ValueError):
+            hm.save({}, [], 'Rippling', dt.date(2026, 3, 16), 'sig',
+                    supabase_client=None)

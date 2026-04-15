@@ -1,59 +1,62 @@
 """Authentication manager — handles login, user CRUD against Supabase users table.
 
-Password storage: SHA-256 with a random 16-byte hex salt, stored as "salt:hash".
+Password storage: bcrypt hash (self-contained, includes salt + cost factor).
+Legacy "salt:sha256_hex" hashes are still verified for backward compatibility
+and are transparently rehashed to bcrypt on successful login.
 """
 
 from __future__ import annotations
 
 import hashlib
-import os
-import threading
 from typing import List, Optional
 
+import bcrypt
+
+from src.db import get_supabase
 from user_authentication.models import User, ALL_ROLES
-
-# ---------------------------------------------------------------------------
-# Supabase client (shared singleton, same pattern as client_config.py)
-# ---------------------------------------------------------------------------
-_sb_client = None
-_sb_lock = threading.Lock()
-
-
-def _get_supabase():
-    global _sb_client
-    if _sb_client is None:
-        with _sb_lock:
-            if _sb_client is None:
-                from supabase import create_client
-                try:
-                    import streamlit as st
-                    url = st.secrets["SUPABASE_URL"]
-                    key = st.secrets["SUPABASE_KEY"]
-                except Exception:
-                    url = os.environ["SUPABASE_URL"]
-                    key = os.environ["SUPABASE_KEY"]
-                _sb_client = create_client(url, key)
-    return _sb_client
-
 
 # ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------
+# bcrypt hashes always start with "$2" (e.g. "$2b$12$...").  Older SHA-256
+# hashes in the DB use the shape "<32-hex-salt>:<64-hex-digest>".
 
-def _hash_password(password: str, salt: str | None = None) -> str:
-    """Return 'salt:hash' string. Generates a random salt if not provided."""
-    if salt is None:
-        salt = os.urandom(16).hex()
+_BCRYPT_ROUNDS = 12
+
+
+def _hash_password(password: str) -> str:
+    """Return a bcrypt hash string (includes salt + cost factor)."""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(_BCRYPT_ROUNDS)).decode("utf-8")
+
+
+def _is_legacy_sha256(stored: str) -> bool:
+    """True if the stored hash is the old 'salt:sha256_hex' format."""
+    if not stored or stored.startswith("$2"):
+        return False
+    if ":" not in stored:
+        return False
+    salt, digest = stored.split(":", 1)
+    return len(salt) == 32 and len(digest) == 64
+
+
+def _verify_legacy_sha256(password: str, stored: str) -> bool:
+    salt, _ = stored.split(":", 1)
     h = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-    return f"{salt}:{h}"
+    return f"{salt}:{h}" == stored
 
 
 def _verify_password(password: str, stored: str) -> bool:
-    """Verify a password against a 'salt:hash' string."""
-    if ":" not in stored:
+    """Verify a password against a stored bcrypt or legacy SHA-256 hash."""
+    if not stored:
         return False
-    salt, _ = stored.split(":", 1)
-    return _hash_password(password, salt) == stored
+    if stored.startswith("$2"):
+        try:
+            return bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
+        except ValueError:
+            return False
+    if _is_legacy_sha256(stored):
+        return _verify_legacy_sha256(password, stored)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +67,7 @@ class AuthManager:
     """Handles authentication and user management via Supabase."""
 
     def __init__(self):
-        self._sb = _get_supabase()
+        self._sb = get_supabase()
 
     # ---- authentication ---------------------------------------------------
 
@@ -80,8 +83,18 @@ class AuthManager:
         row = resp.data if resp else None
         if not row:
             return None
-        if not _verify_password(password, row["password_hash"]):
+        stored = row["password_hash"]
+        if not _verify_password(password, stored):
             return None
+        # Transparent rehash: upgrade legacy SHA-256 records to bcrypt
+        if _is_legacy_sha256(stored):
+            try:
+                new_hash = _hash_password(password)
+                self._sb.table("users").update(
+                    {"password_hash": new_hash}
+                ).eq("email", row["email"]).execute()
+            except Exception:
+                pass
         return User(
             email=row["email"],
             profile_name=row["profile_name"],
