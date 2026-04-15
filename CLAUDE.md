@@ -42,19 +42,19 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 
 ## 3. API surface (all in `ikigai_masala-main/api/app.py`)
 
-| Method | Route | Line | Purpose |
-|---|---|---|---|
-| GET  | `/api/v1/clients` | 207 | list clients |
-| POST | `/api/v1/plan` | 216 | generate full menu |
-| POST | `/api/v1/regenerate` | 278 | regenerate selected cells |
-| POST | `/api/v1/save` | 351 | persist plan → history |
-| GET  | `/api/v1/editor-metadata` | 400 | slot/theme metadata for editor |
-| GET  | `/api/v1/client-config/<name>` | 418 | fetch client config |
-| PUT  | `/api/v1/client-config/<name>` | 440 | update client config |
-| POST | `/api/v1/client` | 463 | create client |
-| DELETE | `/api/v1/client/<name>` | 483 | delete client |
-| POST | `/api/v1/validate-pools` | 498 | dry-run pool build |
-| GET  | `/api/v1/health` | 524 | health check |
+| Method | Route | Purpose |
+|---|---|---|
+| GET  | `/api/v1/clients` | list clients |
+| POST | `/api/v1/plan` | generate full menu |
+| POST | `/api/v1/regenerate` | regenerate selected cells |
+| POST | `/api/v1/save` | persist plan → history |
+| GET  | `/api/v1/editor-metadata` | slot/theme metadata for editor |
+| GET  | `/api/v1/client-config/<name>` | fetch client config |
+| PUT  | `/api/v1/client-config/<name>` | update client config |
+| POST | `/api/v1/client` | create client |
+| DELETE | `/api/v1/client/<name>` | delete client |
+| POST | `/api/v1/validate-pools` | dry-run pool build |
+| GET  | `/api/v1/health` | health check |
 
 Helpers:
 - `api/concurrency.py` — `@solver_gate` queue; caps active solves (dynamic CP-SAT workers).
@@ -162,7 +162,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 ```
 Streamlit app.py
   → MenuApiClient.plan()  [ui/api_client.py]
-  → POST /api/v1/plan     [api/app.py:216]
+  → POST /api/v1/plan     [api/app.py]
     → @solver_gate                                      [api/concurrency.py]
     → ClientConfigLoader.get_client()                   [src/client/client_config.py]
     → ExcelReader → ColumnMapper → DataCleanser → PoolBuilder  [src/preprocessor/]
@@ -178,7 +178,7 @@ Streamlit app.py
 
 ### Regenerate cells
 ```
-POST /api/v1/regenerate  [api/app.py:278]
+POST /api/v1/regenerate  [api/app.py]
   → MenuRegenerator.regenerate(base_plan, replace_mask)  [src/solver/regenerator.py]
     lock untouched cells, re-run MenuSolver.solve()
     rank by similarity_score()
@@ -186,13 +186,13 @@ POST /api/v1/regenerate  [api/app.py:278]
 
 ### Save to history
 ```
-POST /api/v1/save  [api/app.py:351]
+POST /api/v1/save  [api/app.py]
   → HistoryManager.save() → Supabase (menu_history, week_signatures)
 ```
 
 ### Edit client config
 ```
-Streamlit customisation/* → PUT /api/v1/client-config/<name>  [api/app.py:440]
+Streamlit customisation/* → PUT /api/v1/client-config/<name>  [api/app.py]
   → ClientConfigLoader.update_*() → Supabase
   (live reads elsewhere; no restart)
 ```
@@ -243,6 +243,6 @@ Solver `ortools` · data `pandas numpy openpyxl` · web `flask flask-cors reques
 ## 11. Editing rules for this file
 
 - When adding a new rule file under `src/menu_rules/`, append a row to §4.2.
-- When adding an endpoint in `api/app.py`, append a row to §3 with the line number.
+- When adding an endpoint in `api/app.py`, append a row to §3.
 - When moving or renaming a module, update its row in §4 and any mention in §7.
 - Keep rows to one line. This file is optimized for fast scanning, not prose.
