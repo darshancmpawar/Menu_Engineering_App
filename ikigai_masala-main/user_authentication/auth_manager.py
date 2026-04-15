@@ -8,37 +8,12 @@ and are transparently rehashed to bcrypt on successful login.
 from __future__ import annotations
 
 import hashlib
-import os
-import threading
 from typing import List, Optional
 
 import bcrypt
 
+from src.db import get_supabase
 from user_authentication.models import User, ALL_ROLES
-
-# ---------------------------------------------------------------------------
-# Supabase client (shared singleton, same pattern as client_config.py)
-# ---------------------------------------------------------------------------
-_sb_client = None
-_sb_lock = threading.Lock()
-
-
-def _get_supabase():
-    global _sb_client
-    if _sb_client is None:
-        with _sb_lock:
-            if _sb_client is None:
-                from supabase import create_client
-                try:
-                    import streamlit as st
-                    url = st.secrets["SUPABASE_URL"]
-                    key = st.secrets["SUPABASE_KEY"]
-                except Exception:
-                    url = os.environ["SUPABASE_URL"]
-                    key = os.environ["SUPABASE_KEY"]
-                _sb_client = create_client(url, key)
-    return _sb_client
-
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -92,7 +67,7 @@ class AuthManager:
     """Handles authentication and user management via Supabase."""
 
     def __init__(self):
-        self._sb = _get_supabase()
+        self._sb = get_supabase()
 
     # ---- authentication ---------------------------------------------------
 

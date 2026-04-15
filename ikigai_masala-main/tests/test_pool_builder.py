@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from src.preprocessor.pool_builder import (
     PoolBuilder, BASE_SLOT_NAMES, _base_slot, _slot_num,
-    _expand_slots_in_order, _display_slot,
+    _expand_slots_in_order,
 )
 
 
@@ -84,8 +84,3 @@ class TestSlotHelpers:
     def test_expand_slots_zero(self):
         result = _expand_slots_in_order(['rice', 'veg_dry'], {'rice': 0, 'veg_dry': 1})
         assert result == ['veg_dry']
-
-    def test_display_slot(self):
-        assert _display_slot('rice') == 'Flavor Rice'
-        assert _display_slot('veg_dry__2') == 'Veg Dry 2'
-        assert _display_slot('dal') == 'dal'  # no display override

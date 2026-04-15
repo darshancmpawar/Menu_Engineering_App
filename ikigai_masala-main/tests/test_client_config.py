@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 from src.client.client_config import (
     ClientConfigLoader,
     _dedupe_preserve_order,
-    _expand_slot_ids,
     DEFAULT_THEME_MAP,
 )
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS
@@ -159,7 +158,7 @@ def _build_mock_sb():
 def loader():
     """Return a ClientConfigLoader backed by a mocked Supabase client."""
     mock_sb = _build_mock_sb()
-    with patch('src.client.client_config._get_supabase', return_value=mock_sb):
+    with patch('src.client.client_config.get_supabase', return_value=mock_sb):
         return ClientConfigLoader()
 
 
@@ -240,12 +239,3 @@ class TestClientConfigLoader:
 class TestHelpers:
     def test_dedupe_preserve_order(self):
         assert _dedupe_preserve_order(['a', 'b', 'a', 'c']) == ['a', 'b', 'c']
-
-    def test_expand_slot_ids_single(self):
-        assert _expand_slot_ids('veg_dry', 1) == ['veg_dry']
-
-    def test_expand_slot_ids_multi(self):
-        assert _expand_slot_ids('veg_dry', 2) == ['veg_dry__1', 'veg_dry__2']
-
-    def test_expand_slot_ids_zero(self):
-        assert _expand_slot_ids('veg_dry', 0) == []

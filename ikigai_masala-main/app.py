@@ -49,19 +49,15 @@ from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 
 def _flatten_solution(raw_solution: dict) -> tuple:
-    """Convert the nested API solution format."""
+    """Convert the nested API solution format into (flat_plan, day_types)."""
+    from src.solver._helpers import items_from_day
+
     flat = {}
     day_types = {}
     for date_key, day_data in raw_solution.items():
         if isinstance(day_data, dict):
-            items = day_data.get("items", {})
             day_types[date_key] = day_data.get("day_type", "")
-        else:
-            items = {}
-        flat[date_key] = {
-            slot_id: slot_val.get("item", "") if isinstance(slot_val, dict) else str(slot_val)
-            for slot_id, slot_val in items.items()
-        }
+        flat[date_key] = items_from_day(day_data)
     return flat, day_types
 
 

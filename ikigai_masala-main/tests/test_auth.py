@@ -130,7 +130,7 @@ def _make_response(data):
 
 
 class TestAuthManager:
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_authenticate_success(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -149,7 +149,7 @@ class TestAuthManager:
         assert user.email == "test@test.com"
         assert user.role == "admin"
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_authenticate_wrong_password(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -166,7 +166,7 @@ class TestAuthManager:
         user = auth.authenticate("test@test.com", "wrongpass")
         assert user is None
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_authenticate_user_not_found(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -176,7 +176,7 @@ class TestAuthManager:
         user = auth.authenticate("nobody@test.com", "pass")
         assert user is None
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_create_user_success(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -190,7 +190,7 @@ class TestAuthManager:
         assert user.email == "new@test.com"
         assert user.role == "user"
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_create_user_duplicate(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -200,7 +200,7 @@ class TestAuthManager:
         with pytest.raises(ValueError, match="already exists"):
             auth.create_user("dup@test.com", "Dup", "pass", "user")
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_create_user_invalid_role(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -209,7 +209,7 @@ class TestAuthManager:
         with pytest.raises(ValueError, match="Invalid role"):
             auth.create_user("x@test.com", "X", "pass", "invalid_role")
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_create_user_missing_fields(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -218,7 +218,7 @@ class TestAuthManager:
         with pytest.raises(ValueError, match="required"):
             auth.create_user("", "Name", "pass", "user")
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_list_users(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -233,7 +233,7 @@ class TestAuthManager:
         assert users[0].profile_name == "Alice"
         assert users[1].role == "user"
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_delete_user_success(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
@@ -243,7 +243,7 @@ class TestAuthManager:
         auth = AuthManager()
         auth.delete_user("del@test.com")  # should not raise
 
-    @patch("user_authentication.auth_manager._get_supabase")
+    @patch("user_authentication.auth_manager.get_supabase")
     def test_delete_user_not_found(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb

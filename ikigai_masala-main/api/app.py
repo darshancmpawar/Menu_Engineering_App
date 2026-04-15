@@ -24,14 +24,18 @@ from api.config import (
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
 from src.preprocessor import ExcelReader, DataCleanser
-from src.preprocessor.pool_builder import PoolBuilder
+from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
 from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: used in editor-metadata
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
-from src.solver._helpers import weekday_type_for_config as _weekday_type_cfg, strip_color_suffix
+from src.solver._helpers import (
+    weekday_type_for_config as _weekday_type_cfg,
+    strip_color_suffix,
+    items_from_day as _items_from_day,
+)
 from src.solver.solution_formatter import SolutionFormatter
 from src.solver.regenerator import MenuRegenerator
 
@@ -80,13 +84,13 @@ def _get_menu_rules():
     return _menu_rules
 
 
-def _build_history_context(df, client_name, start_date, num_days):
+def _build_history_context(df, client_name, start_date, weekday_dates):
     """Shared helper to build history-based solver inputs from Supabase."""
     import pandas as pd
-    from src.client.client_config import _get_supabase
+    from src.db import get_supabase
 
     hm = HistoryManager()
-    sb = _get_supabase()
+    sb = get_supabase()
     long_resp = sb.table('menu_history').select('*').execute()
     weeks_resp = sb.table('week_signatures').select('*').execute()
     long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
@@ -94,13 +98,12 @@ def _build_history_context(df, client_name, start_date, num_days):
     hm.load_from_dataframes(long_df, weeks_df)
     hm = hm.filter_by_client(client_name)
 
-    dates = _weekdays_from(start_date, num_days)
-    banned = hm.banned_items_by_date(dates, const_slots=CONST_SLOTS,
+    banned = hm.banned_items_by_date(weekday_dates, const_slots=CONST_SLOTS,
                                       repeatable_items=REPEATABLE_ITEM_BASES)
     ricebread_items = set(
         df.loc[df.get('is_rice_bread', 0) == 1, 'item'].tolist()
     ) if 'is_rice_bread' in df.columns else set()
-    rb_ban = hm.ricebread_ban_by_date(dates, ricebread_items)
+    rb_ban = hm.ricebread_ban_by_date(weekday_dates, ricebread_items)
     recent_sigs = hm.recent_week_signatures(start_date)
     return banned, rb_ban, recent_sigs
 
@@ -127,16 +130,15 @@ def _client_base_slots(client_cfg):
     for s in client_cfg.active_slots:
         if s in CONST_SLOTS:
             continue
-        base = s.split('__')[0] if '__' in s else s
+        base = _base_slot(s)
         if base not in seen:
             seen.add(base)
             result.append(base)
     return result
 
 
-def _build_solver_config(df, client_cfg, start_date, num_days, time_limit):
+def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates):
     """Shared helper to build SolverConfig."""
-    weekday_dates = _weekdays_from(start_date, num_days)
     active_base = _client_base_slots(client_cfg)
     return SolverConfig(
         days=num_days,
@@ -231,11 +233,10 @@ def plan_menu():
         rules = _get_menu_rules()
 
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
-
-        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, num_days)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit)
-
         weekday_dates = _weekdays_from(start_date, num_days)
+
+        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
+        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
         # Pre-solve pool validation
         pool_warnings = _validate_pools(pools, cfg, rules, weekday_dates)
@@ -300,21 +301,16 @@ def regenerate_cells():
         rules = _get_menu_rules()
 
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
+        weekday_dates = _weekdays_from(start_date, num_days)
 
-        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, num_days)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit)
+        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
+        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
-        # Convert string date keys to date objects
-        base_plan = {}
-        for d_str, slots in base_plan_raw.items():
-            # slots may be nested dicts from to_dict() — extract item strings
-            day_items = {}
-            for slot_id, val in slots.items():
-                if isinstance(val, dict):
-                    day_items[slot_id] = val.get('item', val.get('item_base', ''))
-                else:
-                    day_items[slot_id] = str(val)
-            base_plan[dt.date.fromisoformat(d_str)] = day_items
+        # Convert string date keys to date objects, extracting items from solution format
+        base_plan = {
+            dt.date.fromisoformat(d_str): _items_from_day(slots)
+            for d_str, slots in base_plan_raw.items()
+        }
 
         replace_mask = {}
         for d_str, slot_list in replace_slots_raw.items():
@@ -368,21 +364,10 @@ def save_plan():
             return jsonify({'success': False, 'error': 'week_start is required'}), 400
 
         # Convert string date keys to date objects, extracting items from solution format
-        week_plan = {}
-        for d_str, day_data in week_plan_raw.items():
-            # Handle solution format: {theme, day_type, items: {slot: {item, ...}}}
-            if isinstance(day_data, dict) and 'items' in day_data:
-                items = day_data['items']
-                day_items = {}
-                for slot_id, val in items.items():
-                    if isinstance(val, dict):
-                        day_items[slot_id] = val.get('item', val.get('item_base', ''))
-                    else:
-                        day_items[slot_id] = str(val)
-                week_plan[dt.date.fromisoformat(d_str)] = day_items
-            else:
-                # Simple format: {slot: item_string}
-                week_plan[dt.date.fromisoformat(d_str)] = day_data
+        week_plan = {
+            dt.date.fromisoformat(d_str): _items_from_day(day_data)
+            for d_str, day_data in week_plan_raw.items()
+        }
 
         dates = sorted(week_plan.keys())
         week_start = dt.date.fromisoformat(week_start_str)
@@ -394,8 +379,8 @@ def save_plan():
 
         hm = HistoryManager()
         # Get Supabase client for persistent storage
-        from src.client.client_config import _get_supabase
-        sb = _get_supabase()
+        from src.db import get_supabase
+        sb = get_supabase()
         hm.save(week_plan, dates, client_name, week_start, sig,
                 supabase_client=sb,
                 strip_color_fn=strip_color_suffix)
@@ -527,8 +512,8 @@ def validate_pools():
         df, pools = _get_menu_data()
         rules = _get_menu_rules()
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180)
         weekday_dates = _weekdays_from(start_date, num_days)
+        cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180, weekday_dates)
 
         warnings = _validate_pools(pools, cfg, rules, weekday_dates)
         return jsonify({'success': True, 'warnings': warnings})
