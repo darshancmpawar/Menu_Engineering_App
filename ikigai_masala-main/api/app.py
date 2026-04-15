@@ -20,7 +20,7 @@ from api.concurrency import solver_gate, get_stats as _solver_stats
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
-    HISTORY_LONG_PATH, HISTORY_WEEKS_PATH, API_HOST, API_PORT, DEBUG,
+    API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
 from src.preprocessor import ExcelReader, DataCleanser
@@ -81,26 +81,17 @@ def _get_menu_rules():
 
 
 def _build_history_context(df, client_name, start_date, num_days):
-    """Shared helper to build history-based solver inputs.
-
-    Loads from Supabase first, falls back to local CSV if Supabase is empty.
-    """
+    """Shared helper to build history-based solver inputs from Supabase."""
     import pandas as pd
     from src.client.client_config import _get_supabase
 
     hm = HistoryManager()
-    try:
-        sb = _get_supabase()
-        long_resp = sb.table('menu_history').select('*').execute()
-        weeks_resp = sb.table('week_signatures').select('*').execute()
-        long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
-        weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
-        if long_df is not None or weeks_df is not None:
-            hm.load_from_dataframes(long_df, weeks_df)
-        else:
-            hm.load(HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
-    except Exception:
-        hm.load(HISTORY_LONG_PATH, HISTORY_WEEKS_PATH)
+    sb = _get_supabase()
+    long_resp = sb.table('menu_history').select('*').execute()
+    weeks_resp = sb.table('week_signatures').select('*').execute()
+    long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
+    weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
+    hm.load_from_dataframes(long_df, weeks_df)
     hm = hm.filter_by_client(client_name)
 
     dates = _weekdays_from(start_date, num_days)
@@ -406,9 +397,8 @@ def save_plan():
         from src.client.client_config import _get_supabase
         sb = _get_supabase()
         hm.save(week_plan, dates, client_name, week_start, sig,
-                HISTORY_LONG_PATH, HISTORY_WEEKS_PATH,
-                strip_color_fn=strip_color_suffix,
-                supabase_client=sb)
+                supabase_client=sb,
+                strip_color_fn=strip_color_suffix)
 
         return jsonify({'success': True, 'message': 'Plan saved to history'})
 

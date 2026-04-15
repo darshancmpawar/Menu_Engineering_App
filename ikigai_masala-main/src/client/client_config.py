@@ -18,7 +18,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
@@ -157,11 +157,6 @@ class ClientConfigLoader:
         val = self._setting('constant_slots')
         return val if val else list(CONST_SLOTS)
 
-    @property
-    def fallback_menu_category(self) -> Optional[str]:
-        val = self._setting('fallback_menu_category')
-        return val if isinstance(val, str) else None
-
     # ---- client read methods -----------------------------------------------
 
     def get_client(self, name: str) -> ClientConfig:
@@ -217,9 +212,13 @@ class ClientConfigLoader:
         return self.get_slots_for_menu_category(cat_name)
 
     def get_slots_for_menu_category(self, cat_name: str) -> List[str]:
-        """Return slots for a menu_category; falls back to defaults."""
+        """Return slots for a menu_category. Raises ValueError when missing/empty."""
         if not cat_name:
-            return list(BASE_SLOTS)
+            raise ValueError(
+                "Client has no menu category assigned. "
+                "Please assign a menu category with slots to this client, "
+                "or delete the client."
+            )
         row = (
             self._sb.table('menu_categories')
             .select('slots')
@@ -227,13 +226,13 @@ class ClientConfigLoader:
             .maybe_single()
             .execute()
         )
-        if row.data and row.data.get('slots'):
-            return row.data['slots']
-        # Fallback: try the fallback category
-        fb = self.fallback_menu_category
-        if fb and fb != cat_name:
-            return self.get_slots_for_menu_category(fb)
-        return list(BASE_SLOTS)
+        if not row.data or not row.data.get('slots'):
+            raise ValueError(
+                f"Menu category '{cat_name}' has no slots configured. "
+                f"Please configure slots for this category in the "
+                f"customisation editor, or delete the client."
+            )
+        return row.data['slots']
 
     def get_slot_counts_for_client(self, name: str) -> Dict[str, int]:
         counts = {s: 1 for s in BASE_SLOTS}

@@ -45,7 +45,6 @@ FAKE_SETTINGS = {
     'core_min_one_slots': ['bread', 'rice', 'starter', 'veg_dry', 'welcome_drink',
                             'curd_side', 'nonveg_main', 'veg_gravy'],
     'constant_slots': ['white_rice', 'papad', 'pickle', 'chutney'],
-    'fallback_menu_category': 'menu_cat_3',
 }
 
 
@@ -176,9 +175,6 @@ class TestClientConfigLoader:
         cats = loader.menu_categories
         assert 'menu_cat_1' in cats
         assert 'bread' in cats['menu_cat_1']
-
-    def test_fallback_menu_category(self, loader):
-        assert loader.fallback_menu_category == 'menu_cat_3'
 
     def test_get_client_rippling(self, loader):
         cfg = loader.get_client('Rippling')

@@ -1,5 +1,8 @@
 """Tests for user authentication module — models, password hashing, AuthManager."""
 
+import hashlib
+import os
+
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -14,8 +17,17 @@ from user_authentication.models import (
 from user_authentication.auth_manager import (
     _hash_password,
     _verify_password,
+    _is_legacy_sha256,
     AuthManager,
 )
+
+
+def _legacy_sha256_hash(password: str, salt: str | None = None) -> str:
+    """Recreate the pre-bcrypt SHA-256 hash format for backward-compat tests."""
+    if salt is None:
+        salt = os.urandom(16).hex()
+    h = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+    return f"{salt}:{h}"
 
 
 # ---------------------------------------------------------------------------
@@ -59,24 +71,17 @@ class TestUser:
 # ---------------------------------------------------------------------------
 
 class TestPasswordHashing:
-    def test_hash_produces_salt_colon_hash(self):
+    def test_hash_is_bcrypt_format(self):
         result = _hash_password("secret")
-        assert ":" in result
-        salt, h = result.split(":", 1)
-        assert len(salt) == 32  # 16 bytes hex
-        assert len(h) == 64     # sha256 hex
+        assert result.startswith("$2")  # bcrypt prefix ($2b$ etc.)
 
-    def test_same_salt_produces_same_hash(self):
-        salt = "a" * 32
-        h1 = _hash_password("pass", salt)
-        h2 = _hash_password("pass", salt)
-        assert h1 == h2
+    def test_hash_is_randomized_per_call(self):
+        h1 = _hash_password("samepass")
+        h2 = _hash_password("samepass")
+        assert h1 != h2  # bcrypt salt is random
 
-    def test_different_passwords_differ(self):
-        salt = "b" * 32
-        h1 = _hash_password("pass1", salt)
-        h2 = _hash_password("pass2", salt)
-        assert h1 != h2
+    def test_different_passwords_produce_different_hashes(self):
+        assert _hash_password("pass1") != _hash_password("pass2")
 
     def test_verify_correct_password(self):
         stored = _hash_password("mypassword")
@@ -86,8 +91,26 @@ class TestPasswordHashing:
         stored = _hash_password("mypassword")
         assert _verify_password("wrongpassword", stored) is False
 
+    def test_verify_empty_hash(self):
+        assert _verify_password("any", "") is False
+
     def test_verify_malformed_hash(self):
         assert _verify_password("any", "nocolon") is False
+
+    # ---- Legacy SHA-256 backward-compat ----
+
+    def test_legacy_sha256_detected(self):
+        legacy = _legacy_sha256_hash("secret")
+        assert _is_legacy_sha256(legacy) is True
+        assert _is_legacy_sha256(_hash_password("secret")) is False
+
+    def test_verify_legacy_correct_password(self):
+        legacy = _legacy_sha256_hash("legacypass")
+        assert _verify_password("legacypass", legacy) is True
+
+    def test_verify_legacy_wrong_password(self):
+        legacy = _legacy_sha256_hash("legacypass")
+        assert _verify_password("wrong", legacy) is False
 
 
 # ---------------------------------------------------------------------------
