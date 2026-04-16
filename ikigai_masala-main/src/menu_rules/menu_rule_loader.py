@@ -27,6 +27,9 @@ from .ricebread_gap_menu_rule import RiceBreadGapMenuRule
 from .theme_slot_filter_rule import ThemeSlotFilterRule
 from .nonveg_dry_preference_rule import NonvegDryPreferenceRule
 from .nonveg_biryani_weekly_rule import NonvegBiryaniWeeklyRule
+from .ingredient_ban_rule import IngredientBanRule
+from .item_frequency_rule import ItemFrequencyRule
+from .slot_day_restriction_rule import SlotDayRestrictionRule
 
 
 class MenuRuleLoader:
@@ -50,6 +53,9 @@ class MenuRuleLoader:
         'theme_slot_filter': ThemeSlotFilterRule,
         'nonveg_dry_preference': NonvegDryPreferenceRule,
         'nonveg_biryani_weekly': NonvegBiryaniWeeklyRule,
+        'ingredient_ban': IngredientBanRule,
+        'item_frequency': ItemFrequencyRule,
+        'slot_day_restriction': SlotDayRestrictionRule,
     }
 
     def __init__(self, config_path: Optional[str] = None):
@@ -85,6 +91,49 @@ class MenuRuleLoader:
         if rule_type not in self.RULE_CLASSES:
             raise ValueError(f"Unknown rule type: {rule_type}")
         return self.RULE_CLASSES[rule_type](rule_config)
+
+    def load_for_client(
+        self, client_name: str, generic_rules: List[BaseMenuRule],
+    ) -> List[BaseMenuRule]:
+        """Return *generic_rules* plus any per-client rules for *client_name*.
+
+        Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call.  If the file is
+        missing or the client has no entry, returns *generic_rules* unchanged.
+        """
+        from api.config import CLIENT_RULES_CONFIG_PATH
+
+        path = Path(CLIENT_RULES_CONFIG_PATH)
+        if not path.exists():
+            return list(generic_rules)
+        try:
+            with open(path, 'r') as f:
+                blob = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to read client_rules.json: %s", exc)
+            return list(generic_rules)
+
+        client_block = blob.get(client_name)
+        if not client_block:
+            return list(generic_rules)
+
+        extra: List[BaseMenuRule] = []
+        for rule_cfg in client_block:
+            try:
+                rule = self._create_rule(rule_cfg)
+                if rule and rule.validate_config():
+                    extra.append(rule)
+                else:
+                    logger.warning(
+                        "Invalid per-client rule for %s: %s",
+                        client_name, rule_cfg.get('name'))
+            except (ValueError, KeyError, TypeError) as exc:
+                logger.warning(
+                    "Error creating per-client rule for %s: %s",
+                    client_name, exc)
+        logger.info(
+            "Loaded %d extra rule(s) for client '%s'",
+            len(extra), client_name)
+        return list(generic_rules) + extra
 
     def get_rules_by_type(self, rule_type: str) -> List[BaseMenuRule]:
         return [r for r in self.rules if r.rule_type.value == rule_type]

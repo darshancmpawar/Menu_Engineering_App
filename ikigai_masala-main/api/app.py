@@ -84,6 +84,18 @@ def _get_menu_rules():
     return _menu_rules
 
 
+def _rules_and_skip_for_client(client_name, dates):
+    """Return (rules, skip_cells) for a client, merging generic + per-client."""
+    generic = _get_menu_rules()
+    loader = MenuRuleLoader()
+    rules = loader.load_for_client(client_name, generic)
+    skip_cells = set()
+    for rule in rules:
+        if hasattr(rule, 'compute_skip_cells'):
+            skip_cells |= rule.compute_skip_cells(dates)
+    return rules, skip_cells
+
+
 def _build_history_context(df, client_name, start_date, weekday_dates):
     """Shared helper to build history-based solver inputs from Supabase."""
     import pandas as pd
@@ -152,7 +164,7 @@ def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekd
     )
 
 
-def _validate_pools(pools, solver_config, menu_rules, dates):
+def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
     """Check pool sizes after theme filtering vs required slot counts.
 
     Returns a list of warning strings for any (day, slot) where the filtered
@@ -172,6 +184,8 @@ def _validate_pools(pools, solver_config, menu_rules, dates):
     for d in dates:
         day_type = _weekday_type_cfg(d, solver_config.theme_map)
         for base in base_slots:
+            if skip_cells and (d, base) in skip_cells:
+                continue
             if base not in pools:
                 continue
             pool = pools[base].copy()
@@ -230,16 +244,17 @@ def plan_menu():
         client_cfg = loader.get_client(client_name)
 
         df, pools = _get_menu_data()
-        rules = _get_menu_rules()
 
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
         weekday_dates = _weekdays_from(start_date, num_days)
+
+        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
 
         banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
         cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
         # Pre-solve pool validation
-        pool_warnings = _validate_pools(pools, cfg, rules, weekday_dates)
+        pool_warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
 
         solver = MenuSolver(
             pools=pools,
@@ -248,6 +263,7 @@ def plan_menu():
             banned_by_date=banned,
             ricebread_ban_day=rb_ban,
             recent_sigs=recent_sigs,
+            skip_cells=skip_cells,
         )
 
         week_plan, plan_dates = solver.solve()
@@ -298,10 +314,11 @@ def regenerate_cells():
         client_cfg = loader.get_client(client_name)
 
         df, pools = _get_menu_data()
-        rules = _get_menu_rules()
 
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
         weekday_dates = _weekdays_from(start_date, num_days)
+
+        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
 
         banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
         cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
@@ -324,6 +341,7 @@ def regenerate_cells():
             banned_by_date=banned,
             ricebread_ban_day=rb_ban,
             recent_sigs=recent_sigs,
+            skip_cells=skip_cells,
         )
 
         week_plan, plan_dates = regen.regenerate(base_plan, replace_mask)
@@ -510,12 +528,12 @@ def validate_pools():
         loader = _get_client_loader()
         client_cfg = loader.get_client(client_name)
         df, pools = _get_menu_data()
-        rules = _get_menu_rules()
         start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
         weekday_dates = _weekdays_from(start_date, num_days)
+        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
         cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180, weekday_dates)
 
-        warnings = _validate_pools(pools, cfg, rules, weekday_dates)
+        warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
         return jsonify({'success': True, 'warnings': warnings})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -41,6 +41,10 @@ class MenuRuleType(Enum):
     # Soft constraints
     THEME_STARTER_PREFERENCE = "theme_starter_preference"
     THEME_FALLBACK_PENALTY = "theme_fallback_penalty"
+    # Per-client custom rules
+    INGREDIENT_BAN = "ingredient_ban"
+    ITEM_FREQUENCY = "item_frequency"
+    SLOT_DAY_RESTRICTION = "slot_day_restriction"
 
 
 class BaseMenuRule(ABC):

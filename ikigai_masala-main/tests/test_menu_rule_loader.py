@@ -82,3 +82,48 @@ class TestMenuRuleLoader:
         r = repr(rules[0])
         assert 'PremiumMenuRule' in r
         assert 'test_repr' in r
+
+
+class TestLoadForClient:
+    """Tests for MenuRuleLoader.load_for_client()."""
+
+    def test_missing_file_returns_generic(self, monkeypatch):
+        monkeypatch.setattr(
+            'api.config.CLIENT_RULES_CONFIG_PATH', '/nonexistent/nope.json')
+        loader = MenuRuleLoader()
+        generic = [object()]  # dummy rule
+        result = loader.load_for_client('Tekion', generic)
+        assert result == generic
+
+    def test_unknown_client_returns_generic(self):
+        loader = MenuRuleLoader()
+        generic = [object()]
+        result = loader.load_for_client('UnknownClientXYZ', generic)
+        assert result == generic
+
+    def test_tekion_seed_loads_3_rules(self):
+        from src.menu_rules.ingredient_ban_rule import IngredientBanRule
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
+        loader = MenuRuleLoader()
+        result = loader.load_for_client('Tekion', [])
+        assert len(result) == 3
+        assert isinstance(result[0], IngredientBanRule)
+        assert isinstance(result[1], ItemFrequencyRule)
+        assert isinstance(result[2], SlotDayRestrictionRule)
+
+    def test_invalid_rule_is_skipped(self, tmp_path):
+        import json
+        bad_file = tmp_path / 'client_rules.json'
+        bad_file.write_text(json.dumps({
+            "TestClient": [
+                {"name": "bad", "type": "nonexistent_type"},
+                {"name": "good", "type": "ingredient_ban", "ingredients": ["egg"]},
+            ]
+        }))
+        from unittest.mock import patch
+        with patch('api.config.CLIENT_RULES_CONFIG_PATH', str(bad_file)):
+            loader = MenuRuleLoader()
+            result = loader.load_for_client('TestClient', [])
+        assert len(result) == 1
+        assert result[0].name == 'good'

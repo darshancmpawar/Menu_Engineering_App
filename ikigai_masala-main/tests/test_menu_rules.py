@@ -476,3 +476,133 @@ class TestNonvegDryPreferenceRule:
         model = cp_model.CpModel()
         rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
         rule.apply(model, {}, None, {})
+
+
+# ---------------------------------------------------------------------------
+# Per-client custom rules
+# ---------------------------------------------------------------------------
+
+class TestIngredientBanRule:
+    """Tests for IngredientBanRule."""
+
+    def test_exact_match_case_insensitive(self):
+        from src.menu_rules.ingredient_ban_rule import IngredientBanRule
+        rule = IngredientBanRule({
+            "name": "no_mushroom", "type": "ingredient_ban",
+            "ingredients": ["mushroom"],
+        })
+        pool = pd.DataFrame({
+            'item': ['mushroom_biryani', 'corn_pulao', 'babycorn_fry', 'paneer_tikka'],
+            'key_ingredient': ['Mushroom', 'corn', 'babycorn', 'paneer'],
+        })
+        d = dt.date(2026, 4, 20)
+        out = rule.pre_filter_pool(pool, d, 'rice', 'mix', {})
+        assert sorted(out['item'].tolist()) == ['babycorn_fry', 'corn_pulao', 'paneer_tikka']
+
+    def test_missing_column_is_noop(self):
+        from src.menu_rules.ingredient_ban_rule import IngredientBanRule
+        rule = IngredientBanRule({
+            "name": "no_mushroom", "type": "ingredient_ban",
+            "ingredients": ["mushroom"],
+        })
+        pool = pd.DataFrame({'item': ['a', 'b'], 'sub_category': ['x', 'y']})
+        d = dt.date(2026, 4, 20)
+        out = rule.pre_filter_pool(pool, d, 'rice', 'mix', {})
+        assert len(out) == 2
+
+    def test_empty_ingredients_invalid(self):
+        from src.menu_rules.ingredient_ban_rule import IngredientBanRule
+        rule = IngredientBanRule({
+            "name": "empty", "type": "ingredient_ban",
+            "ingredients": [],
+        })
+        assert rule.validate_config() is False
+
+
+class TestItemFrequencyRule:
+    """Tests for ItemFrequencyRule."""
+
+    def test_validate_rejects_multi_selector(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "bad", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice", "item": "khichdi"},
+            "max_per_week": 1,
+        })
+        assert rule.validate_config() is False
+
+    def test_validate_requires_min_or_max(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "bad", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice"},
+        })
+        assert rule.validate_config() is False
+
+    def test_validate_accepts_good_config(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "ok", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice"},
+            "min_per_week": 1, "max_per_week": 1,
+        })
+        assert rule.validate_config() is True
+
+    def test_row_matches_flag_selector(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "f", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice"},
+            "max_per_week": 1,
+        })
+        assert rule._row_matches({'is_liquid_rice': 1}) is True
+        assert rule._row_matches({'is_liquid_rice': 0}) is False
+        assert rule._row_matches({}) is False
+
+    def test_row_matches_sub_category_selector(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "s", "type": "item_frequency",
+            "selector": {"sub_category": "south_one_pot_rice"},
+            "max_per_week": 2,
+        })
+        assert rule._row_matches({'sub_category': 'south_one_pot_rice'}) is True
+        assert rule._row_matches({'sub_category': 'north_rich_pulao'}) is False
+
+
+class TestSlotDayRestrictionRule:
+    """Tests for SlotDayRestrictionRule."""
+
+    def test_compute_skip_cells(self):
+        from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
+        rule = SlotDayRestrictionRule({
+            "name": "nv_mwf", "type": "slot_day_restriction",
+            "base_slot": "nonveg_main",
+            "allowed_weekdays": ["mon", "wed", "fri"],
+        })
+        # 2026-04-20 is a Monday
+        dates = [dt.date(2026, 4, 20 + i) for i in range(5)]  # Mon-Fri
+        skipped = rule.compute_skip_cells(dates)
+        assert skipped == {
+            (dt.date(2026, 4, 21), 'nonveg_main'),  # Tue
+            (dt.date(2026, 4, 23), 'nonveg_main'),  # Thu
+        }
+
+    def test_tokens_case_insensitive(self):
+        from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
+        rule = SlotDayRestrictionRule({
+            "name": "t", "type": "slot_day_restriction",
+            "base_slot": "nonveg_main",
+            "allowed_weekdays": ["Mon", "WED", "Friday"],
+        })
+        assert rule.validate_config() is True
+        assert rule.allowed_weekdays == {0, 2, 4}
+
+    def test_empty_weekdays_invalid(self):
+        from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
+        rule = SlotDayRestrictionRule({
+            "name": "bad", "type": "slot_day_restriction",
+            "base_slot": "nonveg_main",
+            "allowed_weekdays": [],
+        })
+        assert rule.validate_config() is False

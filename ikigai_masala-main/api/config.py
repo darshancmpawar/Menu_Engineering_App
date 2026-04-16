@@ -17,6 +17,11 @@ MENU_RULES_CONFIG_PATH = os.getenv(
     str(BASE_DIR / 'data/configs/indian_menu_rules.json')
 )
 
+CLIENT_RULES_CONFIG_PATH = os.getenv(
+    'CLIENT_RULES_CONFIG_PATH',
+    str(BASE_DIR / 'data/configs/client_rules.json')
+)
+
 MIN_TIME_LIMIT_SECONDS = 10
 MAX_TIME_LIMIT_SECONDS = 600
 
