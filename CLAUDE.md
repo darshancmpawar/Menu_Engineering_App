@@ -97,6 +97,9 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `ricebread_gap_menu_rule.py` | pre-filter | enforce N-day gap |
 | `nonveg_biryani_weekly_rule.py` | pre-filter | ≤1 nonveg biryani/week |
 | `nonveg_dry_preference_rule.py` | pre-filter | prefer dry nonveg certain days |
+| `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient`) |
+| `item_frequency_rule.py` | CP-SAT | per-client weekly frequency cap via selector (flag/sub_category/item/key_ingredient) |
+| `slot_day_restriction_rule.py` | skip-cells | per-client: skip a slot on certain weekdays (e.g. no nonveg_main on Tue/Thu) |
 
 ### 4.3 `src/preprocessor/` — data pipeline
 Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `PoolBuilder.build_pools` → `ThemeFilter` (optional).
@@ -149,6 +152,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 |---|---|
 | `ikigai_masala-main/data/raw/menu_items.xlsx` | master ontology (~530 items; cols: item, course_type, sub_category, cuisine_family, item_color, key_ingredient, is_premium_veg, is_chinese_*, is_*_biryani, …) |
 | `ikigai_masala-main/data/configs/indian_menu_rules.json` | rule config consumed by `MenuRuleLoader` |
+| `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
 | `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema |
 | `ikigai_masala-main/scripts/create_history_tables.sql` | history + signatures schema |
@@ -231,6 +235,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 6. **History split**: `menu_history` is item-level; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, users, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.
+9. **Per-client custom rules**: `data/configs/client_rules.json` stores extra rules per client (keyed by client name). Loaded fresh per request by `MenuRuleLoader.load_for_client()`. Three types: `ingredient_ban` (pre-filter), `item_frequency` (CP-SAT cardinality cap), `slot_day_restriction` (skip slot on certain weekdays via `skip_cells` kwarg on `MenuSolver`). Generic rules are cached globally; per-client rules are appended per request.
 
 ---
 

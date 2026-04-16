@@ -51,6 +51,7 @@ class MenuRegenerator:
         banned_by_date=None,
         ricebread_ban_day=None,
         recent_sigs=None,
+        skip_cells=None,
     ):
         self.pools = pools
         self.df = df
@@ -59,6 +60,7 @@ class MenuRegenerator:
         self.banned_by_date = banned_by_date or {}
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
+        self.skip_cells = skip_cells or set()
 
     def regenerate(
         self,
@@ -81,7 +83,7 @@ class MenuRegenerator:
             return base_plan, dates
 
         from src.constants import BASE_SLOT_NAMES
-        from ..preprocessor.pool_builder import _expand_slots_in_order
+        from ..preprocessor.pool_builder import _expand_slots_in_order, _base_slot
         expanded_slots = _expand_slots_in_order(
             BASE_SLOT_NAMES, self.cfg.slot_counts or {s: 1 for s in BASE_SLOT_NAMES}
         )
@@ -90,6 +92,8 @@ class MenuRegenerator:
         locked = {}
         for d in dates:
             for slot_id in expanded_slots:
+                if (d, _base_slot(slot_id)) in self.skip_cells:
+                    continue
                 if slot_id not in replace_mask.get(d, set()):
                     val = base_plan.get(d, {}).get(slot_id, '')
                     locked[d, slot_id] = _norm_str(_strip_color_suffix(val))
@@ -98,6 +102,8 @@ class MenuRegenerator:
         forbidden = {}
         for d, slots in replace_mask.items():
             for slot_id in slots:
+                if (d, _base_slot(slot_id)) in self.skip_cells:
+                    continue
                 old_item = _norm_str(_strip_color_suffix(base_plan.get(d, {}).get(slot_id, '')))
                 if old_item:
                     forbidden[d, slot_id] = {old_item}
@@ -109,6 +115,7 @@ class MenuRegenerator:
             banned_by_date=self.banned_by_date,
             ricebread_ban_day=self.ricebread_ban_day,
             recent_sigs=self.recent_sigs,
+            skip_cells=self.skip_cells,
         )
 
         # Compute similarity scores

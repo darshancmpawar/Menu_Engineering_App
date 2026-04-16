@@ -224,6 +224,7 @@ class MenuSolver:
         banned_by_date: Optional[Dict[dt.date, Set[str]]] = None,
         ricebread_ban_day: Optional[Dict[dt.date, bool]] = None,
         recent_sigs: Optional[Set[str]] = None,
+        skip_cells: Optional[Set[Tuple[dt.date, str]]] = None,
     ):
         self.pools = pools
         self.cfg = solver_config
@@ -231,6 +232,7 @@ class MenuSolver:
         self.banned_by_date = banned_by_date or {}
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
+        self.skip_cells = skip_cells or set()
 
     def solve(self, locked=None, forbidden=None, similarity=None) -> Tuple[Dict, List[dt.date]]:
         """
@@ -307,6 +309,8 @@ class MenuSolver:
         for di, d in enumerate(dates):
             for slot_id in expanded_slots:
                 base = _base_slot(slot_id)
+                if (d, base) in self.skip_cells:
+                    continue
                 pool2, pref_mask, day_type = cache[di, slot_id]
 
                 if len(pool2) == 0:
