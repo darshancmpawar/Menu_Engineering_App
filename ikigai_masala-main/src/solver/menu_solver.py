@@ -157,7 +157,26 @@ def _min_distinct_for_day(cfg: SolverConfig, day_type: str) -> int:
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
+    """Linear-scan lookup — kept for tests / ad-hoc use. Production uses
+    ``_make_find_cells`` which backs the lookup with a dict."""
     return [c for c in cells if c.d_idx == di and c.base_slot == base_slot]
+
+
+def _make_find_cells(cells: List[_Cell]):
+    """Build an O(1) ``(d_idx, base_slot) -> [cells]`` lookup as a closure.
+
+    Preserves the ``(cells, di, base_slot)`` signature used by rule modules;
+    the first argument is ignored because the index already closes over the
+    cell list.
+    """
+    index: Dict[Tuple[int, str], List[_Cell]] = {}
+    for c in cells:
+        index.setdefault((c.d_idx, c.base_slot), []).append(c)
+
+    def _find(_cells, di: int, base_slot: str) -> List[_Cell]:
+        return index.get((di, base_slot), [])
+
+    return _find
 
 
 def _link_any(model: cp_model.CpModel, lits: List, y) -> None:
@@ -450,7 +469,7 @@ class MenuSolver:
             known_welcome_colors=known_welcome_colors,
             cfg=self.cfg,
             recent_sigs=self.recent_sigs,
-            find_cells_fn=_find_cells,
+            find_cells_fn=_make_find_cells(cells),
             link_any_fn=_link_any,
         )
         context = solver_ctx.as_dict()
