@@ -14,10 +14,11 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from src.menu_rules.item_cooldown_menu_rule import ItemCooldownMenuRule
-from src.menu_rules.ricebread_gap_menu_rule import RiceBreadGapMenuRule
-from src.menu_rules.theme_slot_filter_rule import ThemeSlotFilterRule, _chinese_side_mask
-from src.menu_rules.nonveg_dry_preference_rule import NonvegDryPreferenceRule
+from src.menu_rules.cooldown_rules import (
+    ItemCooldownMenuRule, RiceBreadGapMenuRule,
+)
+from src.menu_rules.theme_rules import ThemeSlotFilterRule, _chinese_side_mask
+from src.menu_rules.nonveg_rules import NonvegDryPreferenceRule
 from src.menu_rules.base_menu_rule import BaseMenuRule
 
 

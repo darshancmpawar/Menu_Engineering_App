@@ -14,12 +14,13 @@ from ortools.sat.python import cp_model
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.curd_side_menu_rule import CurdSideMenuRule
 from src.menu_rules.premium_menu_rule import PremiumMenuRule
-from src.menu_rules.theme_day_menu_rule import ThemeDayMenuRule
-from src.menu_rules.welcome_drink_color_menu_rule import WelcomeDrinkColorMenuRule
-from src.menu_rules.week_signature_cooldown_menu_rule import (
+from src.menu_rules.theme_rules import (
+    ThemeDayMenuRule, ThemeStarterPreferenceRule,
+)
+from src.menu_rules.color_rules import WelcomeDrinkColorMenuRule
+from src.menu_rules.cooldown_rules import (
     WeekSignatureCooldownMenuRule, _parse_signature_to_expected_map,
 )
-from src.menu_rules.theme_starter_preference_rule import ThemeStarterPreferenceRule
 
 
 # ---------------------------------------------------------------------------
