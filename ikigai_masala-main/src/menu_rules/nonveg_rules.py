@@ -92,9 +92,6 @@ class NonvegDryPreferenceRule(BaseMenuRule):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.NONVEG_DRY_PREFERENCE
 
-    def validate_config(self) -> bool:
-        return True
-
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
                         filter_context: Dict[str, Any]) -> pd.DataFrame:

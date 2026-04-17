@@ -140,9 +140,6 @@ class WeekSignatureCooldownMenuRule(BaseMenuRule):
         self.rule_type = MenuRuleType.WEEK_SIGNATURE_COOLDOWN
         self.cooldown_days = rule_config.get('cooldown_days', 30)
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         cells = context.get('cells', [])

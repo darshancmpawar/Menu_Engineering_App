@@ -74,10 +74,15 @@ class BaseMenuRule(ABC):
         """
         pass
 
-    @abstractmethod
     def validate_config(self) -> bool:
-        """Validate the menu rule configuration."""
-        pass
+        """Validate the menu rule configuration.
+
+        Default: accept any config. Override in subclasses that have real
+        validation (e.g. required fields, value ranges, enum membership).
+        Rules with no config surface beyond the base keys should *not*
+        override this method — that's just noise.
+        """
+        return True
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,

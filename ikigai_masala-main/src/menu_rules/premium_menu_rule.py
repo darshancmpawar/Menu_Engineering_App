@@ -26,9 +26,6 @@ class PremiumMenuRule(BaseMenuRule):
         self.min_per_horizon = rule_config.get('min_per_horizon', 1)
         self.max_per_horizon = rule_config.get('max_per_horizon', 2)
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         cfg = context.get('cfg')

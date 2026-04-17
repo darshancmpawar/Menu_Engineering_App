@@ -48,9 +48,6 @@ class ThemeDayMenuRule(BaseMenuRule):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.THEME_DAY
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         day_types = context.get('day_types', [])
@@ -117,9 +114,6 @@ class ThemeSlotFilterRule(BaseMenuRule):
         self.rule_type = MenuRuleType.THEME_SLOT_FILTER
         exempt = rule_config.get('exempt_slots')
         self.exempt_slots: Set[str] = set(exempt) if exempt else set(EXEMPT_FROM_CUISINE)
-
-    def validate_config(self) -> bool:
-        return True
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
@@ -218,9 +212,6 @@ class ThemeStarterPreferenceRule(BaseMenuRule):
         self.rule_type = MenuRuleType.THEME_STARTER_PREFERENCE
         self.bonus_weight = rule_config.get('bonus_weight', 1000000)
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         pass  # This rule contributes to objective only
@@ -269,9 +260,6 @@ class ThemeFallbackPenaltyRule(BaseMenuRule):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.THEME_FALLBACK_PENALTY
         self.penalty = rule_config.get('penalty', 2000000)
-
-    def validate_config(self) -> bool:
-        return True
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:

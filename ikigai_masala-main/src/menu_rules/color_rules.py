@@ -172,9 +172,6 @@ class WelcomeDrinkColorMenuRule(BaseMenuRule):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.WELCOME_DRINK_COLOR
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         dates = context.get('dates', [])
