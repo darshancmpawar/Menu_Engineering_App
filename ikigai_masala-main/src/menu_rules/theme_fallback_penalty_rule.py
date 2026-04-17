@@ -1,14 +1,16 @@
 """
 Theme fallback penalty soft constraint.
 
-Penalizes non-theme items in starter/veg_dry slots.
-The penalty is applied via theme_fallback_bools already computed
-in _build_decision_variables, so this rule is a no-op for apply()
-but the penalty is built into the solver objective directly.
+Penalizes non-theme items in starter/veg_dry slots. The solver exposes
+``theme_fallback_bools`` on the context — one bool per (day, slot) that is
+true when the chosen item is a non-theme fallback. This rule contributes a
+negative objective term proportional to their sum.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
+
 from ortools.sat.python import cp_model
+
 from .base_menu_rule import BaseMenuRule, MenuRuleType
 
 
@@ -32,4 +34,11 @@ class ThemeFallbackPenaltyRule(BaseMenuRule):
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
-        pass  # Penalty is applied via cfg.theme_fallback_penalty in solver objective
+        return
+
+    def get_objective_terms(self, model: cp_model.CpModel,
+                            context: Dict[str, Any]) -> List:
+        fallback_bools = context.get('theme_fallback_bools') or []
+        if not fallback_bools:
+            return []
+        return [sum(fallback_bools) * (-abs(int(self.penalty)))]

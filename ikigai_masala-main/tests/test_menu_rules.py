@@ -196,6 +196,24 @@ class TestThemeFallbackPenaltyRule:
         terms = rule.get_objective_terms(model, {})
         assert terms == []
 
+    def test_get_objective_terms_with_fallback_bools(self):
+        from ortools.sat.python import cp_model
+        model = cp_model.CpModel()
+        bools = [model.NewBoolVar(f"fb_{i}") for i in range(3)]
+        rule = ThemeFallbackPenaltyRule({
+            "name": "pen", "type": "theme_fallback_penalty", "penalty": 500,
+        })
+        terms = rule.get_objective_terms(model, {"theme_fallback_bools": bools})
+        assert len(terms) == 1
+        # Negative coefficient; actual sign+magnitude verified via the model solve.
+        model.Maximize(sum(terms))
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 1
+        status = solver.Solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        # Maximizing a negative sum drives every fallback bool to 0.
+        assert all(solver.Value(b) == 0 for b in bools)
+
 
 # --- UniqueItemsMenuRule ---
 

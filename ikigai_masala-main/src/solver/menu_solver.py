@@ -50,8 +50,6 @@ DEFAULT_SEED_MULT_FACTOR = 1000  # seed formula: base + mult * FACTOR + restart 
 DEFAULT_SEED_RESTART_STEP = 17
 
 # Penalty/bonus weights
-THEME_FALLBACK_PENALTY = 2_000_000  # penalty for non-theme items when theme available
-THEME_STARTER_PREFERENCE_BONUS = 1_000_000  # bonus for theme-matching starters
 REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
 REGEN_CAP_MULTIPLIER = 1.5  # candidate cap multiplier for regeneration
 
@@ -100,7 +98,6 @@ class SolverConfig:
     f_raita: Optional[str] = 'is_raita'
     # Theme preferences
     prefer_theme_starter: bool = True
-    theme_fallback_penalty: int = THEME_FALLBACK_PENALTY
     # Solver strategy
     cap_by_slot: Dict[str, int] = field(default_factory=lambda: dict(DEFAULT_CAP_BY_SLOT))
     cap_default: int = DEFAULT_CAP
@@ -471,8 +468,7 @@ class MenuSolver:
                 logger.warning("Rule %s failed: %s", rule.name, e)
 
         # Build objective
-        self._build_objective(model, cells, rng, similarity,
-                              theme_fallback_bools, context)
+        self._build_objective(model, cells, rng, similarity, context)
 
         # Solve
         solver = cp_model.CpSolver()
@@ -635,8 +631,7 @@ class MenuSolver:
 
     # ----- Objective -----
 
-    def _build_objective(self, model, cells, rng, similarity,
-                         theme_fallback_bools, context):
+    def _build_objective(self, model, cells, rng, similarity, context):
         obj_terms = []
 
         if similarity:
@@ -662,9 +657,6 @@ class MenuSolver:
                 obj_terms.extend(terms)
             except (ValueError, KeyError, AttributeError):
                 logger.warning("Rule %s objective terms failed", getattr(rule, 'name', '?'))
-
-        if theme_fallback_bools:
-            obj_terms.append(sum(theme_fallback_bools) * (-abs(int(self.cfg.theme_fallback_penalty))))
 
         if obj_terms:
             model.Maximize(sum(obj_terms))
