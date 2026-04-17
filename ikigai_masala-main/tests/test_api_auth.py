@@ -9,6 +9,7 @@ import pytest
 
 pytest.importorskip("flask", reason="Flask not installed")
 
+import api.auth as api_auth
 from api.app import app
 from api.auth import issue_token
 from user_authentication.models import ROLE_ADMIN, ROLE_SUPER_ADMIN, ROLE_USER
@@ -19,6 +20,12 @@ def client():
     app.config['TESTING'] = True
     with app.test_client() as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _auth_secret(monkeypatch):
+    """Ensure bearer token tests use an explicit signing secret."""
+    monkeypatch.setattr(api_auth, "API_SECRET_KEY", "test-secret-key")
 
 
 def _bearer(role: str) -> dict:
@@ -99,3 +106,10 @@ class TestLoginEndpointShape:
         resp = client.post('/api/v1/auth/login', json={})
         assert resp.status_code == 400
         assert resp.get_json()["success"] is False
+
+
+class TestSecretKeySafety:
+    def test_issue_token_fails_when_secret_unset(self, monkeypatch):
+        monkeypatch.setattr(api_auth, "API_SECRET_KEY", "")
+        with pytest.raises(RuntimeError, match="API_SECRET_KEY is required"):
+            issue_token("x@test.com", ROLE_USER)
