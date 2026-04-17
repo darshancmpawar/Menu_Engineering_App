@@ -448,7 +448,32 @@ class MenuSolver:
          day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
          monday_south_lits, monday_north_lits, theme_fallback_bools) = build_result
 
-        # Build rule context (typed dataclass, passed as dict for backward compat)
+        context = self._build_context(
+            cells, dates, day_types,
+            item_to_vars, day_color_vars, day_rice_color_vars,
+            day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+            monday_south_lits, monday_north_lits, theme_fallback_bools,
+            known_colors, known_welcome_colors,
+        )
+
+        # Built-in color constraints (uniqueness is handled by UniqueItemsMenuRule)
+        self._add_color_constraints(model, dates, day_types, known_colors,
+                                    day_color_vars, day_rice_color_vars,
+                                    day_gravy_color_vars)
+
+        self._apply_rules_and_objective(model, cells, rng, similarity, context)
+
+        solver = self._configure_and_solve(model)
+        return self._extract_solution_rows(solver, cells, dates)
+
+    def _build_context(
+        self, cells, dates, day_types,
+        item_to_vars, day_color_vars, day_rice_color_vars,
+        day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+        monday_south_lits, monday_north_lits, theme_fallback_bools,
+        known_colors, known_welcome_colors,
+    ) -> Dict:
+        """Assemble the rule-facing context (typed dataclass, exposed as dict)."""
         solver_ctx = SolverContext(
             cells=cells,
             dates=dates,
@@ -469,24 +494,21 @@ class MenuSolver:
             find_cells_fn=_make_find_cells(cells),
             link_any_fn=_link_any,
         )
-        context = solver_ctx.as_dict()
+        return solver_ctx.as_dict()
 
-        # Apply built-in color constraints (uniqueness is handled by UniqueItemsMenuRule)
-        self._add_color_constraints(model, dates, day_types, known_colors,
-                                    day_color_vars, day_rice_color_vars,
-                                    day_gravy_color_vars)
-
-        # Apply user-defined rules
+    def _apply_rules_and_objective(self, model, cells, rng, similarity, context) -> None:
+        """Run every rule's ``apply`` then assemble the objective."""
         for rule in self.menu_rules:
             try:
                 rule.apply(model, {}, None, context)
             except (ValueError, KeyError, AttributeError) as e:
                 logger.warning("Rule %s failed: %s", rule.name, e)
-
-        # Build objective
         self._build_objective(model, cells, rng, similarity, context)
 
-        # Solve
+    def _configure_and_solve(self, model) -> cp_model.CpSolver:
+        """Set CP-SAT parameters, solve, and translate infeasibility into a
+        RuntimeError. Returns the solver so callers can read variable values.
+        """
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(self.cfg.time_limit_sec)
         solver.parameters.random_seed = int(self.cfg.seed)
@@ -501,16 +523,15 @@ class MenuSolver:
         solver.parameters.cp_model_presolve = True
 
         status = solver.Solve(model)
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            if status == cp_model.INFEASIBLE:
-                raise RuntimeError('No feasible plan found (INFEASIBLE).')
-            if status == cp_model.UNKNOWN:
-                raise RuntimeError('No feasible plan found (TIME LIMIT).')
-            if status == cp_model.MODEL_INVALID:
-                raise RuntimeError('CP-SAT model invalid.')
-            raise RuntimeError(f'CP-SAT failed with status={status}.')
-
-        return self._extract_solution_rows(solver, cells, dates)
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return solver
+        if status == cp_model.INFEASIBLE:
+            raise RuntimeError('No feasible plan found (INFEASIBLE).')
+        if status == cp_model.UNKNOWN:
+            raise RuntimeError('No feasible plan found (TIME LIMIT).')
+        if status == cp_model.MODEL_INVALID:
+            raise RuntimeError('CP-SAT model invalid.')
+        raise RuntimeError(f'CP-SAT failed with status={status}.')
 
     def _collect_known_colors(self, cells: List[_Cell]) -> Tuple[List[str], List[str]]:
         known_colors: Set[str] = set()
