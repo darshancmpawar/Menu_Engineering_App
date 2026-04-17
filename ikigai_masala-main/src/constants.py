@@ -44,6 +44,15 @@ PULAO_SUBCATS: Set[str] = {
 
 THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry'}
 
+# Items that must never appear in a flavored-rice slot — plain/steamed rice
+# variants belong in the CONST_SLOTS 'white_rice' slot instead.
+RICE_EXCLUDE_ITEMS: Set[str] = {
+    'steamed_rice', 'steamed rice',
+    'white_rice', 'white rice',
+    'steam rice',
+    'plain_rice', 'plain rice',
+}
+
 DISPLAY_SLOT_NAME: Dict[str, str] = {
     'rice': 'Flavor Rice',
     'healthy_rice': 'Healthy Rice',

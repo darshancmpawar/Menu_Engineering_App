@@ -22,7 +22,7 @@ from ._helpers import weekday_type_for_config as _weekday_type_cfg
 from ..menu_rules.base_menu_rule import BaseMenuRule
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
-    THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
+    RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
 )
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
@@ -79,11 +79,8 @@ class SolverConfig:
     premium_min_per_horizon: int = 1
     premium_max_per_horizon: int = 2
     premium_max_per_day: int = 1
-    # Rice exclusions
-    rice_exclude_items: Set[str] = field(default_factory=lambda: {
-        'steamed_rice', 'steamed rice', 'white_rice', 'white rice',
-        'steam rice', 'plain rice', 'plain_rice',
-    })
+    # Rice exclusions — see src.constants.RICE_EXCLUDE_ITEMS.
+    rice_exclude_items: Set[str] = field(default_factory=lambda: set(RICE_EXCLUDE_ITEMS))
     # Cuisine theme settings
     cuisine_col: str = 'cuisine_family'
     cuisine_south_value: str = 'south_indian'
