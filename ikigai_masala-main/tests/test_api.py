@@ -10,6 +10,7 @@ import pytest
 
 flask = pytest.importorskip("flask", reason="Flask not installed")
 from api.app import app
+import api.auth as api_auth
 from api.auth import issue_token
 from user_authentication.models import ROLE_SUPER_ADMIN
 
@@ -20,6 +21,12 @@ def client():
     app.config['TESTING'] = True
     with app.test_client() as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _auth_secret(monkeypatch):
+    """Ensure API token signing has a deterministic test secret."""
+    monkeypatch.setattr(api_auth, "API_SECRET_KEY", "test-secret-key")
 
 
 @pytest.fixture

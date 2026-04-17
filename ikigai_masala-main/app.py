@@ -216,15 +216,11 @@ with st.sidebar:
             st.rerun()
         st.divider()
 
-    if not backend_ok:
-        st.error("Backend API failed to start.")
+    try:
+        clients_list = client.list_clients()
+    except (ConnectionError, OSError, ValueError):
         clients_list = []
-    else:
-        try:
-            clients_list = client.list_clients()
-        except (ConnectionError, OSError, ValueError):
-            clients_list = []
-            st.error("Cannot reach API.")
+        st.error("Cannot reach API.")
 
     selected_client = st.selectbox("Client",
         clients_list if clients_list else ["(no clients)"])

@@ -21,7 +21,6 @@ from user_authentication.models import ROLE_ADMIN, ROLE_SUPER_ADMIN, ROLE_USER
 logger = logging.getLogger(__name__)
 
 _SALT = "menu-api-auth-v1"
-_DEV_FALLBACK_KEY = "dev-insecure-do-not-use-in-production"
 
 # Role hierarchy: higher rank implies all lower privileges.
 _ROLE_RANK = {ROLE_USER: 1, ROLE_ADMIN: 2, ROLE_SUPER_ADMIN: 3}
@@ -30,11 +29,11 @@ _ROLE_RANK = {ROLE_USER: 1, ROLE_ADMIN: 2, ROLE_SUPER_ADMIN: 3}
 def _secret_key() -> str:
     if API_SECRET_KEY:
         return API_SECRET_KEY
-    logger.warning(
-        "API_SECRET_KEY not set; using an insecure dev fallback. "
-        "Set API_SECRET_KEY before deploying."
+    logger.error(
+        "API_SECRET_KEY is not configured. Token issuance/verification is disabled. "
+        "Set API_SECRET_KEY before starting authenticated API flows."
     )
-    return _DEV_FALLBACK_KEY
+    raise RuntimeError("API auth misconfigured: API_SECRET_KEY is required")
 
 
 def _serializer() -> URLSafeTimedSerializer:
