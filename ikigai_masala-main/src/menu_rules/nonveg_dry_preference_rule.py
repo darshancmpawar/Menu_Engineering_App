@@ -12,7 +12,7 @@ from typing import Dict, Any, Set
 
 from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType
-from ..preprocessor.column_mapper import _to_bool01, _is_nonveg_dry_row
+from ..preprocessor.column_mapper import _to_bool01
 
 
 class NonvegDryPreferenceRule(BaseMenuRule):
@@ -58,10 +58,12 @@ class NonvegDryPreferenceRule(BaseMenuRule):
             if len(alt_pool) > 0:
                 pool = alt_pool
 
-        # Prefer dry items
-        dry_pool = pool[pool.apply(_is_nonveg_dry_row, axis=1)]
-        if len(dry_pool) > 0:
-            return dry_pool
+        # Prefer dry items — reads the column populated by ColumnMapper.apply()
+        # rather than re-running the heuristic per row.
+        if 'is_nonveg_dry' in pool.columns:
+            dry_pool = pool[pool['is_nonveg_dry'].map(_to_bool01) == 1]
+            if len(dry_pool) > 0:
+                return dry_pool
 
         # Fallback: prefer gravy items
         if 'is_nonveg_gravy' in pool.columns:
