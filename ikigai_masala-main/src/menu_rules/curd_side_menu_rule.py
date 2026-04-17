@@ -24,9 +24,6 @@ class CurdSideMenuRule(BaseMenuRule):
         self.rule_type = MenuRuleType.CURD_SIDE
         self.pulao_subcats: Set[str] = set(rule_config.get('pulao_subcats', PULAO_SUBCATS))
 
-    def validate_config(self) -> bool:
-        return True
-
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         cells = context.get('cells', [])

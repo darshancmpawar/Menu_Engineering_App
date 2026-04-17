@@ -8,7 +8,6 @@ Max 1 rice-bread day per week, max 1 deep-fried veg_dry day per week.
 from typing import Dict, Any, List
 from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType
-from ..preprocessor.column_mapper import _is_deepfried_starter_row
 
 
 class CouplingMenuRule(BaseMenuRule):
@@ -23,9 +22,6 @@ class CouplingMenuRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.COUPLING
-
-    def validate_config(self) -> bool:
-        return True
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -68,11 +64,12 @@ class CouplingMenuRule(BaseMenuRule):
             rice_liq = model.NewBoolVar(f'rice_liquid_{di}')
             link_any(model, rice_liq_lits, rice_liq)
 
-            # Deep-fried starter detection
+            # Deep-fried starter detection — reads the column populated by
+            # ColumnMapper.apply() rather than re-running the heuristic.
             starter_df_lits = [
                 v for c in starter_cells
                 for v, r in zip(c.x_vars, c.cand_rows)
-                if _is_deepfried_starter_row(r)
+                if int(r.get('is_deep_fried_starter', 0)) == 1
             ]
             starter_df = model.NewBoolVar(f'starter_deepfried_{di}')
             link_any(model, starter_df_lits, starter_df)

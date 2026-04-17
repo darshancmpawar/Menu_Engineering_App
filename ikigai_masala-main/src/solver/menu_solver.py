@@ -22,7 +22,7 @@ from ._helpers import weekday_type_for_config as _weekday_type_cfg
 from ..menu_rules.base_menu_rule import BaseMenuRule
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
-    THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
+    RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
 )
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
@@ -50,8 +50,6 @@ DEFAULT_SEED_MULT_FACTOR = 1000  # seed formula: base + mult * FACTOR + restart 
 DEFAULT_SEED_RESTART_STEP = 17
 
 # Penalty/bonus weights
-THEME_FALLBACK_PENALTY = 2_000_000  # penalty for non-theme items when theme available
-THEME_STARTER_PREFERENCE_BONUS = 1_000_000  # bonus for theme-matching starters
 REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
 REGEN_CAP_MULTIPLIER = 1.5  # candidate cap multiplier for regeneration
 
@@ -81,11 +79,8 @@ class SolverConfig:
     premium_min_per_horizon: int = 1
     premium_max_per_horizon: int = 2
     premium_max_per_day: int = 1
-    # Rice exclusions
-    rice_exclude_items: Set[str] = field(default_factory=lambda: {
-        'steamed_rice', 'steamed rice', 'white_rice', 'white rice',
-        'steam rice', 'plain rice', 'plain_rice',
-    })
+    # Rice exclusions — see src.constants.RICE_EXCLUDE_ITEMS.
+    rice_exclude_items: Set[str] = field(default_factory=lambda: set(RICE_EXCLUDE_ITEMS))
     # Cuisine theme settings
     cuisine_col: str = 'cuisine_family'
     cuisine_south_value: str = 'south_indian'
@@ -100,7 +95,6 @@ class SolverConfig:
     f_raita: Optional[str] = 'is_raita'
     # Theme preferences
     prefer_theme_starter: bool = True
-    theme_fallback_penalty: int = THEME_FALLBACK_PENALTY
     # Solver strategy
     cap_by_slot: Dict[str, int] = field(default_factory=lambda: dict(DEFAULT_CAP_BY_SLOT))
     cap_default: int = DEFAULT_CAP
@@ -160,7 +154,26 @@ def _min_distinct_for_day(cfg: SolverConfig, day_type: str) -> int:
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
+    """Linear-scan lookup — kept for tests / ad-hoc use. Production uses
+    ``_make_find_cells`` which backs the lookup with a dict."""
     return [c for c in cells if c.d_idx == di and c.base_slot == base_slot]
+
+
+def _make_find_cells(cells: List[_Cell]):
+    """Build an O(1) ``(d_idx, base_slot) -> [cells]`` lookup as a closure.
+
+    Preserves the ``(cells, di, base_slot)`` signature used by rule modules;
+    the first argument is ignored because the index already closes over the
+    cell list.
+    """
+    index: Dict[Tuple[int, str], List[_Cell]] = {}
+    for c in cells:
+        index.setdefault((c.d_idx, c.base_slot), []).append(c)
+
+    def _find(_cells, di: int, base_slot: str) -> List[_Cell]:
+        return index.get((di, base_slot), [])
+
+    return _find
 
 
 def _link_any(model: cp_model.CpModel, lits: List, y) -> None:
@@ -435,7 +448,32 @@ class MenuSolver:
          day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
          monday_south_lits, monday_north_lits, theme_fallback_bools) = build_result
 
-        # Build rule context (typed dataclass, passed as dict for backward compat)
+        context = self._build_context(
+            cells, dates, day_types,
+            item_to_vars, day_color_vars, day_rice_color_vars,
+            day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+            monday_south_lits, monday_north_lits, theme_fallback_bools,
+            known_colors, known_welcome_colors,
+        )
+
+        # Built-in color constraints (uniqueness is handled by UniqueItemsMenuRule)
+        self._add_color_constraints(model, dates, day_types, known_colors,
+                                    day_color_vars, day_rice_color_vars,
+                                    day_gravy_color_vars)
+
+        self._apply_rules_and_objective(model, cells, rng, similarity, context)
+
+        solver = self._configure_and_solve(model)
+        return self._extract_solution_rows(solver, cells, dates)
+
+    def _build_context(
+        self, cells, dates, day_types,
+        item_to_vars, day_color_vars, day_rice_color_vars,
+        day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+        monday_south_lits, monday_north_lits, theme_fallback_bools,
+        known_colors, known_welcome_colors,
+    ) -> Dict:
+        """Assemble the rule-facing context (typed dataclass, exposed as dict)."""
         solver_ctx = SolverContext(
             cells=cells,
             dates=dates,
@@ -453,28 +491,24 @@ class MenuSolver:
             known_welcome_colors=known_welcome_colors,
             cfg=self.cfg,
             recent_sigs=self.recent_sigs,
-            find_cells_fn=_find_cells,
+            find_cells_fn=_make_find_cells(cells),
             link_any_fn=_link_any,
         )
-        context = solver_ctx.as_dict()
+        return solver_ctx.as_dict()
 
-        # Apply built-in color constraints (uniqueness is handled by UniqueItemsMenuRule)
-        self._add_color_constraints(model, dates, day_types, known_colors,
-                                    day_color_vars, day_rice_color_vars,
-                                    day_gravy_color_vars)
-
-        # Apply user-defined rules
+    def _apply_rules_and_objective(self, model, cells, rng, similarity, context) -> None:
+        """Run every rule's ``apply`` then assemble the objective."""
         for rule in self.menu_rules:
             try:
                 rule.apply(model, {}, None, context)
             except (ValueError, KeyError, AttributeError) as e:
                 logger.warning("Rule %s failed: %s", rule.name, e)
+        self._build_objective(model, cells, rng, similarity, context)
 
-        # Build objective
-        self._build_objective(model, cells, rng, similarity,
-                              theme_fallback_bools, context)
-
-        # Solve
+    def _configure_and_solve(self, model) -> cp_model.CpSolver:
+        """Set CP-SAT parameters, solve, and translate infeasibility into a
+        RuntimeError. Returns the solver so callers can read variable values.
+        """
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(self.cfg.time_limit_sec)
         solver.parameters.random_seed = int(self.cfg.seed)
@@ -489,16 +523,15 @@ class MenuSolver:
         solver.parameters.cp_model_presolve = True
 
         status = solver.Solve(model)
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            if status == cp_model.INFEASIBLE:
-                raise RuntimeError('No feasible plan found (INFEASIBLE).')
-            if status == cp_model.UNKNOWN:
-                raise RuntimeError('No feasible plan found (TIME LIMIT).')
-            if status == cp_model.MODEL_INVALID:
-                raise RuntimeError('CP-SAT model invalid.')
-            raise RuntimeError(f'CP-SAT failed with status={status}.')
-
-        return self._extract_solution_rows(solver, cells, dates)
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return solver
+        if status == cp_model.INFEASIBLE:
+            raise RuntimeError('No feasible plan found (INFEASIBLE).')
+        if status == cp_model.UNKNOWN:
+            raise RuntimeError('No feasible plan found (TIME LIMIT).')
+        if status == cp_model.MODEL_INVALID:
+            raise RuntimeError('CP-SAT model invalid.')
+        raise RuntimeError(f'CP-SAT failed with status={status}.')
 
     def _collect_known_colors(self, cells: List[_Cell]) -> Tuple[List[str], List[str]]:
         known_colors: Set[str] = set()
@@ -635,8 +668,7 @@ class MenuSolver:
 
     # ----- Objective -----
 
-    def _build_objective(self, model, cells, rng, similarity,
-                         theme_fallback_bools, context):
+    def _build_objective(self, model, cells, rng, similarity, context):
         obj_terms = []
 
         if similarity:
@@ -662,9 +694,6 @@ class MenuSolver:
                 obj_terms.extend(terms)
             except (ValueError, KeyError, AttributeError):
                 logger.warning("Rule %s objective terms failed", getattr(rule, 'name', '?'))
-
-        if theme_fallback_bools:
-            obj_terms.append(sum(theme_fallback_bools) * (-abs(int(self.cfg.theme_fallback_penalty))))
 
         if obj_terms:
             model.Maximize(sum(obj_terms))

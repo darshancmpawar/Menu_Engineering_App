@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from user_authentication.auth_manager import AuthManager
+from ui.api_client import MenuApiClient
+from user_authentication.models import User
 from user_authentication.session import login_user
 
 
-def render_login_form():
+def render_login_form(api_base_url: str = "http://localhost:5000"):
     """Render a centered login form. Returns True if user just logged in."""
     st.markdown("""
     <style>
@@ -72,13 +73,17 @@ def render_login_form():
                 st.error("Please enter both email and password.")
                 return False
             try:
-                auth = AuthManager()
-                user = auth.authenticate(email, password)
-                if user:
-                    login_user(user)
-                    st.rerun()
-                else:
-                    st.error("Invalid email or password.")
+                api = MenuApiClient(api_base_url)
+                data = api.login(email, password)
+                user = User(
+                    email=data["email"],
+                    profile_name=data["profile_name"],
+                    role=data["role"],
+                )
+                login_user(user, token=data["token"])
+                st.rerun()
+            except RuntimeError as e:
+                st.error(f"{e}")
             except Exception as e:
                 st.error(f"Login error: {e}")
             return False

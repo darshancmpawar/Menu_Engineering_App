@@ -12,17 +12,21 @@ Endpoints:
 import datetime as dt
 import logging
 import threading
+from dataclasses import dataclass
+from typing import Any, Dict, List, Set
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
+from api.auth import api_login, require_api_auth
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
+from user_authentication.models import ROLE_ADMIN
 from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
@@ -164,6 +168,67 @@ def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekd
     )
 
 
+@dataclass
+class SolverInputs:
+    """Bundle of everything MenuSolver / MenuRegenerator need for one request."""
+    client_name: str
+    client_cfg: Any
+    df: Any
+    pools: Dict[str, Any]
+    start_date: dt.date
+    num_days: int
+    time_limit: int
+    weekday_dates: List[dt.date]
+    rules: List[Any]
+    skip_cells: Set[Any]
+    banned: Dict[Any, Any]
+    rb_ban: Dict[Any, Any]
+    recent_sigs: List[Any]
+    cfg: SolverConfig
+
+
+def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
+    """Parse request body and assemble all inputs the solver/regenerator need.
+
+    Raises ``ValueError`` with a user-facing message on missing/invalid input.
+    """
+    client_name = data.get('client_name')
+    if not client_name:
+        raise ValueError('client_name is required')
+
+    start_date_str = data.get('start_date')
+    num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
+    time_limit = max(
+        MIN_TIME_LIMIT_SECONDS,
+        min(MAX_TIME_LIMIT_SECONDS, int(data.get('time_limit_seconds', 240))),
+    )
+
+    client_cfg = _get_client_loader().get_client(client_name)
+    df, pools = _get_menu_data()
+    start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
+    weekday_dates = _weekdays_from(start_date, num_days)
+    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
+    banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
+    cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
+
+    return SolverInputs(
+        client_name=client_name,
+        client_cfg=client_cfg,
+        df=df,
+        pools=pools,
+        start_date=start_date,
+        num_days=num_days,
+        time_limit=time_limit,
+        weekday_dates=weekday_dates,
+        rules=rules,
+        skip_cells=skip_cells,
+        banned=banned,
+        rb_ban=rb_ban,
+        recent_sigs=recent_sigs,
+        cfg=cfg,
+    )
+
+
 def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
     """Check pool sizes after theme filtering vs required slot counts.
 
@@ -218,7 +283,11 @@ def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
     return warnings
 
 
+app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
+
+
 @app.route('/api/v1/clients', methods=['GET'])
+@require_api_auth()
 def list_clients():
     try:
         loader = _get_client_loader()
@@ -228,50 +297,35 @@ def list_clients():
 
 
 @app.route('/api/v1/plan', methods=['POST'])
+@require_api_auth()
 @solver_gate
 def plan_menu():
     try:
-        data = request.get_json()
-        client_name = data.get('client_name')
-        start_date_str = data.get('start_date')
-        num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
-        time_limit = max(MIN_TIME_LIMIT_SECONDS, min(MAX_TIME_LIMIT_SECONDS, int(data.get('time_limit_seconds', 240))))
+        inputs = _prepare_solver_inputs(request.get_json() or {})
 
-        if not client_name:
-            return jsonify({'success': False, 'error': 'client_name is required'}), 400
-
-        loader = _get_client_loader()
-        client_cfg = loader.get_client(client_name)
-
-        df, pools = _get_menu_data()
-
-        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
-        weekday_dates = _weekdays_from(start_date, num_days)
-
-        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-
-        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
-
-        # Pre-solve pool validation
-        pool_warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
+        pool_warnings = _validate_pools(
+            inputs.pools, inputs.cfg, inputs.rules,
+            inputs.weekday_dates, skip_cells=inputs.skip_cells,
+        )
 
         solver = MenuSolver(
-            pools=pools,
-            solver_config=cfg,
-            menu_rules=rules,
-            banned_by_date=banned,
-            ricebread_ban_day=rb_ban,
-            recent_sigs=recent_sigs,
-            skip_cells=skip_cells,
+            pools=inputs.pools,
+            solver_config=inputs.cfg,
+            menu_rules=inputs.rules,
+            banned_by_date=inputs.banned,
+            ricebread_ban_day=inputs.rb_ban,
+            recent_sigs=inputs.recent_sigs,
+            skip_cells=inputs.skip_cells,
         )
 
         week_plan, plan_dates = solver.solve()
 
-        formatter = SolutionFormatter(week_plan, plan_dates, theme_map=client_cfg.theme_map or None)
+        formatter = SolutionFormatter(
+            week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+        )
         response = {
             'success': True,
-            'message': f'Menu plan generated for {client_name}',
+            'message': f'Menu plan generated for {inputs.client_name}',
             'solution': formatter.to_dict(),
         }
         if pool_warnings:
@@ -292,64 +346,48 @@ def plan_menu():
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
+@require_api_auth()
 @solver_gate
 def regenerate_cells():
     try:
-        data = request.get_json()
-        client_name = data.get('client_name')
+        data = request.get_json() or {}
         base_plan_raw = data.get('base_plan', {})
         replace_slots_raw = data.get('replace_slots', {})
-        start_date_str = data.get('start_date')
-        num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
-        time_limit = max(MIN_TIME_LIMIT_SECONDS, min(MAX_TIME_LIMIT_SECONDS, int(data.get('time_limit_seconds', 240))))
-
-        if not client_name:
-            return jsonify({'success': False, 'error': 'client_name is required'}), 400
         if not base_plan_raw:
             return jsonify({'success': False, 'error': 'base_plan is required'}), 400
         if not replace_slots_raw:
             return jsonify({'success': False, 'error': 'replace_slots is required'}), 400
 
-        loader = _get_client_loader()
-        client_cfg = loader.get_client(client_name)
+        inputs = _prepare_solver_inputs(data)
 
-        df, pools = _get_menu_data()
-
-        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
-        weekday_dates = _weekdays_from(start_date, num_days)
-
-        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-
-        banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
-
-        # Convert string date keys to date objects, extracting items from solution format
         base_plan = {
             dt.date.fromisoformat(d_str): _items_from_day(slots)
             for d_str, slots in base_plan_raw.items()
         }
-
-        replace_mask = {}
-        for d_str, slot_list in replace_slots_raw.items():
-            replace_mask[dt.date.fromisoformat(d_str)] = set(slot_list)
+        replace_mask = {
+            dt.date.fromisoformat(d_str): set(slot_list)
+            for d_str, slot_list in replace_slots_raw.items()
+        }
 
         regen = MenuRegenerator(
-            pools=pools,
-            df=df,
-            solver_config=cfg,
-            menu_rules=rules,
-            banned_by_date=banned,
-            ricebread_ban_day=rb_ban,
-            recent_sigs=recent_sigs,
-            skip_cells=skip_cells,
+            pools=inputs.pools,
+            df=inputs.df,
+            solver_config=inputs.cfg,
+            menu_rules=inputs.rules,
+            banned_by_date=inputs.banned,
+            ricebread_ban_day=inputs.rb_ban,
+            recent_sigs=inputs.recent_sigs,
+            skip_cells=inputs.skip_cells,
         )
 
         week_plan, plan_dates = regen.regenerate(base_plan, replace_mask)
 
-        formatter = SolutionFormatter(week_plan, plan_dates, theme_map=client_cfg.theme_map or None)
+        formatter = SolutionFormatter(
+            week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+        )
         return jsonify({
             'success': True,
-            'message': f'Regenerated {sum(len(v) for v in replace_mask.values())} cells for {client_name}',
+            'message': f'Regenerated {sum(len(v) for v in replace_mask.values())} cells for {inputs.client_name}',
             'solution': formatter.to_dict(),
         })
 
@@ -367,6 +405,7 @@ def regenerate_cells():
 
 
 @app.route('/api/v1/save', methods=['POST'])
+@require_api_auth()
 def save_plan():
     try:
         data = request.get_json()
@@ -416,6 +455,7 @@ def save_plan():
 
 
 @app.route('/api/v1/editor-metadata', methods=['GET'])
+@require_api_auth()
 def editor_metadata():
     """Return metadata needed by the customisation editor UI."""
     try:
@@ -434,6 +474,7 @@ def editor_metadata():
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
+@require_api_auth()
 def get_client_config(client_name):
     """Return the full editable config for one client."""
     try:
@@ -456,6 +497,7 @@ def get_client_config(client_name):
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides)."""
     try:
@@ -479,6 +521,7 @@ def update_client_config(client_name):
 
 
 @app.route('/api/v1/client', methods=['POST'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def create_client():
     """Create a new client."""
     try:
@@ -499,6 +542,7 @@ def create_client():
 
 
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def delete_client(client_name):
     """Delete a client."""
     try:
@@ -514,6 +558,7 @@ def delete_client(client_name):
 
 
 @app.route('/api/v1/validate-pools', methods=['POST'])
+@require_api_auth()
 def validate_pools():
     """Check pool sizes after theme filtering — returns warnings without running solver."""
     try:

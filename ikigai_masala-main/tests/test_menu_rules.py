@@ -12,19 +12,25 @@ import pytest
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.curd_side_menu_rule import CurdSideMenuRule
 from src.menu_rules.premium_menu_rule import PremiumMenuRule
-from src.menu_rules.theme_day_menu_rule import ThemeDayMenuRule
-from src.menu_rules.welcome_drink_color_menu_rule import WelcomeDrinkColorMenuRule
-from src.menu_rules.week_signature_cooldown_menu_rule import WeekSignatureCooldownMenuRule
-from src.menu_rules.theme_starter_preference_rule import ThemeStarterPreferenceRule
-from src.menu_rules.theme_fallback_penalty_rule import ThemeFallbackPenaltyRule
 from src.menu_rules.unique_items_menu_rule import UniqueItemsMenuRule
-from src.menu_rules.color_pairing_menu_rule import ColorPairingMenuRule
-from src.menu_rules.color_variety_menu_rule import ColorVarietyMenuRule
 from src.menu_rules.cuisine_menu_rule import CuisineMenuRule
-from src.menu_rules.item_cooldown_menu_rule import ItemCooldownMenuRule
-from src.menu_rules.ricebread_gap_menu_rule import RiceBreadGapMenuRule
-from src.menu_rules.theme_slot_filter_rule import ThemeSlotFilterRule
-from src.menu_rules.nonveg_dry_preference_rule import NonvegDryPreferenceRule
+from src.menu_rules.theme_rules import (
+    ThemeDayMenuRule,
+    ThemeSlotFilterRule,
+    ThemeStarterPreferenceRule,
+    ThemeFallbackPenaltyRule,
+)
+from src.menu_rules.color_rules import (
+    ColorPairingMenuRule,
+    ColorVarietyMenuRule,
+    WelcomeDrinkColorMenuRule,
+)
+from src.menu_rules.cooldown_rules import (
+    ItemCooldownMenuRule,
+    RiceBreadGapMenuRule,
+    WeekSignatureCooldownMenuRule,
+)
+from src.menu_rules.nonveg_rules import NonvegDryPreferenceRule
 from src.menu_rules.base_menu_rule import MenuRuleType
 
 
@@ -195,6 +201,24 @@ class TestThemeFallbackPenaltyRule:
         rule = ThemeFallbackPenaltyRule({"name": "pen", "type": "theme_fallback_penalty"})
         terms = rule.get_objective_terms(model, {})
         assert terms == []
+
+    def test_get_objective_terms_with_fallback_bools(self):
+        from ortools.sat.python import cp_model
+        model = cp_model.CpModel()
+        bools = [model.NewBoolVar(f"fb_{i}") for i in range(3)]
+        rule = ThemeFallbackPenaltyRule({
+            "name": "pen", "type": "theme_fallback_penalty", "penalty": 500,
+        })
+        terms = rule.get_objective_terms(model, {"theme_fallback_bools": bools})
+        assert len(terms) == 1
+        # Negative coefficient; actual sign+magnitude verified via the model solve.
+        model.Maximize(sum(terms))
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 1
+        status = solver.Solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        # Maximizing a negative sum drives every fallback bool to 0.
+        assert all(solver.Value(b) == 0 for b in bools)
 
 
 # --- UniqueItemsMenuRule ---
