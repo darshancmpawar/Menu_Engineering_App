@@ -36,6 +36,7 @@ from ui.formatters import (
     THEME_ICONS,
 )
 from ui.styles import STYLES
+from ui.backend_probe import health_check, pick_backend_port
 from customisation.main import render_customisation_editor
 from user_authentication.session import (
     init_auth_state,
@@ -66,35 +67,46 @@ def _flatten_solution(raw_solution: dict) -> tuple:
 # ---------------------------------------------------------------------------
 # Auto-start Flask API backend
 # ---------------------------------------------------------------------------
-_BACKEND_PORT = 5000
-_BACKEND_URL = f"http://localhost:{_BACKEND_PORT}"
+_BACKEND_URL = None  # set by _ensure_backend_running()
 
 
-def _start_flask_backend():
+def _start_flask_backend(port: int) -> None:
     from api.app import app as flask_app
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    flask_app.run(host="127.0.0.1", port=_BACKEND_PORT, debug=False,
+    flask_app.run(host="127.0.0.1", port=port, debug=False,
                   use_reloader=False, threaded=True)
 
 
-def _ensure_backend_running():
-    try:
-        requests.get(f"{_BACKEND_URL}/api/v1/health", timeout=1)
-        return True
-    except (requests.ConnectionError, requests.Timeout):
-        pass
+def _ensure_backend_running() -> str:
+    """Start the backend if needed and return its base URL.
+
+    Raises ``RuntimeError`` if no port is available or the backend does
+    not become healthy within the startup window — the caller should
+    surface the error to the user rather than hit an unrelated service
+    that happens to sit on port 5000.
+    """
+    global _BACKEND_URL
+    port = pick_backend_port()
+    url = f"http://localhost:{port}"
+    if health_check(port):
+        _BACKEND_URL = url
+        return url
     if "flask_started" not in st.session_state:
-        t = threading.Thread(target=_start_flask_backend, daemon=True)
+        t = threading.Thread(
+            target=_start_flask_backend, args=(port,), daemon=True,
+        )
         t.start()
         st.session_state.flask_started = True
     for _ in range(20):
-        try:
-            requests.get(f"{_BACKEND_URL}/api/v1/health", timeout=1)
-            return True
-        except (requests.ConnectionError, requests.Timeout):
-            time.sleep(0.5)
-    return False
+        if health_check(port):
+            _BACKEND_URL = url
+            return url
+        time.sleep(0.5)
+    raise RuntimeError(
+        f"Backend did not become healthy on port {port} within 10s. "
+        "Check the Streamlit server logs for errors."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +124,11 @@ st.markdown(STYLES, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # Backend must be up before the login form (login hits the API).
 # ---------------------------------------------------------------------------
-backend_ok = _ensure_backend_running()
+try:
+    _ensure_backend_running()
+except RuntimeError as e:
+    st.error(str(e))
+    st.stop()
 
 # ---------------------------------------------------------------------------
 # Authentication gate — before anything else
