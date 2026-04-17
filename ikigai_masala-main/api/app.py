@@ -17,12 +17,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
+from api.auth import api_login, require_api_auth
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
 )
+from user_authentication.models import ROLE_ADMIN
 from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
@@ -218,7 +220,11 @@ def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
     return warnings
 
 
+app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
+
+
 @app.route('/api/v1/clients', methods=['GET'])
+@require_api_auth()
 def list_clients():
     try:
         loader = _get_client_loader()
@@ -228,6 +234,7 @@ def list_clients():
 
 
 @app.route('/api/v1/plan', methods=['POST'])
+@require_api_auth()
 @solver_gate
 def plan_menu():
     try:
@@ -292,6 +299,7 @@ def plan_menu():
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
+@require_api_auth()
 @solver_gate
 def regenerate_cells():
     try:
@@ -367,6 +375,7 @@ def regenerate_cells():
 
 
 @app.route('/api/v1/save', methods=['POST'])
+@require_api_auth()
 def save_plan():
     try:
         data = request.get_json()
@@ -416,6 +425,7 @@ def save_plan():
 
 
 @app.route('/api/v1/editor-metadata', methods=['GET'])
+@require_api_auth()
 def editor_metadata():
     """Return metadata needed by the customisation editor UI."""
     try:
@@ -434,6 +444,7 @@ def editor_metadata():
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
+@require_api_auth()
 def get_client_config(client_name):
     """Return the full editable config for one client."""
     try:
@@ -456,6 +467,7 @@ def get_client_config(client_name):
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides)."""
     try:
@@ -479,6 +491,7 @@ def update_client_config(client_name):
 
 
 @app.route('/api/v1/client', methods=['POST'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def create_client():
     """Create a new client."""
     try:
@@ -499,6 +512,7 @@ def create_client():
 
 
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
+@require_api_auth(min_role=ROLE_ADMIN)
 def delete_client(client_name):
     """Delete a client."""
     try:
@@ -514,6 +528,7 @@ def delete_client(client_name):
 
 
 @app.route('/api/v1/validate-pools', methods=['POST'])
+@require_api_auth()
 def validate_pools():
     """Check pool sizes after theme filtering — returns warnings without running solver."""
     try:

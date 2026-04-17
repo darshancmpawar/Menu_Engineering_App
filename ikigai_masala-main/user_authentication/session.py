@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import streamlit as st
 
 from user_authentication.models import User
 
 # Keys managed by the auth system
 _AUTH_KEY = "auth_user"
+_TOKEN_KEY = "auth_token"
 
 # Keys managed by the planner that should be cleared on logout
 _PLANNER_KEYS = [
@@ -23,9 +26,11 @@ def init_auth_state():
         st.session_state[_AUTH_KEY] = None
 
 
-def login_user(user: User):
-    """Store authenticated user in session state."""
+def login_user(user: User, token: Optional[str] = None):
+    """Store authenticated user (and API token) in session state."""
     st.session_state[_AUTH_KEY] = user
+    if token is not None:
+        st.session_state[_TOKEN_KEY] = token
     # Reset view to planner on fresh login
     st.session_state["view"] = "planner"
 
@@ -33,6 +38,7 @@ def login_user(user: User):
 def logout_user():
     """Clear auth state and all user-specific session data."""
     st.session_state[_AUTH_KEY] = None
+    st.session_state.pop(_TOKEN_KEY, None)
     # Clear planner state so next login starts fresh
     for key in _PLANNER_KEYS:
         st.session_state.pop(key, None)
@@ -44,6 +50,10 @@ def is_authenticated() -> bool:
 
 def current_user() -> User | None:
     return st.session_state.get(_AUTH_KEY)
+
+
+def current_token() -> Optional[str]:
+    return st.session_state.get(_TOKEN_KEY)
 
 
 def require_role(*roles: str) -> bool:

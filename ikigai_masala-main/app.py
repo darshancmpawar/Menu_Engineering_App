@@ -40,6 +40,7 @@ from user_authentication.session import (
     init_auth_state,
     is_authenticated,
     current_user,
+    current_token,
     logout_user,
     require_role,
 )
@@ -549,19 +550,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
+# Backend must be up before the login form (login hits the API).
+# ---------------------------------------------------------------------------
+backend_ok = _ensure_backend_running()
+
+# ---------------------------------------------------------------------------
 # Authentication gate — before anything else
 # ---------------------------------------------------------------------------
 init_auth_state()
 
 if not is_authenticated():
-    render_login_form()
+    render_login_form(_BACKEND_URL)
     st.stop()
 
-# ---------------------------------------------------------------------------
-# Backend + API client
-# ---------------------------------------------------------------------------
-backend_ok = _ensure_backend_running()
-client = MenuApiClient(_BACKEND_URL)
+client = MenuApiClient(_BACKEND_URL, token=current_token())
 
 # ---------------------------------------------------------------------------
 # Session state initialization (only after auth)

@@ -31,3 +31,8 @@ MAX_NUM_DAYS = 30
 API_HOST = os.getenv('API_HOST', '0.0.0.0')
 API_PORT = int(os.getenv('API_PORT', '5000'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+
+# Auth — signed bearer tokens issued by POST /api/v1/auth/login.
+# Set API_SECRET_KEY to a long random string in production.
+API_SECRET_KEY = os.getenv('API_SECRET_KEY', '')
+API_TOKEN_TTL_SECONDS = int(os.getenv('API_TOKEN_TTL_SECONDS', str(60 * 60 * 24)))
