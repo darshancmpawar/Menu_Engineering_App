@@ -19,7 +19,7 @@ import pandas as pd
 from ortools.sat.python import cp_model
 
 from ._helpers import weekday_type_for_config as _weekday_type_cfg
-from ..menu_rules.base_menu_rule import BaseMenuRule
+from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
@@ -497,12 +497,21 @@ class MenuSolver:
         return solver_ctx.as_dict()
 
     def _apply_rules_and_objective(self, model, cells, rng, similarity, context) -> None:
-        """Run every rule's ``apply`` then assemble the objective."""
+        """Run every rule's ``apply`` then assemble the objective.
+
+        Hard rules (default severity) that raise cause the solve to fail
+        rather than silently drop their constraint; soft rules only warn.
+        """
         for rule in self.menu_rules:
             try:
                 rule.apply(model, {}, None, context)
             except (ValueError, KeyError, AttributeError) as e:
-                logger.warning("Rule %s failed: %s", rule.name, e)
+                severity = getattr(rule, 'severity', MenuRuleSeverity.HARD)
+                if severity == MenuRuleSeverity.HARD:
+                    raise RuntimeError(
+                        f"Hard menu rule '{rule.name}' failed: {type(e).__name__}: {e}"
+                    ) from e
+                logger.warning("Soft rule %s failed: %s", rule.name, e)
         self._build_objective(model, cells, rng, similarity, context)
 
     def _configure_and_solve(self, model) -> cp_model.CpSolver:

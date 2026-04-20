@@ -22,7 +22,7 @@ import pandas as pd
 from ortools.sat.python import cp_model
 
 from ..preprocessor.column_mapper import _norm_str
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +134,8 @@ class WeekSignatureCooldownMenuRule(BaseMenuRule):
         "cooldown_days": 30
     }
     """
+
+    severity = MenuRuleSeverity.SOFT
 
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
