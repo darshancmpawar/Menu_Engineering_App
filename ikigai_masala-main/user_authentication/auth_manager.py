@@ -77,10 +77,11 @@ class AuthManager:
             self._sb.table("users")
             .select("email, profile_name, password_hash, role")
             .eq("email", email.strip().lower())
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        row = resp.data if resp else None
+        rows = resp.data or []
+        row = rows[0] if rows else None
         if not row:
             return None
         stored = row["password_hash"]
@@ -124,10 +125,10 @@ class AuthManager:
             self._sb.table("users")
             .select("email")
             .eq("email", email)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        if existing and existing.data:
+        if existing.data:
             raise ValueError(f"User with email '{email}' already exists.")
 
         password_hash = _hash_password(password)
@@ -159,10 +160,10 @@ class AuthManager:
             self._sb.table("users")
             .select("email")
             .eq("email", email)
-            .maybe_single()
+            .limit(1)
             .execute()
         )
-        if not resp or not resp.data:
+        if not resp.data:
             raise ValueError(f"User '{email}' not found.")
         self._sb.table("users").delete().eq("email", email).execute()
 

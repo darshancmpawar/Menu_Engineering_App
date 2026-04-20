@@ -26,6 +26,7 @@ class _Query:
         self._table = table
         self._filters: List[tuple] = []
         self._order: Optional[str] = None
+        self._limit: Optional[int] = None
         self._single = False
         self._mode = "select"
         self._payload: Any = None
@@ -42,6 +43,10 @@ class _Query:
 
     def order(self, col: str, **_kwargs):
         self._order = col
+        return self
+
+    def limit(self, n: int):
+        self._limit = int(n)
         return self
 
     def maybe_single(self):
@@ -74,6 +79,8 @@ class _Query:
             rows = [copy.deepcopy(r) for r in self._rows if self._match(r)]
             if self._order:
                 rows.sort(key=lambda r: (r.get(self._order) is None, r.get(self._order)))
+            if self._limit is not None:
+                rows = rows[: self._limit]
             if self._single:
                 return _Response(rows[0] if rows else None)
             return _Response(rows)
