@@ -17,6 +17,7 @@ if _APP_DIR not in sys.path:
 os.chdir(_APP_DIR)
 
 import datetime as dt
+import html
 import io
 import csv
 import logging
@@ -204,10 +205,10 @@ with st.sidebar:
         initials = ''.join(w[0] for w in _user.profile_name.split()[:2]).upper() if _user.profile_name else '?'
         st.markdown(
             f'<div class="user-chip">'
-            f'<div class="user-avatar">{initials}</div>'
+            f'<div class="user-avatar">{html.escape(initials)}</div>'
             f'<div class="user-chip-info">'
-            f'<div class="user-chip-name">{_user.profile_name}</div>'
-            f'<div class="user-chip-role">{_user.role}</div>'
+            f'<div class="user-chip-name">{html.escape(_user.profile_name or "")}</div>'
+            f'<div class="user-chip-role">{html.escape(_user.role or "")}</div>'
             f'</div></div>',
             unsafe_allow_html=True,
         )
@@ -240,7 +241,7 @@ with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
     if st.session_state.client_name:
         st.markdown(
-            f'<p class="page-subtitle">Generated plan for {st.session_state.client_name}</p>',
+            f'<p class="page-subtitle">Generated plan for {html.escape(st.session_state.client_name)}</p>',
             unsafe_allow_html=True)
     else:
         st.markdown(
@@ -306,7 +307,7 @@ if plan and plan_dates:
     st.markdown(f"""<div class="metrics-grid">
         <div class="metric-card">
             <div class="metric-label">Client</div>
-            <div class="metric-value">{st.session_state.client_name}</div>
+            <div class="metric-value">{html.escape(st.session_state.client_name or "")}</div>
         </div>
         <div class="metric-card">
             <div class="metric-label">Days</div>
@@ -325,7 +326,7 @@ if plan and plan_dates:
     if st.session_state.pool_warnings:
         with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=False):
             for w in st.session_state.pool_warnings:
-                st.markdown(f'<div class="pool-warn-bar">&#9888; {w}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="pool-warn-bar">&#9888; {html.escape(str(w))}</div>', unsafe_allow_html=True)
 
     # Menu table
     _day_types = st.session_state.day_types
