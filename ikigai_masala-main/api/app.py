@@ -11,6 +11,8 @@ Endpoints:
 
 import datetime as dt
 import logging
+import os
+import re
 import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Set
@@ -46,7 +48,17 @@ from src.solver.regenerator import MenuRegenerator
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS: default to loopback-only (the Streamlit frontend calls the API
+# server-side via `requests`, so no browser origin needs access). Set
+# CORS_ALLOWED_ORIGINS="https://prod.example.com,https://staging.example.com"
+# to permit additional origins in production.
+_cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env:
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    _cors_origins = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
+CORS(app, origins=_cors_origins)
 
 # Thread-safe lazy singletons
 _init_lock = threading.Lock()
@@ -408,7 +420,7 @@ def regenerate_cells():
 @require_api_auth()
 def save_plan():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         client_name = data.get('client_name')
         week_plan_raw = data.get('week_plan', {})
         week_start_str = data.get('week_start')
@@ -501,7 +513,7 @@ def get_client_config(client_name):
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides)."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         loader = _get_client_loader()
 
         if 'active_base_slots' in data:
@@ -525,7 +537,7 @@ def update_client_config(client_name):
 def create_client():
     """Create a new client."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         name = data.get('name', '').strip()
         active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
         if not name:
@@ -562,7 +574,7 @@ def delete_client(client_name):
 def validate_pools():
     """Check pool sizes after theme filtering — returns warnings without running solver."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         client_name = data.get('client_name')
         start_date_str = data.get('start_date')
         num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))

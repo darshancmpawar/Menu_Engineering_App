@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from user_authentication.auth_manager import AuthManager
@@ -147,13 +149,13 @@ def render_user_manager():
             st.markdown(
                 f'<div class="user-row">'
                 f'<div class="user-avatar-sm" style="background:linear-gradient(135deg,{grad});">'
-                f'{initials}</div>'
+                f'{html.escape(initials)}</div>'
                 f'<div class="user-info">'
-                f'<div class="user-info-name">{u.profile_name}</div>'
-                f'<div class="user-info-email">{u.email}</div>'
+                f'<div class="user-info-name">{html.escape(u.profile_name or "")}</div>'
+                f'<div class="user-info-email">{html.escape(u.email or "")}</div>'
                 f'</div>'
                 f'<span class="role-badge" style="background:{bg};color:{fg};">'
-                f'{u.role}</span>'
+                f'{html.escape(u.role or "")}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
