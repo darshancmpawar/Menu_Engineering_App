@@ -110,6 +110,11 @@ def api_login():
             "profile_name": user.profile_name,
             "ttl_seconds": API_TOKEN_TTL_SECONDS,
         })
-    except Exception:
+    except Exception as e:
         logger.exception("Login failed unexpectedly")
-        return jsonify({"success": False, "error": "Login error"}), 500
+        # Include the exception class name so the client can report it back
+        # for diagnosis. Full details stay in server logs.
+        return jsonify({
+            "success": False,
+            "error": f"Login error ({type(e).__name__})",
+        }), 500
