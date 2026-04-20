@@ -1,6 +1,6 @@
 # CLAUDE.md — Repo Navigation Map
 
-Purpose: let a Claude session locate code without reading whole files. Paths are relative to this file. Only `ikigai_masala-main/` is active; `Old menu app/` is archived — ignore unless explicitly asked.
+Purpose: let a Claude session locate code without reading whole files. Paths are relative to this file. `ikigai_masala-main/` is the only project.
 
 > Keep this file in sync when you add/rename/move modules. If you change a path or symbol referenced below, update the corresponding line.
 
@@ -21,7 +21,6 @@ ikigai_masala-main/          active project (Indian menu planner)
 ├── tests/                   pytest suite
 ├── pytest.ini, requirements.txt
 └── ARCHITECTURE.md, QUICK_START.md, USAGE_GUIDE.md, OUTPUT_FORMAT.md
-Old menu app/                archived legacy — do not touch
 ```
 
 ---
