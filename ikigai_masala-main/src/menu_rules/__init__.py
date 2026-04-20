@@ -2,7 +2,7 @@
 Menu rule definitions and handlers for menu planning.
 """
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
 from .coupling_menu_rule import CouplingMenuRule
@@ -39,7 +39,7 @@ from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .menu_rule_loader import MenuRuleLoader
 
 __all__ = [
-    'BaseMenuRule', 'MenuRuleType', 'MenuRuleLoader',
+    'BaseMenuRule', 'MenuRuleType', 'MenuRuleSeverity', 'MenuRuleLoader',
     'CuisineMenuRule', 'UniqueItemsMenuRule', 'CouplingMenuRule',
     'CurdSideMenuRule', 'PremiumMenuRule',
     # theme

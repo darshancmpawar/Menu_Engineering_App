@@ -25,7 +25,7 @@ from ortools.sat.python import cp_model
 from src.constants import EXEMPT_FROM_CUISINE
 
 from ..preprocessor.column_mapper import _norm_str, _to_bool01
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +207,8 @@ class ThemeStarterPreferenceRule(BaseMenuRule):
     }
     """
 
+    severity = MenuRuleSeverity.SOFT
+
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.THEME_STARTER_PREFERENCE
@@ -255,6 +257,8 @@ class ThemeFallbackPenaltyRule(BaseMenuRule):
         "penalty": 2000000
     }
     """
+
+    severity = MenuRuleSeverity.SOFT
 
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)

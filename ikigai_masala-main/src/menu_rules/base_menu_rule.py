@@ -47,11 +47,30 @@ class MenuRuleType(Enum):
     SLOT_DAY_RESTRICTION = "slot_day_restriction"
 
 
+class MenuRuleSeverity(Enum):
+    """How the solver treats a failure in ``apply()``.
+
+    HARD: an exception from ``apply()`` means a constraint silently dropped,
+    which produces an invalid plan. The solver surfaces the error and fails
+    the request.
+
+    SOFT: the rule only expresses a preference (bonus/penalty via the
+    objective, or an optional cooldown). A failure logs a warning and the
+    solver keeps going.
+    """
+    HARD = "hard"
+    SOFT = "soft"
+
+
 class BaseMenuRule(ABC):
     """
     Abstract base class for all menu rules.
     All rule types must inherit from this class.
     """
+
+    # Default: failures in apply() are surfaced (plan would be invalid
+    # without the constraint). Soft/bonus rules override this to SOFT.
+    severity: MenuRuleSeverity = MenuRuleSeverity.HARD
 
     def __init__(self, rule_config: Dict[str, Any]):
         self.config = rule_config

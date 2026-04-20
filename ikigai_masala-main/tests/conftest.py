@@ -29,3 +29,62 @@ def ensure_sample_data_exists(sample_data_path):
     if not sample_data_path.exists():
         pytest.skip(f"Sample data not found at {sample_data_path}. Run create_sample_data.py first.")
     return sample_data_path
+
+
+# ---------------------------------------------------------------------------
+# Fake Supabase fixture
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def seeded_fake_supabase():
+    """Build a FakeSupabase pre-seeded with one usable client + schema.
+
+    Covers the tables read by ClientConfigLoader, HistoryManager and the
+    API plan/regenerate paths. History tables start empty.
+    """
+    from tests.fake_supabase import FakeSupabase
+
+    fake = FakeSupabase(seed={
+        'clients': [
+            {'name': 'Rippling', 'menu_category': 'default_cat'},
+        ],
+        'menu_categories': [
+            {
+                'name': 'default_cat',
+                'slots': [
+                    'welcome_drink', 'starter', 'soup', 'salad',
+                    'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+                    'curd_side', 'dessert',
+                ],
+            },
+        ],
+        'slot_count_overrides': [],
+        'theme_overrides': [],
+        'app_settings': [],
+        'menu_history': [],
+        'week_signatures': [],
+    })
+    return fake
+
+
+@pytest.fixture
+def fake_supabase(monkeypatch, seeded_fake_supabase):
+    """Install the fake as the process-wide Supabase client.
+
+    Resets the lazy singletons in ``src.db`` and ``api.app`` so the fake is
+    observed by every subsequent call inside the test.
+    """
+    import src.db as db_mod
+    monkeypatch.setattr(db_mod, '_sb_client', seeded_fake_supabase, raising=False)
+
+    try:
+        import api.app as api_app
+        monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
+        monkeypatch.setattr(api_app, '_pools', None, raising=False)
+        monkeypatch.setattr(api_app, '_df', None, raising=False)
+        monkeypatch.setattr(api_app, '_menu_rules', None, raising=False)
+    except ImportError:
+        pass
+
+    return seeded_fake_supabase

@@ -53,13 +53,13 @@ class TestRootEndpoint:
 
 
 class TestClientsEndpoint:
-    def test_list_clients_returns_list(self, client, auth_headers):
+    def test_list_clients_returns_list(self, client, auth_headers, fake_supabase):
         resp = client.get('/api/v1/clients', headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['success'] is True
         assert isinstance(data['clients'], list)
-        assert len(data['clients']) > 0
+        assert 'Rippling' in data['clients']
 
 
 class TestPlanEndpoint:
@@ -69,7 +69,7 @@ class TestPlanEndpoint:
         data = resp.get_json()
         assert data['success'] is False
 
-    def test_plan_rejects_unknown_client(self, client, auth_headers):
+    def test_plan_rejects_unknown_client(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/plan', json={
             'client_name': 'NonexistentClient999',
             'num_days': 1,
@@ -78,7 +78,7 @@ class TestPlanEndpoint:
         data = resp.get_json()
         assert data['success'] is False
 
-    def test_plan_generates_for_valid_client(self, client, auth_headers):
+    def test_plan_generates_for_valid_client(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/plan', json={
             'client_name': 'Rippling',
             'start_date': '2026-03-23',
@@ -99,13 +99,13 @@ class TestRegenerateEndpoint:
         data = resp.get_json()
         assert data['success'] is False
 
-    def test_regenerate_requires_base_plan(self, client, auth_headers):
+    def test_regenerate_requires_base_plan(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/regenerate', json={
             'client_name': 'Rippling',
         }, headers=auth_headers)
         assert resp.status_code == 400
 
-    def test_regenerate_requires_replace_slots(self, client, auth_headers):
+    def test_regenerate_requires_replace_slots(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/regenerate', json={
             'client_name': 'Rippling',
             'base_plan': {'2026-03-23': {'bread': 'plain_chapatti(B)'}},
