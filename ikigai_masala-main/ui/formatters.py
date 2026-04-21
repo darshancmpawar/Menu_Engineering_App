@@ -3,7 +3,7 @@ UI formatting utilities for menu plan display.
 """
 
 import re
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, CONST_SLOTS, BASE_SLOT_NAMES
 
@@ -110,6 +110,33 @@ def pretty_text(item_str: str) -> str:
 def color_suffix(item_str: str) -> Optional[str]:
     m = re.search(r'\(([A-Z])\)\s*$', item_str)
     return m.group(1) if m else None
+
+
+def flatten_api_solution(
+    raw_solution: Dict[str, Any],
+) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
+    """Turn the API's ``/plan`` response body into UI-friendly structures.
+
+    The API returns ``{date_iso: {theme, day_type, items: {slot: {item, ...}}}}``.
+    For rendering, the UI only needs ``{date_iso: {slot: item_str}}`` plus
+    ``{date_iso: day_type}`` for the column headers.
+    """
+    flat: Dict[str, Dict[str, str]] = {}
+    day_types: Dict[str, str] = {}
+    for date_key, day_data in raw_solution.items():
+        if isinstance(day_data, dict) and 'items' in day_data:
+            day_types[date_key] = day_data.get('day_type', '')
+            source = day_data['items']
+        else:
+            source = day_data or {}
+        slots: Dict[str, str] = {}
+        for slot_id, val in source.items():
+            if isinstance(val, dict):
+                slots[slot_id] = val.get('item', val.get('item_base', ''))
+            else:
+                slots[slot_id] = str(val)
+        flat[date_key] = slots
+    return flat, day_types
 
 
 def slot_sort_key(slot_id: str) -> int:

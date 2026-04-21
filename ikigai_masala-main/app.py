@@ -30,6 +30,7 @@ import streamlit as st
 from ui.api_client import MenuApiClient
 from ui.formatters import (
     display_label_for_slot_id,
+    flatten_api_solution,
     format_item_for_ui,
     format_item_html,
     slot_sort_key,
@@ -50,19 +51,6 @@ from user_authentication.session import (
 from user_authentication.login_ui import render_login_form
 from user_authentication.user_manager_ui import render_user_manager
 from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
-
-
-def _flatten_solution(raw_solution: dict) -> tuple:
-    """Convert the nested API solution format into (flat_plan, day_types)."""
-    from src.solver._helpers import items_from_day
-
-    flat = {}
-    day_types = {}
-    for date_key, day_data in raw_solution.items():
-        if isinstance(day_data, dict):
-            day_types[date_key] = day_data.get("day_type", "")
-        flat[date_key] = items_from_day(day_data)
-    return flat, day_types
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +261,7 @@ if generate_clicked:
                     num_days=num_days,
                     time_limit_seconds=180,
                 )
-                flat_plan, day_types = _flatten_solution(result.get("solution", {}))
+                flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
                 st.session_state.plan = flat_plan
                 st.session_state.plan_dates = sorted(flat_plan.keys())
                 st.session_state.day_types = day_types
@@ -424,7 +412,7 @@ if plan and plan_dates:
                             start_date=plan_dates[0],
                             num_days=len(plan_dates),
                             time_limit_seconds=180)
-                        flat_regen, regen_day_types = _flatten_solution(result.get("solution", {}))
+                        flat_regen, regen_day_types = flatten_api_solution(result.get("solution", {}))
                         st.session_state.plan = flat_regen if flat_regen else plan
                         if regen_day_types:
                             st.session_state.day_types = regen_day_types

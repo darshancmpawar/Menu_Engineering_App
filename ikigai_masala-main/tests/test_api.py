@@ -74,9 +74,35 @@ class TestPlanEndpoint:
             'client_name': 'NonexistentClient999',
             'num_days': 1,
         }, headers=auth_headers)
-        assert resp.status_code in (400, 500)
+        assert resp.status_code == 400
         data = resp.get_json()
         assert data['success'] is False
+        assert 'Unknown client' in data['error']
+
+    def test_plan_error_response_does_not_leak_exception_details(
+        self, client, auth_headers, fake_supabase, monkeypatch,
+    ):
+        """Unexpected errors must surface a generic message, not the
+        exception class name or raw message — those can reveal internal
+        hostnames, schema names, etc."""
+        import api.app as api_app
+
+        class _SecretLeak(Exception):
+            """Not in any specific handler — falls to the catch-all."""
+
+        def _boom(*_a, **_k):
+            raise _SecretLeak("supabase at 10.0.0.5 refused connection")
+
+        monkeypatch.setattr(api_app, '_prepare_solver_inputs', _boom)
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'num_days': 1,
+        }, headers=auth_headers)
+        assert resp.status_code == 500
+        data = resp.get_json()
+        assert data['success'] is False
+        assert data['error'] == 'Internal server error'
+        assert '10.0.0.5' not in data['error']
+        assert '_SecretLeak' not in data['error']
 
     def test_plan_generates_for_valid_client(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/plan', json={
@@ -116,6 +142,18 @@ class TestRegenerateEndpoint:
 class TestSaveEndpoint:
     def test_save_requires_fields(self, client, auth_headers):
         resp = client.post('/api/v1/save', json={}, headers=auth_headers)
-        assert resp.status_code in (400, 500)
+        assert resp.status_code == 400
         data = resp.get_json()
         assert data['success'] is False
+        assert data['error'] == 'client_name is required'
+
+    def test_save_rejects_unknown_client(self, client, auth_headers, fake_supabase):
+        resp = client.post('/api/v1/save', json={
+            'client_name': 'NonexistentClient999',
+            'week_plan': {'2026-03-23': {'bread': 'plain_chapatti(B)'}},
+            'week_start': '2026-03-23',
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data['success'] is False
+        assert 'Unknown client' in data['error']

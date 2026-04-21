@@ -47,6 +47,12 @@ from src.solver.regenerator import MenuRegenerator
 
 logger = logging.getLogger(__name__)
 
+# Generic message returned to clients when the server hits an unexpected
+# error. The real exception is logged server-side with exc_info; we must not
+# echo exception details back to the caller, since Supabase errors and
+# similar can reveal connection strings, internal hostnames, or schema info.
+_INTERNAL_ERROR_MSG = "Internal server error"
+
 app = Flask(__name__)
 
 # CORS: default to loopback-only (the Streamlit frontend calls the API
@@ -136,6 +142,21 @@ def _build_history_context(df, client_name, start_date, weekday_dates):
     return banned, rb_ban, recent_sigs
 
 
+def _require_known_client(client_name):
+    """Validate ``client_name`` is non-empty and refers to a known client.
+
+    Raises ``ValueError`` with a user-safe message so the caller's 400
+    handler picks it up. Keeps invalid input from reaching solver setup
+    or Supabase config reads, where it would surface as a less-clear
+    error deep in the stack.
+    """
+    if not client_name or not isinstance(client_name, str):
+        raise ValueError('client_name is required')
+    known = _get_client_loader().client_names
+    if client_name not in known:
+        raise ValueError(f"Unknown client: {client_name}")
+
+
 def _weekdays_from(start_date, num_days):
     """Return up to num_days weekday dates (skip Sat/Sun) starting from start_date."""
     dates = []
@@ -205,8 +226,7 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
     Raises ``ValueError`` with a user-facing message on missing/invalid input.
     """
     client_name = data.get('client_name')
-    if not client_name:
-        raise ValueError('client_name is required')
+    _require_known_client(client_name)
 
     start_date_str = data.get('start_date')
     num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
@@ -305,7 +325,8 @@ def list_clients():
         loader = _get_client_loader()
         return jsonify({'success': True, 'clients': loader.client_names})
     except (FileNotFoundError, ValueError, KeyError) as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to list clients: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/plan', methods=['POST'])
@@ -351,10 +372,10 @@ def plan_menu():
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
     except Exception as e:
         logger.error("Unexpected error in plan: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
@@ -410,10 +431,10 @@ def regenerate_cells():
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
     except Exception as e:
         logger.error("Unexpected error in regenerate: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/save', methods=['POST'])
@@ -425,8 +446,7 @@ def save_plan():
         week_plan_raw = data.get('week_plan', {})
         week_start_str = data.get('week_start')
 
-        if not client_name:
-            return jsonify({'success': False, 'error': 'client_name is required'}), 400
+        _require_known_client(client_name)
         if not week_plan_raw:
             return jsonify({'success': False, 'error': 'week_plan is required'}), 400
         if not week_start_str:
@@ -460,10 +480,10 @@ def save_plan():
         return jsonify({'success': False, 'error': str(e)}), 400
     except (FileNotFoundError, OSError) as e:
         logger.error("Save failed: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
     except Exception as e:
         logger.error("Unexpected save error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': f'{type(e).__name__}: {e}'}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/editor-metadata', methods=['GET'])
@@ -482,7 +502,8 @@ def editor_metadata():
             'menu_categories': loader.menu_categories,
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to load editor metadata: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
@@ -505,7 +526,8 @@ def get_client_config(client_name):
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to load client config: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
@@ -529,7 +551,7 @@ def update_client_config(client_name):
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error("Error updating client config: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/client', methods=['POST'])
@@ -550,7 +572,8 @@ def create_client():
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to create client: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
@@ -566,7 +589,8 @@ def delete_client(client_name):
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to delete client: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/validate-pools', methods=['POST'])
@@ -579,8 +603,7 @@ def validate_pools():
         start_date_str = data.get('start_date')
         num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
 
-        if not client_name:
-            return jsonify({'success': False, 'error': 'client_name is required'}), 400
+        _require_known_client(client_name)
 
         loader = _get_client_loader()
         client_cfg = loader.get_client(client_name)
@@ -592,8 +615,11 @@ def validate_pools():
 
         warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
         return jsonify({'success': True, 'warnings': warnings})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("Failed to validate pools: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
 @app.route('/api/v1/health', methods=['GET'])
