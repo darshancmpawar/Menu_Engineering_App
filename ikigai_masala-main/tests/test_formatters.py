@@ -4,6 +4,7 @@ import pytest
 from ui.formatters import (
     theme_label,
     display_label_for_slot_id,
+    flatten_api_solution,
     format_item_for_ui,
     pretty_text,
     color_suffix,
@@ -79,3 +80,41 @@ def test_slot_sort_key_with_suffix():
 
 def test_slot_sort_key_unknown():
     assert slot_sort_key("xyz_slot") == 999
+
+
+def test_flatten_api_solution_rich_format():
+    raw = {
+        "2026-03-23": {
+            "theme": "mix",
+            "day_type": "mix",
+            "items": {
+                "bread": {"item": "plain_chapatti(B)", "item_base": "plain_chapatti"},
+                "rice": {"item": "jeera_rice(Y)"},
+            },
+        },
+    }
+    flat, day_types = flatten_api_solution(raw)
+    assert flat == {"2026-03-23": {"bread": "plain_chapatti(B)", "rice": "jeera_rice(Y)"}}
+    assert day_types == {"2026-03-23": "mix"}
+
+
+def test_flatten_api_solution_flat_legacy_format():
+    raw = {"2026-03-23": {"bread": "plain_chapatti(B)"}}
+    flat, day_types = flatten_api_solution(raw)
+    assert flat == {"2026-03-23": {"bread": "plain_chapatti(B)"}}
+    assert day_types == {}
+
+
+def test_flatten_api_solution_empty():
+    assert flatten_api_solution({}) == ({}, {})
+
+
+def test_flatten_api_solution_falls_back_to_item_base():
+    raw = {
+        "2026-03-23": {
+            "day_type": "south",
+            "items": {"bread": {"item_base": "plain_chapatti"}},
+        },
+    }
+    flat, _ = flatten_api_solution(raw)
+    assert flat["2026-03-23"]["bread"] == "plain_chapatti"
