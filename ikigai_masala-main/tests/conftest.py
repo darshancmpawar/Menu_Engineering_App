@@ -2,13 +2,23 @@
 Pytest configuration and shared fixtures
 """
 
-import pytest
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+# Seed dummy values for env vars that api.config.validate_required_env()
+# insists on at import time. Supabase is replaced by the FakeSupabase
+# fixture, and the API_SECRET_KEY is only used when tests exercise the
+# auth decorators — those tests still override it with their own value.
+os.environ.setdefault("SUPABASE_URL", "http://fake-supabase.invalid")
+os.environ.setdefault("SUPABASE_KEY", "fake-key-for-tests")
+os.environ.setdefault("API_SECRET_KEY", "test-secret-not-for-production")
 
 
 @pytest.fixture(scope="session")

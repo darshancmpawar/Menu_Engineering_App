@@ -106,6 +106,31 @@ class TestPremiumMenuRule:
         rule = PremiumMenuRule({"name": "prem", "type": "premium"})
         rule.apply(model, {}, None, {})
 
+    def test_rejects_min_greater_than_max(self):
+        rule = PremiumMenuRule({
+            "name": "prem", "type": "premium",
+            "min_per_horizon": 3, "max_per_horizon": 1,
+        })
+        assert rule.validate_config() is False
+        errs = rule.validation_errors()
+        assert any("min_per_horizon" in e and "<=" in e for e in errs)
+
+    def test_rejects_negative_bounds(self):
+        rule = PremiumMenuRule({
+            "name": "prem", "type": "premium",
+            "max_per_day": -1,
+        })
+        assert rule.validate_config() is False
+        assert any("max_per_day" in e for e in rule.validation_errors())
+
+    def test_valid_config_has_no_errors(self):
+        rule = PremiumMenuRule({
+            "name": "prem", "type": "premium",
+            "min_per_horizon": 1, "max_per_horizon": 1,
+        })
+        assert rule.validate_config() is True
+        assert rule.validation_errors() == []
+
 
 # --- ThemeDayMenuRule ---
 
@@ -592,6 +617,27 @@ class TestItemFrequencyRule:
         })
         assert rule._row_matches({'sub_category': 'south_one_pot_rice'}) is True
         assert rule._row_matches({'sub_category': 'north_rich_pulao'}) is False
+
+    def test_validate_rejects_min_greater_than_max(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "bad", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice"},
+            "min_per_week": 3, "max_per_week": 1,
+        })
+        assert rule.validate_config() is False
+        errs = rule.validation_errors()
+        assert any("min_per_week" in e and "<=" in e for e in errs)
+
+    def test_validate_rejects_negative_max(self):
+        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        rule = ItemFrequencyRule({
+            "name": "bad", "type": "item_frequency",
+            "selector": {"flag": "is_liquid_rice"},
+            "max_per_week": -1,
+        })
+        assert rule.validate_config() is False
+        assert any("max_per_week" in e for e in rule.validation_errors())
 
 
 class TestSlotDayRestrictionRule:

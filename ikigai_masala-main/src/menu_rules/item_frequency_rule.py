@@ -60,15 +60,34 @@ class ItemFrequencyRule(BaseMenuRule):
         )
 
     def validate_config(self) -> bool:
+        return not self._collect_errors()
+
+    def validation_errors(self) -> List[str]:
+        return self._collect_errors()
+
+    def _collect_errors(self) -> List[str]:
+        errs: List[str] = []
         if not self.sel_kind:
-            return False
+            errs.append(
+                "selector must contain exactly one of "
+                + ", ".join(_SELECTOR_KEYS)
+            )
         if self.min_per_week is None and self.max_per_week is None:
-            return False
+            errs.append("at least one of min_per_week / max_per_week is required")
         if self.min_per_week is not None and self.min_per_week < 0:
-            return False
+            errs.append(f"min_per_week must be >= 0 (got {self.min_per_week})")
         if self.max_per_week is not None and self.max_per_week < 0:
-            return False
-        return True
+            errs.append(f"max_per_week must be >= 0 (got {self.max_per_week})")
+        if (
+            self.min_per_week is not None
+            and self.max_per_week is not None
+            and self.min_per_week > self.max_per_week
+        ):
+            errs.append(
+                f"min_per_week ({self.min_per_week}) must be <= "
+                f"max_per_week ({self.max_per_week})"
+            )
+        return errs
 
     # -- matching helpers --
 

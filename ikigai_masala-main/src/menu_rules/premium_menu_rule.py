@@ -2,7 +2,7 @@
 Premium menu rule: max 1 premium item per day, 1-2 per week.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType
 
@@ -25,6 +25,31 @@ class PremiumMenuRule(BaseMenuRule):
         self.max_per_day = rule_config.get('max_per_day', 1)
         self.min_per_horizon = rule_config.get('min_per_horizon', 1)
         self.max_per_horizon = rule_config.get('max_per_horizon', 2)
+
+    def validate_config(self) -> bool:
+        return not self._collect_errors()
+
+    def validation_errors(self) -> List[str]:
+        return self._collect_errors()
+
+    def _collect_errors(self) -> List[str]:
+        errs: List[str] = []
+        if self.max_per_day < 0:
+            errs.append(f"max_per_day must be >= 0 (got {self.max_per_day})")
+        if self.min_per_horizon < 0:
+            errs.append(
+                f"min_per_horizon must be >= 0 (got {self.min_per_horizon})"
+            )
+        if self.max_per_horizon < 0:
+            errs.append(
+                f"max_per_horizon must be >= 0 (got {self.max_per_horizon})"
+            )
+        if self.min_per_horizon > self.max_per_horizon:
+            errs.append(
+                f"min_per_horizon ({self.min_per_horizon}) must be <= "
+                f"max_per_horizon ({self.max_per_horizon})"
+            )
+        return errs
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
