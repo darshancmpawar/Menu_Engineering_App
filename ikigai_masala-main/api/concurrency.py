@@ -87,16 +87,30 @@ def solver_gate(fn):
                     ),
                 }), 503
 
-        # If queued, wait for our turn
+        # If queued, wait for our turn.
         if my_event is not None:
             got_slot = my_event.wait(timeout=QUEUE_TIMEOUT)
             if not got_slot:
-                # Timed out — remove ourselves from queue
+                # Timeout expired. A releasing worker may have popped and
+                # set() our event in the same instant — the wait() return
+                # value lost that race. Re-check inside the lock: if the
+                # event actually fired, we were already promoted to
+                # "running" and must run fn() so the matching finally
+                # block decrements _running. Otherwise, pull ourselves
+                # out of the queue and return 504 cleanly.
                 with _lock:
-                    try:
-                        _queue.remove(my_event)
-                    except ValueError:
-                        pass
+                    if my_event.is_set():
+                        got_slot = True
+                    else:
+                        try:
+                            _queue.remove(my_event)
+                        except ValueError:
+                            # Between wait() returning False and us
+                            # taking the lock, another thread popped us.
+                            # It has already incremented _running for
+                            # us, so treat this as a late promotion.
+                            got_slot = True
+            if not got_slot:
                 return jsonify({
                     "success": False,
                     "error": "Request timed out waiting in queue. Please try again.",
