@@ -34,7 +34,13 @@ def _bearer(role: str) -> dict:
 
 class TestPublicRoutes:
     def test_health_is_public(self, client):
-        assert client.get('/api/v1/health').status_code == 200
+        # /health may return 503 when Supabase is unreachable (no
+        # fake_supabase fixture here); the point is that it's not
+        # behind auth — a 401/403 would mean the decorator is on.
+        status = client.get('/api/v1/health').status_code
+        assert status not in (401, 403), (
+            f"/health must be unauthenticated, got {status}"
+        )
 
     def test_root_is_public(self, client):
         assert client.get('/').status_code == 200

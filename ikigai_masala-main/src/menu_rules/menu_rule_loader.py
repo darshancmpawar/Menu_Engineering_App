@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import BaseMenuRule
 from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
 from .coupling_menu_rule import CouplingMenuRule

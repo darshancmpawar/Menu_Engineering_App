@@ -14,8 +14,9 @@ import logging
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
@@ -25,10 +26,19 @@ from api.auth import api_login, require_api_auth
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
-    API_HOST, API_PORT, DEBUG,
+    API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     validate_required_env, today_in_app_tz,
 )
+from api.logging_config import (
+    configure_logging,
+    new_request_id,
+    request_id_var,
+)
+
+# Install the logging config before anything else logs. Idempotent, so
+# callers that also import us (Streamlit entry, tests) don't double-up.
+configure_logging()
 
 # Fail fast if required secrets / URLs are unset. The alternative is an
 # opaque KeyError or Supabase auth error on the first request — which
@@ -59,6 +69,10 @@ logger = logging.getLogger(__name__)
 # similar can reveal connection strings, internal hostnames, or schema info.
 _INTERNAL_ERROR_MSG = "Internal server error"
 
+# Record when the process started so /health can report uptime. Used
+# for liveness / deploy-tracking rather than anything load-bearing.
+_STARTED_AT = time.time()
+
 app = Flask(__name__)
 
 # CORS: default to loopback-only (the Streamlit frontend calls the API
@@ -71,6 +85,65 @@ if _cors_env:
 else:
     _cors_origins = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
 CORS(app, origins=_cors_origins)
+
+
+# ---------------------------------------------------------------------------
+# Request tracing — one access log line per request with timing + user.
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def _trace_request_start() -> None:
+    # Prefer a caller-supplied X-Request-ID so traces can be correlated
+    # across services; otherwise mint our own.
+    rid = request.headers.get("X-Request-ID", "").strip() or new_request_id()
+    g.request_id = rid
+    # Every request's before_request overwrites the ContextVar, so
+    # thread-pool reuse can't leak an id from the previous request.
+    request_id_var.set(rid)
+    g._t0 = time.perf_counter()
+
+
+@app.after_request
+def _trace_request_end(response):
+    t0 = getattr(g, "_t0", None)
+    duration_ms = (
+        int((time.perf_counter() - t0) * 1000) if t0 is not None else None
+    )
+    rid = getattr(g, "request_id", "-")
+    response.headers["X-Request-ID"] = rid
+
+    # Principal email is populated by require_api_auth via g.api_user
+    # when auth passes; None for /health, /, and /auth/login.
+    api_user = getattr(g, "api_user", None)
+    user_email = (api_user or {}).get("email")
+
+    # /health gets spammy fast — skip its access log unless it errored.
+    if request.path == "/api/v1/health" and response.status_code < 400:
+        return response
+
+    logger.info(
+        "http_request",
+        extra={
+            "method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "user": user_email,
+            "remote_addr": request.remote_addr,
+        },
+    )
+    return response
+
+
+@app.teardown_request
+def _trace_request_teardown(_exc):
+    # Return the ContextVar to its sentinel so log records emitted
+    # after this request finishes (e.g. background cleanup, the next
+    # test in a pytest session) don't inherit a stale request id.
+    # Using set() rather than reset() because tokens are single-use
+    # and the after_request path may have already released it.
+    request_id_var.set("-")
+
 
 # Thread-safe lazy singletons
 _init_lock = threading.Lock()
@@ -587,20 +660,28 @@ def editor_metadata():
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
 @require_api_auth()
 def get_client_config(client_name):
-    """Return the full editable config for one client."""
+    """Return the full editable config for one client.
+
+    Includes a ``version`` field + an ``ETag: "<version>"`` response
+    header so callers can issue optimistic-concurrency-safe PUTs.
+    """
     try:
         loader = _get_client_loader()
         base_slots = loader.get_active_slots_for_client(client_name)
         menu_category = loader.get_client_menu_category(client_name)
         cfg = loader.get_client(client_name)
-        return jsonify({
+        version = loader.get_client_version(client_name)
+        response = jsonify({
             'success': True,
             'name': cfg.name,
             'menu_category': menu_category,
             'active_base_slots': [s for s in base_slots if s not in CONST_SLOTS],
             'slot_counts': cfg.slot_counts,
             'theme_map': cfg.theme_map,
+            'version': version,
         })
+        response.headers['ETag'] = f'"{version}"'
+        return response
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
@@ -608,13 +689,65 @@ def get_client_config(client_name):
         return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
+_ETAG_RE = re.compile(r'^\s*(?:W/)?"?(\d+)"?\s*$')
+
+
+def _expected_version(data: Dict[str, Any]) -> Optional[int]:
+    """Extract the expected version from the request.
+
+    Accepts either ``{"version": N}`` in the JSON body (preferred by our
+    own UI) or an ``If-Match: "N"`` / ``If-Match: N`` header for HTTP
+    clients that want to speak the standard idiom.
+    """
+    if 'version' in data:
+        try:
+            return int(data['version'])
+        except (TypeError, ValueError):
+            raise ValueError("version must be an integer")
+    header = request.headers.get('If-Match', '').strip()
+    if header:
+        m = _ETAG_RE.match(header)
+        if not m:
+            raise ValueError("If-Match header must be a quoted integer")
+        return int(m.group(1))
+    return None
+
+
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 @require_api_auth(min_role=ROLE_ADMIN)
 def update_client_config(client_name):
-    """Update a client's configuration (slots, slot counts, theme overrides)."""
+    """Update a client's configuration (slots, slot counts, theme overrides).
+
+    Requires an optimistic-concurrency version from the caller to avoid
+    last-write-wins when two admins edit the same client. Either:
+      * ``{"version": N}`` in the JSON body (what our Streamlit UI sends), or
+      * ``If-Match: "N"`` header for standard HTTP clients.
+
+    Responds 409 Conflict with the current version when the check fails.
+    """
+    from src.client.client_config import ConcurrentEditError
+
     try:
         data = request.get_json(silent=True) or {}
         loader = _get_client_loader()
+
+        expected = _expected_version(data)
+        if expected is None:
+            return jsonify({
+                'success': False,
+                'error': (
+                    'version is required (include "version" in the JSON '
+                    'body or send an If-Match header with the ETag from '
+                    'GET /client-config). This prevents silently '
+                    'overwriting another admin\'s changes.'
+                ),
+            }), 400
+
+        # Bump first: the conditional update is the actual race gate.
+        # If another writer snuck in between the caller's GET and this
+        # PUT, the update matches zero rows and we 409 before doing any
+        # partial sub-update.
+        new_version = loader.bump_version_if_matches(client_name, expected)
 
         if 'active_base_slots' in data:
             loader.update_client_slots(client_name, data['active_base_slots'])
@@ -623,8 +756,19 @@ def update_client_config(client_name):
         if 'theme_map' in data:
             loader.update_client_theme_overrides(client_name, data['theme_map'])
 
-        # No reload needed — Supabase reads are always live
-        return jsonify({'success': True, 'message': f'Config updated for {client_name}'})
+        response = jsonify({
+            'success': True,
+            'message': f'Config updated for {client_name}',
+            'version': new_version,
+        })
+        response.headers['ETag'] = f'"{new_version}"'
+        return response
+    except ConcurrentEditError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'current_version': e.current_version,
+        }), 409
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
@@ -700,23 +844,49 @@ def validate_pools():
         return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
+def _probe_supabase() -> bool:
+    """Cheap reachability check: fetch one row from `clients`. Any
+    exception (network, auth, RLS) counts as unreachable.
+    """
+    try:
+        from src.db import get_supabase
+        get_supabase().table('clients').select('name').limit(1).execute()
+        return True
+    except Exception as exc:  # noqa: BLE001 — degraded state is fine
+        logger.warning("Supabase health probe failed: %s", exc)
+        return False
+
+
 @app.route('/api/v1/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy', **_solver_stats()})
+    """Liveness + readiness combined.
+
+    Returns 200 with status=healthy when everything is up, 503 with
+    status=degraded when Supabase is unreachable. Either way the body
+    carries enough to diagnose: version, uptime, queue stats, and the
+    supabase flag. Uptime monitors that only match on 200 will (correctly)
+    start paging on degraded.
+    """
+    supabase_up = _probe_supabase()
+    body = {
+        'status': 'healthy' if supabase_up else 'degraded',
+        'version': APP_VERSION,
+        'uptime_seconds': int(time.time() - _STARTED_AT),
+        'supabase_reachable': supabase_up,
+        'queue': _solver_stats(),
+    }
+    return jsonify(body), (200 if supabase_up else 503)
 
 
 @app.route('/')
 def root():
     return jsonify({
         'name': 'Ikigai Masala Menu Planning API',
-        'version': '2.0',
+        'version': APP_VERSION,
         'docs': '/api/v1/clients',
     })
 
 
 if __name__ == '__main__':
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    # Logging was already configured at module import.
     app.run(host=API_HOST, port=API_PORT, debug=DEBUG)

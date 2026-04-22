@@ -8,7 +8,6 @@ and verifies the constraints produce correct solutions.
 import datetime as dt
 
 import pandas as pd
-import pytest
 from ortools.sat.python import cp_model
 
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule

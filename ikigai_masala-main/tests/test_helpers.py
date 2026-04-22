@@ -1,7 +1,6 @@
 """Tests for src/solver/_helpers.py shared utilities."""
 
 import datetime as dt
-import pytest
 
 from src.solver._helpers import weekday_type, theme_label, strip_color_suffix
 

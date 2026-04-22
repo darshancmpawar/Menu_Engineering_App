@@ -10,7 +10,6 @@ Called from app.py when st.session_state.view == "editor".
 
 import streamlit as st
 from ui.api_client import MenuApiClient
-from ui.formatters import prettify_slot_name
 from customisation.slot_editor import render_slot_editor
 from customisation.multi_slot_editor import render_multi_slot_editor
 from customisation.theme_editor import render_theme_editor
@@ -152,6 +151,10 @@ def render_customisation_editor(api: MenuApiClient):
         current_active = config.get('active_base_slots', [])
         current_counts = config.get('slot_counts', {})
         current_theme = config.get('theme_map', dict(default_theme_map))
+        # Optimistic-concurrency counter returned by GET /client-config.
+        # Every PUT that modifies this client must send it back so two
+        # admins editing at once can't last-write-wins silently.
+        current_version = config.get('version')
         client_key = selected_client
     else:
         if not new_client_name.strip():
@@ -164,6 +167,7 @@ def render_customisation_editor(api: MenuApiClient):
         current_active = [s for s in all_base_slots if s not in set(const_slots)]
         current_counts = {s: 1 for s in all_base_slots}
         current_theme = dict(default_theme_map)
+        current_version = None  # no row yet; set after api.create_client
         client_key = "_new_"
 
     # ============================================================
@@ -261,7 +265,10 @@ def render_customisation_editor(api: MenuApiClient):
                     theme_overrides = {k: v for k, v in new_theme_map.items()
                                        if v != default_theme_map.get(k)}
                     if freq_overrides or theme_overrides:
-                        payload = {}
+                        # Fetch the just-created config to pick up its
+                        # starting version (server-side default is 1).
+                        fresh = api.get_client_config(name)
+                        payload = {'version': fresh.get('version', 1)}
                         if freq_overrides:
                             payload['slot_counts'] = new_slot_counts
                         if theme_overrides:
@@ -315,7 +322,7 @@ def render_customisation_editor(api: MenuApiClient):
                 st.error(f"Delete failed: {e}")
 
         if save_clicked:
-            payload = {}
+            payload = {'version': current_version}
             if set(new_active_slots) != set(current_active):
                 payload['active_base_slots'] = new_active_slots
             count_overrides = {k: v for k, v in new_slot_counts.items()
@@ -327,10 +334,14 @@ def render_customisation_editor(api: MenuApiClient):
                 st.session_state['editor_success_msg'] = f"Configuration saved for {selected_client}"
                 st.rerun()
             except Exception as e:
+                # 409 surfaces here as an HTTPError with "modified by
+                # another request" in the message — tell the user to
+                # refresh rather than hide the conflict.
                 st.error(f"Save failed: {e}")
 
         if reset_clicked:
             payload = {
+                'version': current_version,
                 'active_base_slots': list(all_base_slots),
                 'slot_counts': {s: 1 for s in all_base_slots},
                 'theme_map': dict(default_theme_map),

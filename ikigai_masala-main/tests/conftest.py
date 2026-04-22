@@ -57,7 +57,9 @@ def seeded_fake_supabase():
 
     fake = FakeSupabase(seed={
         'clients': [
-            {'name': 'Rippling', 'menu_category': 'default_cat'},
+            # version=1 mirrors the Supabase schema default and is
+            # what /client-config GET returns for a fresh row.
+            {'name': 'Rippling', 'menu_category': 'default_cat', 'version': 1},
         ],
         'menu_categories': [
             {

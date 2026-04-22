@@ -1,6 +1,5 @@
 """Tests for UI formatters."""
 
-import pytest
 from ui.formatters import (
     theme_label,
     display_label_for_slot_id,

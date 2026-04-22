@@ -6,7 +6,7 @@ import html
 import re
 from typing import Any, Dict, Optional, Tuple
 
-from src.constants import DISPLAY_SLOT_NAME, CONST_SLOTS, BASE_SLOT_NAMES
+from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES
 
 
 # Day-of-week theme labels (Monday=0)

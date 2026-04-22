@@ -20,11 +20,9 @@ import datetime as dt
 import html
 import io
 import csv
-import logging
 import threading
 import time
 
-import requests
 import streamlit as st
 
 from ui.api_client import MenuApiClient
@@ -63,9 +61,9 @@ def _start_flask_backend(port: int) -> None:
     # api.app's module-level validate_required_env() raises if any
     # required var is missing; let that bubble up so the Streamlit
     # process shows a clear error instead of a silent backend crash.
+    # Logging is configured inside api.app via configure_logging(),
+    # so don't install a second root handler here.
     from api.app import app as flask_app
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     flask_app.run(host="127.0.0.1", port=port, debug=False,
                   use_reloader=False, threaded=True)
 
@@ -441,7 +439,15 @@ if plan and plan_dates:
     if st.session_state.changes_log:
         with st.expander("Changes log"):
             for entry in st.session_state.changes_log:
-                st.markdown(f'<div class="log-entry">{entry}</div>', unsafe_allow_html=True)
+                # Escape defensively: today's entries are code-constructed
+                # ("Regenerated N cells"), but the moment someone appends
+                # a slot/client name or rule string that came from user
+                # input, this div becomes an XSS sink because it renders
+                # with unsafe_allow_html=True.
+                st.markdown(
+                    f'<div class="log-entry">{html.escape(str(entry))}</div>',
+                    unsafe_allow_html=True,
+                )
 
 else:
     st.markdown("""<div class="empty-state">
