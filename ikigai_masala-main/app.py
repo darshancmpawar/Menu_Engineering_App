@@ -441,7 +441,15 @@ if plan and plan_dates:
     if st.session_state.changes_log:
         with st.expander("Changes log"):
             for entry in st.session_state.changes_log:
-                st.markdown(f'<div class="log-entry">{entry}</div>', unsafe_allow_html=True)
+                # Escape defensively: today's entries are code-constructed
+                # ("Regenerated N cells"), but the moment someone appends
+                # a slot/client name or rule string that came from user
+                # input, this div becomes an XSS sink because it renders
+                # with unsafe_allow_html=True.
+                st.markdown(
+                    f'<div class="log-entry">{html.escape(str(entry))}</div>',
+                    unsafe_allow_html=True,
+                )
 
 else:
     st.markdown("""<div class="empty-state">
