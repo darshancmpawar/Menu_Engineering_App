@@ -24,7 +24,6 @@ import logging
 import threading
 import time
 
-import requests
 import streamlit as st
 
 from ui.api_client import MenuApiClient

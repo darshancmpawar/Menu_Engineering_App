@@ -8,7 +8,7 @@ set of candidates.  Supports ``min_per_week`` and/or ``max_per_week``.
 not total occurrences.  For slots with count=1/day this is equivalent.
 """
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType

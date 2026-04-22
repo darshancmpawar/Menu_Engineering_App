@@ -7,7 +7,7 @@ Replaces the untyped Dict[str, Any] context with a proper dataclass.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple, Callable, Any, TYPE_CHECKING
 
 from ortools.sat.python import cp_model

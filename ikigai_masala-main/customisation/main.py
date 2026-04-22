@@ -10,7 +10,6 @@ Called from app.py when st.session_state.view == "editor".
 
 import streamlit as st
 from ui.api_client import MenuApiClient
-from ui.formatters import prettify_slot_name
 from customisation.slot_editor import render_slot_editor
 from customisation.multi_slot_editor import render_multi_slot_editor
 from customisation.theme_editor import render_theme_editor

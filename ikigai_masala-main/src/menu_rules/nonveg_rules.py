@@ -11,7 +11,7 @@ Non-veg menu rules.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Dict, Set
+from typing import Any, Dict
 
 import pandas as pd
 from ortools.sat.python import cp_model

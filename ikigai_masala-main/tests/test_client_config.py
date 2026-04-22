@@ -1,7 +1,5 @@
 """Tests for ClientConfigLoader (Supabase backend)."""
 
-import json
-import os
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +8,6 @@ from src.client.client_config import (
     _dedupe_preserve_order,
     DEFAULT_THEME_MAP,
 )
-from src.constants import BASE_SLOT_NAMES, CONST_SLOTS
 
 
 # ---------------------------------------------------------------------------

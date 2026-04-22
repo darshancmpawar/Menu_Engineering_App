@@ -1,7 +1,6 @@
 """Tests for ColumnMapper alias detection and normalization."""
 
 import pandas as pd
-import pytest
 from src.preprocessor.column_mapper import (
     ColumnMapper, pick_col, _norm_str, _norm_color, _to_bool01,
     _is_deepfried_starter_row, _is_nonveg_dry_row,

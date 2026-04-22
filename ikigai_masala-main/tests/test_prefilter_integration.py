@@ -9,17 +9,14 @@ Verifies that:
 """
 
 import datetime as dt
-from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
 
 from src.menu_rules.cooldown_rules import (
     ItemCooldownMenuRule, RiceBreadGapMenuRule,
 )
 from src.menu_rules.theme_rules import ThemeSlotFilterRule, _chinese_side_mask
 from src.menu_rules.nonveg_rules import NonvegDryPreferenceRule
-from src.menu_rules.base_menu_rule import BaseMenuRule
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,7 @@ import pandas as pd
 
 from .column_mapper import _norm_str
 from src.constants import (
-    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, CONST_SLOTS, OUTPUT_SLOTS,
-    CONSTANT_ITEMS, EXEMPT_FROM_CUISINE, REPEATABLE_ITEM_BASES,
-    PULAO_SUBCATS, THEME_FALLBACK_SLOTS,
+    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES,
 )
 
 # course_type -> slot mapping for simple 1:1 cases

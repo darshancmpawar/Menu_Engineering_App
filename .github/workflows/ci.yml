@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-progress runs when a new commit lands on the same branch —
+# saves runner minutes and avoids "merge the old run's PR status" races.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ikigai_masala-main/requirements.txt
+
+      - name: Install dependencies
+        working-directory: ikigai_masala-main
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: ikigai_masala-main
+        run: pytest -q
+
+  lint:
+    name: ruff (bug-only ruleset)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install "ruff>=0.4,<1.0"
+
+      # F = pyflakes (unused imports, undefined names, etc.)
+      # E9 = syntax errors / indentation errors
+      # Intentionally narrow so we catch real bugs without drowning in
+      # style noise on a codebase that was never formatted. Widen later.
+      - name: Run ruff
+        working-directory: ikigai_masala-main
+        run: ruff check --select=F,E9 .
+
+  security:
+    name: bandit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bandit
+        run: pip install "bandit>=1.7,<2.0"
+
+      # -ll: only MEDIUM+ severity findings; -r: recursive.
+      # Scanning tests is noisy and uninteresting (assert statements etc.).
+      - name: Run bandit
+        working-directory: ikigai_masala-main
+        run: bandit -ll -r api src user_authentication scripts

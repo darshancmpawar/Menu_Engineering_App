@@ -8,7 +8,6 @@ CP-SAT constraint logic is tested indirectly via the integration test.
 import datetime as dt
 
 import pandas as pd
-import pytest
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.curd_side_menu_rule import CurdSideMenuRule
 from src.menu_rules.premium_menu_rule import PremiumMenuRule

@@ -22,7 +22,7 @@ from ._helpers import weekday_type_for_config as _weekday_type_cfg
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
-    RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS, SLOT_SUFFIX_SEP,
+    RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
 )
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01

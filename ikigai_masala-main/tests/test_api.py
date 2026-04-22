@@ -4,8 +4,6 @@ Tests for the Flask API endpoints.
 Uses Flask's test client (no running server needed).
 """
 
-import datetime as dt
-import json
 import pytest
 
 flask = pytest.importorskip("flask", reason="Flask not installed")
