@@ -62,9 +62,9 @@ def _start_flask_backend(port: int) -> None:
     # api.app's module-level validate_required_env() raises if any
     # required var is missing; let that bubble up so the Streamlit
     # process shows a clear error instead of a silent backend crash.
+    # Logging is configured inside api.app via configure_logging(),
+    # so don't install a second root handler here.
     from api.app import app as flask_app
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     flask_app.run(host="127.0.0.1", port=port, debug=False,
                   use_reloader=False, threaded=True)
 

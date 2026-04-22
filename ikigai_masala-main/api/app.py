@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
@@ -29,6 +30,15 @@ from api.config import (
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     validate_required_env, today_in_app_tz,
 )
+from api.logging_config import (
+    configure_logging,
+    new_request_id,
+    request_id_var,
+)
+
+# Install the logging config before anything else logs. Idempotent, so
+# callers that also import us (Streamlit entry, tests) don't double-up.
+configure_logging()
 
 # Fail fast if required secrets / URLs are unset. The alternative is an
 # opaque KeyError or Supabase auth error on the first request — which
@@ -71,6 +81,65 @@ if _cors_env:
 else:
     _cors_origins = re.compile(r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$")
 CORS(app, origins=_cors_origins)
+
+
+# ---------------------------------------------------------------------------
+# Request tracing — one access log line per request with timing + user.
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def _trace_request_start() -> None:
+    # Prefer a caller-supplied X-Request-ID so traces can be correlated
+    # across services; otherwise mint our own.
+    rid = request.headers.get("X-Request-ID", "").strip() or new_request_id()
+    g.request_id = rid
+    # Every request's before_request overwrites the ContextVar, so
+    # thread-pool reuse can't leak an id from the previous request.
+    request_id_var.set(rid)
+    g._t0 = time.perf_counter()
+
+
+@app.after_request
+def _trace_request_end(response):
+    t0 = getattr(g, "_t0", None)
+    duration_ms = (
+        int((time.perf_counter() - t0) * 1000) if t0 is not None else None
+    )
+    rid = getattr(g, "request_id", "-")
+    response.headers["X-Request-ID"] = rid
+
+    # Principal email is populated by require_api_auth via g.api_user
+    # when auth passes; None for /health, /, and /auth/login.
+    api_user = getattr(g, "api_user", None)
+    user_email = (api_user or {}).get("email")
+
+    # /health gets spammy fast — skip its access log unless it errored.
+    if request.path == "/api/v1/health" and response.status_code < 400:
+        return response
+
+    logger.info(
+        "http_request",
+        extra={
+            "method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+            "duration_ms": duration_ms,
+            "user": user_email,
+            "remote_addr": request.remote_addr,
+        },
+    )
+    return response
+
+
+@app.teardown_request
+def _trace_request_teardown(_exc):
+    # Return the ContextVar to its sentinel so log records emitted
+    # after this request finishes (e.g. background cleanup, the next
+    # test in a pytest session) don't inherit a stale request id.
+    # Using set() rather than reset() because tokens are single-use
+    # and the after_request path may have already released it.
+    request_id_var.set("-")
+
 
 # Thread-safe lazy singletons
 _init_lock = threading.Lock()
@@ -715,8 +784,5 @@ def root():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    # Logging was already configured at module import.
     app.run(host=API_HOST, port=API_PORT, debug=DEBUG)
