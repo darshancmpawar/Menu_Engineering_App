@@ -118,18 +118,49 @@ def _rules_and_skip_for_client(client_name, dates):
     return rules, skip_cells
 
 
+# Longest backward window any HistoryManager consumer looks at
+# (week-signature cooldown is 30d, item cooldown 20d, rice-bread gap 10d).
+# A few extra days of slack lets small schema changes to those defaults
+# land without needing this constant to track them exactly.
+_HISTORY_WINDOW_DAYS = 45
+
+
 def _build_history_context(df, client_name, start_date, weekday_dates):
-    """Shared helper to build history-based solver inputs from Supabase."""
+    """Shared helper to build history-based solver inputs from Supabase.
+
+    Pushes ``client_name`` and ``service_date >= cutoff`` filters down to
+    Supabase so the query hits the ``(client_name, service_date DESC)``
+    index on ``menu_history`` (and the analogous index on
+    ``week_signatures``) instead of scanning every row for every tenant.
+    """
     import pandas as pd
     from src.db import get_supabase
 
+    earliest = start_date - dt.timedelta(days=_HISTORY_WINDOW_DAYS)
+    earliest_iso = earliest.isoformat()
+
     hm = HistoryManager()
     sb = get_supabase()
-    long_resp = sb.table('menu_history').select('*').execute()
-    weeks_resp = sb.table('week_signatures').select('*').execute()
+    long_resp = (
+        sb.table('menu_history')
+        .select('*')
+        .eq('client_name', client_name)
+        .gte('service_date', earliest_iso)
+        .execute()
+    )
+    weeks_resp = (
+        sb.table('week_signatures')
+        .select('*')
+        .eq('client_name', client_name)
+        .gte('week_start', earliest_iso)
+        .execute()
+    )
     long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
     weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
     hm.load_from_dataframes(long_df, weeks_df)
+    # Rows are already scoped to this client at the DB layer, but leave
+    # the in-memory filter in place as belt-and-suspenders for anyone
+    # who seeds the manager from an unfiltered DataFrame.
     hm = hm.filter_by_client(client_name)
 
     banned = hm.banned_items_by_date(weekday_dates, const_slots=CONST_SLOTS,
@@ -363,6 +394,8 @@ def plan_menu():
         }
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
+        if solver.rule_failures:
+            response['rule_warnings'] = solver.rule_failures
         return jsonify(response)
 
     except (ValueError, KeyError) as e:
@@ -418,11 +451,14 @@ def regenerate_cells():
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
         )
-        return jsonify({
+        response = {
             'success': True,
             'message': f'Regenerated {sum(len(v) for v in replace_mask.values())} cells for {inputs.client_name}',
             'solution': formatter.to_dict(),
-        })
+        }
+        if regen.rule_failures:
+            response['rule_warnings'] = regen.rule_failures
+        return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400

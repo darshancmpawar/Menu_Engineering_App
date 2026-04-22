@@ -61,6 +61,9 @@ class MenuRegenerator:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        # Mirror of MenuSolver.rule_failures from the last regenerate() call
+        # so the API can forward soft-rule failures to the client.
+        self.rule_failures: List[Dict[str, str]] = []
 
     def regenerate(
         self,
@@ -124,7 +127,9 @@ class MenuRegenerator:
 
         # First attempt: with forbidden (hard block old items)
         try:
-            return solver.solve(locked=locked, forbidden=forbidden, similarity=None)
+            result = solver.solve(locked=locked, forbidden=forbidden, similarity=None)
+            self.rule_failures = list(solver.rule_failures)
+            return result
         except RuntimeError:
             pass
 
@@ -135,6 +140,8 @@ class MenuRegenerator:
                 similarity_penalties[d, slot_id, old_item] = REGEN_SIMILARITY_PENALTY
 
         try:
-            return solver.solve(locked=locked, forbidden=None, similarity=similarity_penalties)
+            result = solver.solve(locked=locked, forbidden=None, similarity=similarity_penalties)
+            self.rule_failures = list(solver.rule_failures)
+            return result
         except RuntimeError as e:
             raise RuntimeError(f'Regeneration failed: {e}') from e

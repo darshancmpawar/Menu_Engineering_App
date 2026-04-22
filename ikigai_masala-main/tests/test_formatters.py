@@ -6,6 +6,7 @@ from ui.formatters import (
     display_label_for_slot_id,
     flatten_api_solution,
     format_item_for_ui,
+    format_item_html,
     pretty_text,
     color_suffix,
     slot_sort_key,
@@ -80,6 +81,30 @@ def test_slot_sort_key_with_suffix():
 
 def test_slot_sort_key_unknown():
     assert slot_sort_key("xyz_slot") == 999
+
+
+def test_format_item_html_escapes_html_in_item_name():
+    # Admins can edit Supabase/Excel, and the rendered output goes into
+    # st.markdown(..., unsafe_allow_html=True). The item name must be
+    # HTML-escaped so tag-like strings render as text, not markup.
+    out = format_item_html("<script>alert(1)</script>(Y)")
+    lower = out.lower()
+    assert "<script>" not in lower
+    assert "</script>" not in lower
+    assert "&lt;script&gt;" in lower
+    assert "&lt;/script&gt;" in lower
+    # Structural markup we emit ourselves still passes through.
+    assert '<span class="item-name">' in out
+    assert '<span class="color-pill"' in out
+
+
+def test_format_item_html_escapes_without_color_suffix():
+    out = format_item_html("<b>bold</b>")
+    lower = out.lower()
+    assert "<b>" not in lower
+    assert "</b>" not in lower
+    assert "&lt;b&gt;" in lower
+    assert "&lt;/b&gt;" in lower
 
 
 def test_flatten_api_solution_rich_format():

@@ -246,6 +246,28 @@ class MenuSolver:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        # Soft rules that threw during apply / get_objective_terms. Populated
+        # per solve() call; callers (API, regenerator) can surface it so a
+        # silently-dropped constraint doesn't produce a plan that looks
+        # correct but violated the intent.
+        self.rule_failures: List[Dict[str, str]] = []
+
+    def _record_rule_failure(self, rule, phase: str, exc: BaseException) -> None:
+        """Log a soft-rule failure with traceback and remember it on self."""
+        name = getattr(rule, 'name', type(rule).__name__)
+        logger.warning(
+            "Soft rule %r failed during %s: %s",
+            name, phase, exc, exc_info=True,
+        )
+        entry = {
+            'rule': name,
+            'phase': phase,
+            'error': f'{type(exc).__name__}: {exc}',
+        }
+        # Dedupe across multi-restart retries — same rule failing the same
+        # way on every attempt should only surface once.
+        if entry not in self.rule_failures:
+            self.rule_failures.append(entry)
 
     def solve(self, locked=None, forbidden=None, similarity=None) -> Tuple[Dict, List[dt.date]]:
         """
@@ -254,6 +276,7 @@ class MenuSolver:
         Returns:
             (week_plan, dates) where week_plan maps date -> {slot_id: item_string}
         """
+        self.rule_failures = []
         if self.cfg.explicit_dates:
             dates = list(self.cfg.explicit_dates)
         else:
@@ -511,7 +534,7 @@ class MenuSolver:
                     raise RuntimeError(
                         f"Hard menu rule '{rule.name}' failed: {type(e).__name__}: {e}"
                     ) from e
-                logger.warning("Soft rule %s failed: %s", rule.name, e)
+                self._record_rule_failure(rule, 'apply', e)
         self._build_objective(model, cells, rng, similarity, context)
 
     def _configure_and_solve(self, model) -> cp_model.CpSolver:
@@ -701,8 +724,8 @@ class MenuSolver:
             try:
                 terms = rule.get_objective_terms(model, context)
                 obj_terms.extend(terms)
-            except (ValueError, KeyError, AttributeError):
-                logger.warning("Rule %s objective terms failed", getattr(rule, 'name', '?'))
+            except (ValueError, KeyError, AttributeError) as e:
+                self._record_rule_failure(rule, 'get_objective_terms', e)
 
         if obj_terms:
             model.Maximize(sum(obj_terms))
