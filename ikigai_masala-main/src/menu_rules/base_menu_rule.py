@@ -100,8 +100,20 @@ class BaseMenuRule(ABC):
         validation (e.g. required fields, value ranges, enum membership).
         Rules with no config surface beyond the base keys should *not*
         override this method — that's just noise.
+
+        Subclasses that override this to reject invalid configs should
+        also populate :py:meth:`validation_errors` so the loader can log
+        why the rule was dropped instead of a generic "invalid".
         """
         return True
+
+    def validation_errors(self) -> List[str]:
+        """Return human-readable reasons ``validate_config()`` returned False.
+
+        Default: empty. Override in subclasses so the loader logs
+        something better than "invalid rule config: <name>".
+        """
+        return []
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,

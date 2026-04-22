@@ -127,3 +127,40 @@ class TestLoadForClient:
             result = loader.load_for_client('TestClient', [])
         assert len(result) == 1
         assert result[0].name == 'good'
+
+
+class TestInvalidConfigLogging:
+    """The loader should log *why* a rule was dropped so admins can fix it."""
+
+    def test_min_gt_max_item_frequency_logs_reason(self, caplog):
+        import logging
+        caplog.set_level(logging.WARNING)
+        config = {
+            "rules": [{
+                "name": "bad_freq", "type": "item_frequency",
+                "selector": {"flag": "is_liquid_rice"},
+                "min_per_week": 3, "max_per_week": 1,
+            }]
+        }
+        loader = MenuRuleLoader()
+        rules = loader.load_from_dict(config)
+        assert rules == []
+        joined = "\n".join(rec.message for rec in caplog.records)
+        assert "bad_freq" in joined
+        assert "min_per_week" in joined and "<=" in joined
+
+    def test_invalid_premium_rule_logs_reason(self, caplog):
+        import logging
+        caplog.set_level(logging.WARNING)
+        config = {
+            "rules": [{
+                "name": "bad_premium", "type": "premium",
+                "min_per_horizon": 5, "max_per_horizon": 1,
+            }]
+        }
+        loader = MenuRuleLoader()
+        rules = loader.load_from_dict(config)
+        assert rules == []
+        joined = "\n".join(rec.message for rec in caplog.records)
+        assert "bad_premium" in joined
+        assert "min_per_horizon" in joined

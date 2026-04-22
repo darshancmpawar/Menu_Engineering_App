@@ -40,6 +40,31 @@ from .item_frequency_rule import ItemFrequencyRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 
 
+def _log_invalid_rule(
+    rule: Optional[BaseMenuRule],
+    rule_config: Dict[str, Any],
+    *,
+    scope: str,
+) -> None:
+    """Log an invalid rule with its name, type, and any reasons provided
+    by the rule's ``validation_errors()`` hook. A generic "invalid" message
+    stranded admins with no way to know which field was wrong.
+    """
+    name = rule_config.get('name') or (rule.name if rule else '<unnamed>')
+    rule_type = rule_config.get('type', '?')
+    errs = rule.validation_errors() if rule is not None else []
+    if errs:
+        logger.warning(
+            "Skipping invalid %s '%s' (type=%s): %s",
+            scope, name, rule_type, "; ".join(errs),
+        )
+    else:
+        logger.warning(
+            "Skipping invalid %s '%s' (type=%s): validate_config() returned False",
+            scope, name, rule_type,
+        )
+
+
 class MenuRuleLoader:
     """Loads menu rules from JSON configuration files."""
 
@@ -88,7 +113,7 @@ class MenuRuleLoader:
                 if rule and rule.validate_config():
                     self.rules.append(rule)
                 else:
-                    logger.warning("Invalid rule config: %s", rule_config.get('name'))
+                    _log_invalid_rule(rule, rule_config, scope="rule")
             except (ValueError, KeyError, TypeError) as e:
                 logger.warning("Error creating rule: %s", e)
         logger.info("Loaded %d menu rule(s)", len(self.rules))
@@ -131,9 +156,10 @@ class MenuRuleLoader:
                 if rule and rule.validate_config():
                     extra.append(rule)
                 else:
-                    logger.warning(
-                        "Invalid per-client rule for %s: %s",
-                        client_name, rule_cfg.get('name'))
+                    _log_invalid_rule(
+                        rule, rule_cfg,
+                        scope=f"per-client rule for {client_name}",
+                    )
             except (ValueError, KeyError, TypeError) as exc:
                 logger.warning(
                     "Error creating per-client rule for %s: %s",
