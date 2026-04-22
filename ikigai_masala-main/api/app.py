@@ -16,7 +16,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
@@ -660,20 +660,28 @@ def editor_metadata():
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
 @require_api_auth()
 def get_client_config(client_name):
-    """Return the full editable config for one client."""
+    """Return the full editable config for one client.
+
+    Includes a ``version`` field + an ``ETag: "<version>"`` response
+    header so callers can issue optimistic-concurrency-safe PUTs.
+    """
     try:
         loader = _get_client_loader()
         base_slots = loader.get_active_slots_for_client(client_name)
         menu_category = loader.get_client_menu_category(client_name)
         cfg = loader.get_client(client_name)
-        return jsonify({
+        version = loader.get_client_version(client_name)
+        response = jsonify({
             'success': True,
             'name': cfg.name,
             'menu_category': menu_category,
             'active_base_slots': [s for s in base_slots if s not in CONST_SLOTS],
             'slot_counts': cfg.slot_counts,
             'theme_map': cfg.theme_map,
+            'version': version,
         })
+        response.headers['ETag'] = f'"{version}"'
+        return response
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
@@ -681,13 +689,65 @@ def get_client_config(client_name):
         return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
+_ETAG_RE = re.compile(r'^\s*(?:W/)?"?(\d+)"?\s*$')
+
+
+def _expected_version(data: Dict[str, Any]) -> Optional[int]:
+    """Extract the expected version from the request.
+
+    Accepts either ``{"version": N}`` in the JSON body (preferred by our
+    own UI) or an ``If-Match: "N"`` / ``If-Match: N`` header for HTTP
+    clients that want to speak the standard idiom.
+    """
+    if 'version' in data:
+        try:
+            return int(data['version'])
+        except (TypeError, ValueError):
+            raise ValueError("version must be an integer")
+    header = request.headers.get('If-Match', '').strip()
+    if header:
+        m = _ETAG_RE.match(header)
+        if not m:
+            raise ValueError("If-Match header must be a quoted integer")
+        return int(m.group(1))
+    return None
+
+
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 @require_api_auth(min_role=ROLE_ADMIN)
 def update_client_config(client_name):
-    """Update a client's configuration (slots, slot counts, theme overrides)."""
+    """Update a client's configuration (slots, slot counts, theme overrides).
+
+    Requires an optimistic-concurrency version from the caller to avoid
+    last-write-wins when two admins edit the same client. Either:
+      * ``{"version": N}`` in the JSON body (what our Streamlit UI sends), or
+      * ``If-Match: "N"`` header for standard HTTP clients.
+
+    Responds 409 Conflict with the current version when the check fails.
+    """
+    from src.client.client_config import ConcurrentEditError
+
     try:
         data = request.get_json(silent=True) or {}
         loader = _get_client_loader()
+
+        expected = _expected_version(data)
+        if expected is None:
+            return jsonify({
+                'success': False,
+                'error': (
+                    'version is required (include "version" in the JSON '
+                    'body or send an If-Match header with the ETag from '
+                    'GET /client-config). This prevents silently '
+                    'overwriting another admin\'s changes.'
+                ),
+            }), 400
+
+        # Bump first: the conditional update is the actual race gate.
+        # If another writer snuck in between the caller's GET and this
+        # PUT, the update matches zero rows and we 409 before doing any
+        # partial sub-update.
+        new_version = loader.bump_version_if_matches(client_name, expected)
 
         if 'active_base_slots' in data:
             loader.update_client_slots(client_name, data['active_base_slots'])
@@ -696,8 +756,19 @@ def update_client_config(client_name):
         if 'theme_map' in data:
             loader.update_client_theme_overrides(client_name, data['theme_map'])
 
-        # No reload needed — Supabase reads are always live
-        return jsonify({'success': True, 'message': f'Config updated for {client_name}'})
+        response = jsonify({
+            'success': True,
+            'message': f'Config updated for {client_name}',
+            'version': new_version,
+        })
+        response.headers['ETag'] = f'"{new_version}"'
+        return response
+    except ConcurrentEditError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'current_version': e.current_version,
+        }), 409
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:

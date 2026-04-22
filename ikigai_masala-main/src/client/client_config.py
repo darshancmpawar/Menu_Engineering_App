@@ -36,6 +36,19 @@ DEFAULT_THEME_MAP: Dict[str, str] = {
 AVAILABLE_THEMES: List[str] = ['mix', 'chinese', 'biryani', 'south', 'north']
 
 
+class ConcurrentEditError(ValueError):
+    """Raised when an optimistic-concurrency version check fails.
+
+    The ``current_version`` attribute carries the version that's actually
+    in the database right now so callers can surface it (e.g. in a 409
+    response body) and the client can refresh + retry.
+    """
+
+    def __init__(self, message: str, *, current_version: int | None = None):
+        super().__init__(message)
+        self.current_version = current_version
+
+
 @dataclass
 class ClientConfig:
     name: str
@@ -282,6 +295,62 @@ class ClientConfigLoader:
             raise ValueError(f"Unknown client: {name}")
         # CASCADE on FK deletes slot_count_overrides & theme_overrides
         self._sb.table('clients').delete().eq('name', name).execute()
+
+    # ---- optimistic concurrency -------------------------------------------
+
+    def get_client_version(self, name: str) -> int:
+        """Return the current version counter for a client.
+
+        Fresh rows and rows created before the migration default to 1;
+        every successful PUT through the API bumps this by one.
+        """
+        row = (
+            self._sb.table('clients')
+            .select('version')
+            .eq('name', name)
+            .maybe_single()
+            .execute()
+        )
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return int(row.data.get('version', 1))
+
+    def bump_version_if_matches(self, name: str, expected: int) -> int:
+        """Atomically bump ``version`` from *expected* to *expected+1*.
+
+        Implemented as a conditional update — the WHERE clause includes
+        ``version = expected``, so concurrent writers race at the DB and
+        only one succeeds. Zero rows affected means our version is stale
+        (someone else wrote between our GET and PUT) or the client was
+        deleted.
+
+        Raises:
+            ConcurrentEditError: when the update matches no rows. The
+                error carries the *current* version so callers can feed
+                it back to the user.
+        """
+        new_version = int(expected) + 1
+        result = (
+            self._sb.table('clients')
+            .update({'version': new_version})
+            .eq('name', name)
+            .eq('version', int(expected))
+            .execute()
+        )
+        if not result.data:
+            # Distinguish "client missing" from "version stale" so the
+            # 409 response body can include the live value.
+            try:
+                current = self.get_client_version(name)
+            except ValueError:
+                raise
+            raise ConcurrentEditError(
+                f"Client {name!r} has been modified by another request "
+                f"(expected version {expected}, currently {current}). "
+                "Refresh and retry.",
+                current_version=current,
+            )
+        return new_version
 
     def update_client_slots(self, name: str, active_slots: List[str]) -> None:
         """Update a client's active slots by finding/creating a matching menu_category."""

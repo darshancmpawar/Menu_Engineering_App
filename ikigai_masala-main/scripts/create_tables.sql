@@ -9,12 +9,19 @@ CREATE TABLE IF NOT EXISTS menu_categories (
     slots TEXT[] NOT NULL
 );
 
--- 2. Clients — each client references a menu category
+-- 2. Clients — each client references a menu category.
+-- ``version`` is an optimistic-concurrency counter: GET /client-config
+-- returns the current value; PUT must send the same value back and
+-- fails with 409 Conflict if another writer bumped it in the meantime.
 CREATE TABLE IF NOT EXISTS clients (
     name           TEXT PRIMARY KEY,
     menu_category  TEXT NOT NULL REFERENCES menu_categories(name),
+    version        INT  NOT NULL DEFAULT 1,
     created_at     TIMESTAMPTZ DEFAULT now()
 );
+-- Migration for deployments that created the table before the column
+-- existed. No-op on fresh installs since CREATE TABLE above includes it.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
 
 -- 3. Slot count overrides — e.g. Rippling gets veg_dry x2
 CREATE TABLE IF NOT EXISTS slot_count_overrides (

@@ -3,7 +3,6 @@
 import json
 import logging
 
-import pytest
 
 from api.logging_config import (
     JsonFormatter,
