@@ -53,6 +53,14 @@ Generate `API_SECRET_KEY` locally:
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
+**Optional:**
+
+```toml
+APP_TIMEZONE = "Asia/Kolkata"   # default; any IANA name, e.g. "UTC" or "America/New_York"
+```
+
+`APP_TIMEZONE` decides what "today" means when the client doesn't pass an explicit `start_date`. Leave the default for Indian deployments. Change it if the kitchens you're planning for operate in another zone — otherwise a container running in UTC will drift cooldown windows and weekday themes by up to a day.
+
 **Key-class notes:**
 - `SUPABASE_KEY` must be the **service-role** key (`sb_secret_…` or legacy JWT `eyJ…`). The publishable/anon key obeys Row-Level Security and will block the backend from writing history.
 - `API_SECRET_KEY` signs the bearer tokens issued to the Streamlit frontend. Rotating it logs every user out but doesn't break anything else.

@@ -27,7 +27,7 @@ from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
-    validate_required_env,
+    validate_required_env, today_in_app_tz,
 )
 
 # Fail fast if required secrets / URLs are unset. The alternative is an
@@ -312,7 +312,7 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
 
     client_cfg = _get_client_loader().get_client(client_name)
     df, pools = _get_menu_data()
-    start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
+    start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(start_date, num_days)
     rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
     banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
@@ -686,7 +686,7 @@ def validate_pools():
         loader = _get_client_loader()
         client_cfg = loader.get_client(client_name)
         df, pools = _get_menu_data()
-        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else dt.date.today()
+        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
         weekday_dates = _weekdays_from(start_date, num_days)
         rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
         cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180, weekday_dates)
