@@ -136,12 +136,12 @@ class TestAuthManager:
         mock_get_sb.return_value = sb
 
         stored_hash = _hash_password("secret123")
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response({
+        sb.table().select().eq().limit().execute.return_value = _make_response([{
             "email": "test@test.com",
             "profile_name": "Tester",
             "password_hash": stored_hash,
             "role": "admin",
-        })
+        }])
 
         auth = AuthManager()
         user = auth.authenticate("test@test.com", "secret123")
@@ -155,12 +155,12 @@ class TestAuthManager:
         mock_get_sb.return_value = sb
 
         stored_hash = _hash_password("secret123")
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response({
+        sb.table().select().eq().limit().execute.return_value = _make_response([{
             "email": "test@test.com",
             "profile_name": "Tester",
             "password_hash": stored_hash,
             "role": "admin",
-        })
+        }])
 
         auth = AuthManager()
         user = auth.authenticate("test@test.com", "wrongpass")
@@ -170,7 +170,7 @@ class TestAuthManager:
     def test_authenticate_user_not_found(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+        sb.table().select().eq().limit().execute.return_value = _make_response([])
 
         auth = AuthManager()
         user = auth.authenticate("nobody@test.com", "pass")
@@ -182,7 +182,7 @@ class TestAuthManager:
         mock_get_sb.return_value = sb
 
         # No existing user
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+        sb.table().select().eq().limit().execute.return_value = _make_response([])
         sb.table().insert().execute.return_value = _make_response({})
 
         auth = AuthManager()
@@ -194,7 +194,9 @@ class TestAuthManager:
     def test_create_user_duplicate(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response({"email": "dup@test.com"})
+        sb.table().select().eq().limit().execute.return_value = _make_response(
+            [{"email": "dup@test.com"}]
+        )
 
         auth = AuthManager()
         with pytest.raises(ValueError, match="already exists"):
@@ -237,7 +239,9 @@ class TestAuthManager:
     def test_delete_user_success(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response({"email": "del@test.com"})
+        sb.table().select().eq().limit().execute.return_value = _make_response(
+            [{"email": "del@test.com"}]
+        )
         sb.table().delete().eq().execute.return_value = _make_response({})
 
         auth = AuthManager()
@@ -247,7 +251,7 @@ class TestAuthManager:
     def test_delete_user_not_found(self, mock_get_sb):
         sb = _mock_supabase()
         mock_get_sb.return_value = sb
-        sb.table().select().eq().maybe_single().execute.return_value = _make_response(None)
+        sb.table().select().eq().limit().execute.return_value = _make_response([])
 
         auth = AuthManager()
         with pytest.raises(ValueError, match="not found"):

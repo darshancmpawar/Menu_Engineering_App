@@ -38,7 +38,11 @@ class _Query:
         return self
 
     def eq(self, col: str, val: Any):
-        self._filters.append((col, val))
+        self._filters.append(("eq", col, val))
+        return self
+
+    def gte(self, col: str, val: Any):
+        self._filters.append(("gte", col, val))
         return self
 
     def order(self, col: str, **_kwargs):
@@ -72,7 +76,18 @@ class _Query:
     # -- terminal ----------------------------------------------------------
 
     def _match(self, row: Dict[str, Any]) -> bool:
-        return all(row.get(c) == v for c, v in self._filters)
+        for f in self._filters:
+            op, col, val = f
+            cell = row.get(col)
+            if op == "eq":
+                if cell != val:
+                    return False
+            elif op == "gte":
+                if cell is None or cell < val:
+                    return False
+            else:
+                raise RuntimeError(f"Unsupported filter op: {op}")
+        return True
 
     def execute(self) -> _Response:
         if self._mode == "select":

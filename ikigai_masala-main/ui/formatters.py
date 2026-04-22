@@ -2,6 +2,7 @@
 UI formatting utilities for menu plan display.
 """
 
+import html
 import re
 from typing import Any, Dict, Optional, Tuple
 
@@ -87,7 +88,10 @@ def format_item_html(item_str: str) -> str:
         return '<span class="cell-empty">&mdash;</span>'
     m = re.search(r'\(([A-Z])\)\s*$', item_str)
     cleaned = re.sub(r'\s*\([A-Z]\)\s*$', '', item_str)
-    name = _prettify_item_name(cleaned)
+    # Item names originate from the ontology / Supabase, but those are
+    # admin-editable, so escape before embedding into st.markdown output
+    # that runs with unsafe_allow_html=True.
+    name = html.escape(_prettify_item_name(cleaned))
 
     if m:
         initial = m.group(1)
@@ -95,7 +99,7 @@ def format_item_html(item_str: str) -> str:
         return (
             f'<span class="item-name">{name}</span>'
             f'<span class="color-pill" style="background:{bg};color:{fg};">'
-            f'{color_name}</span>'
+            f'{html.escape(color_name)}</span>'
         )
     return f'<span class="item-name">{name}</span>'
 
