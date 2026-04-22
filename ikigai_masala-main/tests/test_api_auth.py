@@ -67,9 +67,10 @@ class TestTokenValidation:
         )
         assert resp.status_code == 401
 
-    def test_valid_token_passes_auth(self, client):
-        # Downstream handler may 200 or 500 depending on Supabase availability,
-        # but a valid token must not be rejected by the auth decorator.
+    def test_valid_token_passes_auth(self, client, fake_supabase):
+        # fake_supabase swaps in the in-memory fake so the handler can
+        # actually answer; the assertion is that a valid token is not
+        # rejected by the auth decorator.
         resp = client.get('/api/v1/clients', headers=_bearer(ROLE_USER))
         assert resp.status_code not in (401, 403)
 

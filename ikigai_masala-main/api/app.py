@@ -27,7 +27,13 @@ from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     API_HOST, API_PORT, DEBUG,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
+    validate_required_env,
 )
+
+# Fail fast if required secrets / URLs are unset. The alternative is an
+# opaque KeyError or Supabase auth error on the first request — which
+# happens in production long after the process looked healthy.
+validate_required_env()
 from user_authentication.models import ROLE_ADMIN
 from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot

@@ -60,6 +60,9 @@ _BACKEND_URL = None  # set by _ensure_backend_running()
 
 
 def _start_flask_backend(port: int) -> None:
+    # api.app's module-level validate_required_env() raises if any
+    # required var is missing; let that bubble up so the Streamlit
+    # process shows a clear error instead of a silent backend crash.
     from api.app import app as flask_app
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -113,6 +116,16 @@ st.markdown(STYLES, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 # Backend must be up before the login form (login hits the API).
 # ---------------------------------------------------------------------------
+# Validate required env vars first so a misconfigured deployment shows a
+# clear Streamlit-native error instead of "backend did not become healthy"
+# after the spawned thread silently crashes.
+try:
+    from api.config import validate_required_env
+    validate_required_env()
+except RuntimeError as e:
+    st.error(str(e))
+    st.stop()
+
 try:
     _ensure_backend_running()
 except RuntimeError as e:

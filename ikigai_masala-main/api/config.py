@@ -36,3 +36,25 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 # Set API_SECRET_KEY to a long random string in production.
 API_SECRET_KEY = os.getenv('API_SECRET_KEY', '')
 API_TOKEN_TTL_SECONDS = int(os.getenv('API_TOKEN_TTL_SECONDS', str(60 * 60 * 24)))
+
+
+# Vars that the API and solver cannot operate without. Validated at
+# api.app import time so the process fails with a clear message instead
+# of crashing on the first request that needs Supabase or tries to sign
+# a token.
+REQUIRED_ENV_VARS = ("API_SECRET_KEY", "SUPABASE_URL", "SUPABASE_KEY")
+
+
+def validate_required_env() -> None:
+    """Raise RuntimeError listing every required env var that is unset
+    or empty. Reads os.environ live so test fixtures that set env in
+    conftest.py before importing api.app are honoured.
+    """
+    missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name, "").strip()]
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variables: "
+            + ", ".join(missing)
+            + ". Set them (e.g. in .streamlit/secrets.toml or the process env) "
+              "before starting the API."
+        )
