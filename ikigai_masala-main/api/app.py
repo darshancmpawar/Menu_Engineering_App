@@ -17,7 +17,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Set
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
@@ -179,6 +179,45 @@ def _build_history_context(df, client_name, start_date, weekday_dates):
     return banned, rb_ban, recent_sigs
 
 
+def _cached_on_g(key: str, compute):
+    """Memoize ``compute()`` on Flask's ``g`` for the current request.
+
+    ClientConfigLoader properties read Supabase on every access (no
+    in-process cache, so admin edits are picked up immediately). Some of
+    them — client_names, menu_categories — end up fetched multiple
+    times per request: once from _require_known_client, once from the
+    endpoint body, once from editor-metadata etc. Caching on ``g`` keeps
+    the "live reads across requests" guarantee while collapsing the
+    intra-request round trips.
+
+    Outside a request context (module-import paths, bare scripts) there
+    is no ``g`` to hang on to, so we just call compute() uncached.
+    """
+    if not has_request_context():
+        return compute()
+    cache = getattr(g, '_clientcfg_cache', None)
+    if cache is None:
+        cache = {}
+        g._clientcfg_cache = cache
+    if key not in cache:
+        cache[key] = compute()
+    return cache[key]
+
+
+def _request_client_names():
+    return _cached_on_g(
+        'client_names',
+        lambda: _get_client_loader().client_names,
+    )
+
+
+def _request_menu_categories():
+    return _cached_on_g(
+        'menu_categories',
+        lambda: _get_client_loader().menu_categories,
+    )
+
+
 def _require_known_client(client_name):
     """Validate ``client_name`` is non-empty and refers to a known client.
 
@@ -189,8 +228,7 @@ def _require_known_client(client_name):
     """
     if not client_name or not isinstance(client_name, str):
         raise ValueError('client_name is required')
-    known = _get_client_loader().client_names
-    if client_name not in known:
+    if client_name not in _request_client_names():
         raise ValueError(f"Unknown client: {client_name}")
 
 
@@ -359,8 +397,7 @@ app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
 @require_api_auth()
 def list_clients():
     try:
-        loader = _get_client_loader()
-        return jsonify({'success': True, 'clients': loader.client_names})
+        return jsonify({'success': True, 'clients': _request_client_names()})
     except (FileNotFoundError, ValueError, KeyError) as e:
         logger.error("Failed to list clients: %s", e, exc_info=True)
         return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
@@ -533,15 +570,14 @@ def save_plan():
 def editor_metadata():
     """Return metadata needed by the customisation editor UI."""
     try:
-        loader = _get_client_loader()
         return jsonify({
             'success': True,
             'base_slot_names': list(BASE_SLOT_NAMES),
             'const_slots': list(CONST_SLOTS),
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
-            'clients': loader.client_names,
-            'menu_categories': loader.menu_categories,
+            'clients': _request_client_names(),
+            'menu_categories': _request_menu_categories(),
         })
     except Exception as e:
         logger.error("Failed to load editor metadata: %s", e, exc_info=True)

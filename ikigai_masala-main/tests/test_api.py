@@ -157,3 +157,97 @@ class TestSaveEndpoint:
         data = resp.get_json()
         assert data['success'] is False
         assert 'Unknown client' in data['error']
+
+
+class TestClientNamesRequestCache:
+    """Within one request, client_names should be read from Supabase at most
+    once; across separate requests, every request must hit Supabase again so
+    live admin edits are visible without a restart."""
+
+    def test_single_request_reads_client_names_once(
+        self, client, auth_headers, fake_supabase, monkeypatch,
+    ):
+        import api.app as api_app
+
+        calls = {"n": 0}
+        real_loader = api_app._get_client_loader()
+
+        class _CountingLoader:
+            @property
+            def client_names(self):
+                calls["n"] += 1
+                return real_loader.client_names
+
+            def __getattr__(self, name):
+                return getattr(real_loader, name)
+
+        monkeypatch.setattr(api_app, "_get_client_loader", lambda: _CountingLoader())
+
+        # /api/v1/clients both validates via the decorator (none here) and
+        # reads client_names in the body. editor-metadata reads it too.
+        # Use editor-metadata because it also pulls menu_categories — a
+        # good smoke that multiple cached keys coexist.
+        resp = client.get('/api/v1/editor-metadata', headers=auth_headers)
+        assert resp.status_code == 200
+        assert calls["n"] == 1, (
+            f"expected 1 Supabase read of client_names per request, got {calls['n']}"
+        )
+
+    def test_separate_requests_each_refresh(
+        self, client, auth_headers, fake_supabase, monkeypatch,
+    ):
+        import api.app as api_app
+
+        calls = {"n": 0}
+        real_loader = api_app._get_client_loader()
+
+        class _CountingLoader:
+            @property
+            def client_names(self):
+                calls["n"] += 1
+                return real_loader.client_names
+
+            def __getattr__(self, name):
+                return getattr(real_loader, name)
+
+        monkeypatch.setattr(api_app, "_get_client_loader", lambda: _CountingLoader())
+
+        for _ in range(3):
+            resp = client.get('/api/v1/clients', headers=auth_headers)
+            assert resp.status_code == 200
+        assert calls["n"] == 3, (
+            "each request must re-read client_names so admin edits are "
+            f"picked up live; got {calls['n']} reads across 3 requests"
+        )
+
+    def test_plan_validates_client_then_loads_config_on_same_read(
+        self, client, auth_headers, fake_supabase, monkeypatch,
+    ):
+        """_require_known_client + the /plan body both want client_names.
+        After this fix only one Supabase read should happen.
+        """
+        import api.app as api_app
+
+        calls = {"n": 0}
+        real_loader = api_app._get_client_loader()
+
+        class _CountingLoader:
+            @property
+            def client_names(self):
+                calls["n"] += 1
+                return real_loader.client_names
+
+            def __getattr__(self, name):
+                return getattr(real_loader, name)
+
+        monkeypatch.setattr(api_app, "_get_client_loader", lambda: _CountingLoader())
+
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'NonexistentClient999',
+            'num_days': 1,
+            'start_date': '2026-03-23',
+        }, headers=auth_headers)
+        # Unknown client → 400, but the request path still exercised the
+        # validator's client_names read.
+        assert resp.status_code == 400
+        assert calls["n"] == 1
