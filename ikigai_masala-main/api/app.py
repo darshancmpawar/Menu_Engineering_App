@@ -26,7 +26,7 @@ from api.auth import api_login, require_api_auth
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
-    API_HOST, API_PORT, DEBUG,
+    API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     validate_required_env, today_in_app_tz,
 )
@@ -68,6 +68,10 @@ logger = logging.getLogger(__name__)
 # echo exception details back to the caller, since Supabase errors and
 # similar can reveal connection strings, internal hostnames, or schema info.
 _INTERNAL_ERROR_MSG = "Internal server error"
+
+# Record when the process started so /health can report uptime. Used
+# for liveness / deploy-tracking rather than anything load-bearing.
+_STARTED_AT = time.time()
 
 app = Flask(__name__)
 
@@ -769,16 +773,45 @@ def validate_pools():
         return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
 
 
+def _probe_supabase() -> bool:
+    """Cheap reachability check: fetch one row from `clients`. Any
+    exception (network, auth, RLS) counts as unreachable.
+    """
+    try:
+        from src.db import get_supabase
+        get_supabase().table('clients').select('name').limit(1).execute()
+        return True
+    except Exception as exc:  # noqa: BLE001 — degraded state is fine
+        logger.warning("Supabase health probe failed: %s", exc)
+        return False
+
+
 @app.route('/api/v1/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy', **_solver_stats()})
+    """Liveness + readiness combined.
+
+    Returns 200 with status=healthy when everything is up, 503 with
+    status=degraded when Supabase is unreachable. Either way the body
+    carries enough to diagnose: version, uptime, queue stats, and the
+    supabase flag. Uptime monitors that only match on 200 will (correctly)
+    start paging on degraded.
+    """
+    supabase_up = _probe_supabase()
+    body = {
+        'status': 'healthy' if supabase_up else 'degraded',
+        'version': APP_VERSION,
+        'uptime_seconds': int(time.time() - _STARTED_AT),
+        'supabase_reachable': supabase_up,
+        'queue': _solver_stats(),
+    }
+    return jsonify(body), (200 if supabase_up else 503)
 
 
 @app.route('/')
 def root():
     return jsonify({
         'name': 'Ikigai Masala Menu Planning API',
-        'version': '2.0',
+        'version': APP_VERSION,
         'docs': '/api/v1/clients',
     })
 

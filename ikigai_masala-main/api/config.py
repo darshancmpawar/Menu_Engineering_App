@@ -39,6 +39,11 @@ API_HOST = os.getenv('API_HOST', '127.0.0.1')
 API_PORT = int(os.getenv('API_PORT', '5000'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 
+# Version string surfaced via /api/v1/health and /. Set by CI / container
+# build (e.g. APP_VERSION=$(git rev-parse --short HEAD)); falls back to a
+# sentinel so operators know the deployment didn't pass one through.
+APP_VERSION = os.getenv('APP_VERSION', 'dev')
+
 
 # Timezone used to resolve "today" when the client doesn't pass an
 # explicit start_date. Default is Asia/Kolkata because the product ships

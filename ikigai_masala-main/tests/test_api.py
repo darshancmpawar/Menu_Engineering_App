@@ -34,11 +34,52 @@ def auth_headers():
 
 
 class TestHealthEndpoint:
-    def test_health_returns_ok(self, client):
+    def test_health_returns_healthy_when_supabase_reachable(
+        self, client, fake_supabase,
+    ):
         resp = client.get('/api/v1/health')
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['status'] == 'healthy'
+        assert data['supabase_reachable'] is True
+        assert data['version']
+        assert isinstance(data['uptime_seconds'], int)
+        assert 'queue' in data
+
+    def test_health_returns_degraded_when_supabase_down(
+        self, client, monkeypatch,
+    ):
+        """Kubernetes readiness / uptime-robot callers should see a 503
+        when the backing store is unreachable so they stop routing traffic."""
+        import api.app as api_app
+
+        def _boom():
+            raise RuntimeError("supabase unreachable")
+
+        monkeypatch.setattr(api_app, '_probe_supabase', lambda: False)
+
+        resp = client.get('/api/v1/health')
+        assert resp.status_code == 503
+        data = resp.get_json()
+        assert data['status'] == 'degraded'
+        assert data['supabase_reachable'] is False
+
+    def test_health_error_still_logs_access_line(
+        self, client, caplog, monkeypatch,
+    ):
+        """Failing health checks should surface in the access log even
+        though successful ones are intentionally quiet."""
+        import api.app as api_app
+        import logging
+        caplog.set_level(logging.INFO, logger="api.app")
+
+        monkeypatch.setattr(api_app, '_probe_supabase', lambda: False)
+
+        client.get('/api/v1/health')
+        http_lines = [r for r in caplog.records if r.getMessage() == 'http_request']
+        assert any(r.path == '/api/v1/health' for r in http_lines), (
+            "a 503 on /health must show up in the access log"
+        )
 
 
 class TestRootEndpoint:

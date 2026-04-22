@@ -149,13 +149,15 @@ class TestRequestIdMiddleware:
         assert rec.status == 200
         assert isinstance(rec.duration_ms, int)
 
-    def test_successful_health_check_is_quiet(self, caplog):
+    def test_successful_health_check_is_quiet(self, caplog, fake_supabase):
+        """A 200 on /health must not log (would spam every uptime probe).
+        Requires fake_supabase so _probe_supabase reports reachable."""
         from api.app import app
         caplog.set_level(logging.INFO, logger="api.app")
 
         with app.test_client() as c:
-            c.get("/api/v1/health")
+            resp = c.get("/api/v1/health")
+        assert resp.status_code == 200
 
-        # Health checks happen every few seconds in prod; don't spam the log.
         http_records = [r for r in caplog.records if r.getMessage() == "http_request"]
         assert all(r.path != "/api/v1/health" for r in http_records)
