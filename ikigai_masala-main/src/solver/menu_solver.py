@@ -528,12 +528,17 @@ class MenuSolver:
         for rule in self.menu_rules:
             try:
                 rule.apply(model, {}, None, context)
-            except (ValueError, KeyError, AttributeError) as e:
+            except Exception as e:  # noqa: BLE001 — severity decides what happens
                 severity = getattr(rule, 'severity', MenuRuleSeverity.HARD)
                 if severity == MenuRuleSeverity.HARD:
                     raise RuntimeError(
                         f"Hard menu rule '{rule.name}' failed: {type(e).__name__}: {e}"
                     ) from e
+                # Soft rule. Record every exception type — previously only
+                # ValueError/KeyError/AttributeError were caught, so a
+                # buggy soft rule raising TypeError or RuntimeError would
+                # crash the whole solve and leak details via the 500,
+                # defeating the "soft rules never block" contract.
                 self._record_rule_failure(rule, 'apply', e)
         self._build_objective(model, cells, rng, similarity, context)
 
@@ -719,12 +724,17 @@ class MenuSolver:
                 for var in cell.x_vars:
                     obj_terms.append(var * rng.randint(0, 1000))
 
-        # Collect objective terms from rules
+        # Collect objective terms from rules. These are always treated as
+        # soft — get_objective_terms() only shapes the objective, so a
+        # failing rule just means "that preference doesn't apply this
+        # solve". Catch Exception (not a narrow tuple) so a buggy rule
+        # raising TypeError / RuntimeError / anything else is recorded
+        # rather than crashing the solve.
         for rule in self.menu_rules:
             try:
                 terms = rule.get_objective_terms(model, context)
                 obj_terms.extend(terms)
-            except (ValueError, KeyError, AttributeError) as e:
+            except Exception as e:  # noqa: BLE001 — recorded, not swallowed silently
                 self._record_rule_failure(rule, 'get_objective_terms', e)
 
         if obj_terms:

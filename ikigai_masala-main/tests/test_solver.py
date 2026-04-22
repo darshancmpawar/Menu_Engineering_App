@@ -102,3 +102,97 @@ def test_soft_rule_failures_are_captured_not_silent(cleaned_menu, pools):
     assert entry['phase'] == 'get_objective_terms'
     assert 'ValueError' in entry['error']
     assert 'broken weighting config' in entry['error']
+
+
+def test_soft_rule_typeerror_is_captured_not_crashing(cleaned_menu, pools):
+    """The previous narrow ``except (ValueError, KeyError, AttributeError)``
+    let any other exception type (TypeError, RuntimeError, ZeroDivisionError)
+    escape and crash the whole solve — defeating the 'soft rules never
+    block' contract. This test pins the broader Exception catch in place."""
+    from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
+
+    class _TypeErrorSoftRule(BaseMenuRule):
+        severity = MenuRuleSeverity.SOFT
+
+        def __init__(self):
+            super().__init__({'name': 'te_soft'})
+
+        def apply(self, *_a, **_kw):
+            # Same unusual exception type in apply — previously uncaught.
+            raise TypeError("wrong shape for apply")
+
+        def get_objective_terms(self, *_a, **_kw):
+            raise RuntimeError("weights not configured")
+
+    active = [
+        'welcome_drink', 'starter', 'soup', 'salad',
+        'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+        'curd_side', 'dessert',
+    ]
+    cfg = SolverConfig(
+        days=1,
+        start_date=dt.date(2026, 3, 23),
+        time_limit_sec=60,
+        active_base_slots=active,
+        slot_counts={s: 1 for s in active},
+    )
+
+    solver = MenuSolver(
+        pools=pools, solver_config=cfg, menu_rules=[_TypeErrorSoftRule()],
+    )
+    plan, _ = solver.solve()
+
+    assert plan, "TypeError in a soft rule must not block the solve"
+    phases = {(e['rule'], e['phase']) for e in solver.rule_failures}
+    assert ('te_soft', 'apply') in phases
+    assert ('te_soft', 'get_objective_terms') in phases
+    # Error strings carry the class name so admins can triage.
+    errors = " ".join(e['error'] for e in solver.rule_failures)
+    assert 'TypeError' in errors
+    assert 'RuntimeError' in errors
+
+
+def test_hard_rule_typeerror_is_wrapped_as_runtimeerror(cleaned_menu, pools):
+    """A HARD rule that raises any exception (including ones outside the
+    old narrow tuple) must surface as a RuntimeError naming the rule."""
+    from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
+
+    class _HardTypeError(BaseMenuRule):
+        severity = MenuRuleSeverity.HARD
+
+        def __init__(self):
+            super().__init__({'name': 'hard_te'})
+
+        def apply(self, *_a, **_kw):
+            raise TypeError("hard rule misconfigured")
+
+    active = [
+        'welcome_drink', 'starter', 'soup', 'salad',
+        'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+        'curd_side', 'dessert',
+    ]
+    cfg = SolverConfig(
+        days=1,
+        start_date=dt.date(2026, 3, 23),
+        time_limit_sec=60,
+        active_base_slots=active,
+        slot_counts={s: 1 for s in active},
+    )
+
+    solver = MenuSolver(
+        pools=pools, solver_config=cfg, menu_rules=[_HardTypeError()],
+    )
+    with pytest.raises(RuntimeError) as exc_info:
+        solver.solve()
+    # The multi-restart loop catches per-attempt RuntimeErrors and
+    # re-raises a generic "no feasible plan" message, but chains the
+    # root cause via ``from last_err``. Walk the chain to find our
+    # hard-rule failure.
+    chain = []
+    err: BaseException | None = exc_info.value
+    while err is not None:
+        chain.append(str(err))
+        err = err.__cause__
+    joined = "\n".join(chain)
+    assert "hard_te" in joined, f"expected rule name in cause chain, got:\n{joined}"
+    assert "TypeError" in joined
