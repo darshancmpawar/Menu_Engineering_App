@@ -65,7 +65,13 @@ export SUPABASE_URL=...
 export SUPABASE_KEY=...
 
 python scripts/seed_supabase.py   # migrate data/configs/clients.json into Supabase
-python scripts/seed_admin.py      # create the default super-admin login
+
+# Create the first super_admin. Credentials come from env so nothing is
+# committed to git. Password must be at least 8 characters.
+export ADMIN_EMAIL="you@company.com"
+export ADMIN_PASSWORD="<choose a strong password>"
+# export ADMIN_NAME="Your Name"   # optional; defaults to the email local part
+python scripts/seed_admin.py
 ```
 
 ---
