@@ -130,6 +130,7 @@ Failures return HTTP 4xx/5xx with:
 - 403: insufficient role for an admin-only route
 - 409: optimistic concurrency conflict (on `PUT /client-config`)
 - 500: unexpected server error — a generic message, never exception details
+- 429: per-principal rate limit tripped (`/plan`: 10/min burst 10; `/regenerate`: 20/min burst 20). Response includes `Retry-After` and `retry_after_seconds`. `MenuApiClient` retries once with jitter automatically.
 - 503: server at capacity (solver queue full) or supabase unreachable (on `/health`)
 - 504: request timed out waiting in the solver queue
 

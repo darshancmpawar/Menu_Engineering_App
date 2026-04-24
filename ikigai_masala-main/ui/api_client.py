@@ -10,11 +10,13 @@ import requests
 
 
 # HTTP statuses where a one-shot retry is safe and likely to succeed:
+#   429: rate limiter rejected us — bucket refills quickly, one retry
+#        after jitter often lands inside the next burst.
 #   503: solver_gate queue full — the request never ran server-side.
 #   502/504: proxy hiccup — rare, but a single retry is cheap.
 # 5xx beyond these (500, 501) usually mean a genuine server-side error
 # that will repeat; don't retry those.
-_RETRY_STATUSES = frozenset({502, 503, 504})
+_RETRY_STATUSES = frozenset({429, 502, 503, 504})
 _RETRY_BACKOFF_MIN_SEC = 0.2
 _RETRY_BACKOFF_MAX_SEC = 0.7
 

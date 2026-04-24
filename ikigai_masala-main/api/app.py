@@ -23,6 +23,7 @@ from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
 from api.auth import api_login, require_api_auth
+from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
@@ -537,6 +538,7 @@ def list_clients():
 
 @app.route('/api/v1/plan', methods=['POST'])
 @require_api_auth()
+@rate_limit("plan")
 @solver_gate
 def plan_menu():
     try:
@@ -595,6 +597,7 @@ def plan_menu():
 
 @app.route('/api/v1/regenerate', methods=['POST'])
 @require_api_auth()
+@rate_limit("regenerate")
 @solver_gate
 def regenerate_cells():
     try:
