@@ -61,6 +61,14 @@ APP_TIMEZONE = "Asia/Kolkata"   # default; any IANA name, e.g. "UTC" or "America
 
 `APP_TIMEZONE` decides what "today" means when the client doesn't pass an explicit `start_date`. Leave the default for Indian deployments. Change it if the kitchens you're planning for operate in another zone — otherwise a container running in UTC will drift cooldown windows and weekday themes by up to a day.
 
+**Legacy password-hash kill switch (operational):**
+
+```toml
+AUTH_DISABLE_LEGACY_SHA256 = "true"   # default "false"
+```
+
+The `users.password_hash` column accepts both bcrypt (current) and a pre-bcrypt SHA-256 format. Every login through the legacy path bumps `legacy_sha256_verifications_total` in `/api/v1/metrics` and logs a warning. Once that counter stays at zero for long enough to be confident, flip `AUTH_DISABLE_LEGACY_SHA256=true` and the verifier rejects legacy hashes outright — a prerequisite to removing the code. Affected users can reset via the user-management UI.
+
 **Key-class notes:**
 - `SUPABASE_KEY` must be the **service-role** key (`sb_secret_…` or legacy JWT `eyJ…`). The publishable/anon key obeys Row-Level Security and will block the backend from writing history.
 - `API_SECRET_KEY` signs the bearer tokens issued to the Streamlit frontend. Rotating it logs every user out but doesn't break anything else.

@@ -3,17 +3,36 @@
 Password storage: bcrypt hash (self-contained, includes salt + cost factor).
 Legacy "salt:sha256_hex" hashes are still verified for backward compatibility
 and are transparently rehashed to bcrypt on successful login.
+
+A successful legacy verification bumps the
+``legacy_sha256_verifications_total`` counter (see ``api.metrics``) so
+operators can watch the migration drain. Once it stays at 0 for long
+enough to be confident, set ``AUTH_DISABLE_LEGACY_SHA256=true`` in the
+environment — the verifier will then reject legacy rows outright, a
+prerequisite to deleting this code path entirely.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 from typing import List, Optional
 
 import bcrypt
 
 from src.db import get_supabase
 from user_authentication.models import User, ALL_ROLES
+
+# Best-effort metrics import — this module is also imported by the
+# Streamlit process where the Flask-hosted metrics singleton may not
+# be wired yet; counters there are a no-op.
+try:
+    from api import metrics as _metrics
+except Exception:  # pragma: no cover — defensive import
+    _metrics = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -45,6 +64,27 @@ def _verify_legacy_sha256(password: str, stored: str) -> bool:
     return f"{salt}:{h}" == stored
 
 
+def _legacy_disabled() -> bool:
+    """Kill switch for the legacy SHA-256 verification path.
+
+    Read live (not at module import) so operators can flip it without
+    a restart in environments that reload config on SIGHUP.
+    """
+    return os.environ.get("AUTH_DISABLE_LEGACY_SHA256", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _incr_metric(name: str, **labels: str) -> None:
+    """Thin wrapper so the metrics dep stays optional."""
+    if _metrics is None:
+        return
+    try:
+        _metrics.incr(name, **labels)
+    except Exception:  # pragma: no cover — never break login on a metrics bug
+        pass
+
+
 def _verify_password(password: str, stored: str) -> bool:
     """Verify a password against a stored bcrypt or legacy SHA-256 hash."""
     if not stored:
@@ -55,7 +95,28 @@ def _verify_password(password: str, stored: str) -> bool:
         except ValueError:
             return False
     if _is_legacy_sha256(stored):
-        return _verify_legacy_sha256(password, stored)
+        if _legacy_disabled():
+            # Operator has confirmed no legitimate user still has a
+            # legacy hash. Reject, count, and move on — the caller
+            # surfaces this as "invalid email or password", same as any
+            # other failed login.
+            _incr_metric("legacy_sha256_verifications_total", result="disabled")
+            logger.warning(
+                "Legacy SHA-256 hash rejected (kill switch active): "
+                "user should reset via the admin UI"
+            )
+            return False
+        ok = _verify_legacy_sha256(password, stored)
+        _incr_metric(
+            "legacy_sha256_verifications_total",
+            result="success" if ok else "fail",
+        )
+        if ok:
+            logger.warning(
+                "Legacy SHA-256 hash used — will be rehashed to bcrypt "
+                "on this login"
+            )
+        return ok
     return False
 
 
@@ -87,15 +148,26 @@ class AuthManager:
         stored = row["password_hash"]
         if not _verify_password(password, stored):
             return None
-        # Transparent rehash: upgrade legacy SHA-256 records to bcrypt
+        # Transparent rehash: upgrade legacy SHA-256 records to bcrypt.
+        # Note: if the kill switch is on we never get here (legacy verify
+        # returns False above), so this block is specifically the
+        # migration path for the window before the switch flips.
         if _is_legacy_sha256(stored):
             try:
                 new_hash = _hash_password(password)
                 self._sb.table("users").update(
                     {"password_hash": new_hash}
                 ).eq("email", row["email"]).execute()
-            except Exception:
-                pass
+                _incr_metric("auth_legacy_upgrades_total", outcome="success")
+            except Exception as exc:
+                # Don't block the login on a rehash failure, but make
+                # it visible — a repeatedly failing upgrade means the
+                # user stays on the legacy hash forever.
+                _incr_metric("auth_legacy_upgrades_total", outcome="fail")
+                logger.warning(
+                    "Legacy-hash rehash failed for user; will retry on "
+                    "next login: %s", exc,
+                )
         return User(
             email=row["email"],
             profile_name=row["profile_name"],
