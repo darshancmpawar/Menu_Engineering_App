@@ -246,11 +246,16 @@ class MenuSolver:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
-        # Soft rules that threw during apply / get_objective_terms. Populated
-        # per solve() call; callers (API, regenerator) can surface it so a
-        # silently-dropped constraint doesn't produce a plan that looks
-        # correct but violated the intent.
-        self.rule_failures: List[Dict[str, str]] = []
+        # Soft rules that threw during apply / get_objective_terms.
+        # Scoped to the winning attempt only — cleared at the start of
+        # each restart so callers (API, regenerator) don't see failures
+        # from cells that were discarded. On total failure the list
+        # reflects the last attempt's failures, which is the most
+        # actionable for diagnostics.
+        self.rule_failures: List[Dict[str, Any]] = []
+        # Stamped onto each rule_failures entry so diagnostics can tell
+        # which multi-restart attempt produced which failure.
+        self._current_attempt_seed: Optional[int] = None
 
     def _record_rule_failure(self, rule, phase: str, exc: BaseException) -> None:
         """Log a soft-rule failure with traceback and remember it on self."""
@@ -259,13 +264,16 @@ class MenuSolver:
             "Soft rule %r failed during %s: %s",
             name, phase, exc, exc_info=True,
         )
-        entry = {
+        entry: Dict[str, Any] = {
             'rule': name,
             'phase': phase,
             'error': f'{type(exc).__name__}: {exc}',
+            'attempt_seed': self._current_attempt_seed,
         }
-        # Dedupe across multi-restart retries — same rule failing the same
-        # way on every attempt should only surface once.
+        # Dedupe inside a single attempt so the same rule failing on
+        # every cell of this attempt surfaces once. Across attempts,
+        # rule_failures is cleared in solve() so there's no cross-
+        # attempt bleed.
         if entry not in self.rule_failures:
             self.rule_failures.append(entry)
 
@@ -277,6 +285,7 @@ class MenuSolver:
             (week_plan, dates) where week_plan maps date -> {slot_id: item_string}
         """
         self.rule_failures = []
+        self._current_attempt_seed = None
         if self.cfg.explicit_dates:
             dates = list(self.cfg.explicit_dates)
         else:
@@ -304,6 +313,13 @@ class MenuSolver:
                     rng = random.Random(attempt_seed)
                     self.cfg.seed = attempt_seed
                     self.cfg.time_limit_sec = int(per_attempt_time)
+                    # Reset per-attempt failure bucket and remember which
+                    # attempt is running — callers that inspect
+                    # rule_failures should only see the winning
+                    # attempt's failures, not residue from attempts we
+                    # abandoned with RuntimeError.
+                    self._current_attempt_seed = attempt_seed
+                    self.rule_failures = []
 
                     try:
                         cells = self._build_cells(
