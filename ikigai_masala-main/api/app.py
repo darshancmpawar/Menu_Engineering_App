@@ -23,6 +23,7 @@ from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
 from api.auth import api_login, require_api_auth
+from api import metrics
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
@@ -49,7 +50,7 @@ from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
-from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: used in editor-metadata
+from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: F401 — surfaced in editor-metadata response
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
@@ -197,25 +198,67 @@ def _rules_and_skip_for_client(client_name, dates):
     return rules, skip_cells
 
 
-# Longest backward window any HistoryManager consumer looks at
-# (week-signature cooldown is 30d, item cooldown 20d, rice-bread gap 10d).
-# A few extra days of slack lets small schema changes to those defaults
-# land without needing this constant to track them exactly.
+# Floor lookback. Must cover every history-consuming rule's cooldown.
+# With the default rules (week-signature 30d, item cooldown 20d,
+# rice-bread gap 10d), 45d gives 15d of slack. For per-client overrides
+# that push cooldowns past this floor, _effective_history_window()
+# widens the window at runtime instead of silently cutting off data.
 _HISTORY_WINDOW_DAYS = 45
+_HISTORY_WINDOW_SLACK_DAYS = 15
 
 
-def _build_history_context(df, client_name, start_date, weekday_dates):
+def _effective_history_window(rules) -> int:
+    """Return a window that covers every rule's cooldown + slack.
+
+    Rules expose their cooldown via either ``cooldown_days`` (item /
+    week-signature cooldowns) or ``gap_days`` (rice-bread gap). We take
+    the max across both attributes on all rules, add slack, and take the
+    larger of that and the ``_HISTORY_WINDOW_DAYS`` floor. Widening is
+    logged so operators notice a per-client rule is pushing queries
+    further back than usual.
+
+    Skipping this check is how "we quietly miss the last 10 days of
+    history" bugs happen: ``_HISTORY_WINDOW_DAYS`` is a fixed constant,
+    but cooldowns can be overridden per-client or in future rules.
+    """
+    max_cd = 0
+    for r in rules or []:
+        for attr in ('cooldown_days', 'gap_days'):
+            value = getattr(r, attr, None)
+            if isinstance(value, int) and value > max_cd:
+                max_cd = value
+    effective = max(_HISTORY_WINDOW_DAYS, max_cd + _HISTORY_WINDOW_SLACK_DAYS)
+    if effective > _HISTORY_WINDOW_DAYS:
+        logger.warning(
+            "Widening history lookback from %d to %d days to cover "
+            "max rule cooldown %d + %d slack",
+            _HISTORY_WINDOW_DAYS, effective, max_cd, _HISTORY_WINDOW_SLACK_DAYS,
+        )
+    return effective
+
+
+def _build_history_context(
+    df, client_name, start_date, weekday_dates, window_days=None,
+):
     """Shared helper to build history-based solver inputs from Supabase.
 
     Pushes ``client_name`` and ``service_date >= cutoff`` filters down to
     Supabase so the query hits the ``(client_name, service_date DESC)``
     index on ``menu_history`` (and the analogous index on
     ``week_signatures``) instead of scanning every row for every tenant.
+
+    *window_days* is the backward-lookback in days. Callers should pass
+    ``_effective_history_window(rules)`` so per-client rule overrides
+    don't silently truncate the window. Falling back to the floor
+    keeps the function usable in tests / scripts that don't assemble
+    rules upfront.
     """
     import pandas as pd
     from src.db import get_supabase
 
-    earliest = start_date - dt.timedelta(days=_HISTORY_WINDOW_DAYS)
+    if window_days is None:
+        window_days = _HISTORY_WINDOW_DAYS
+    earliest = start_date - dt.timedelta(days=window_days)
     earliest_iso = earliest.isoformat()
 
     hm = HistoryManager()
@@ -289,6 +332,19 @@ def _request_menu_categories():
         'menu_categories',
         lambda: _get_client_loader().menu_categories,
     )
+
+
+def _count_rule_failures(failures) -> None:
+    """Bump ``rule_failures_total{rule=<name>}`` for every failure the
+    solver recorded on this request. Keeps the metrics surface aligned
+    with the response's ``rule_warnings`` payload so a Prometheus alert
+    on rule_failures_total doesn't disagree with what the client saw.
+    """
+    if not failures:
+        return
+    for entry in failures:
+        rule_name = entry.get('rule', 'unknown') if isinstance(entry, dict) else 'unknown'
+        metrics.incr('rule_failures_total', rule=rule_name)
 
 
 def _require_known_client(client_name):
@@ -388,7 +444,10 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(start_date, num_days)
     rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-    banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
+    window_days = _effective_history_window(rules)
+    banned, rb_ban, recent_sigs = _build_history_context(
+        df, client_name, start_date, weekday_dates, window_days=window_days,
+    )
     cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
     return SolverInputs(
@@ -512,12 +571,19 @@ def plan_menu():
             response['pool_warnings'] = pool_warnings
         if solver.rule_failures:
             response['rule_warnings'] = solver.rule_failures
+            _count_rule_failures(solver.rule_failures)
+        metrics.incr('plan_requests_total', outcome='success')
         return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except RuntimeError as e:
         logger.warning("Solver failed: %s", e)
+        # Counts infeasibility + exhausted-restarts from the CP-SAT path;
+        # this is the SLO-relevant failure mode (vs 4xx, which is caller
+        # input error).
+        metrics.incr('plan_requests_total', outcome='solver_error')
+        metrics.incr('solver_failures_total')
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
@@ -574,12 +640,16 @@ def regenerate_cells():
         }
         if regen.rule_failures:
             response['rule_warnings'] = regen.rule_failures
+            _count_rule_failures(regen.rule_failures)
+        metrics.incr('regenerate_requests_total', outcome='success')
         return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except RuntimeError as e:
         logger.warning("Regeneration failed: %s", e)
+        metrics.incr('regenerate_requests_total', outcome='solver_error')
+        metrics.incr('solver_failures_total')
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
@@ -855,6 +925,27 @@ def _probe_supabase() -> bool:
     except Exception as exc:  # noqa: BLE001 — degraded state is fine
         logger.warning("Supabase health probe failed: %s", exc)
         return False
+
+
+@app.route('/api/v1/metrics', methods=['GET'])
+@require_api_auth()
+def metrics_snapshot():
+    """Return a point-in-time snapshot of every in-process counter.
+
+    Labels are collapsed into the key using Prometheus text-format
+    conventions (``rule_failures_total{rule="cuisine"}``), so a future
+    swap to the real prometheus_client stays a one-file change in
+    ``api/metrics.py`` without the caller surface moving.
+
+    Gated behind auth because request volume and rule-failure patterns
+    leak information about traffic shape; operators should scrape via
+    a token just like any other admin endpoint.
+    """
+    return jsonify({
+        'success': True,
+        'uptime_seconds': int(time.time() - _STARTED_AT),
+        'counters': metrics.snapshot(),
+    })
 
 
 @app.route('/api/v1/health', methods=['GET'])

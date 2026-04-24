@@ -58,6 +58,7 @@ class TestProtectedRoutesRejectAnon:
         ("post", "/api/v1/client"),
         ("delete", "/api/v1/client/Rippling"),
         ("post", "/api/v1/validate-pools"),
+        ("get", "/api/v1/metrics"),
     ])
     def test_missing_token_returns_401(self, client, method, path):
         resp = getattr(client, method)(path, json={})

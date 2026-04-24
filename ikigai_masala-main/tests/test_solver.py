@@ -102,6 +102,9 @@ def test_soft_rule_failures_are_captured_not_silent(cleaned_menu, pools):
     assert entry['phase'] == 'get_objective_terms'
     assert 'ValueError' in entry['error']
     assert 'broken weighting config' in entry['error']
+    # Phase 3 #20: each failure carries the attempt_seed that produced
+    # it so callers can tell which multi-restart iteration recorded it.
+    assert isinstance(entry['attempt_seed'], int)
 
 
 def test_soft_rule_typeerror_is_captured_not_crashing(cleaned_menu, pools):
@@ -196,3 +199,81 @@ def test_hard_rule_typeerror_is_wrapped_as_runtimeerror(cleaned_menu, pools):
     joined = "\n".join(chain)
     assert "hard_te" in joined, f"expected rule name in cause chain, got:\n{joined}"
     assert "TypeError" in joined
+
+
+def test_rule_failures_scoped_to_winning_attempt(cleaned_menu, pools):
+    """Phase 3 #20 — failures from attempts that later raised
+    RuntimeError must not appear in ``solver.rule_failures`` for the
+    winning attempt. Previously they bled across because the list was
+    only cleared once at the top of solve().
+
+    Setup: a soft rule that records a failure on every attempt via
+    get_objective_terms, plus a monkey-patch that makes the FIRST
+    attempt fail (RuntimeError after the failure is recorded). The
+    SECOND attempt succeeds. Assertion: rule_failures contains a
+    single entry stamped with the *second* attempt's seed, not the
+    first's."""
+    from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
+
+    class _MarkSeedSoftRule(BaseMenuRule):
+        severity = MenuRuleSeverity.SOFT
+
+        def __init__(self):
+            super().__init__({'name': 'seed_marker'})
+
+        def apply(self, *_a, **_kw):
+            return
+
+        def get_objective_terms(self, *_a, **_kw):
+            # Always fails so every attempt records one entry.
+            raise ValueError("always fails")
+
+    active = [
+        'welcome_drink', 'starter', 'soup', 'salad',
+        'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+        'curd_side', 'dessert',
+    ]
+    cfg = SolverConfig(
+        days=1,
+        start_date=dt.date(2026, 3, 23),
+        time_limit_sec=60,
+        active_base_slots=active,
+        slot_counts={s: 1 for s in active},
+    )
+    solver = MenuSolver(
+        pools=pools, solver_config=cfg, menu_rules=[_MarkSeedSoftRule()],
+    )
+
+    # Force the first attempt to fail AFTER the rule has recorded its
+    # failure — this is exactly the "lost during retry" scenario.
+    call_count = {'n': 0}
+    real_solve_cpsat = solver._solve_cpsat
+
+    def _fail_first_call(*args, **kwargs):
+        call_count['n'] += 1
+        if call_count['n'] == 1:
+            raise RuntimeError("forced first-attempt failure")
+        return real_solve_cpsat(*args, **kwargs)
+
+    solver._solve_cpsat = _fail_first_call
+
+    plan, _ = solver.solve()
+
+    # Sanity: the plan came from attempt 2+ (solver retried after our
+    # forced failure), so rule_failures has exactly one entry tagged
+    # with attempt 2's seed — NOT the first attempt's residue.
+    assert plan, "solver should have succeeded on the retry"
+    assert call_count['n'] >= 2, "first attempt must have failed and retried"
+    assert len(solver.rule_failures) == 1, (
+        "rule_failures from failed attempts must be cleared; got "
+        f"{solver.rule_failures}"
+    )
+    entry = solver.rule_failures[0]
+    assert entry['rule'] == 'seed_marker'
+    # Winning attempt's seed is the non-first one (larger by the
+    # DEFAULT_SEED_RESTART_STEP=17 increment).
+    assert entry['attempt_seed'] is not None
+    assert entry['attempt_seed'] != cfg.seed, (
+        f"expected winning attempt's stamped seed != base {cfg.seed}, "
+        f"got {entry['attempt_seed']}"
+    )

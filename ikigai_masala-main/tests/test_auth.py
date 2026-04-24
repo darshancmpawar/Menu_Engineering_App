@@ -113,6 +113,82 @@ class TestPasswordHashing:
         assert _verify_password("wrong", legacy) is False
 
 
+class TestLegacyHashInstrumentationAndKillSwitch:
+    """Phase 3 #18 — instrumentation + kill switch for the legacy
+    SHA-256 verification path. Keep counters moving on every legacy
+    verify so operators can confirm nobody's on the old format, and
+    give them an env-driven switch to reject legacy hashes once they
+    are confident."""
+
+    def _reset_metrics(self):
+        from api import metrics
+        metrics.reset()
+
+    def setup_method(self):
+        self._reset_metrics()
+
+    def teardown_method(self):
+        self._reset_metrics()
+        import os
+        os.environ.pop("AUTH_DISABLE_LEGACY_SHA256", None)
+
+    def test_legacy_success_bumps_success_counter(self):
+        from api import metrics
+        legacy = _legacy_sha256_hash("correct")
+        assert _verify_password("correct", legacy) is True
+        snap = metrics.snapshot()
+        assert snap.get(
+            'legacy_sha256_verifications_total{result="success"}'
+        ) == 1
+
+    def test_legacy_wrong_password_bumps_fail_counter(self):
+        from api import metrics
+        legacy = _legacy_sha256_hash("correct")
+        assert _verify_password("wrong", legacy) is False
+        snap = metrics.snapshot()
+        assert snap.get(
+            'legacy_sha256_verifications_total{result="fail"}'
+        ) == 1
+
+    def test_bcrypt_verify_does_not_touch_legacy_counter(self):
+        from api import metrics
+        stored = _hash_password("ok")
+        assert _verify_password("ok", stored) is True
+        snap = metrics.snapshot()
+        assert not any(
+            k.startswith("legacy_sha256_verifications_total") for k in snap
+        )
+
+    def test_kill_switch_rejects_legacy_even_with_correct_password(
+        self, monkeypatch,
+    ):
+        from api import metrics
+        monkeypatch.setenv("AUTH_DISABLE_LEGACY_SHA256", "true")
+
+        legacy = _legacy_sha256_hash("correct")
+        assert _verify_password("correct", legacy) is False, (
+            "kill switch must reject even a correct legacy password"
+        )
+        snap = metrics.snapshot()
+        assert snap.get(
+            'legacy_sha256_verifications_total{result="disabled"}'
+        ) == 1
+        assert 'legacy_sha256_verifications_total{result="success"}' not in snap
+
+    def test_kill_switch_off_accepts_legacy(self, monkeypatch):
+        monkeypatch.delenv("AUTH_DISABLE_LEGACY_SHA256", raising=False)
+        legacy = _legacy_sha256_hash("correct")
+        assert _verify_password("correct", legacy) is True
+
+    @pytest.mark.parametrize("value", ["false", "0", "", "no", "off"])
+    def test_non_truthy_kill_switch_values_keep_legacy_on(
+        self, monkeypatch, value,
+    ):
+        monkeypatch.setenv("AUTH_DISABLE_LEGACY_SHA256", value)
+        legacy = _legacy_sha256_hash("correct")
+        assert _verify_password("correct", legacy) is True
+
+
 # ---------------------------------------------------------------------------
 # AuthManager tests (mocked Supabase)
 # ---------------------------------------------------------------------------
