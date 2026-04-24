@@ -36,9 +36,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Run tests
+      # Local `pytest` stays plain for fast iteration; CI runs coverage
+      # on every PR and fails if total line coverage drops below the floor.
+      # Bump the floor in .github/workflows/ci.yml when adding tests that
+      # durably raise it.
+      - name: Run tests with coverage gate
         working-directory: ikigai_masala-main
-        run: pytest -q
+        run: pytest -q --cov --cov-report=term --cov-fail-under=82
 
   lint:
     name: ruff (bug-only ruleset)

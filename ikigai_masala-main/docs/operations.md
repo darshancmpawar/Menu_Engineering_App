@@ -45,6 +45,26 @@ Defined in `tests/conftest.py`:
 A fourth job — `slow-tests` — runs only on push to `main` and manual
 `workflow_dispatch` triggers, so PR feedback stays fast.
 
+### Coverage gate
+
+The `pytest` CI job enforces `--cov-fail-under=82`. Configuration lives in
+`.coveragerc`: measured surface is `api/`, `src/`, `ui/`,
+`user_authentication/`, and the Streamlit-UI modules that can't be
+unit-tested (`ui/styles.py`, `user_authentication/login_ui.py`,
+`user_authentication/session.py`, `user_authentication/user_manager_ui.py`,
+`customisation/*`, `app.py`) are omitted. Current baseline ≈ 83.8%.
+
+Local runs stay plain `pytest` (no coverage) for fast iteration. Measure
+coverage locally the same way CI does:
+
+```bash
+pytest --cov --cov-report=term-missing
+```
+
+When a PR durably raises the baseline, bump the floor in
+`.github/workflows/ci.yml` as part of the same change so the gate keeps
+progressing upward instead of re-settling at the old number.
+
 ---
 
 ## Logs + metrics

@@ -1,0 +1,39 @@
+[run]
+branch = False
+# Keep the measured surface to code we can actually unit-test. Streamlit
+# UI modules don't run under pytest (they need a Streamlit runtime / a
+# browser); counting them drags the floor to reflect that, not the
+# testability of the logic layer.
+source =
+    api
+    src
+    ui
+    user_authentication
+
+omit =
+    # Streamlit UI surfaces — tested manually / via Selenium, not pytest.
+    ui/styles.py
+    user_authentication/login_ui.py
+    user_authentication/session.py
+    user_authentication/user_manager_ui.py
+    customisation/*
+    # Entry point; the whole module body runs at Streamlit import time
+    # but the units inside are thin glue.
+    app.py
+    # Scripts and tests are not application code.
+    scripts/*
+    tests/*
+
+[report]
+# Tell coverage to fail if any line is < this on a per-file basis?
+# No — the CI gate below is global; per-file minima just mean future
+# rewrites can't shuffle coverage out of one file into another.
+precision = 1
+show_missing = True
+skip_covered = False
+# Pragmas we already use to exclude genuinely un-testable lines:
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
