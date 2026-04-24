@@ -23,6 +23,7 @@ from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
 from api.auth import api_login, require_api_auth
+from api import metrics
 
 from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
@@ -49,7 +50,7 @@ from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
-from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: used in editor-metadata
+from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: F401 — surfaced in editor-metadata response
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.solver.menu_solver import MenuSolver, SolverConfig
@@ -291,6 +292,19 @@ def _request_menu_categories():
     )
 
 
+def _count_rule_failures(failures) -> None:
+    """Bump ``rule_failures_total{rule=<name>}`` for every failure the
+    solver recorded on this request. Keeps the metrics surface aligned
+    with the response's ``rule_warnings`` payload so a Prometheus alert
+    on rule_failures_total doesn't disagree with what the client saw.
+    """
+    if not failures:
+        return
+    for entry in failures:
+        rule_name = entry.get('rule', 'unknown') if isinstance(entry, dict) else 'unknown'
+        metrics.incr('rule_failures_total', rule=rule_name)
+
+
 def _require_known_client(client_name):
     """Validate ``client_name`` is non-empty and refers to a known client.
 
@@ -512,12 +526,19 @@ def plan_menu():
             response['pool_warnings'] = pool_warnings
         if solver.rule_failures:
             response['rule_warnings'] = solver.rule_failures
+            _count_rule_failures(solver.rule_failures)
+        metrics.incr('plan_requests_total', outcome='success')
         return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except RuntimeError as e:
         logger.warning("Solver failed: %s", e)
+        # Counts infeasibility + exhausted-restarts from the CP-SAT path;
+        # this is the SLO-relevant failure mode (vs 4xx, which is caller
+        # input error).
+        metrics.incr('plan_requests_total', outcome='solver_error')
+        metrics.incr('solver_failures_total')
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
@@ -574,12 +595,16 @@ def regenerate_cells():
         }
         if regen.rule_failures:
             response['rule_warnings'] = regen.rule_failures
+            _count_rule_failures(regen.rule_failures)
+        metrics.incr('regenerate_requests_total', outcome='success')
         return jsonify(response)
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except RuntimeError as e:
         logger.warning("Regeneration failed: %s", e)
+        metrics.incr('regenerate_requests_total', outcome='solver_error')
+        metrics.incr('solver_failures_total')
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
@@ -855,6 +880,27 @@ def _probe_supabase() -> bool:
     except Exception as exc:  # noqa: BLE001 — degraded state is fine
         logger.warning("Supabase health probe failed: %s", exc)
         return False
+
+
+@app.route('/api/v1/metrics', methods=['GET'])
+@require_api_auth()
+def metrics_snapshot():
+    """Return a point-in-time snapshot of every in-process counter.
+
+    Labels are collapsed into the key using Prometheus text-format
+    conventions (``rule_failures_total{rule="cuisine"}``), so a future
+    swap to the real prometheus_client stays a one-file change in
+    ``api/metrics.py`` without the caller surface moving.
+
+    Gated behind auth because request volume and rule-failure patterns
+    leak information about traffic shape; operators should scrape via
+    a token just like any other admin endpoint.
+    """
+    return jsonify({
+        'success': True,
+        'uptime_seconds': int(time.time() - _STARTED_AT),
+        'counters': metrics.snapshot(),
+    })
 
 
 @app.route('/api/v1/health', methods=['GET'])
