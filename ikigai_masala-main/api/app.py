@@ -198,25 +198,67 @@ def _rules_and_skip_for_client(client_name, dates):
     return rules, skip_cells
 
 
-# Longest backward window any HistoryManager consumer looks at
-# (week-signature cooldown is 30d, item cooldown 20d, rice-bread gap 10d).
-# A few extra days of slack lets small schema changes to those defaults
-# land without needing this constant to track them exactly.
+# Floor lookback. Must cover every history-consuming rule's cooldown.
+# With the default rules (week-signature 30d, item cooldown 20d,
+# rice-bread gap 10d), 45d gives 15d of slack. For per-client overrides
+# that push cooldowns past this floor, _effective_history_window()
+# widens the window at runtime instead of silently cutting off data.
 _HISTORY_WINDOW_DAYS = 45
+_HISTORY_WINDOW_SLACK_DAYS = 15
 
 
-def _build_history_context(df, client_name, start_date, weekday_dates):
+def _effective_history_window(rules) -> int:
+    """Return a window that covers every rule's cooldown + slack.
+
+    Rules expose their cooldown via either ``cooldown_days`` (item /
+    week-signature cooldowns) or ``gap_days`` (rice-bread gap). We take
+    the max across both attributes on all rules, add slack, and take the
+    larger of that and the ``_HISTORY_WINDOW_DAYS`` floor. Widening is
+    logged so operators notice a per-client rule is pushing queries
+    further back than usual.
+
+    Skipping this check is how "we quietly miss the last 10 days of
+    history" bugs happen: ``_HISTORY_WINDOW_DAYS`` is a fixed constant,
+    but cooldowns can be overridden per-client or in future rules.
+    """
+    max_cd = 0
+    for r in rules or []:
+        for attr in ('cooldown_days', 'gap_days'):
+            value = getattr(r, attr, None)
+            if isinstance(value, int) and value > max_cd:
+                max_cd = value
+    effective = max(_HISTORY_WINDOW_DAYS, max_cd + _HISTORY_WINDOW_SLACK_DAYS)
+    if effective > _HISTORY_WINDOW_DAYS:
+        logger.warning(
+            "Widening history lookback from %d to %d days to cover "
+            "max rule cooldown %d + %d slack",
+            _HISTORY_WINDOW_DAYS, effective, max_cd, _HISTORY_WINDOW_SLACK_DAYS,
+        )
+    return effective
+
+
+def _build_history_context(
+    df, client_name, start_date, weekday_dates, window_days=None,
+):
     """Shared helper to build history-based solver inputs from Supabase.
 
     Pushes ``client_name`` and ``service_date >= cutoff`` filters down to
     Supabase so the query hits the ``(client_name, service_date DESC)``
     index on ``menu_history`` (and the analogous index on
     ``week_signatures``) instead of scanning every row for every tenant.
+
+    *window_days* is the backward-lookback in days. Callers should pass
+    ``_effective_history_window(rules)`` so per-client rule overrides
+    don't silently truncate the window. Falling back to the floor
+    keeps the function usable in tests / scripts that don't assemble
+    rules upfront.
     """
     import pandas as pd
     from src.db import get_supabase
 
-    earliest = start_date - dt.timedelta(days=_HISTORY_WINDOW_DAYS)
+    if window_days is None:
+        window_days = _HISTORY_WINDOW_DAYS
+    earliest = start_date - dt.timedelta(days=window_days)
     earliest_iso = earliest.isoformat()
 
     hm = HistoryManager()
@@ -402,7 +444,10 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(start_date, num_days)
     rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-    banned, rb_ban, recent_sigs = _build_history_context(df, client_name, start_date, weekday_dates)
+    window_days = _effective_history_window(rules)
+    banned, rb_ban, recent_sigs = _build_history_context(
+        df, client_name, start_date, weekday_dates, window_days=window_days,
+    )
     cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
     return SolverInputs(
