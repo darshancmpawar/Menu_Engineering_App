@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .env
 .streamlit/secrets.toml
+
+# Coverage artefacts from `pytest --cov` (CI runs it; local runs produce
+# these files in whatever directory you run from).
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
