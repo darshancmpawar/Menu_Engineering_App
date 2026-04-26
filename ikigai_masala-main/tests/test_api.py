@@ -142,6 +142,12 @@ class TestPlanEndpoint:
         assert data['error'] == 'Internal server error'
         assert '10.0.0.5' not in data['error']
         assert '_SecretLeak' not in data['error']
+        # Surface the request_id so an admin can grep the access log
+        # for the real exception. Body still doesn't leak the message
+        # itself, just the correlation id.
+        assert 'request_id' in data
+        assert data['request_id']
+        assert resp.headers.get('X-Request-ID') == data['request_id']
 
     def test_plan_generates_for_valid_client(self, client, auth_headers, fake_supabase):
         resp = client.post('/api/v1/plan', json={

@@ -138,6 +138,8 @@ verification code entirely.
 | 503 `Server at capacity` under load | `solver_gate` queue full; this is the intended backpressure | Retry after a few seconds; clients with the built-in retry (`MenuApiClient`) handle this automatically |
 | 504 `Request timed out waiting in queue` | Request waited > `QUEUE_TIMEOUT` (default 300s) | Retry; if it persists the solver is stuck — restart the process |
 | 409 on `PUT /client-config` | Another admin edited the same client between your GET and PUT | Refresh the editor (the Streamlit UI does this on save failure) and re-apply |
+| `Failed to load config for X: Internal server error` in the customisation editor | Logs say `clients.version column missing — falling back to version=1` | Re-run `scripts/create_tables.sql` in the Supabase SQL editor — the Phase 2 #14 migration adds `clients.version`. The editor stays usable in fallback mode, but optimistic-concurrency on PUT is disabled until the column exists. |
+| Any `Internal server error` toast in the UI | Generic catch-all wrapped a real exception | Read the response body — every 500 carries a `request_id`. Grep the access log (`logger="api.app", msg="http_request"`) for that id; the matching ERROR line a few rows earlier is the real exception with a traceback. |
 | `Widening history lookback from 45 to N days` in logs | A per-client rule's `cooldown_days` > 30 triggered the dynamic widening | Informational. Keeps the Supabase window ≥ the longest rule cooldown. |
 
 ---

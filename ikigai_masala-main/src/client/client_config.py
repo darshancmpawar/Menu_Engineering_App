@@ -6,7 +6,8 @@ API, or dashboard is immediately reflected on the next call.
 
 Schema:
     menu_categories (name TEXT PK, slots TEXT[])
-    clients         (name TEXT PK, menu_category TEXT FK → menu_categories.name)
+    clients         (name TEXT PK, menu_category TEXT FK → menu_categories.name,
+                     version INT NOT NULL DEFAULT 1)
     slot_count_overrides (client_name, slot, count)
     theme_overrides      (client_name, day, theme)
     app_settings         (key, value)
@@ -15,6 +16,7 @@ Schema:
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
@@ -24,6 +26,36 @@ from src.constants import (
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
+
+logger = logging.getLogger(__name__)
+
+
+# Postgres error code for "undefined_column"; raised by the Supabase REST
+# layer when a SELECT / UPDATE references a column that doesn't exist —
+# e.g. when a deployment hasn't applied the Phase 2 #14 migration that
+# added clients.version. Detecting it lets us degrade gracefully (the
+# editor keeps working) while logging a loud, actionable hint so the
+# operator knows to run scripts/create_tables.sql.
+_PG_UNDEFINED_COLUMN = "42703"
+_MIGRATION_HINT = (
+    "Re-run scripts/create_tables.sql in the Supabase SQL editor to apply "
+    "the latest migrations. Optimistic-concurrency on PUT /client-config "
+    "is degraded until the column exists."
+)
+
+
+def _is_undefined_column(exc: BaseException) -> bool:
+    """Return True if *exc* looks like a Postgres undefined-column error.
+
+    Supabase-py wraps PostgREST errors in a class with ``code`` and
+    ``message`` attributes, but the exact class name has shifted across
+    versions, so check both the structured field and the stringified
+    message as a fallback.
+    """
+    if getattr(exc, "code", None) == _PG_UNDEFINED_COLUMN:
+        return True
+    msg = str(exc).lower()
+    return "does not exist" in msg and "column" in msg
 
 DEFAULT_THEME_MAP: Dict[str, str] = {
     'monday': 'mix',
@@ -301,19 +333,52 @@ class ClientConfigLoader:
     def get_client_version(self, name: str) -> int:
         """Return the current version counter for a client.
 
-        Fresh rows and rows created before the migration default to 1;
-        every successful PUT through the API bumps this by one.
+        Fresh rows and rows created post-migration default to 1; every
+        successful PUT through the API bumps this by one. If the
+        ``version`` column doesn't exist (deployment hasn't applied the
+        Phase 2 #14 migration), log a clear ERROR and return 1 — the
+        editor stays usable, optimistic-concurrency just no-ops until
+        the migration runs.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('version')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_undefined_column(exc):
+                logger.error(
+                    "clients.version column missing — falling back to "
+                    "version=1 for %r. %s",
+                    name, _MIGRATION_HINT,
+                )
+                # Confirm the row exists at all so callers still get the
+                # right ValueError for a typo'd client name.
+                self._require_client_exists(name)
+                return 1
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return int(row.data.get('version', 1))
+
+    def _require_client_exists(self, name: str) -> None:
+        """Raise ValueError if no client row exists with this name.
+
+        Used by version-related fallbacks so the loader still 404s on
+        a typo even when the version column itself isn't queryable.
         """
         row = (
             self._sb.table('clients')
-            .select('version')
+            .select('name')
             .eq('name', name)
             .maybe_single()
             .execute()
         )
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
-        return int(row.data.get('version', 1))
 
     def bump_version_if_matches(self, name: str, expected: int) -> int:
         """Atomically bump ``version`` from *expected* to *expected+1*.
@@ -324,26 +389,43 @@ class ClientConfigLoader:
         (someone else wrote between our GET and PUT) or the client was
         deleted.
 
+        If the ``version`` column doesn't exist (pre-migration
+        deployment), the conditional filter blows up — we log an ERROR
+        and fall back to a non-conditional UPDATE so writes still go
+        through (without the optimistic-concurrency check). The hint in
+        the log tells operators what to do.
+
         Raises:
             ConcurrentEditError: when the update matches no rows. The
                 error carries the *current* version so callers can feed
                 it back to the user.
         """
         new_version = int(expected) + 1
-        result = (
-            self._sb.table('clients')
-            .update({'version': new_version})
-            .eq('name', name)
-            .eq('version', int(expected))
-            .execute()
-        )
+        try:
+            result = (
+                self._sb.table('clients')
+                .update({'version': new_version})
+                .eq('name', name)
+                .eq('version', int(expected))
+                .execute()
+            )
+        except Exception as exc:
+            if _is_undefined_column(exc):
+                logger.error(
+                    "clients.version column missing — bumping without "
+                    "concurrency check for %r. %s",
+                    name, _MIGRATION_HINT,
+                )
+                self._require_client_exists(name)
+                # No concurrency guard available; just touch the row to
+                # confirm it exists and return 1 so the response surface
+                # stays consistent.
+                return 1
+            raise
         if not result.data:
             # Distinguish "client missing" from "version stale" so the
             # 409 response body can include the live value.
-            try:
-                current = self.get_client_version(name)
-            except ValueError:
-                raise
+            current = self.get_client_version(name)  # raises ValueError if gone
             raise ConcurrentEditError(
                 f"Client {name!r} has been modified by another request "
                 f"(expected version {expected}, currently {current}). "
