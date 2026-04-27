@@ -40,8 +40,19 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(_secret_key(), salt=_SALT)
 
 
-def issue_token(email: str, role: str) -> str:
-    return _serializer().dumps({"email": email, "role": role})
+def issue_token(email: str, role: str, profile_name: str = "") -> str:
+    """Mint a signed bearer token.
+
+    ``profile_name`` is included so /api/v1/auth/whoami can answer
+    without hitting Supabase — handy when the Streamlit frontend
+    rehydrates a session from a stored cookie on page load and just
+    needs to confirm "is this token still mine, and what's my display
+    name?". Tokens issued before this field was added simply have an
+    empty profile_name (handled gracefully by callers).
+    """
+    return _serializer().dumps(
+        {"email": email, "role": role, "profile_name": profile_name},
+    )
 
 
 def decode_token(token: str) -> dict:
@@ -104,7 +115,7 @@ def api_login():
 
         return jsonify({
             "success": True,
-            "token": issue_token(user.email, user.role),
+            "token": issue_token(user.email, user.role, user.profile_name),
             "email": user.email,
             "role": user.role,
             "profile_name": user.profile_name,
@@ -118,3 +129,23 @@ def api_login():
             "success": False,
             "error": f"Login error ({type(e).__name__})",
         }), 500
+
+
+def api_whoami():
+    """GET /api/v1/auth/whoami — confirm the bearer token is still
+    valid and return the principal it represents.
+
+    Used by the Streamlit frontend to rehydrate a session from a
+    stored cookie on page load: if the token is good, call
+    login_user(...) and skip the login form; if it's expired/invalid,
+    the auth decorator returns 401, the frontend wipes the cookie and
+    shows the form. Decoded entirely from the token's signed payload
+    so this endpoint never hits Supabase.
+    """
+    payload = g.api_user  # populated by require_api_auth
+    return jsonify({
+        "success": True,
+        "email": payload.get("email", ""),
+        "role": payload.get("role", ""),
+        "profile_name": payload.get("profile_name", ""),
+    })

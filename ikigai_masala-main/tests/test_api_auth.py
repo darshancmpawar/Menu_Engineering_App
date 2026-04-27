@@ -59,6 +59,7 @@ class TestProtectedRoutesRejectAnon:
         ("delete", "/api/v1/client/Rippling"),
         ("post", "/api/v1/validate-pools"),
         ("get", "/api/v1/metrics"),
+        ("get", "/api/v1/auth/whoami"),
     ])
     def test_missing_token_returns_401(self, client, method, path):
         resp = getattr(client, method)(path, json={})
@@ -121,3 +122,55 @@ class TestSecretKeySafety:
         monkeypatch.setattr(api_auth, "API_SECRET_KEY", "")
         with pytest.raises(RuntimeError, match="API_SECRET_KEY is required"):
             issue_token("x@test.com", ROLE_USER)
+
+
+class TestWhoamiEndpoint:
+    """/whoami exists so the Streamlit frontend can rehydrate a session
+    from a stored cookie on page load without hitting Supabase.
+    Validates the token (via the same require_api_auth decorator that
+    gates every other authenticated route) and returns the principal."""
+
+    def test_returns_principal_for_valid_token(self, client):
+        token = issue_token("alice@test.com", ROLE_USER, "Alice Q. User")
+        resp = client.get(
+            "/api/v1/auth/whoami",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["email"] == "alice@test.com"
+        assert body["role"] == ROLE_USER
+        assert body["profile_name"] == "Alice Q. User"
+
+    def test_handles_pre_upgrade_token_with_no_profile_name(self, client):
+        """Tokens issued before profile_name was added still pass auth;
+        whoami must return an empty string, not crash."""
+        # The new signature has profile_name="" by default.
+        token = issue_token("legacy@test.com", ROLE_USER)
+        resp = client.get(
+            "/api/v1/auth/whoami",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["email"] == "legacy@test.com"
+        assert body["profile_name"] == ""
+
+    def test_rejects_expired_token_with_401(self, client, monkeypatch):
+        """A token whose signature is fine but whose age is past
+        TTL should 401 — this is the cookie-rehydrate path's signal
+        to wipe the cookie and show the login form."""
+        token = issue_token("alice@test.com", ROLE_USER, "Alice")
+        # Force the verifier to consider any token expired.
+        from itsdangerous import SignatureExpired
+        monkeypatch.setattr(
+            api_auth, "decode_token",
+            lambda _t: (_ for _ in ()).throw(SignatureExpired("expired")),
+        )
+        resp = client.get(
+            "/api/v1/auth/whoami",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+        assert "expired" in resp.get_json()["error"].lower()

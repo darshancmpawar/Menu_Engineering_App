@@ -53,6 +53,13 @@ def logout_user():
     except Exception:
         # Streamlit < 1.18 didn't expose .clear; safe to ignore.
         pass
+    # Drop the persisted bearer-token cookie so a hard refresh after
+    # logout doesn't auto-restore the session via cookie_store.
+    try:
+        from user_authentication.cookie_store import clear_persisted_token
+        clear_persisted_token()
+    except Exception:
+        pass
 
 
 def is_authenticated() -> bool:
