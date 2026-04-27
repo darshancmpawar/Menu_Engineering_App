@@ -97,6 +97,33 @@ Counters reset only on process restart. No histograms or gauges yet —
 
 ---
 
+## Persistent login (cookie)
+
+`st.session_state` is per-Streamlit-session in-memory storage — it dies
+on hard refresh, new tab, or server restart, which would log every user
+back out repeatedly. To keep users signed in across those events the
+bearer token is persisted as a 12-hour browser cookie named
+`ikigai_auth` (managed via `extra-streamlit-components`'s `CookieManager`).
+
+On page load `app.py::_try_restore_session_from_cookie()`:
+
+1. Reads the cookie.
+2. If present, calls `GET /api/v1/auth/whoami` to validate the token's
+   HMAC signature + TTL — pure server-side check, no Supabase round
+   trip (the token carries `email`, `role`, and `profile_name`).
+3. If valid: `login_user(...)` populates `session_state` and the user
+   sees the authenticated UI immediately.
+4. If invalid / expired: the cookie is cleared and the login form is
+   shown.
+
+Logout calls `clear_persisted_token()` so a hard refresh after logout
+doesn't auto-restore the session.
+
+The cookie is signed by `API_SECRET_KEY` — rotating that key
+invalidates every persistent session in flight. That's the right
+escape hatch if a token is leaked: rotate, every cookie becomes
+useless on next request, all users re-log-in.
+
 ## Streamlit-side caches
 
 Two small caches make the planner UI snappy without compromising

@@ -135,6 +135,55 @@ except RuntimeError as e:
 # ---------------------------------------------------------------------------
 init_auth_state()
 
+
+def _try_restore_session_from_cookie() -> bool:
+    """Rehydrate auth state from the persisted cookie on a fresh
+    Streamlit session (hard refresh, new tab, server restart).
+
+    Flow:
+      1. Cookie present → call /api/v1/auth/whoami with it. The token
+         is signed by the API, so the verification is purely server-
+         side HMAC + TTL — no Supabase round-trip.
+      2. Valid → populate ``session_state`` exactly as render_login_form
+         would after a fresh login.
+      3. Invalid / expired → wipe the cookie and fall through to the
+         login form.
+
+    Returns True if the session was successfully restored.
+    """
+    if is_authenticated():
+        return True
+    from user_authentication.cookie_store import (
+        get_persisted_token,
+        clear_persisted_token,
+    )
+    from user_authentication.session import login_user
+    from user_authentication.models import User
+
+    token = get_persisted_token()
+    if not token:
+        return False
+    try:
+        probe = MenuApiClient(_BACKEND_URL, token=token)
+        info = probe.whoami()
+    except Exception:
+        # 401 (expired / forged) or backend hiccup. Either way drop
+        # the cookie so the user gets a clean login.
+        clear_persisted_token()
+        return False
+    login_user(
+        User(
+            email=info["email"],
+            profile_name=info.get("profile_name", ""),
+            role=info["role"],
+        ),
+        token=token,
+    )
+    return True
+
+
+_try_restore_session_from_cookie()
+
 if not is_authenticated():
     render_login_form(_BACKEND_URL)
     st.stop()

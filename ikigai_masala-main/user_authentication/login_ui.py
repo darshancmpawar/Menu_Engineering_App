@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from ui.api_client import MenuApiClient
+from user_authentication.cookie_store import persist_token
 from user_authentication.models import User
 from user_authentication.session import login_user
 
@@ -81,6 +82,11 @@ def render_login_form(api_base_url: str = "http://localhost:5000"):
                     role=data["role"],
                 )
                 login_user(user, token=data["token"])
+                # Persist the token in a browser cookie so the user
+                # stays signed in across hard refreshes / new tabs /
+                # server restarts. 12h lifetime, signed by the API,
+                # auto-cleared on logout.
+                persist_token(data["token"])
                 st.rerun()
             except RuntimeError as e:
                 st.error(f"{e}")

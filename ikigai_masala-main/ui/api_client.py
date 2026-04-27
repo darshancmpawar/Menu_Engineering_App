@@ -84,6 +84,20 @@ class MenuApiClient:
         self.token = data["token"]
         return data
 
+    def whoami(self) -> Dict[str, Any]:
+        """Confirm self.token is still valid and return the principal.
+
+        Used by the Streamlit frontend to rehydrate a session from a
+        cookie on page load. Raises RuntimeError if the token is
+        expired / invalid (401) — the caller wipes the cookie and
+        shows the login form.
+        """
+        resp = self.session.get(
+            f"{self.base_url}/api/v1/auth/whoami",
+            timeout=5, headers=self._auth_headers(),
+        )
+        return _parse_response(resp, "Session expired")
+
     def health(self) -> Dict[str, Any]:
         resp = self.session.get(f"{self.base_url}/api/v1/health", timeout=5)
         resp.raise_for_status()

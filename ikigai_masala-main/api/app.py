@@ -22,7 +22,7 @@ from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
-from api.auth import api_login, require_api_auth
+from api.auth import api_login, api_whoami, require_api_auth
 from api.rate_limit import rate_limit
 from api import metrics
 
@@ -540,6 +540,12 @@ def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
 
 
 app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
+# /whoami is auth-gated — the decorator does the actual token validation;
+# the handler just echoes the decoded payload back.
+app.add_url_rule(
+    '/api/v1/auth/whoami', 'api_whoami',
+    require_api_auth()(api_whoami), methods=['GET'],
+)
 
 
 @app.route('/api/v1/clients', methods=['GET'])
