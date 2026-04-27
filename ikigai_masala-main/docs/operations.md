@@ -97,6 +97,30 @@ Counters reset only on process restart. No histograms or gauges yet —
 
 ---
 
+## Streamlit-side caches
+
+Two small caches make the planner UI snappy without compromising
+freshness:
+
+- `MenuApiClient` is built via `@st.cache_resource` keyed by
+  `(backend_url, bearer_token)` — the underlying `requests.Session` (and
+  its connection pool) survives across Streamlit reruns instead of
+  being torn down on every widget interaction. TTL is 23 hours, just
+  under the bearer-token lifetime.
+- `list_clients()` is cached with `@st.cache_data` for 60 seconds so
+  the sidebar's client picker doesn't hit the API on every rerun. The
+  customisation editor's create / delete handlers call
+  `st.cache_data.clear()` so a new or removed client shows up
+  immediately rather than 60s later.
+- `logout_user()` clears both caches so a fresh login can't reuse a
+  stale client wired with the previous token.
+
+If a stale picker ever shows up in production despite this, the cause
+is almost always a mutation that bypassed `customisation/main.py` —
+add a `st.cache_data.clear()` call there or just wait 60s.
+
+---
+
 ## Legacy password-hash kill switch
 
 `users.password_hash` currently accepts both bcrypt (current) and a

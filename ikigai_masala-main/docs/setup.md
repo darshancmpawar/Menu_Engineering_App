@@ -117,3 +117,30 @@ To run the API standalone (e.g. under gunicorn):
 ```bash
 flask --app api.app run              # or python -m api.app
 ```
+
+---
+
+## 7. Docker
+
+A single-process container (Streamlit on `:8501`, auto-spawned Flask on
+loopback `:5000`) lives at the repo root.
+
+```bash
+cp .env.example .env       # fill in real SUPABASE_URL / SUPABASE_KEY / API_SECRET_KEY
+docker compose up --build  # → http://localhost:8501
+```
+
+The container:
+
+- Runs as non-root (`uid 10001`) — defence-in-depth.
+- Uses `tini` as PID 1 so `docker stop` / Ctrl-C are clean.
+- Exposes only `8501`. Flask is *not* published — the Streamlit
+  frontend talks to it over loopback inside the container.
+- Has a `HEALTHCHECK` against `/api/v1/health` so `docker compose ps`
+  shows `healthy`/`unhealthy` correctly. Set `APP_VERSION` in `.env` to
+  the build SHA so `/health` and `/` surface what's running.
+
+The schema migrations and the admin seed still need a one-time run
+against Supabase from your laptop (sections 3 + 5 above) — they're
+deliberately out of the container so a forgotten `docker run` can't
+mutate the database.

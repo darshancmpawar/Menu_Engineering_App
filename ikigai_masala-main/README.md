@@ -12,7 +12,20 @@ per-client customizations, and history.
 
 ---
 
-## Quick start
+## Quick start (Docker — recommended)
+
+```bash
+cp .env.example .env       # edit and fill in SUPABASE_URL / SUPABASE_KEY / API_SECRET_KEY
+docker compose up --build
+```
+
+Open `http://localhost:8501`, log in, pick a client, generate a plan.
+
+> First-time setup: run the three schema files (`scripts/*.sql`) once in
+> the Supabase SQL editor, and seed an admin via the Python script — see
+> [docs/setup.md](docs/setup.md).
+
+## Quick start (local Python)
 
 ```bash
 cd ikigai_masala-main
@@ -32,8 +45,6 @@ ADMIN_EMAIL="you@company.com" ADMIN_PASSWORD="<≥8 chars>" \
 
 streamlit run app.py
 ```
-
-Open `http://localhost:8501`, log in, pick a client, generate a plan.
 
 ---
 

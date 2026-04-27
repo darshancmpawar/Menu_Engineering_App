@@ -1,0 +1,28 @@
+# One-command boot. Reads secrets from .env (copy from .env.example).
+#
+# Usage:
+#   cp .env.example .env       # then fill in SUPABASE_URL / SUPABASE_KEY / API_SECRET_KEY
+#   docker compose up --build
+#
+# The Streamlit UI is on http://localhost:8501; Flask only listens inside
+# the container on loopback (5000), so it isn't published.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ikigai-masala:local
+    container_name: ikigai-masala
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Bake the short git SHA into APP_VERSION so /api/v1/health and /
+    # surface what's actually running. Falls back to "dev" if the build
+    # context isn't a git checkout.
+    environment:
+      APP_VERSION: ${APP_VERSION:-dev}
+    ports:
+      - "8501:8501"
+    # The Dockerfile's HEALTHCHECK already runs every 30s. compose
+    # honours it for `docker compose ps` status.

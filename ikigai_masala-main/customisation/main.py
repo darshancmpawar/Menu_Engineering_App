@@ -274,6 +274,10 @@ def render_customisation_editor(api: MenuApiClient):
                         if theme_overrides:
                             payload['theme_map'] = new_theme_map
                         api.update_client_config(name, payload)
+                    # Invalidate the planner sidebar's cached client list
+                    # so the new client shows up immediately rather than
+                    # 60s later when the TTL expires.
+                    st.cache_data.clear()
                     st.session_state['editor_success_msg'] = f"Client '{name}' created successfully!"
                     st.session_state.pop('editor_new_client_name', None)
                     st.rerun()
@@ -316,6 +320,9 @@ def render_customisation_editor(api: MenuApiClient):
         if delete_clicked:
             try:
                 api.delete_client(selected_client)
+                # Invalidate cached client list so the deleted client
+                # disappears from the picker immediately.
+                st.cache_data.clear()
                 st.session_state['editor_success_msg'] = f"Client '{selected_client}' deleted."
                 st.rerun()
             except Exception as e:

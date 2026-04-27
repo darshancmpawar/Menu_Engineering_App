@@ -139,7 +139,32 @@ if not is_authenticated():
     render_login_form(_BACKEND_URL)
     st.stop()
 
-client = MenuApiClient(_BACKEND_URL, token=current_token())
+
+# Streamlit reruns the entire script on every widget interaction, so a
+# naïve `MenuApiClient(_BACKEND_URL, token=...)` rebuilds a fresh
+# requests.Session on every click — connection pool, retry adapter,
+# etc. — for no reason. Cache one client per (url, token) pair so the
+# underlying HTTPS pool survives across reruns. ``ttl`` is set just
+# below the bearer-token lifetime (24h) so a stale entry doesn't keep
+# a dead session around forever; logout also explicitly clears it.
+@st.cache_resource(ttl=23 * 3600, show_spinner=False)
+def _get_api_client(base_url: str, token: str | None) -> MenuApiClient:
+    return MenuApiClient(base_url, token=token)
+
+
+client = _get_api_client(_BACKEND_URL, current_token())
+
+
+# Cache low-churn reads (60s TTL): the sidebar's client picker re-renders
+# on every interaction but the list itself only changes when an admin
+# creates/deletes a client. Underscore-prefixed args are excluded from
+# the hash key (Streamlit can't hash MenuApiClient); the trailing token
+# bucket keeps the cache per-user — different roles never see different
+# results today, but it's free insurance and gives clean isolation if
+# the backend ever scopes /clients per role.
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_list_clients(_api: MenuApiClient, _bucket: str) -> list:
+    return _api.list_clients()
 
 # ---------------------------------------------------------------------------
 # Session state initialization (only after auth)
@@ -217,7 +242,7 @@ with st.sidebar:
         st.divider()
 
     try:
-        clients_list = client.list_clients()
+        clients_list = _cached_list_clients(client, current_token() or "anon")
     except (ConnectionError, OSError, ValueError):
         clients_list = []
         st.error("Cannot reach API.")
