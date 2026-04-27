@@ -100,3 +100,18 @@ def fake_supabase(monkeypatch, seeded_fake_supabase):
         pass
 
     return seeded_fake_supabase
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_buckets():
+    """Per-principal rate-limit buckets live on module-level singletons, so a
+    test ordering that exhausts alice@test.com's /plan bucket would break
+    a later test. Reset between tests so every test starts full."""
+    try:
+        from api.rate_limit import reset_for_tests
+    except ImportError:
+        yield
+        return
+    reset_for_tests()
+    yield
+    reset_for_tests()

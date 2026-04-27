@@ -23,6 +23,7 @@ from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_stats as _solver_stats
 from api.auth import api_login, require_api_auth
+from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
@@ -69,6 +70,22 @@ logger = logging.getLogger(__name__)
 # echo exception details back to the caller, since Supabase errors and
 # similar can reveal connection strings, internal hostnames, or schema info.
 _INTERNAL_ERROR_MSG = "Internal server error"
+
+
+def _internal_error_response(status: int = 500):
+    """Return a generic-error JSON response with the current request_id.
+
+    The body never carries exception details (security), but it does
+    surface the request_id so an admin debugging "Internal server error"
+    in the UI can grep that id in the access log and find the real
+    traceback. Fix for the recurring "I see Internal server error and
+    have no way to triage" pain.
+    """
+    rid = getattr(g, 'request_id', None) if has_request_context() else None
+    body = {'success': False, 'error': _INTERNAL_ERROR_MSG}
+    if rid:
+        body['request_id'] = rid
+    return jsonify(body), status
 
 # Record when the process started so /health can report uptime. Used
 # for liveness / deploy-tracking rather than anything load-bearing.
@@ -532,11 +549,12 @@ def list_clients():
         return jsonify({'success': True, 'clients': _request_client_names()})
     except (FileNotFoundError, ValueError, KeyError) as e:
         logger.error("Failed to list clients: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/plan', methods=['POST'])
 @require_api_auth()
+@rate_limit("plan")
 @solver_gate
 def plan_menu():
     try:
@@ -587,14 +605,15 @@ def plan_menu():
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
     except Exception as e:
         logger.error("Unexpected error in plan: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/regenerate', methods=['POST'])
 @require_api_auth()
+@rate_limit("regenerate")
 @solver_gate
 def regenerate_cells():
     try:
@@ -653,10 +672,10 @@ def regenerate_cells():
         return jsonify({'success': False, 'error': str(e)}), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
     except Exception as e:
         logger.error("Unexpected error in regenerate: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/save', methods=['POST'])
@@ -702,10 +721,10 @@ def save_plan():
         return jsonify({'success': False, 'error': str(e)}), 400
     except (FileNotFoundError, OSError) as e:
         logger.error("Save failed: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
     except Exception as e:
         logger.error("Unexpected save error: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/editor-metadata', methods=['GET'])
@@ -724,7 +743,7 @@ def editor_metadata():
         })
     except Exception as e:
         logger.error("Failed to load editor metadata: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['GET'])
@@ -756,7 +775,7 @@ def get_client_config(client_name):
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
         logger.error("Failed to load client config: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 _ETAG_RE = re.compile(r'^\s*(?:W/)?"?(\d+)"?\s*$')
@@ -843,7 +862,7 @@ def update_client_config(client_name):
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error("Error updating client config: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/client', methods=['POST'])
@@ -865,7 +884,7 @@ def create_client():
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error("Failed to create client: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
@@ -882,7 +901,7 @@ def delete_client(client_name):
         return jsonify({'success': False, 'error': str(e)}), 404
     except Exception as e:
         logger.error("Failed to delete client: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 @app.route('/api/v1/validate-pools', methods=['POST'])
@@ -911,7 +930,7 @@ def validate_pools():
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error("Failed to validate pools: %s", e, exc_info=True)
-        return jsonify({'success': False, 'error': _INTERNAL_ERROR_MSG}), 500
+        return _internal_error_response(500)
 
 
 def _probe_supabase() -> bool:

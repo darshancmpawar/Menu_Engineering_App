@@ -42,6 +42,17 @@ def logout_user():
     # Clear planner state so next login starts fresh
     for key in _PLANNER_KEYS:
         st.session_state.pop(key, None)
+    # Drop any cached @st.cache_resource / @st.cache_data entries that
+    # were keyed off the now-invalid token (MenuApiClient instance,
+    # client list, editor metadata, etc.). Without this the next login
+    # would reuse a client wired with the old bearer token until its
+    # cache TTL expires.
+    try:
+        st.cache_resource.clear()
+        st.cache_data.clear()
+    except Exception:
+        # Streamlit < 1.18 didn't expose .clear; safe to ignore.
+        pass
 
 
 def is_authenticated() -> bool:
