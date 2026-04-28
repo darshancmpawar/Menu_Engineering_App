@@ -109,6 +109,28 @@ def api_login():
         if not email or not password:
             return jsonify({"success": False, "error": "email and password required"}), 400
 
+        # Rate-limit BEFORE bcrypt so a brute-force script can't
+        # saturate the threadpool with ~250ms password checks. Two
+        # parallel buckets:
+        #   - login_ip: protects the threadpool against a flood from
+        #     one source. Generous (30/min) so a corporate NAT with
+        #     many real users doesn't false-positive.
+        #   - login_email: protects an individual account against
+        #     credential-stuffing. Tight (5/min, then one every 12s).
+        # We check both — both must accept. Either rejection short-
+        # circuits to a 429 with Retry-After before we touch the
+        # password, leaking nothing about whether the email exists.
+        from api.rate_limit import check_rate_limit
+        ip_key = f"ip:{request.remote_addr or 'unknown'}"
+        email_key = f"email:{email}"
+        for limit_name, key in (
+            ("login_ip", ip_key),
+            ("login_email", email_key),
+        ):
+            rejection = check_rate_limit(limit_name, key)
+            if rejection is not None:
+                return rejection
+
         user = AuthManager().authenticate(email, password)
         if user is None:
             return jsonify({"success": False, "error": "Invalid credentials"}), 401

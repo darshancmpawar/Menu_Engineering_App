@@ -73,6 +73,7 @@ LOG_FORMAT                 = "json"           # structured logs for prod
 LOG_LEVEL                  = "INFO"
 APP_VERSION                = "$(git rev-parse --short HEAD)"   # surfaced in /health + /
 AUTH_DISABLE_LEGACY_SHA256 = "false"          # flip to "true" once no users remain on legacy hashes
+SUPABASE_TIMEOUT_SECONDS   = "5"              # bound on every Supabase read/write; default 5s
 CORS_ALLOWED_ORIGINS       = "https://prod.example.com"   # comma-separated; defaults to loopback only
 API_HOST                   = "127.0.0.1"      # loopback. Containers / prod may want 0.0.0.0
 API_PORT                   = "5000"

@@ -20,6 +20,7 @@ import datetime as dt
 import html
 import io
 import csv
+import logging
 import threading
 import time
 
@@ -49,6 +50,29 @@ from user_authentication.session import (
 from user_authentication.login_ui import render_login_form
 from user_authentication.user_manager_ui import render_user_manager
 from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
+
+
+logger = logging.getLogger(__name__)
+
+
+def _render_view_error(view_name: str, exc: BaseException) -> None:
+    """Show a clean Streamlit-native error block for an unhandled
+    exception inside a top-level view (editor / user-manager / planner).
+
+    The full traceback lands in the server log via ``logger.exception``;
+    the user sees a short message + a button to bounce back to the
+    planner. Without this guard a render-side bug renders a half-page
+    or — depending on Streamlit's config — a full Python traceback,
+    neither of which is acceptable for a multi-user deployment.
+    """
+    logger.exception("Unhandled error in %s view", view_name)
+    st.error(
+        f"Something went wrong loading the {view_name}. "
+        "The error has been logged. Please go back and try again."
+    )
+    if st.button("Back to planner", key=f"err_back_{view_name}"):
+        st.session_state.view = "planner"
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +299,13 @@ if st.session_state.view in ("editor", "user_manager"):
 # Editor view (role-gated, full-page)
 # ---------------------------------------------------------------------------
 if st.session_state.view == "editor":
-    render_customisation_editor(client)
+    try:
+        render_customisation_editor(client)
+    except Exception as _exc:
+        # A Supabase blip while loading client config, a malformed rule
+        # in client_rules.json, etc. Log + show a friendly fallback so
+        # the user can navigate out instead of staring at a half-page.
+        _render_view_error("editor", _exc)
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -290,7 +320,10 @@ if st.session_state.view == "user_manager":
     with col_title:
         st.markdown('<p class="page-title">User Management</p>', unsafe_allow_html=True)
     st.markdown("")
-    render_user_manager()
+    try:
+        render_user_manager()
+    except Exception as _exc:
+        _render_view_error("user manager", _exc)
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -436,34 +469,51 @@ if plan and plan_dates:
             for w in st.session_state.pool_warnings:
                 st.markdown(f'<div class="pool-warn-bar">&#9888; {html.escape(str(w))}</div>', unsafe_allow_html=True)
 
-    # Menu table
-    _day_types = st.session_state.day_types
-    header_html = '<tr><th>Slot</th>'
-    for d_str in plan_dates:
-        d = dt.date.fromisoformat(d_str)
-        day_type = _day_types.get(d_str, "")
-        bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
-        icon = THEME_ICONS.get(day_type, "")
-        label = day_type.replace("_", " ").title() if day_type else ""
-        header_html += (
-            f'<th><span class="day-label">{d.strftime("%a %d %b")}</span>'
-            f'<span class="theme-tag" style="background:{bg};color:{fg};">'
-            f'{icon} {label}</span></th>')
-    header_html += '</tr>'
-
-    body_html = ''
-    for slot_id in sorted_slots:
-        body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
+    # Menu table.
+    # Wrapped because the ISO date parse on session_state values
+    # (plan_dates) is the most likely place for stale / corrupted
+    # state to crash a rerun. If it throws, we'd rather show a clean
+    # error + a one-click recovery than render half a table.
+    try:
+        _day_types = st.session_state.day_types
+        header_html = '<tr><th>Slot</th>'
         for d_str in plan_dates:
-            raw_item = plan.get(d_str, {}).get(slot_id, "")
-            body_html += f'<td>{format_item_html(raw_item)}</td>'
-        body_html += '</tr>'
+            d = dt.date.fromisoformat(d_str)
+            day_type = _day_types.get(d_str, "")
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
+            icon = THEME_ICONS.get(day_type, "")
+            label = day_type.replace("_", " ").title() if day_type else ""
+            header_html += (
+                f'<th><span class="day-label">{d.strftime("%a %d %b")}</span>'
+                f'<span class="theme-tag" style="background:{bg};color:{fg};">'
+                f'{icon} {label}</span></th>')
+        header_html += '</tr>'
 
-    st.markdown(
-        f'<div class="menu-table-wrap"><table class="menu-table">'
-        f'<thead>{header_html}</thead>'
-        f'<tbody>{body_html}</tbody></table></div>',
-        unsafe_allow_html=True)
+        body_html = ''
+        for slot_id in sorted_slots:
+            body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
+            for d_str in plan_dates:
+                raw_item = plan.get(d_str, {}).get(slot_id, "")
+                body_html += f'<td>{format_item_html(raw_item)}</td>'
+            body_html += '</tr>'
+
+        st.markdown(
+            f'<div class="menu-table-wrap"><table class="menu-table">'
+            f'<thead>{header_html}</thead>'
+            f'<tbody>{body_html}</tbody></table></div>',
+            unsafe_allow_html=True)
+    except Exception as _exc:
+        logger.exception("Failed to render menu table")
+        st.error(
+            "Couldn't render the saved plan — the stored data may be "
+            "from an older version. Click below to clear it and start "
+            "fresh."
+        )
+        if st.button("Clear plan and reload", key="err_clear_plan"):
+            for _k in ("plan", "plan_dates", "day_types", "pool_warnings",
+                       "client_name", "changes_log"):
+                st.session_state.pop(_k, None)
+            st.rerun()
 
     st.markdown("")
 
