@@ -136,33 +136,67 @@ except RuntimeError as e:
 init_auth_state()
 
 
+# Tracks whether we've already given the cookie manager its one-shot
+# rerun to complete the browser→Python handshake. After a single rerun
+# the cookies dict is authoritative — empty really means "no cookie",
+# not "still warming up".
+_COOKIE_WARMUP_KEY = "_ikigai_cookie_warmup_done"
+
+
 def _try_restore_session_from_cookie() -> bool:
     """Rehydrate auth state from the persisted cookie on a fresh
     Streamlit session (hard refresh, new tab, server restart).
 
-    Flow:
-      1. Cookie present → call /api/v1/auth/whoami with it. The token
-         is signed by the API, so the verification is purely server-
-         side HMAC + TTL — no Supabase round-trip.
-      2. Valid → populate ``session_state`` exactly as render_login_form
-         would after a fresh login.
-      3. Invalid / expired → wipe the cookie and fall through to the
-         login form.
+    The cookie manager is async: the first ``get_all`` after mount
+    returns ``{}`` because the cookie payload hasn't travelled from the
+    browser back to Python yet. We trigger one explicit rerun (gated
+    by a session-state warmup flag) so the second pass actually sees
+    the cookie. Without this, hard-refresh always shows the login form
+    even when a valid cookie exists — that was the user-visible bug.
 
-    Returns True if the session was successfully restored.
+    Returns True if a session was successfully restored. Has the side
+    effect of calling ``st.rerun()`` (and never returning) on the
+    very first pass when the cookies haven't arrived yet.
     """
     if is_authenticated():
         return True
+
     from user_authentication.cookie_store import (
-        get_persisted_token,
+        get_all_cookies,
         clear_persisted_token,
+        COOKIE_NAME,
     )
     from user_authentication.session import login_user
     from user_authentication.models import User
 
-    token = get_persisted_token()
+    cookies = get_all_cookies()
+    if cookies is None:
+        # Dep missing or Streamlit context unavailable — graceful
+        # degrade to "no persistence", login form will show.
+        return False
+
+    if not cookies:
+        # Either cookie manager is still warming up OR there is genuinely
+        # no cookie. Disambiguate via a one-shot rerun.
+        if not st.session_state.get(_COOKIE_WARMUP_KEY):
+            st.session_state[_COOKIE_WARMUP_KEY] = True
+            # Show a quick hint so the page isn't blank during the
+            # ~100-200ms while the component finishes its handshake.
+            with st.spinner("Restoring your session…"):
+                # The component channel runs on the same WebSocket as
+                # the rerun; a tiny pause lets the browser's reply
+                # arrive before we re-run the script.
+                import time
+                time.sleep(0.15)
+            st.rerun()
+        # Warmup already done and cookies are still empty — genuine
+        # "no cookie" case.
+        return False
+
+    token = cookies.get(COOKIE_NAME)
     if not token:
         return False
+
     try:
         probe = MenuApiClient(_BACKEND_URL, token=token)
         info = probe.whoami()
@@ -171,6 +205,7 @@ def _try_restore_session_from_cookie() -> bool:
         # the cookie so the user gets a clean login.
         clear_persisted_token()
         return False
+
     login_user(
         User(
             email=info["email"],
