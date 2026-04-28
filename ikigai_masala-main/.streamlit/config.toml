@@ -1,0 +1,32 @@
+# Streamlit framework config — committed to git, contains no secrets.
+# (Secrets live in .streamlit/secrets.toml locally and in the Streamlit
+# Cloud "Secrets" dashboard for production. That file is gitignored.)
+#
+# Override any of these locally without editing this file by setting the
+# matching env var, e.g.
+#   STREAMLIT_CLIENT_SHOW_ERROR_DETAILS=stacktrace streamlit run app.py
+# during development.
+
+[client]
+# Hide Python tracebacks from end users. Behaviour by value:
+#   "type"       — show the exception class name only (e.g. "ValueError")
+#   "stacktrace" — show full traceback (Streamlit's default; useful in dev)
+#   "none"       — no error UI at all (we don't want this; users would
+#                  have no signal that something went wrong).
+# The full exception with traceback still lands in the server logs via
+# api/logging_config.py, so on-call can still debug from request_id +
+# log lines. This setting only affects the per-user UI.
+showErrorDetails = "type"
+
+[server]
+# Tells Streamlit not to try opening a browser on startup — required
+# in any non-interactive context (Streamlit Cloud, Docker, systemd).
+headless = true
+# We sit behind Streamlit Cloud's reverse proxy, so XSRF protection
+# (which compares Origin/Referer headers) needs to know what the
+# externally-visible URL is. Streamlit Cloud sets this automatically
+# via STREAMLIT_SERVER_BASE_URL_PATH; left here as documentation.
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
