@@ -45,6 +45,15 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 APP_VERSION = os.getenv('APP_VERSION', 'dev')
 
 
+# Bound the time we wait on a Supabase response. Without this the
+# httpx client used by supabase-py defaults to no timeout in some
+# versions, which means a slow / unhealthy Supabase pins a Flask
+# thread indefinitely and eventually the threadpool starves. 5
+# seconds covers normal operation (the slowest reads we make are
+# ~200ms) while still failing fast when something is genuinely wrong.
+SUPABASE_TIMEOUT_SECONDS = float(os.getenv('SUPABASE_TIMEOUT_SECONDS', '5'))
+
+
 # Timezone used to resolve "today" when the client doesn't pass an
 # explicit start_date. Default is Asia/Kolkata because the product ships
 # for Indian restaurants; set APP_TIMEZONE to any IANA name (e.g. UTC,

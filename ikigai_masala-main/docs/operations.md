@@ -185,6 +185,7 @@ verification code entirely.
 | UI shows `Invalid credentials` for a user you just created | Typo in password, or the row was inserted with a malformed hash | Reset via the user-management UI |
 | UI shows `Cannot reach API` | Port 5000 in use, or the spawned Flask thread crashed on startup | Kill the stale process; re-run `streamlit run app.py`. Spawned thread crashes also land in the Streamlit server logs. |
 | `/health` returns 503 `status=degraded` | `supabase_reachable=false` — network, DNS, or Supabase itself down | Check the Supabase dashboard; verify URL + key |
+| Requests fail with httpx `ReadTimeout` after exactly `SUPABASE_TIMEOUT_SECONDS` | Supabase is up but slow on this query | Bump `SUPABASE_TIMEOUT_SECONDS` (default 5) if your DB legitimately needs more time, but first check the Supabase dashboard for query/index pressure |
 | `No feasible plan found (INFEASIBLE)` | Over-constrained rules vs available items, or per-client rule config incompatible | Check `pool_warnings` in the response, re-run with logs at INFO; check `/api/v1/metrics` for `rule_failures_total` |
 | 503 `Server at capacity` under load | `solver_gate` queue full; this is the intended backpressure | Retry after a few seconds; clients with the built-in retry (`MenuApiClient`) handle this automatically |
 | 504 `Request timed out waiting in queue` | Request waited > `QUEUE_TIMEOUT` (default 300s) | Retry; if it persists the solver is stuck — restart the process |
