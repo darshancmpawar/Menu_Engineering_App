@@ -38,6 +38,8 @@ from __future__ import annotations
 import datetime as dt
 from typing import Dict, Optional
 
+import streamlit as st
+
 # Lazily imported so test/script paths that don't run inside Streamlit
 # don't pay the import cost or require the dep to be installed.
 try:
@@ -48,25 +50,43 @@ except ImportError:  # pragma: no cover — handled lazily by callers
 
 COOKIE_NAME = "ikigai_auth"
 COOKIE_TTL_HOURS = 12
+# The library uses this key to cache cookies in st.session_state. We
+# need to peek at it directly to know whether we have to force a refresh.
+_COMPONENT_KEY = "ikigai_cookie_ctl"
 
 
 def _get_controller():
-    """Return a ``CookieController`` rendered into the current script run.
+    """Return a ``CookieController`` whose internal cookie dict reflects
+    the *current* browser state on every script run.
 
-    Must be called on *every* Streamlit script run, not cached across runs.
-    Streamlit tracks which components were rendered per run; if the
-    CookieController constructor is not called in a run it is removed from
-    the render tree and the JS→Python value update (the browser's cookies)
-    is lost. The ``key`` parameter is what ties renders across reruns —
-    the Python object reference is irrelevant.
+    Why this is non-trivial: ``CookieController.__init__`` only renders
+    the underlying Streamlit component when its session_state key is
+    absent. On every subsequent run it takes a fast path and reads the
+    cached dict — which means the component widget is NOT placed in the
+    render tree, the JS→Python value handshake never runs, and
+    ``getAll()`` returns whatever was cached on the first render
+    (typically the ``{}`` default). That defeats the whole point of the
+    warmup-rerun pattern in ``app.py``.
+
+    Workaround: if the key already exists, we know the constructor took
+    the cached path, so we explicitly call ``ctl.refresh()`` after
+    construction. ``refresh()`` re-invokes the component with the same
+    key — the FIRST such call this run, so no DuplicateWidgetID — which
+    re-mounts the iframe and returns whatever value the JS has posted
+    back since last render (i.e., the real cookies on the post-warmup
+    pass).
 
     Returns ``None`` when the dep isn't installed or construction fails
     outside a Streamlit render context (e.g. test paths).
     """
     if CookieController is None:
         return None
+    needs_refresh = _COMPONENT_KEY in st.session_state
     try:
-        return CookieController(key="ikigai_cookie_ctl")
+        ctl = CookieController(key=_COMPONENT_KEY)
+        if needs_refresh:
+            ctl.refresh()
+        return ctl
     except Exception:
         return None
 
