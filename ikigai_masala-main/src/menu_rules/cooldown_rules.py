@@ -8,21 +8,26 @@ Cooldown-style rules that prevent recent repetition.
 * :class:`WeekSignatureCooldownMenuRule` — CP-SAT hard constraint:
   forbid exact re-use of a recent week's (date, slot → item) signature.
 
-``_parse_signature_to_expected_map`` is exposed at module scope so
-tests can import it directly.
+``_parse_signature_to_expected_map`` is re-exported at module scope so
+tests can import it directly. The implementation lives on
+:class:`HistoryManager` (single source of truth for signature parsing).
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import re
 from typing import Any, Dict, Set
 
 import pandas as pd
 from ortools.sat.python import cp_model
 
+from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
 from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
+
+# Re-export for tests / legacy callers; the canonical implementation is
+# HistoryManager.parse_signature_to_expected_map.
+_parse_signature_to_expected_map = HistoryManager.parse_signature_to_expected_map
 
 
 # ---------------------------------------------------------------------------
@@ -103,26 +108,6 @@ class RiceBreadGapMenuRule(BaseMenuRule):
 # ---------------------------------------------------------------------------
 # WeekSignatureCooldownMenuRule
 # ---------------------------------------------------------------------------
-
-
-def _parse_signature_to_expected_map(sig: str) -> Dict:
-    parts = sig.split('|')
-    out = {}
-    i = 0
-    while i < len(parts):
-        token = parts[i]
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', token):
-            date_iso = token
-            i += 1
-            while i < len(parts) and not re.match(r'^\d{4}-\d{2}-\d{2}$', parts[i]):
-                kv = parts[i]
-                if '=' in kv:
-                    slot, val = kv.split('=', 1)
-                    out[(date_iso, _norm_str(slot))] = _norm_str(val)
-                i += 1
-        else:
-            i += 1
-    return out
 
 
 class WeekSignatureCooldownMenuRule(BaseMenuRule):

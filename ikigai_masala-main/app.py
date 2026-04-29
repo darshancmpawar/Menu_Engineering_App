@@ -54,6 +54,13 @@ from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 logger = logging.getLogger(__name__)
 
+# Streamlit-side cap on solver wall-clock per request. The API itself
+# accepts up to MAX_TIME_LIMIT_SECONDS; we send a tighter value so a
+# single slow request doesn't pin a worker for the full 10-minute API
+# ceiling. Tuned against the 5-day default plan; revisit if num_days
+# grows or rule count balloons.
+_PLANNING_TIME_LIMIT_SECONDS = 180
+
 
 def _render_view_error(view_name: str, exc: BaseException) -> None:
     """Show a clean Streamlit-native error block for an unhandled
@@ -210,7 +217,6 @@ def _try_restore_session_from_cookie() -> bool:
                 # The component channel runs on the same WebSocket as
                 # the rerun; a tiny pause lets the browser's reply
                 # arrive before we re-run the script.
-                import time
                 time.sleep(0.15)
             st.rerun()
         # Warmup already done and cookies are still empty — genuine
@@ -412,7 +418,7 @@ if generate_clicked:
                     client_name=selected_client,
                     start_date=start_date.isoformat(),
                     num_days=num_days,
-                    time_limit_seconds=180,
+                    time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
                 )
                 flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
                 st.session_state.plan = flat_plan
@@ -581,7 +587,7 @@ if plan and plan_dates:
                             base_plan=plan, replace_slots=regen_selections,
                             start_date=plan_dates[0],
                             num_days=len(plan_dates),
-                            time_limit_seconds=180)
+                            time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
                         flat_regen, regen_day_types = flatten_api_solution(result.get("solution", {}))
                         st.session_state.plan = flat_regen if flat_regen else plan
                         if regen_day_types:

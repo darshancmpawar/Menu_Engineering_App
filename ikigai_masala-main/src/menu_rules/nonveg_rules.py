@@ -37,7 +37,7 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
 
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
-        self.rule_type = MenuRuleType.COUPLING
+        self.rule_type = MenuRuleType.NONVEG_BIRYANI_WEEKLY
         self.max_per_week = int(rule_config.get('max_per_week', 1))
 
     def validate_config(self) -> bool:
