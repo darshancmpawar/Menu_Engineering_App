@@ -45,6 +45,9 @@ class TestHealthEndpoint:
         assert data['version']
         assert isinstance(data['uptime_seconds'], int)
         assert 'queue' in data
+        # Schema field added in Tier 1 #4.
+        assert data['schema']['status'] == 'ok'
+        assert data['schema']['missing'] == []
 
     def test_health_returns_degraded_when_supabase_down(
         self, client, monkeypatch,
@@ -53,10 +56,11 @@ class TestHealthEndpoint:
         when the backing store is unreachable so they stop routing traffic."""
         import api.app as api_app
 
-        def _boom():
-            raise RuntimeError("supabase unreachable")
-
-        monkeypatch.setattr(api_app, '_probe_supabase', lambda: False)
+        # _probe_supabase now returns (reachable, schema_info).
+        monkeypatch.setattr(
+            api_app, '_probe_supabase',
+            lambda: (False, {"status": "unknown", "missing": []}),
+        )
 
         resp = client.get('/api/v1/health')
         assert resp.status_code == 503
@@ -73,12 +77,152 @@ class TestHealthEndpoint:
         import logging
         caplog.set_level(logging.INFO, logger="api.app")
 
-        monkeypatch.setattr(api_app, '_probe_supabase', lambda: False)
+        monkeypatch.setattr(
+            api_app, '_probe_supabase',
+            lambda: (False, {"status": "unknown", "missing": []}),
+        )
 
         client.get('/api/v1/health')
         http_lines = [r for r in caplog.records if r.getMessage() == 'http_request']
         assert any(r.path == '/api/v1/health' for r in http_lines), (
             "a 503 on /health must show up in the access log"
+        )
+
+    def test_health_reports_drift_but_stays_200_when_only_schema_is_off(
+        self, client, monkeypatch,
+    ):
+        """Tier 1 #4 — if Supabase is reachable but a required column is
+        missing (e.g. the Phase 2 #14 migration wasn't applied), /health
+        must report ``schema.status == "drift_detected"`` so operators
+        notice on the next ping. HTTP status stays 200 — the runtime
+        fallback in client_config.py keeps the app serving, and a 503
+        here would page on-call for a "please run a migration" task."""
+        import api.app as api_app
+        monkeypatch.setattr(
+            api_app, '_probe_supabase',
+            lambda: (True, {"status": "drift_detected",
+                            "missing": ["clients.version"]}),
+        )
+
+        resp = client.get('/api/v1/health')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['status'] == 'healthy', (
+            "drift is human-fix-required; not an alerting condition"
+        )
+        assert data['schema']['status'] == 'drift_detected'
+        assert 'clients.version' in data['schema']['missing']
+
+    def test_probe_supabase_detects_undefined_column(
+        self, client, monkeypatch, caplog,
+    ):
+        """End-to-end: the ``select('name, version')`` probe query
+        must classify a 42703 (column does not exist) error from
+        Supabase as drift_detected and log the actionable ERROR — not
+        as 'unreachable'."""
+        import api.app as api_app
+        import logging
+
+        caplog.set_level(logging.ERROR, logger="api.app")
+
+        # Reset the once-per-occurrence flag so this test always sees
+        # the ERROR log regardless of what other tests did first.
+        api_app._drift_logged = False
+
+        class _Pg42703(Exception):
+            code = "42703"
+
+        class _Stub:
+            def table(self, _name):
+                class _T:
+                    def select(self_inner, *_a, **_kw): return self_inner
+                    def limit(self_inner, _n): return self_inner
+                    def execute(self_inner):
+                        raise _Pg42703('column "version" does not exist')
+                return _T()
+
+        monkeypatch.setattr(
+            'src.db.get_supabase', lambda: _Stub(),
+        )
+        reachable, schema_info = api_app._probe_supabase()
+        assert reachable is True
+        assert schema_info["status"] == "drift_detected"
+        assert "clients.version" in schema_info["missing"]
+        # Loud error logged once per drift episode.
+        assert any(
+            "Schema drift" in rec.message and "scripts/create_tables.sql" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_probe_supabase_dedupes_drift_log(
+        self, client, monkeypatch, caplog,
+    ):
+        """Successive /health hits during a sustained drift state must
+        log the ERROR only once — otherwise an uptime monitor pinging
+        every 30s floods the log."""
+        import api.app as api_app
+        import logging
+        caplog.set_level(logging.ERROR, logger="api.app")
+        api_app._drift_logged = False
+
+        class _Pg42703(Exception):
+            code = "42703"
+
+        class _Stub:
+            def table(self, _name):
+                class _T:
+                    def select(self_inner, *_a, **_kw): return self_inner
+                    def limit(self_inner, _n): return self_inner
+                    def execute(self_inner):
+                        raise _Pg42703("column does not exist")
+                return _T()
+
+        monkeypatch.setattr('src.db.get_supabase', lambda: _Stub())
+
+        for _ in range(5):
+            api_app._probe_supabase()
+
+        drift_logs = [
+            rec for rec in caplog.records
+            if "Schema drift" in rec.message
+        ]
+        assert len(drift_logs) == 1, (
+            f"expected exactly 1 drift log; got {len(drift_logs)} — "
+            "dedupe regressed"
+        )
+
+    def test_probe_supabase_logs_recovery(
+        self, client, monkeypatch, caplog,
+    ):
+        """When drift is fixed (operator runs the migration), the next
+        /health probe must log a clear "drift cleared" INFO so on-call
+        knows the alert can be silenced."""
+        import api.app as api_app
+        import logging
+        caplog.set_level(logging.INFO, logger="api.app")
+
+        # Pre-condition: drift was previously detected and logged.
+        api_app._drift_logged = True
+
+        class _OkStub:
+            def table(self, _name):
+                class _T:
+                    def select(self_inner, *_a, **_kw): return self_inner
+                    def limit(self_inner, _n): return self_inner
+                    def execute(self_inner):
+                        class _R:
+                            data = []
+                        return _R()
+                return _T()
+
+        monkeypatch.setattr('src.db.get_supabase', lambda: _OkStub())
+
+        reachable, schema_info = api_app._probe_supabase()
+        assert reachable is True
+        assert schema_info["status"] == "ok"
+        assert api_app._drift_logged is False  # flag reset
+        assert any(
+            "Schema drift cleared" in rec.message for rec in caplog.records
         )
 
 

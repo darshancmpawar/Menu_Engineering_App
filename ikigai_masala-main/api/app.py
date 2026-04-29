@@ -939,17 +939,67 @@ def validate_pools():
         return _internal_error_response(500)
 
 
-def _probe_supabase() -> bool:
-    """Cheap reachability check: fetch one row from `clients`. Any
-    exception (network, auth, RLS) counts as unreachable.
+# Set after the first /health call observes schema drift, cleared on
+# the next non-drift result. Lets us log the loud "run the migration"
+# ERROR once per occurrence rather than every 30s of uptime-monitor
+# noise — a re-pageable signal needs to BE re-pageable.
+_drift_logged = False
+
+
+def _probe_supabase():
+    """Cheap reachability + schema-drift check.
+
+    A single ``select('name, version').limit(1)`` query against the
+    ``clients`` table verifies, in one round-trip:
+
+      1. Supabase is reachable / authenticated / not blocked by RLS.
+      2. The Phase 2 #14 migration has been applied (the ``version``
+         column exists on ``clients``).
+
+    Returns ``(reachable: bool, schema_info: dict)``. The dict carries
+    ``status`` ∈ {"ok", "drift_detected", "unknown"} and a list of
+    ``missing`` ``"table.column"`` strings. Operators read it from the
+    /health response body — uptime monitors only see the HTTP status,
+    which stays 200 when drift is present (the app still serves via
+    the runtime fallback in client_config.py).
     """
+    global _drift_logged
     try:
         from src.db import get_supabase
-        get_supabase().table('clients').select('name').limit(1).execute()
-        return True
-    except Exception as exc:  # noqa: BLE001 — degraded state is fine
+        get_supabase().table('clients').select('name, version').limit(
+            1,
+        ).execute()
+        if _drift_logged:
+            logger.info(
+                "Schema drift cleared: clients.version is now visible. "
+                "Optimistic-concurrency on PUT /client-config is back in "
+                "effect."
+            )
+            _drift_logged = False
+        return True, {"status": "ok", "missing": []}
+    except Exception as exc:  # noqa: BLE001 — both error classes converted to dict states
+        # Distinguish "DB has no clients.version column" (caller needs
+        # to apply the migration) from "Supabase is just unreachable"
+        # (network / auth issue).
+        from src.client.client_config import _is_undefined_column
+        if _is_undefined_column(exc):
+            if not _drift_logged:
+                logger.error(
+                    "Schema drift: clients.version column missing. "
+                    "Re-run scripts/create_tables.sql in the Supabase "
+                    "SQL editor (the ALTER TABLE ... ADD COLUMN IF NOT "
+                    "EXISTS is idempotent). The editor + concurrency "
+                    "code degrade gracefully until the column is "
+                    "added, but optimistic-concurrency on PUT is "
+                    "disabled in this state."
+                )
+                _drift_logged = True
+            return True, {
+                "status": "drift_detected",
+                "missing": ["clients.version"],
+            }
         logger.warning("Supabase health probe failed: %s", exc)
-        return False
+        return False, {"status": "unknown", "missing": []}
 
 
 @app.route('/api/v1/metrics', methods=['GET'])
@@ -977,18 +1027,22 @@ def metrics_snapshot():
 def health():
     """Liveness + readiness combined.
 
-    Returns 200 with status=healthy when everything is up, 503 with
-    status=degraded when Supabase is unreachable. Either way the body
-    carries enough to diagnose: version, uptime, queue stats, and the
-    supabase flag. Uptime monitors that only match on 200 will (correctly)
-    start paging on degraded.
+    Returns 200 with status=healthy when Supabase is reachable, 503
+    with status=degraded when it isn't. Schema drift (e.g. the user
+    deployed code that needs ``clients.version`` against an unmigrated
+    database) is reported in the body's ``schema`` field but does NOT
+    flip the HTTP status — the app keeps serving via the runtime
+    fallback in client_config.py, and we don't want to wake operators
+    at 3am for a "please run a migration" task. The error log written
+    by ``_probe_supabase`` is the primary signal for that.
     """
-    supabase_up = _probe_supabase()
+    supabase_up, schema_info = _probe_supabase()
     body = {
         'status': 'healthy' if supabase_up else 'degraded',
         'version': APP_VERSION,
         'uptime_seconds': int(time.time() - _STARTED_AT),
         'supabase_reachable': supabase_up,
+        'schema': schema_info,
         'queue': _solver_stats(),
     }
     return jsonify(body), (200 if supabase_up else 503)
