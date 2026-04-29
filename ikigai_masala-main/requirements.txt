@@ -26,7 +26,16 @@ streamlit>=1.30,<2.0
 # refreshes / new tabs so a user's session survives Streamlit-process
 # restarts. Plain st.session_state is in-RAM only and dies whenever
 # Streamlit rebuilds the connection.
-extra-streamlit-components>=0.1.60,<1.0
+#
+# We use streamlit-cookies-controller (not extra-streamlit-components)
+# because the latter writes cookies via document.cookie inside its
+# component iframe, which on Streamlit Cloud sits at a DIFFERENT
+# origin (qjmnz4vd2y0.streamlit.app) than the main app
+# (yourapp.streamlit.app) — so the cookie ends up on the iframe's
+# domain and the main app never sees it. streamlit-cookies-controller
+# uses postMessage to ask the parent window to set the cookie, which
+# lands it on the right origin.
+streamlit-cookies-controller>=0.3,<1.0
 
 # Auth / persistence
 supabase>=2.0,<3.0
