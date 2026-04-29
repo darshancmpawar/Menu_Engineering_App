@@ -38,8 +38,6 @@ from __future__ import annotations
 import datetime as dt
 from typing import Dict, Optional
 
-import streamlit as st
-
 # Lazily imported so test/script paths that don't run inside Streamlit
 # don't pay the import cost or require the dep to be installed.
 try:
