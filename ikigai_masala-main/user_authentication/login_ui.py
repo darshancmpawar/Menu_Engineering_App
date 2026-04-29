@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
 from ui.api_client import MenuApiClient
@@ -87,6 +89,10 @@ def render_login_form(api_base_url: str = "http://localhost:5000"):
                 # server restarts. 12h lifetime, signed by the API,
                 # auto-cleared on logout.
                 persist_token(data["token"])
+                # Give the browser time to receive the postMessage from
+                # CookieController and actually write the cookie before
+                # st.rerun() tears down the component channel.
+                time.sleep(0.3)
                 st.rerun()
             except RuntimeError as e:
                 st.error(f"{e}")
