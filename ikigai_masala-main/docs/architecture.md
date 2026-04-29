@@ -70,6 +70,7 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant U as User
+    participant B as Browser cookie
     participant S as Streamlit
     participant F as Flask
     participant DB as Supabase
@@ -81,7 +82,26 @@ sequenceDiagram
     F->>F: bcrypt verify
     F->>F: issue_token (HMAC w/ API_SECRET_KEY)
     F-->>S: { token, role, profile_name }
-    S->>S: store token in session_state
+    S->>S: login_user() → session_state
+    S->>B: persist_token() → ikigai_auth cookie (12 h, SameSite=Lax)
+    Note over S,B: 300 ms pause before rerun so browser receives postMessage
+```
+
+### Session restore (hard refresh / new tab)
+
+```mermaid
+sequenceDiagram
+    participant B as Browser cookie
+    participant S as Streamlit
+    participant F as Flask
+
+    S->>B: CookieController.getAll() — run 1: returns {} (warmup)
+    S->>S: sleep 150 ms, st.rerun()
+    S->>B: CookieController.refresh() — run 2: returns {ikigai_auth: token}
+    S->>F: GET /api/v1/auth/whoami (Bearer token)
+    F->>F: decode_token() — HMAC verify, expiry check (no DB)
+    F-->>S: { email, role, profile_name }
+    S->>S: login_user() → session_state, skip login form
 ```
 
 ### Generate menu

@@ -102,12 +102,51 @@ Counters reset only on process restart. No histograms or gauges yet —
 `st.session_state` is per-Streamlit-session in-memory storage — it dies
 on hard refresh, new tab, or server restart, which would log every user
 back out repeatedly. To keep users signed in across those events the
-bearer token is persisted as a 12-hour browser cookie named
-`ikigai_auth` (managed via `extra-streamlit-components`'s `CookieManager`).
+bearer token is persisted as a 12-hour browser cookie named `ikigai_auth`
+via `streamlit-cookies-controller`'s `CookieController`.
+
+`extra-streamlit-components` was deliberately avoided: its
+`CookieManager` writes cookies via `document.cookie` inside a sandboxed
+component iframe served from a different origin (`qjmnz4vd2y0...`), so
+the cookie lands on the iframe's origin and the browser never sends it
+back to the main app. `streamlit-cookies-controller` uses `postMessage`
+to ask the *parent* window to set the cookie, so it lands on the correct
+origin.
+
+### Cookie write (login flow)
+
+`login_ui.py` calls `persist_token(token)` after a successful login,
+then waits **300 ms** before calling `st.rerun()`. The pause is required
+because `CookieController.set()` is asynchronous — it sends a
+`postMessage` to the parent window — and an immediate rerun would abort
+the script before the browser receives and persists the cookie.
+
+### Cookie read (page-load restore)
+
+`CookieController.getAll()` returns `{}` on the **first** script run
+after mount because the JS→Python handshake hasn't completed yet.
+`app.py::_try_restore_session_from_cookie()` handles this with a
+one-shot warmup:
+
+1. First run: `getAll()` → `{}` → set warmup flag, sleep 150 ms, `st.rerun()`.
+2. Second run (warmup rerun): `getAll()` returns the real cookie dict.
+
+**Library caveat:** `CookieController.__init__` only invokes the
+underlying Streamlit component widget (via `_cookie_controller(...)`)
+when its `session_state` key is absent. On subsequent runs it takes a
+fast cached path, which skips the component call and leaves `getAll()`
+returning the stale `{}` default. `cookie_store._get_controller()`
+works around this by calling `ctl.refresh()` immediately after
+construction whenever the key was already in `session_state` — this
+re-invokes the component widget (the first call this run, so no
+`DuplicateWidgetID`) and returns whatever value the browser's JS has
+posted back since the previous render.
+
+### Restore flow
 
 On page load `app.py::_try_restore_session_from_cookie()`:
 
-1. Reads the cookie.
+1. Reads the cookie via `get_all_cookies()`.
 2. If present, calls `GET /api/v1/auth/whoami` to validate the token's
    HMAC signature + TTL — pure server-side check, no Supabase round
    trip (the token carries `email`, `role`, and `profile_name`).
