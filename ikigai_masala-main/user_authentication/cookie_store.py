@@ -25,9 +25,12 @@ tampering invalidates the HMAC so the server rejects it on the next
 request.
 
 Async semantics: ``CookieController.getAll()`` returns ``{}`` on the
-first render before the JS->Python handshake completes, then the
+first render before the JS→Python handshake completes, then the
 populated dict on the next rerun. ``app.py``'s warmup-flag pattern
-handles that with one explicit ``st.rerun()``.
+handles that with one explicit ``st.rerun()``. The controller must be
+re-constructed on every script run (same ``key``); caching the Python
+object across reruns drops the component from Streamlit's render tree
+and breaks the value handshake.
 """
 
 from __future__ import annotations
@@ -47,30 +50,27 @@ except ImportError:  # pragma: no cover — handled lazily by callers
 
 COOKIE_NAME = "ikigai_auth"
 COOKIE_TTL_HOURS = 12
-# Streamlit re-instantiates the page on every rerun, so the controller
-# has to be cached as a singleton on session_state — building a new
-# controller per rerun would lose its internal "I asked the browser,
-# here's the answer" state and reads would never resolve.
-_CACHE_KEY = "_ikigai_cookie_controller"
 
 
 def _get_controller():
-    """Return the per-session ``CookieController`` singleton.
+    """Return a ``CookieController`` rendered into the current script run.
 
-    Returns ``None`` when the dep isn't installed or we're not inside
-    a Streamlit runtime, so the helper degrades to a no-op cleanly
-    (the caller's "no cookie" path takes over).
+    Must be called on *every* Streamlit script run, not cached across runs.
+    Streamlit tracks which components were rendered per run; if the
+    CookieController constructor is not called in a run it is removed from
+    the render tree and the JS→Python value update (the browser's cookies)
+    is lost. The ``key`` parameter is what ties renders across reruns —
+    the Python object reference is irrelevant.
+
+    Returns ``None`` when the dep isn't installed or construction fails
+    outside a Streamlit render context (e.g. test paths).
     """
     if CookieController is None:
         return None
-    if _CACHE_KEY not in st.session_state:
-        try:
-            st.session_state[_CACHE_KEY] = CookieController(key="ikigai_cookie_ctl")
-        except Exception:
-            # Construction can fail outside a normal page-render
-            # context (e.g. very early in app boot). Defer.
-            return None
-    return st.session_state[_CACHE_KEY]
+    try:
+        return CookieController(key="ikigai_cookie_ctl")
+    except Exception:
+        return None
 
 
 def get_all_cookies() -> Optional[Dict[str, str]]:
