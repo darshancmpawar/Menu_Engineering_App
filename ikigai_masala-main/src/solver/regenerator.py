@@ -7,6 +7,7 @@ Uses similarity scoring to prefer items similar to the originals.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Dict, List, Set, Tuple
 
 import pandas as pd
@@ -14,6 +15,8 @@ import pandas as pd
 from ._helpers import strip_color_suffix as _strip_color_suffix
 from .menu_solver import MenuSolver, SolverConfig, REGEN_SIMILARITY_PENALTY
 from ..preprocessor.column_mapper import _norm_str, _norm_color
+
+logger = logging.getLogger(__name__)
 
 
 def similarity_score(cand: pd.Series, orig: pd.Series) -> int:
@@ -130,8 +133,15 @@ class MenuRegenerator:
             result = solver.solve(locked=locked, forbidden=forbidden, similarity=None)
             self.rule_failures = list(solver.rule_failures)
             return result
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            # Hard-blocking the old items left no feasible solution.
+            # Fall back to allowing them with a heavy similarity penalty
+            # so the regeneration still completes; log the original
+            # failure so an operator can tell why we degraded.
+            logger.info(
+                "Regenerate hard-block infeasible, retrying with penalty: %s",
+                exc,
+            )
 
         # Fallback: allow old items but penalize them heavily
         similarity_penalties = {}

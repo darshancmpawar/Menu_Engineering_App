@@ -54,6 +54,13 @@ from user_authentication.models import ROLE_SUPER_ADMIN, ROLE_ADMIN
 
 logger = logging.getLogger(__name__)
 
+# Streamlit-side cap on solver wall-clock per request. The API itself
+# accepts up to MAX_TIME_LIMIT_SECONDS; we send a tighter value so a
+# single slow request doesn't pin a worker for the full 10-minute API
+# ceiling. Tuned against the 5-day default plan; revisit if num_days
+# grows or rule count balloons.
+_PLANNING_TIME_LIMIT_SECONDS = 180
+
 
 def _render_view_error(view_name: str, exc: BaseException) -> None:
     """Show a clean Streamlit-native error block for an unhandled
@@ -210,7 +217,6 @@ def _try_restore_session_from_cookie() -> bool:
                 # The component channel runs on the same WebSocket as
                 # the rerun; a tiny pause lets the browser's reply
                 # arrive before we re-run the script.
-                import time
                 time.sleep(0.15)
             st.rerun()
         # Warmup already done and cookies are still empty — genuine
@@ -412,7 +418,7 @@ if generate_clicked:
                     client_name=selected_client,
                     start_date=start_date.isoformat(),
                     num_days=num_days,
-                    time_limit_seconds=180,
+                    time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
                 )
                 flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
                 st.session_state.plan = flat_plan
@@ -435,7 +441,9 @@ plan_dates = st.session_state.plan_dates
 
 if plan and plan_dates:
     if st.session_state.get('save_success_msg'):
-        st.success(st.session_state.pop('save_success_msg'))
+        # Legacy session_state key for sessions that pre-date the toast
+        # switch; remove it without rerunning so old sessions clear out.
+        st.session_state.pop('save_success_msg', None)
 
     all_slots = set()
     for date_str in plan_dates:
@@ -524,8 +532,10 @@ if plan and plan_dates:
             try:
                 client.save(client_name=st.session_state.client_name,
                             week_plan=plan, week_start=plan_dates[0])
-                st.session_state['save_success_msg'] = "Plan saved to history!"
-                st.rerun()
+                # Toast skips the full-page rerun — visibly faster than
+                # the previous "set flag, rerun, render st.success, pop"
+                # round-trip.
+                st.toast("Plan saved to history", icon="✓")
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.error(f"Save failed: {e}")
     with c2:
@@ -550,15 +560,29 @@ if plan and plan_dates:
     # Regeneration
     with st.expander("Regenerate cells"):
         st.caption("Pick slots to replace with fresh items.")
+
+        # Show current item alongside slot id so the picker is readable
+        # ("Veg Dry — Aloo Gobi") instead of just the slot label.
+        def _slot_with_current(d_str: str):
+            day_map = plan.get(d_str, {})
+            def _fmt(slot_id: str) -> str:
+                slot_label = display_label_for_slot_id(slot_id)
+                cur = format_item_for_ui(day_map.get(slot_id, ""))
+                return f"{slot_label} — {cur}" if cur else slot_label
+            return _fmt
+
+        # Wider columns avoid pill truncation. Past 3 days we wrap into
+        # a second row instead of squeezing 5 columns into the panel.
         regen_selections = {}
-        cols = st.columns(min(len(plan_dates), 5))
+        regen_cols_per_row = min(len(plan_dates), 3)
+        cols = st.columns(regen_cols_per_row)
         for i, d_str in enumerate(plan_dates):
             d = dt.date.fromisoformat(d_str)
             day_type = _day_types.get(d_str, "")
             bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
             icon = THEME_ICONS.get(day_type, "")
             label = day_type.replace("_", " ").title() if day_type else ""
-            col = cols[i % len(cols)]
+            col = cols[i % regen_cols_per_row]
             with col:
                 st.markdown(
                     f'<div class="regen-day-header">{d.strftime("%a %d %b")} '
@@ -567,13 +591,22 @@ if plan and plan_dates:
                     unsafe_allow_html=True)
                 day_slots = sorted(plan.get(d_str, {}).keys(), key=slot_sort_key)
                 selected = st.multiselect(f"Slots for {d_str}", day_slots,
-                    format_func=display_label_for_slot_id,
+                    format_func=_slot_with_current(d_str),
                     key=f"regen_{d_str}", label_visibility="collapsed")
                 if selected:
                     regen_selections[d_str] = selected
 
         if st.button("Regenerate Selected", type="primary"):
             if regen_selections:
+                # Snapshot current items for the cells the user picked.
+                # We diff against the regenerated plan after the call so
+                # the changes log can show "Aloo Gobi -> Bhindi Masala"
+                # for each cell that actually changed.
+                old_snap = {
+                    (d_str, sid): plan.get(d_str, {}).get(sid, "")
+                    for d_str, slots in regen_selections.items()
+                    for sid in slots
+                }
                 with st.spinner("Regenerating..."):
                     try:
                         result = client.regenerate(
@@ -581,14 +614,43 @@ if plan and plan_dates:
                             base_plan=plan, replace_slots=regen_selections,
                             start_date=plan_dates[0],
                             num_days=len(plan_dates),
-                            time_limit_seconds=180)
+                            time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
                         flat_regen, regen_day_types = flatten_api_solution(result.get("solution", {}))
                         st.session_state.plan = flat_regen if flat_regen else plan
                         if regen_day_types:
                             st.session_state.day_types = regen_day_types
                         st.session_state.plan_dates = sorted(st.session_state.plan.keys())
-                        n = sum(len(v) for v in regen_selections.values())
-                        st.session_state.changes_log.append(f"Regenerated {n} cell{'s' if n != 1 else ''}")
+
+                        diffs = []
+                        for (d_str, sid), old_raw in old_snap.items():
+                            new_raw = st.session_state.plan.get(d_str, {}).get(sid, "")
+                            old_pretty = format_item_for_ui(old_raw)
+                            new_pretty = format_item_for_ui(new_raw)
+                            if old_pretty == new_pretty:
+                                # Solver picked the same item back — don't
+                                # spam the log with no-op rows.
+                                continue
+                            try:
+                                day_label = dt.date.fromisoformat(d_str).strftime("%a %d %b")
+                            except ValueError:
+                                day_label = d_str
+                            diffs.append({
+                                "kind": "regen",
+                                "day": day_label,
+                                "slot": display_label_for_slot_id(sid),
+                                "old": old_pretty,
+                                "new": new_pretty,
+                            })
+                        if diffs:
+                            st.session_state.changes_log.extend(diffs)
+                        else:
+                            st.session_state.changes_log.append({
+                                "kind": "info",
+                                "text": (
+                                    f"Regenerated {sum(len(v) for v in regen_selections.values())} "
+                                    "cell(s); solver returned the same items."
+                                ),
+                            })
                         st.rerun()
                     except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                         st.error(f"Regeneration failed: {e}")
@@ -596,17 +658,30 @@ if plan and plan_dates:
                 st.warning("Select at least one cell.")
 
     if st.session_state.changes_log:
-        with st.expander("Changes log"):
+        with st.expander("Changes log", expanded=True):
             for entry in st.session_state.changes_log:
-                # Escape defensively: today's entries are code-constructed
-                # ("Regenerated N cells"), but the moment someone appends
-                # a slot/client name or rule string that came from user
-                # input, this div becomes an XSS sink because it renders
-                # with unsafe_allow_html=True.
-                st.markdown(
-                    f'<div class="log-entry">{html.escape(str(entry))}</div>',
-                    unsafe_allow_html=True,
-                )
+                # Entries are dicts (regen diffs / info rows). Strings are
+                # tolerated for backward-compat with any session that was
+                # alive across the upgrade.
+                if isinstance(entry, dict) and entry.get("kind") == "regen":
+                    st.markdown(
+                        '<div class="log-entry log-diff">'
+                        f'<span class="log-day">{html.escape(entry["day"])}</span>'
+                        f'<span class="log-sep">&middot;</span>'
+                        f'<span class="log-slot">{html.escape(entry["slot"])}</span>'
+                        f'<span class="log-sep">&middot;</span>'
+                        f'<span class="log-old">{html.escape(entry["old"] or "(empty)")}</span>'
+                        '<span class="log-arrow">&rarr;</span>'
+                        f'<span class="log-new">{html.escape(entry["new"] or "(empty)")}</span>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    text = entry.get("text", "") if isinstance(entry, dict) else str(entry)
+                    st.markdown(
+                        f'<div class="log-entry">{html.escape(text)}</div>',
+                        unsafe_allow_html=True,
+                    )
 
 else:
     st.markdown("""<div class="empty-state">

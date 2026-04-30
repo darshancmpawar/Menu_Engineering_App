@@ -38,6 +38,7 @@ class MenuRuleType(Enum):
     WEEK_SIGNATURE_COOLDOWN = "week_signature_cooldown"
     THEME_SLOT_FILTER = "theme_slot_filter"
     NONVEG_DRY_PREFERENCE = "nonveg_dry_preference"
+    NONVEG_BIRYANI_WEEKLY = "nonveg_biryani_weekly"
     # Soft constraints
     THEME_STARTER_PREFERENCE = "theme_starter_preference"
     THEME_FALLBACK_PENALTY = "theme_fallback_penalty"

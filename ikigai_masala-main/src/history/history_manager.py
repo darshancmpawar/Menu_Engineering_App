@@ -13,11 +13,7 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
-
-def _norm_str(x) -> str:
-    if pd.isna(x):
-        return ''
-    return str(x).strip().lower()
+from ..preprocessor.column_mapper import _norm_str
 
 
 class HistoryManager:

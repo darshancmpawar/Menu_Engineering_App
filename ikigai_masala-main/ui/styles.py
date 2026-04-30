@@ -276,10 +276,42 @@ STYLES = """
         border-left: 3px solid var(--accent);
         border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
         margin-bottom: 0.35rem; font-size: 0.78rem; color: var(--text-secondary);
+        animation: fadeInUp 0.18s ease-out;
+    }
+    .log-entry.log-diff {
+        display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+    }
+    .log-day {
+        color: var(--text-primary); font-weight: 600;
+        font-size: 0.74rem; letter-spacing: 0.02em;
+    }
+    .log-slot {
+        color: var(--text-tertiary); font-weight: 600;
+        font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .log-sep { color: var(--text-muted); font-size: 0.72rem; }
+    .log-old {
+        color: var(--text-tertiary); text-decoration: line-through;
+        text-decoration-color: rgba(248,113,113,0.5); font-size: 0.78rem;
+    }
+    .log-arrow { color: var(--accent); font-weight: 700; padding: 0 2px; }
+    .log-new {
+        color: var(--success); font-weight: 600; font-size: 0.8rem;
     }
     .regen-day-header {
         font-weight: 700; font-size: 0.82rem; color: var(--text-primary);
         margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem;
+    }
+
+    /* Subtle fade-in on the menu table and metric grid so a regenerate
+       (which triggers a full Streamlit rerun) doesn't flash the layout
+       in/out. Kept short so it doesn't feel laggy. */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(2px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .menu-table-wrap, .metrics-grid {
+        animation: fadeInUp 0.22s ease-out;
     }
 
     /* ================================================================
