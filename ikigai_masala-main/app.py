@@ -371,13 +371,17 @@ with st.sidebar:
         st.error("Cannot reach API.")
 
     selected_client = st.selectbox("Client",
-        clients_list if clients_list else ["(no clients)"])
-    start_date = st.date_input("Start date", value=dt.date.today())
+        clients_list if clients_list else ["(no clients)"],
+        key="planner_client_select")
+    start_date = st.date_input("Start date", value=dt.date.today(),
+                               key="planner_start_date")
     num_days = st.slider("Weekdays", min_value=1, max_value=20, value=5,
+                         key="planner_num_days",
                          help="Number of weekdays (Sat/Sun are skipped)")
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
+                                 key="planner_generate_btn",
                                  use_container_width=True)
 
 # ---------------------------------------------------------------------------
@@ -528,7 +532,8 @@ if plan and plan_dates:
     # Action buttons
     c1, c2, c3, _ = st.columns([1, 1, 1, 3])
     with c1:
-        if st.button("Save to History", use_container_width=True):
+        if st.button("Save to History", key="planner_save_btn",
+                     use_container_width=True):
             try:
                 client.save(client_name=st.session_state.client_name,
                             week_plan=plan, week_start=plan_dates[0])
@@ -549,9 +554,10 @@ if plan and plan_dates:
             writer.writerow(row)
         st.download_button("Download CSV", data=buf.getvalue(),
             file_name=f"menu_{st.session_state.client_name}.csv",
-            mime="text/csv", use_container_width=True)
+            mime="text/csv", key="planner_download_csv_btn",
+            use_container_width=True)
     with c3:
-        if st.button("Clear", use_container_width=True):
+        if st.button("Clear", key="planner_clear_btn", use_container_width=True):
             st.session_state.plan = None
             st.session_state.plan_dates = []
             st.session_state.changes_log = []
@@ -596,7 +602,8 @@ if plan and plan_dates:
                 if selected:
                     regen_selections[d_str] = selected
 
-        if st.button("Regenerate Selected", type="primary"):
+        if st.button("Regenerate Selected", type="primary",
+                     key="planner_regenerate_btn"):
             if regen_selections:
                 # Snapshot current items for the cells the user picked.
                 # We diff against the regenerated plan after the call so

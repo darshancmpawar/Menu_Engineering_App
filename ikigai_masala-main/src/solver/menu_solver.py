@@ -511,29 +511,33 @@ class MenuSolver:
         day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
         monday_south_lits, monday_north_lits, theme_fallback_bools,
         known_colors, known_welcome_colors,
-    ) -> Dict:
-        """Assemble the rule-facing context (typed dataclass, exposed as dict)."""
-        solver_ctx = SolverContext(
-            cells=cells,
-            dates=dates,
-            day_types=day_types,
-            item_to_vars=item_to_vars,
-            day_color_vars=day_color_vars,
-            day_rice_color_vars=day_rice_color_vars,
-            day_gravy_color_vars=day_gravy_color_vars,
-            day_premium_vars=day_premium_vars,
-            day_welcome_color_vars=day_welcome_color_vars,
-            monday_south_lits=monday_south_lits,
-            monday_north_lits=monday_north_lits,
-            theme_fallback_bools=theme_fallback_bools,
-            known_colors=known_colors,
-            known_welcome_colors=known_welcome_colors,
-            cfg=self.cfg,
-            recent_sigs=self.recent_sigs,
-            find_cells_fn=_make_find_cells(cells),
-            link_any_fn=_link_any,
-        )
-        return solver_ctx.as_dict()
+    ) -> SolverContext:
+        """Assemble the rule-facing context.
+
+        Returns a plain ``dict`` typed as :class:`SolverContext`
+        (a ``TypedDict``), so rules keep using ``.get()`` access while
+        the solver↔rule contract stays statically checkable.
+        """
+        return {
+            'cells': cells,
+            'dates': dates,
+            'day_types': day_types,
+            'item_to_vars': item_to_vars,
+            'day_color_vars': day_color_vars,
+            'day_rice_color_vars': day_rice_color_vars,
+            'day_gravy_color_vars': day_gravy_color_vars,
+            'day_premium_vars': day_premium_vars,
+            'day_welcome_color_vars': day_welcome_color_vars,
+            'monday_south_lits': monday_south_lits,
+            'monday_north_lits': monday_north_lits,
+            'theme_fallback_bools': theme_fallback_bools,
+            'known_colors': known_colors,
+            'known_welcome_colors': known_welcome_colors,
+            'cfg': self.cfg,
+            'recent_sigs': self.recent_sigs,
+            'find_cells_fn': _make_find_cells(cells),
+            'link_any_fn': _link_any,
+        }
 
     def _apply_rules_and_objective(self, model, cells, rng, similarity, context) -> None:
         """Run every rule's ``apply`` then assemble the objective.
