@@ -1,14 +1,24 @@
 """
-Typed context object passed to menu rules during solver execution.
+Typed schema for the rule-facing solver context.
 
-Replaces the untyped Dict[str, Any] context with a proper dataclass.
+Rules consume the context as a regular ``dict`` (so existing
+``context.get('cells', [])`` style access keeps working), but
+:func:`MenuSolver._build_context` annotates the return type with
+``SolverContext`` so callers, IDEs, and ``mypy`` see exactly which
+fields are populated.
+
+This used to be a ``@dataclass`` that was constructed and then
+immediately flattened via ``.as_dict()`` for the rule layer. The
+flattening was the only thing every caller actually wanted, so the
+dataclass + shim is replaced with a ``TypedDict`` — same type
+information, no allocation round-trip, no dual representation to keep
+in sync.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple, Callable, Any, TYPE_CHECKING
+from typing import Callable, Dict, List, Set, Tuple, TYPE_CHECKING, TypedDict
 
 from ortools.sat.python import cp_model
 
@@ -16,11 +26,10 @@ if TYPE_CHECKING:
     from .menu_solver import SolverConfig, _Cell
 
 
-@dataclass
-class SolverContext:
-    """Typed context passed to rule.apply() and rule.get_objective_terms()."""
+class SolverContext(TypedDict):
+    """Bundle passed to ``rule.apply()`` and ``rule.get_objective_terms()``."""
 
-    cells: List[_Cell]
+    cells: List["_Cell"]
     dates: List[dt.date]
     day_types: List[str]
     item_to_vars: Dict[str, List[cp_model.IntVar]]
@@ -34,30 +43,7 @@ class SolverContext:
     theme_fallback_bools: List[cp_model.IntVar]
     known_colors: List[str]
     known_welcome_colors: List[str]
-    cfg: SolverConfig
+    cfg: "SolverConfig"
     recent_sigs: Set[str]
     find_cells_fn: Callable
     link_any_fn: Callable
-
-    def as_dict(self) -> Dict[str, Any]:
-        """Convert to dict for backward compatibility with existing rules."""
-        return {
-            'cells': self.cells,
-            'dates': self.dates,
-            'day_types': self.day_types,
-            'item_to_vars': self.item_to_vars,
-            'day_color_vars': self.day_color_vars,
-            'day_rice_color_vars': self.day_rice_color_vars,
-            'day_gravy_color_vars': self.day_gravy_color_vars,
-            'day_premium_vars': self.day_premium_vars,
-            'day_welcome_color_vars': self.day_welcome_color_vars,
-            'monday_south_lits': self.monday_south_lits,
-            'monday_north_lits': self.monday_north_lits,
-            'theme_fallback_bools': self.theme_fallback_bools,
-            'known_colors': self.known_colors,
-            'known_welcome_colors': self.known_welcome_colors,
-            'cfg': self.cfg,
-            'recent_sigs': self.recent_sigs,
-            'find_cells_fn': self.find_cells_fn,
-            'link_any_fn': self.link_any_fn,
-        }
