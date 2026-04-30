@@ -23,6 +23,11 @@ pip install -r requirements-dev.txt   # runtime + pytest + ruff + bandit
 # or `-r requirements.txt` for runtime only (prod containers)
 ```
 
+> **Cookie persistence dep:** `requirements.txt` pins
+> `streamlit-cookies-controller>=0.0.3,<1.0`. PyPI versions follow
+> `0.0.x` numbering — the constraint `>=0.3` (without the leading `0.`)
+> resolves to nothing and breaks the install. Don't "fix" it to `>=0.3`.
+
 ---
 
 ## 3. Supabase schema

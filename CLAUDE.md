@@ -140,7 +140,8 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - `models.py` → `User`, roles `ROLE_SUPER_ADMIN` / `ROLE_ADMIN` / `ROLE_USER`.
 - `auth_manager.py` → `AuthManager` (bcrypt + Supabase `users` table).
 - `session.py` → `init_auth_state`, `is_authenticated`, `current_user`, `require_role`.
-- `login_ui.py` → `render_login_form`.
+- `login_ui.py` → `render_login_form` (calls `persist_token` + 300 ms sleep before `st.rerun`).
+- `cookie_store.py` → `persist_token`, `clear_persisted_token`, `get_all_cookies`, `get_persisted_token`; wraps `streamlit-cookies-controller` with a warmup-aware `_get_controller()` that calls `ctl.refresh()` when the library takes its cached path to keep the component in Streamlit's render tree.
 - `user_manager_ui.py` → admin CRUD UI.
 
 ---
