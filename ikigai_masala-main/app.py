@@ -167,27 +167,32 @@ except RuntimeError as e:
 init_auth_state()
 
 
-# Tracks whether we've already given the cookie manager its one-shot
-# rerun to complete the browser→Python handshake. After a single rerun
-# the cookies dict is authoritative — empty really means "no cookie",
-# not "still warming up".
-_COOKIE_WARMUP_KEY = "_ikigai_cookie_warmup_done"
+# Maximum warmup reruns we'll do before concluding "no cookie genuinely".
+# The JS→Python round-trip can take >150ms on slow networks (Streamlit
+# Cloud reverse proxy + WebSocket); a single rerun is not always enough.
+_COOKIE_WARMUP_KEY = "_ikigai_cookie_warmup_attempts"
+_COOKIE_WARMUP_MAX_ATTEMPTS = 5
 
 
 def _try_restore_session_from_cookie() -> bool:
     """Rehydrate auth state from the persisted cookie on a fresh
     Streamlit session (hard refresh, new tab, server restart).
 
-    The cookie manager is async: the first ``get_all`` after mount
-    returns ``{}`` because the cookie payload hasn't travelled from the
-    browser back to Python yet. We trigger one explicit rerun (gated
-    by a session-state warmup flag) so the second pass actually sees
-    the cookie. Without this, hard-refresh always shows the login form
-    even when a valid cookie exists — that was the user-visible bug.
+    The cookie component is async: ``getAll`` returns ``{}`` until the
+    component's JS has read ``document.cookie`` and posted the result
+    back over the Streamlit WebSocket. That round-trip happens *after*
+    the current script run ends, so a single warmup rerun isn't enough
+    when the network is slow — we'd rerun before the JS has posted.
+
+    Strategy: keep rerunning (with a short pause between attempts) up
+    to ``_COOKIE_WARMUP_MAX_ATTEMPTS`` times. As soon as ``getAll``
+    returns a non-empty dict, restore the session. If we exhaust the
+    budget, treat it as "no cookie" and show the login form — most
+    likely the user genuinely isn't logged in.
 
     Returns True if a session was successfully restored. Has the side
-    effect of calling ``st.rerun()`` (and never returning) on the
-    very first pass when the cookies haven't arrived yet.
+    effect of calling ``st.rerun()`` (and never returning) while warmup
+    is still in progress.
     """
     if is_authenticated():
         return True
@@ -207,20 +212,18 @@ def _try_restore_session_from_cookie() -> bool:
         return False
 
     if not cookies:
-        # Either cookie manager is still warming up OR there is genuinely
-        # no cookie. Disambiguate via a one-shot rerun.
-        if not st.session_state.get(_COOKIE_WARMUP_KEY):
-            st.session_state[_COOKIE_WARMUP_KEY] = True
-            # Show a quick hint so the page isn't blank during the
-            # ~100-200ms while the component finishes its handshake.
+        # Either the cookie component is still warming up OR there is
+        # genuinely no cookie. Retry up to N times to disambiguate.
+        attempts = st.session_state.get(_COOKIE_WARMUP_KEY, 0)
+        if attempts < _COOKIE_WARMUP_MAX_ATTEMPTS:
+            st.session_state[_COOKIE_WARMUP_KEY] = attempts + 1
             with st.spinner("Restoring your session…"):
-                # The component channel runs on the same WebSocket as
-                # the rerun; a tiny pause lets the browser's reply
-                # arrive before we re-run the script.
-                time.sleep(0.15)
+                # 250 ms × up to 5 attempts = ~1.25 s budget for the
+                # browser to post its cookies back. More than enough on
+                # any reasonable connection; bail out cleanly otherwise.
+                time.sleep(0.25)
             st.rerun()
-        # Warmup already done and cookies are still empty — genuine
-        # "no cookie" case.
+        # Budget exhausted — treat as genuine "no cookie".
         return False
 
     token = cookies.get(COOKIE_NAME)
