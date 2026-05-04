@@ -104,7 +104,9 @@ def persist_token(token: str) -> None:
     """Store *token* in the auth cookie for ``COOKIE_TTL_HOURS`` hours."""
     if _cookie_controller is None:
         return
-    expires = dt.datetime.utcnow() + dt.timedelta(hours=COOKIE_TTL_HOURS)
+    # Use a timezone-aware UTC datetime — ``dt.datetime.utcnow()`` is
+    # deprecated in Python 3.12+ and emits a DeprecationWarning.
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=COOKIE_TTL_HOURS)
     options = {
         "path": "/",
         "expires": expires.isoformat(),
