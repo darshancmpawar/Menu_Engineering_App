@@ -22,8 +22,6 @@ BASE_SLOT_NAMES: List[str] = [
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
 
-OUTPUT_SLOTS: List[str] = BASE_SLOT_NAMES + CONST_SLOTS
-
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
     'papad': 'Papad',

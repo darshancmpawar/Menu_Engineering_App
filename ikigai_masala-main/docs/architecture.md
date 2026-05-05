@@ -126,8 +126,26 @@ sequenceDiagram
 
 ### Save
 
-Streamlit → `POST /api/v1/save` → `HistoryManager.save()` writes rows into `menu_history` and a row into `week_signatures`. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic.
+Streamlit → `POST /api/v1/save` → `HistoryManager.save()` writes rows into `menu_history` and a row into `week_signatures`. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic. UNIQUE indexes on `(client_name, service_date, slot, item_base)` and `(client_name, week_start, week_signature)` block double-insert from a retried `/save`.
 
 ### Regenerate
 
 Streamlit → `POST /api/v1/regenerate` → `MenuRegenerator` locks every cell not marked for replacement and re-runs the solver. A similarity penalty steers the solver away from re-picking the same items.
+
+## Schema migrations
+
+Two SQL files live under `scripts/`:
+
+- `create_tables.sql` defines configuration tables (`clients`,
+  `menu_categories`, `slot_count_overrides`, `theme_overrides`,
+  `app_settings`) and their RLS policies.
+- `create_history_tables.sql` defines `menu_history` and
+  `week_signatures` (with FK + UNIQUE INDEX safety nets) and their RLS
+  policies.
+- `create_users_table.sql` defines the `users` table for auth.
+
+Run order: `create_tables.sql` → `create_history_tables.sql` →
+`create_users_table.sql`. All three are idempotent — re-running them
+is a no-op once the schema is in place. See `docs/REVIEW.md` for the
+history of the schema-duplication fix that consolidated the
+`menu_history` / `week_signatures` DDL into a single file.
