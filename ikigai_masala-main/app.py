@@ -542,8 +542,11 @@ if plan and plan_dates:
                             week_plan=plan, week_start=plan_dates[0])
                 # Toast skips the full-page rerun — visibly faster than
                 # the previous "set flag, rerun, render st.success, pop"
-                # round-trip.
-                st.toast("Plan saved to history", icon="✓")
+                # round-trip. The icon must be a real emoji ("✓" U+2713
+                # is a dingbat, not an emoji — Streamlit's
+                # validate_emoji rejects it with a StreamlitAPIException
+                # on newer Streamlit / Python 3.14 builds).
+                st.toast("Plan saved to history", icon="✅")
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.error(f"Save failed: {e}")
     with c2:
