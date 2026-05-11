@@ -45,6 +45,14 @@ class _Query:
         self._filters.append(("gte", col, val))
         return self
 
+    def lte(self, col: str, val: Any):
+        self._filters.append(("lte", col, val))
+        return self
+
+    def in_(self, col: str, values: Iterable[Any]):
+        self._filters.append(("in", col, list(values)))
+        return self
+
     def order(self, col: str, **_kwargs):
         self._order = col
         return self
@@ -84,6 +92,12 @@ class _Query:
                     return False
             elif op == "gte":
                 if cell is None or cell < val:
+                    return False
+            elif op == "lte":
+                if cell is None or cell > val:
+                    return False
+            elif op == "in":
+                if cell not in val:
                     return False
             else:
                 raise RuntimeError(f"Unsupported filter op: {op}")

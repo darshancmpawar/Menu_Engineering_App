@@ -156,7 +156,23 @@ class HistoryManager:
         supabase_client,
         strip_color_fn=None,
     ):
-        """Persist a completed week plan to Supabase."""
+        """Persist a completed week plan to Supabase with **overwrite**
+        semantics.
+
+        Re-saving a plan for the same (client, dates) replaces the
+        previously saved rows instead of appending — so the UI's "Save
+        again after regenerating" flow ends up with exactly one set of
+        rows per date, and "Load saved plan" returns the freshest pick.
+
+        Implementation: DELETE existing rows for (client_name,
+        service_date IN dates), then INSERT the new rows. The same goes
+        for ``week_signatures`` keyed by ``(client_name, week_start)``.
+        The brief window between DELETE and INSERT is the only time the
+        DB has no plan for these dates; an INSERT failure surfaces to
+        the caller (the API returns 500), and the user retries. We
+        accept that small risk in exchange for not needing a transactional
+        RPC against Supabase.
+        """
         if supabase_client is None:
             raise ValueError("supabase_client is required to save history.")
 
@@ -173,13 +189,100 @@ class HistoryManager:
                     'client_name': client_name,
                 })
 
+        # Overwrite: clear any previous rows for these (client, date) pairs
+        # before inserting the fresh plan. Without this a second save for
+        # the same week would accumulate rows (the UNIQUE INDEX only
+        # blocks identical-item duplicates, not different items in the
+        # same slot).
+        date_isos = [d.isoformat() for d in dates]
+        if date_isos:
+            (
+                supabase_client.table('menu_history')
+                .delete()
+                .eq('client_name', client_name)
+                .in_('service_date', date_isos)
+                .execute()
+            )
         if long_rows:
             supabase_client.table('menu_history').insert(long_rows).execute()
+
+        # Same overwrite rule for the per-week signature row.
+        (
+            supabase_client.table('week_signatures')
+            .delete()
+            .eq('client_name', client_name)
+            .eq('week_start', week_start.isoformat())
+            .execute()
+        )
         supabase_client.table('week_signatures').insert({
             'week_start': week_start.isoformat(),
             'week_signature': week_signature,
             'client_name': client_name,
         }).execute()
+
+    # ----- Load saved plan -----
+
+    @staticmethod
+    def load_saved_plan(
+        supabase_client,
+        client_name: str,
+        dates: List[dt.date],
+    ) -> Dict[dt.date, Dict[str, str]]:
+        """Return the saved menu for *client_name* across *dates*.
+
+        Result shape: ``{date: {slot_id: item_base}}``. Only dates that
+        have at least one saved row are present in the dict, so callers
+        can distinguish "fully saved" (all requested dates present) from
+        "partially saved" (some missing) or "not saved" (empty dict).
+
+        ``item_base`` is the de-colorised normalised name we persisted
+        in ``menu_history``. The caller is responsible for re-attaching
+        a color suffix for display (see ``api.app._enrich_history_plan``).
+
+        If multiple rows exist for the same (date, slot) — possible from
+        legacy data before this revision added overwrite semantics — the
+        row with the highest ``id`` (newest) wins, so the most recent
+        save is what callers see.
+        """
+        if supabase_client is None:
+            raise ValueError("supabase_client is required to load history.")
+        if not dates:
+            return {}
+
+        date_isos = [d.isoformat() for d in dates]
+        resp = (
+            supabase_client.table('menu_history')
+            .select('service_date, slot, item_base, id')
+            .eq('client_name', client_name)
+            .in_('service_date', date_isos)
+            .execute()
+        )
+        rows = resp.data or []
+
+        # Newest row wins per (date, slot). Sort by id ascending then
+        # overwrite — final state holds the highest-id pick. ``id`` is a
+        # monotonically increasing identity column in menu_history.
+        rows.sort(key=lambda r: r.get('id') or 0)
+
+        by_iso: Dict[str, Dict[str, str]] = {}
+        for r in rows:
+            iso = r.get('service_date')
+            slot = r.get('slot')
+            item_base = r.get('item_base')
+            if not iso or not slot:
+                continue
+            by_iso.setdefault(iso, {})[slot] = item_base or ''
+
+        # Translate ISO strings back to dt.date for the caller. We do
+        # this last (rather than at row-iteration time) so an unexpected
+        # date format from Supabase doesn't silently drop a row.
+        out: Dict[dt.date, Dict[str, str]] = {}
+        for iso, slots in by_iso.items():
+            try:
+                out[dt.date.fromisoformat(iso)] = slots
+            except (TypeError, ValueError):
+                continue
+        return out
 
     # ----- Signature computation -----
 

@@ -717,6 +717,9 @@ def save_plan():
         # Get Supabase client for persistent storage
         from src.db import get_supabase
         sb = get_supabase()
+        # HistoryManager.save is now overwrite-on-conflict: re-saving for
+        # the same (client, dates) replaces the prior rows instead of
+        # appending. See HistoryManager.save docstring.
         hm.save(week_plan, dates, client_name, week_start, sig,
                 supabase_client=sb,
                 strip_color_fn=strip_color_suffix)
@@ -730,6 +733,150 @@ def save_plan():
         return _internal_error_response(500)
     except Exception as e:
         logger.error("Unexpected save error: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
+def _build_item_color_lookup(df) -> Dict[str, str]:
+    """Return ``{normalised_item_name: color_initial_letter}``.
+
+    Used by ``saved_plan`` to re-attach a color suffix to history rows.
+    ``menu_history.item_base`` is stored without color (the cooldown
+    rules are color-agnostic), but the UI's table renderer expects
+    ``item(C)``-shaped strings — without this lookup, loaded plans show
+    no color pills.
+
+    Falls back gracefully: items not in *df* (admin-renamed, removed,
+    legacy entries) round-trip without a color suffix instead of
+    crashing.
+    """
+    from src.preprocessor.column_mapper import _norm_str, _norm_color
+
+    out: Dict[str, str] = {}
+    if df is None or 'item' not in df.columns:
+        return out
+    color_col = 'item_color' if 'item_color' in df.columns else None
+    for _, row in df[['item'] + ([color_col] if color_col else [])].iterrows():
+        name = _norm_str(row.get('item', ''))
+        if not name:
+            continue
+        if color_col is None:
+            out.setdefault(name, '')
+            continue
+        col = _norm_color(row.get(color_col, 'unknown'))
+        if col == 'unknown' or '_' not in col:
+            out.setdefault(name, '')
+            continue
+        # _norm_color returns shapes like "light_red", "medium_green";
+        # the UI's display logic uses the last token's first letter
+        # (matches src.solver.menu_solver._color_initial).
+        base = col.split('_')[-1]
+        out.setdefault(name, base[:1].upper() if base else '')
+    return out
+
+
+def _enrich_history_plan(
+    saved: Dict[dt.date, Dict[str, str]], df,
+) -> Dict[dt.date, Dict[str, str]]:
+    """Turn ``{date: {slot: item_base}}`` (history shape) into
+    ``{date: {slot: item_with_color}}`` (UI shape) by looking up each
+    item's color in the loaded Excel *df* and appending ``(C)``.
+
+    Constant slots (white_rice, papad, pickle, chutney) round-trip as-is
+    since they never carried a color suffix in the first place. Items
+    that no longer exist in the ontology fall through without a suffix
+    — the UI handles missing-color gracefully (no color pill).
+    """
+    color_lookup = _build_item_color_lookup(df)
+    out: Dict[dt.date, Dict[str, str]] = {}
+    for d, slots in saved.items():
+        day_out: Dict[str, str] = {}
+        for slot_id, item_base in slots.items():
+            if not item_base:
+                continue
+            if slot_id in CONST_SLOTS:
+                day_out[slot_id] = item_base
+                continue
+            initial = color_lookup.get(item_base, '')
+            day_out[slot_id] = f'{item_base}({initial})' if initial else item_base
+        out[d] = day_out
+    return out
+
+
+@app.route('/api/v1/saved-plan', methods=['GET'])
+@require_api_auth()
+def saved_plan():
+    """Return the saved plan for a client + date range, if one exists.
+
+    Query params:
+        client_name (required): the client to look up.
+        start_date  (optional): YYYY-MM-DD; defaults to today in
+            APP_TZ.
+        num_days    (optional): number of weekdays from start_date;
+            defaults to 5. Sat/Sun are skipped, mirroring /plan.
+
+    Response shape mirrors /plan so the UI can use one code path:
+        {
+          "success": True,
+          "exists": <bool>,           # True iff every requested date
+                                      # has at least one saved row.
+          "covered_dates": [...],     # ISO date strings that DID have
+                                      # saved rows (could be a strict
+                                      # subset of the requested range).
+          "source": "history",
+          "solution": <SolutionFormatter.to_dict() output>,
+        }
+
+    When ``exists`` is False the ``solution`` only contains the days
+    that were partially saved; the caller decides whether to fall back
+    to /plan. We never call the solver from this endpoint — it's a
+    pure read path.
+    """
+    try:
+        client_name = request.args.get('client_name', '').strip()
+        _require_known_client(client_name)
+
+        start_date_str = request.args.get('start_date')
+        num_days = max(
+            MIN_NUM_DAYS,
+            min(MAX_NUM_DAYS, int(request.args.get('num_days', 5))),
+        )
+        start_date = (
+            dt.date.fromisoformat(start_date_str)
+            if start_date_str else today_in_app_tz()
+        )
+        weekday_dates = _weekdays_from(start_date, num_days)
+
+        loader = _get_client_loader()
+        client_cfg = loader.get_client(client_name)
+
+        from src.db import get_supabase
+        sb = get_supabase()
+        raw_saved = HistoryManager.load_saved_plan(
+            sb, client_name, weekday_dates,
+        )
+
+        # Enrich with color suffix so the UI's renderer matches /plan.
+        df, _pools = _get_menu_data()
+        enriched = _enrich_history_plan(raw_saved, df)
+
+        formatter = SolutionFormatter(
+            enriched, weekday_dates,
+            theme_map=client_cfg.theme_map or None,
+        )
+        covered = sorted(d.isoformat() for d in enriched.keys())
+        exists = len(enriched) == len(weekday_dates) and len(enriched) > 0
+
+        return jsonify({
+            'success': True,
+            'exists': exists,
+            'covered_dates': covered,
+            'source': 'history',
+            'solution': formatter.to_dict(),
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error("Failed to load saved plan: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 

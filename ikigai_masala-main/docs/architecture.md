@@ -124,9 +124,15 @@ sequenceDiagram
     F-->>S: { solution, pool_warnings, rule_warnings }
 ```
 
-### Save
+### Save (overwrite semantics)
 
-Streamlit → `POST /api/v1/save` → `HistoryManager.save()` writes rows into `menu_history` and a row into `week_signatures`. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic. UNIQUE indexes on `(client_name, service_date, slot, item_base)` and `(client_name, week_start, week_signature)` block double-insert from a retried `/save`.
+Streamlit → `POST /api/v1/save` → `HistoryManager.save()` first **deletes** any existing rows for the same `(client_name, service_date)` (and `(client_name, week_start)` for `week_signatures`), then inserts the new rows. Re-saving a week therefore replaces the prior plan instead of accumulating. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic. UNIQUE indexes on `(client_name, service_date, slot, item_base)` and `(client_name, week_start, week_signature)` are the safety net against double-insert under a retried `/save`.
+
+### Generate (with history-first read)
+
+The Streamlit **Generate Menu Plan** button is deterministic for already-saved dates: it first hits `GET /api/v1/saved-plan?client_name&start_date&num_days`. If every requested weekday has saved rows, the response carries `exists: true` and the UI renders that saved plan with a "Loaded from history" badge. Otherwise (`exists: false`) the UI falls back to `POST /api/v1/plan` and runs the solver as usual.
+
+`/saved-plan` is a pure read — it never invokes the solver. Color suffixes are re-attached server-side from the Excel ontology so the UI's renderer doesn't need a separate code path for saved vs fresh plans.
 
 ### Regenerate
 

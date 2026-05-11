@@ -170,9 +170,10 @@ class MenuApiClient:
         week_plan: Dict[str, Dict[str, str]],
         week_start: str,
     ) -> Dict[str, Any]:
-        # /save writes to menu_history — retrying could insert duplicate
-        # rows if the first attempt actually reached the DB before 502/504.
-        # Keep this one single-shot.
+        # /save overwrites on (client, dates) — re-saving the same week
+        # is idempotent (DELETE + INSERT under the hood). We still keep
+        # this single-shot: a 502/504 retry after a partial write would
+        # be a brief flicker but the second call lands on a clean slate.
         payload = {
             "client_name": client_name,
             "week_plan": week_plan,
@@ -183,6 +184,30 @@ class MenuApiClient:
             headers=self._auth_headers(),
         )
         return _parse_response(resp, "Save failed")
+
+    def get_saved_plan(
+        self, client_name: str, start_date: str, num_days: int = 5,
+    ) -> Dict[str, Any]:
+        """Return the saved plan for *(client, start_date, num_days)*.
+
+        Response carries ``exists`` (True iff every requested weekday is
+        covered) and ``solution`` in the same shape as ``plan()``. The
+        UI uses ``exists`` to decide whether to display the saved plan
+        directly or fall back to running the solver.
+        """
+        params = {
+            "client_name": client_name,
+            "start_date": start_date,
+            "num_days": num_days,
+        }
+
+        def _do():
+            return self.session.get(
+                f"{self.base_url}/api/v1/saved-plan", params=params,
+                timeout=10, headers=self._auth_headers(),
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        return _parse_response(resp, "Failed to load saved plan")
 
     # ----- Customisation editor endpoints -----
 

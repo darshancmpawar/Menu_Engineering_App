@@ -18,7 +18,8 @@ accept or supply it to correlate traces across logs.
 | GET    | `/clients` | List client names |
 | POST   | `/plan` | Generate a plan |
 | POST   | `/regenerate` | Regenerate selected cells |
-| POST   | `/save` | Persist plan to history |
+| POST   | `/save` | Persist plan to history (overwrites prior rows for the same `(client, dates)`) |
+| GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/validate-pools` | Dry-run pool sizes (no solve) |
 | GET    | `/editor-metadata` | Slot / theme metadata for the editor UI |
 | GET    | `/client-config/<name>` | Read a client's config (returns `ETag: "<version>"`) |
@@ -100,6 +101,66 @@ Counter names follow Prometheus conventions so a future swap to
 `rule_warnings` only appears when one or more soft rules failed during the
 winning solve attempt. Each entry carries `attempt_seed` so the failure can
 be reproduced.
+
+---
+
+## Saved-plan response
+
+`GET /api/v1/saved-plan?client_name=<name>&start_date=YYYY-MM-DD&num_days=<n>`
+
+Returns the same `solution` shape as `/plan`, sourced from `menu_history`
+instead of the solver. Used by Streamlit's **Generate** button so a user
+who has already saved a plan for the selected dates sees that exact plan
+back, deterministically. Never invokes the solver.
+
+```json
+{
+  "success": true,
+  "exists": true,
+  "covered_dates": ["2026-03-23", "2026-03-24"],
+  "source": "history",
+  "solution": {
+    "2026-03-23": {
+      "theme": "Mix of South + North",
+      "day_type": "mix",
+      "items": {
+        "rice": { "display_name": "Flavor Rice",
+                  "item": "jeera_rice(Y)", "item_base": "jeera_rice" }
+      }
+    }
+  }
+}
+```
+
+- `exists` is `true` iff **every** requested weekday has at least one
+  saved row. `false` covers both "nothing saved" and "partially saved"
+  cases — the Streamlit UI falls back to `POST /plan` when `exists` is
+  false. `covered_dates` shows which dates did have rows, so a future
+  UI revision can offer "load partial + generate the rest".
+- Color suffixes (`(Y)`, `(R)`, …) on `item` are re-attached server-side
+  by looking each `item_base` up in the loaded Excel ontology, so the
+  UI's renderer doesn't need a code branch.
+- The plan's `theme` / `day_type` come from the **current** client
+  config — i.e. if the day-theme map was changed after the plan was
+  saved, the loaded plan shows the new theme labels. The underlying
+  items don't move.
+
+---
+
+## Save semantics
+
+`POST /api/v1/save` writes **overwrite** to `menu_history` and
+`week_signatures`: any rows previously stored for the same
+`(client_name, service_date)` (and `(client_name, week_start)` for
+signatures) are deleted before the new rows are inserted. Re-saving the
+same week therefore replaces the prior plan instead of accumulating.
+This is what makes the Generate → load-from-history flow deterministic:
+the latest save is always the canonical answer.
+
+The single-shot retry policy in `MenuApiClient.save()` is unchanged —
+even though server-side `/save` is now idempotent on retry, a popped
+"Plan saved" toast on a silent second attempt is more confusing than
+just bubbling the error and letting the user retry explicitly.
 
 ---
 

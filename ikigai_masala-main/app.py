@@ -294,6 +294,11 @@ _SESSION_DEFAULTS = {
     "client_name": None,
     "changes_log": [],
     "view": "planner",
+    # "history" when the current plan was loaded from /saved-plan,
+    # "solver" when it came from /plan, "modified" once the user has
+    # regenerated a cell (so the on-screen plan no longer matches the
+    # DB version). Drives the "Saved" / "New" badge on the page header.
+    "plan_source": None,
 }
 for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
@@ -391,11 +396,36 @@ with st.sidebar:
 # Page header
 # ---------------------------------------------------------------------------
 _hdr_col1, _hdr_col2 = st.columns([5, 2])
+_SOURCE_BADGES = {
+    # bg, fg, label, title attr
+    "history":  ("#0f2a1d", "#86efac", "Loaded from history",
+                 "These exact dates already had a saved plan — shown as-is."),
+    "solver":   ("#1e0a3a", "#c4b5fd", "Freshly generated",
+                 "No saved plan for these dates — solver produced this from scratch."),
+    "modified": ("#2a1508", "#fdba74", "Modified — unsaved",
+                 "You regenerated at least one cell since this plan was loaded."),
+}
+
+
 with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
     if st.session_state.client_name:
+        src = st.session_state.get("plan_source")
+        badge_html = ""
+        if src in _SOURCE_BADGES:
+            bg, fg, label, title_attr = _SOURCE_BADGES[src]
+            badge_html = (
+                f'<span class="plan-source-badge" '
+                f'title="{html.escape(title_attr)}" '
+                f'style="display:inline-block;margin-left:0.6rem;'
+                f'padding:2px 10px;border-radius:99px;font-size:0.7rem;'
+                f'font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
+                f'background:{bg};color:{fg};vertical-align:middle;">'
+                f'{html.escape(label)}</span>'
+            )
         st.markdown(
-            f'<p class="page-subtitle">Generated plan for {html.escape(st.session_state.client_name)}</p>',
+            f'<p class="page-subtitle">Generated plan for '
+            f'{html.escape(st.session_state.client_name)}{badge_html}</p>',
             unsafe_allow_html=True)
     else:
         st.markdown(
@@ -419,24 +449,59 @@ with _hdr_col2:
 # ---------------------------------------------------------------------------
 if generate_clicked:
     if selected_client and selected_client != "(no clients)":
-        with st.spinner(f"Generating plan for {selected_client}..."):
-            try:
-                result = client.plan(
-                    client_name=selected_client,
-                    start_date=start_date.isoformat(),
-                    num_days=num_days,
-                    time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
+        # Two-step Generate:
+        #   1. Ask the API whether a saved plan covers the requested
+        #      range. If yes, load it (no solve) and flag the source.
+        #   2. Otherwise run the solver as usual and save-on-click
+        #      will overwrite if the user later re-runs Save.
+        # The user always gets a deterministic Generate: same dates →
+        # same plan, until they explicitly Regenerate cells.
+        try:
+            saved = client.get_saved_plan(
+                client_name=selected_client,
+                start_date=start_date.isoformat(),
+                num_days=num_days,
+            )
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+            # Failure here is non-fatal — fall through to the solver
+            # path. Log via st.warning so the user sees that the
+            # history lookup misbehaved but Generate still completes.
+            st.warning(f"Couldn't check saved history ({e}); generating fresh.")
+            saved = {"exists": False}
+
+        if saved.get("exists"):
+            with st.spinner(f"Loading saved plan for {selected_client}..."):
+                flat_plan, day_types = flatten_api_solution(
+                    saved.get("solution", {}),
                 )
-                flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
                 st.session_state.plan = flat_plan
                 st.session_state.plan_dates = sorted(flat_plan.keys())
                 st.session_state.day_types = day_types
                 st.session_state.client_name = selected_client
                 st.session_state.changes_log = []
-                st.session_state.pool_warnings = result.get("pool_warnings", [])
+                st.session_state.pool_warnings = []
+                st.session_state.plan_source = "history"
                 st.rerun()
-            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                st.error(f"Generation failed: {e}")
+        else:
+            with st.spinner(f"Generating plan for {selected_client}..."):
+                try:
+                    result = client.plan(
+                        client_name=selected_client,
+                        start_date=start_date.isoformat(),
+                        num_days=num_days,
+                        time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
+                    )
+                    flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
+                    st.session_state.plan = flat_plan
+                    st.session_state.plan_dates = sorted(flat_plan.keys())
+                    st.session_state.day_types = day_types
+                    st.session_state.client_name = selected_client
+                    st.session_state.changes_log = []
+                    st.session_state.pool_warnings = result.get("pool_warnings", [])
+                    st.session_state.plan_source = "solver"
+                    st.rerun()
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Generation failed: {e}")
     else:
         st.warning("Select a valid client first.")
 
@@ -540,6 +605,12 @@ if plan and plan_dates:
             try:
                 client.save(client_name=st.session_state.client_name,
                             week_plan=plan, week_start=plan_dates[0])
+                # After Save, what's on screen now matches what's in the
+                # DB — flip the source badge so the user can tell the
+                # plan is persisted (and the next Generate for these
+                # dates will replay this saved version, not run the
+                # solver again).
+                st.session_state.plan_source = "history"
                 # Toast skips the full-page rerun — visibly faster than
                 # the previous "set flag, rerun, render st.success, pop"
                 # round-trip. The icon must be a real emoji ("✓" U+2713
@@ -567,6 +638,7 @@ if plan and plan_dates:
             st.session_state.plan = None
             st.session_state.plan_dates = []
             st.session_state.changes_log = []
+            st.session_state.plan_source = None
             st.rerun()
 
     # Regeneration
@@ -656,6 +728,12 @@ if plan and plan_dates:
                             })
                         if diffs:
                             st.session_state.changes_log.extend(diffs)
+                            # Cell-level regen means the on-screen plan
+                            # no longer matches the saved version (if
+                            # there was one). Flip to "modified" so the
+                            # badge nudges the user to Save again to
+                            # persist their edits.
+                            st.session_state.plan_source = "modified"
                         else:
                             st.session_state.changes_log.append({
                                 "kind": "info",
@@ -664,6 +742,9 @@ if plan and plan_dates:
                                     "cell(s); solver returned the same items."
                                 ),
                             })
+                            # No actual change — leave plan_source alone so a
+                            # no-op regen on a freshly loaded saved plan keeps
+                            # the "Loaded from history" badge.
                         st.rerun()
                     except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                         st.error(f"Regeneration failed: {e}")

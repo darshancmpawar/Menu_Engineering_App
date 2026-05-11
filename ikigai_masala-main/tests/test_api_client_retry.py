@@ -152,8 +152,11 @@ class TestClientIntegration:
         assert len(log["post"]) == 2
 
     def test_save_is_not_retried(self, monkeypatch):
-        """menu_history is the one table the client writes to directly;
-        retrying /save would double-insert the weekly rows."""
+        """Server-side /save is overwrite-idempotent (DELETE + INSERT)
+        so a retry would be safe — but the auto-retry path stays off:
+        a user-facing "Plan saved" toast on the second attempt is more
+        confusing than just bubbling the error up so the user can
+        explicitly retry. Pin the single-shot behaviour."""
         responses = iter([
             _fake_response(503, {"success": False, "error": "queue full"}),
         ])
@@ -170,4 +173,19 @@ class TestClientIntegration:
         client, log = self._patch_session(monkeypatch, responses)
         result = client.get_client_config("X")
         assert result["version"] == 1
+        assert len(log["get"]) == 2
+
+    def test_get_saved_plan_retries_on_503(self, monkeypatch):
+        """/saved-plan is a pure read — a transient 503 from a proxy or
+        upstream blip should auto-retry once like every other GET."""
+        responses = iter([
+            _fake_response(503, {"success": False, "error": "blip"}),
+            _fake_response(200, {
+                "success": True, "exists": False, "covered_dates": [],
+                "source": "history", "solution": {},
+            }),
+        ])
+        client, log = self._patch_session(monkeypatch, responses)
+        result = client.get_saved_plan("X", "2026-03-23", num_days=1)
+        assert result["exists"] is False
         assert len(log["get"]) == 2

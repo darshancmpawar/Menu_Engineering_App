@@ -347,6 +347,128 @@ class TestSaveEndpoint:
         assert data['success'] is False
         assert 'Unknown client' in data['error']
 
+    def test_save_then_save_again_overwrites_history(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """Re-saving the same week with a different plan replaces the
+        previously stored rows. Without this, the cooldown rules would
+        see two conflicting items for the same (date, slot) and
+        ``/saved-plan`` couldn't reliably tell which one to return.
+        """
+        first = client.post('/api/v1/save', json={
+            'client_name': 'Rippling',
+            'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)'}},
+            'week_start': '2026-03-23',
+        }, headers=auth_headers)
+        assert first.status_code == 200
+        rows = fake_supabase.rows('menu_history')
+        assert [r['item_base'] for r in rows] == ['jeera_rice']
+
+        second = client.post('/api/v1/save', json={
+            'client_name': 'Rippling',
+            'week_plan': {'2026-03-23': {'rice': 'lemon_rice(Y)'}},
+            'week_start': '2026-03-23',
+        }, headers=auth_headers)
+        assert second.status_code == 200
+        rows = fake_supabase.rows('menu_history')
+        assert [r['item_base'] for r in rows] == ['lemon_rice']
+        # week_signatures also overwrites — exactly one row per
+        # (client, week_start) post-save.
+        assert len(fake_supabase.rows('week_signatures')) == 1
+
+
+class TestSavedPlanEndpoint:
+    """Coverage for the GET /api/v1/saved-plan readback that powers
+    'Generate replays the saved plan if one exists' in the UI.
+    """
+
+    def test_rejects_unknown_client(self, client, auth_headers, fake_supabase):
+        resp = client.get(
+            '/api/v1/saved-plan?client_name=NotARealClient',
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body['success'] is False
+        assert 'Unknown client' in body['error']
+
+    def test_returns_exists_false_when_no_history(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.get(
+            '/api/v1/saved-plan?client_name=Rippling'
+            '&start_date=2026-03-23&num_days=2',
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['success'] is True
+        assert body['exists'] is False
+        assert body['covered_dates'] == []
+        assert body['source'] == 'history'
+
+    def test_save_then_load_round_trip(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """The big one: save a plan, then re-request via /saved-plan
+        and confirm the response matches what the UI rendered. Covers
+        the overwrite-on-save + load-from-history happy path the
+        feature is built around.
+        """
+        # Save a 1-day plan (a Monday).
+        save = client.post('/api/v1/save', json={
+            'client_name': 'Rippling',
+            'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)',
+                                          'bread': 'naan(B)'}},
+            'week_start': '2026-03-23',
+        }, headers=auth_headers)
+        assert save.status_code == 200
+
+        load = client.get(
+            '/api/v1/saved-plan?client_name=Rippling'
+            '&start_date=2026-03-23&num_days=1',
+            headers=auth_headers,
+        )
+        assert load.status_code == 200
+        body = load.get_json()
+        assert body['exists'] is True
+        assert body['covered_dates'] == ['2026-03-23']
+        # solution shape matches /plan: {date: {theme, day_type, items}}.
+        solution = body['solution']
+        assert '2026-03-23' in solution
+        day = solution['2026-03-23']
+        assert 'items' in day
+        assert set(day['items'].keys()) >= {'rice', 'bread'}
+        # item_base is what was persisted; item still carries a color
+        # suffix when the ontology has one (color is re-attached
+        # server-side from the Excel df).
+        rice = day['items']['rice']
+        assert rice['item_base'] == 'jeera_rice'
+
+    def test_partial_coverage_marks_exists_false(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """If only one of the two requested weekdays has saved rows the
+        endpoint reports exists=False — the UI falls back to /plan
+        instead of showing a half-empty table.
+        """
+        # Save only one date (Mon 23rd).
+        client.post('/api/v1/save', json={
+            'client_name': 'Rippling',
+            'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)'}},
+            'week_start': '2026-03-23',
+        }, headers=auth_headers)
+
+        # Ask for two weekdays — Mon + Tue.
+        resp = client.get(
+            '/api/v1/saved-plan?client_name=Rippling'
+            '&start_date=2026-03-23&num_days=2',
+            headers=auth_headers,
+        )
+        body = resp.get_json()
+        assert body['exists'] is False
+        assert body['covered_dates'] == ['2026-03-23']
+
 
 class TestClientNamesRequestCache:
     """Within one request, client_names should be read from Supabase at most
