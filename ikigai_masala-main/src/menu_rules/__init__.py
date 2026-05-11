@@ -2,7 +2,21 @@
 Menu rule definitions and handlers for menu planning.
 """
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
+from .base_menu_rule import (
+    BaseMenuRule,
+    MenuRuleType,
+    MenuRuleSeverity,
+    Diagnostic,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    DiagnoseContext,
+)
+from .diagnostics import (
+    run_diagnostics,
+    summarize,
+    has_blocking_errors,
+    pool_warnings_projection,
+)
 from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
 from .coupling_menu_rule import CouplingMenuRule
@@ -40,6 +54,10 @@ from .menu_rule_loader import MenuRuleLoader
 
 __all__ = [
     'BaseMenuRule', 'MenuRuleType', 'MenuRuleSeverity', 'MenuRuleLoader',
+    # diagnostics
+    'Diagnostic', 'DiagnosticSeverity', 'DiagnosticPhase', 'DiagnoseContext',
+    'run_diagnostics', 'summarize', 'has_blocking_errors',
+    'pool_warnings_projection',
     'CuisineMenuRule', 'UniqueItemsMenuRule', 'CouplingMenuRule',
     'CurdSideMenuRule', 'PremiumMenuRule',
     # theme

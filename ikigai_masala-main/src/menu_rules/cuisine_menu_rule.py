@@ -7,11 +7,18 @@ This rule is for fine-grained per-cuisine-per-day constraints.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from ortools.sat.python import cp_model
-from .base_menu_rule import BaseMenuRule, MenuRuleType
-from src.constants import EXEMPT_FROM_CUISINE
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    DiagnoseContext,
+    MenuRuleType,
+)
+from src.constants import BASE_SLOT_NAMES, EXEMPT_FROM_CUISINE
 from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
@@ -73,3 +80,62 @@ class CuisineMenuRule(BaseMenuRule):
                 ]
                 if cuisine_lits:
                     model.Add(sum(cuisine_lits) >= 1)
+
+    def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
+        """For every requested date whose weekday matches
+        ``days_of_week``, scan non-exempt base-slot pools and count
+        items with the configured ``cuisine_family``.
+
+        Emits INFO when the rule applies but no items match (the
+        ``apply()`` body silently drops the constraint in that case,
+        so users wouldn't otherwise know it's a no-op).
+        """
+        diags: List[Diagnostic] = []
+        if not self.cuisine_family:
+            return diags
+        cuisine_col = ctx.cfg.cuisine_col if ctx.cfg else 'cuisine_family'
+        base_slots = ctx.active_base_slots or list(BASE_SLOT_NAMES)
+
+        for d in ctx.dates:
+            day_name = d.strftime('%A').lower()
+            if self.days_of_week and day_name not in self.days_of_week:
+                continue
+            day_label = d.strftime('%A %d %b')
+
+            total = 0
+            for base in base_slots:
+                if base in EXEMPT_FROM_CUISINE:
+                    continue
+                if (d, base) in ctx.skip_cells:
+                    continue
+                pool = ctx.pools.get(base)
+                if pool is None or len(pool) == 0:
+                    continue
+                if cuisine_col not in pool.columns:
+                    continue
+                total += int((pool[cuisine_col].map(_norm_str) == self.cuisine_family).sum())
+
+            if total == 0:
+                diags.append(Diagnostic(
+                    rule=self.name,
+                    rule_type=self.rule_type.value,
+                    severity=DiagnosticSeverity.INFO,
+                    phase=DiagnosticPhase.APPLY,
+                    message=(
+                        f"Cuisine rule '{self.name}' targets "
+                        f"{self.cuisine_family!r} on {day_label} but no "
+                        f"items with that cuisine are in any non-exempt "
+                        f"slot pool. The constraint will silently drop."
+                    ),
+                    suggestion=(
+                        f"Add at least one {self.cuisine_family} item to "
+                        f"a non-exempt slot, or remove this cuisine rule "
+                        f"from the config."
+                    ),
+                    affected={
+                        'date': d.isoformat(),
+                        'cuisine_family': self.cuisine_family,
+                        'count': 0,
+                    },
+                ))
+        return diags

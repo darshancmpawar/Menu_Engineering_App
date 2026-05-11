@@ -54,6 +54,13 @@ from src.client import ClientConfigLoader
 from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: F401 — surfaced in editor-metadata response
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
+from src.menu_rules import (
+    DiagnoseContext,
+    run_diagnostics,
+    summarize as _summarize_diags,
+    has_blocking_errors,
+    pool_warnings_projection,
+)
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -485,58 +492,65 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
     )
 
 
-def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
-    """Check pool sizes after theme filtering vs required slot counts.
+def _build_diagnose_context(inputs: SolverInputs) -> DiagnoseContext:
+    """Project the SolverInputs bundle into a DiagnoseContext the
+    rule diagnose() methods can consume.
 
-    Returns a list of warning strings for any (day, slot) where the filtered
-    pool is smaller than needed.  An empty list means no issues detected.
+    Computes the per-date day_types map up front (the rules want
+    O(1) lookup, not repeated weekday_type_for_config calls), and
+    surfaces the client's active base slots so diagnose() iterates
+    over the slots that will actually be solved (not the global
+    BASE_SLOT_NAMES list).
     """
-    warnings = []
-    base_slots = solver_config.active_base_slots or list(BASE_SLOT_NAMES)
-    slot_counts = solver_config.slot_counts or {s: 1 for s in base_slots}
-
-    filter_ctx_base = {
-        'cfg': solver_config,
-        'banned_by_date': {},
-        'ricebread_ban_day': {},
-        'pools': pools,
+    day_types = {
+        d: _weekday_type_cfg(d, inputs.cfg.theme_map)
+        for d in inputs.weekday_dates
     }
+    active_base = inputs.cfg.active_base_slots
+    return DiagnoseContext(
+        pools=inputs.pools,
+        dates=inputs.weekday_dates,
+        day_types=day_types,
+        cfg=inputs.cfg,
+        df=inputs.df,
+        banned_by_date=inputs.banned,
+        ricebread_ban_day=inputs.rb_ban,
+        skip_cells=inputs.skip_cells,
+        client_cfg=inputs.client_cfg,
+        active_base_slots=active_base,
+    )
 
-    for d in dates:
-        day_type = _weekday_type_cfg(d, solver_config.theme_map)
-        for base in base_slots:
-            if skip_cells and (d, base) in skip_cells:
-                continue
-            if base not in pools:
-                continue
-            pool = pools[base].copy()
 
-            # Exclude steamed rice etc.
-            if base in ('rice', 'healthy_rice') and len(pool) > 0:
-                pool = pool[~pool['item'].isin(solver_config.rice_exclude_items)]
+def _run_preflight(inputs: SolverInputs):
+    """Shared pre-flight pass used by both /plan and /diagnose.
 
-            # Apply rule pre-filters (theme slot filters, etc.)
-            ctx = {**filter_ctx_base, 'slot_num': None}
-            for rule in menu_rules:
-                pool = rule.pre_filter_pool(pool, d, base, day_type, ctx)
+    Returns ``(diagnostics, summary)`` where:
+      - ``diagnostics`` is the full sorted list of Diagnostic objects
+        produced by every rule + the synthetic pool_size pass.
+      - ``summary`` is the ``{errors, warnings, infos, would_succeed}``
+        dict produced by ``summarize()``.
 
-            count_needed = slot_counts.get(base, 1)
-            pool_size = len(pool)
-            if pool_size < count_needed:
-                day_label = d.strftime('%A %d %b')
-                warnings.append(
-                    f"{day_type.capitalize()} {day_label}: "
-                    f"only {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
-                    f"available, need {count_needed}"
-                )
-            elif pool_size == count_needed:
-                day_label = d.strftime('%A %d %b')
-                warnings.append(
-                    f"{day_type.capitalize()} {day_label}: "
-                    f"exactly {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
-                    f"available for {count_needed} needed (no variety)"
-                )
-    return warnings
+    A single call site for both endpoints keeps the two surfaces in
+    lockstep: /diagnose and /plan's gate emit identical diagnostics
+    for identical inputs. ``test_diagnose_matches_plan_preflight``
+    pins this invariant.
+    """
+    ctx = _build_diagnose_context(inputs)
+    diags = run_diagnostics(inputs.rules, ctx)
+    return diags, _summarize_diags(diags)
+
+
+def _record_diag_metrics(diagnostics) -> None:
+    """Bump ``rule_diagnostics_total{rule=<name>,severity=<sev>}`` once
+    per emitted Diagnostic. Mirrors ``_count_rule_failures`` so a
+    Prometheus alert can fire on either surface symmetrically.
+    """
+    for d in diagnostics:
+        metrics.incr(
+            'rule_diagnostics_total',
+            rule=d.rule,
+            severity=d.severity.value,
+        )
 
 
 app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
@@ -566,10 +580,36 @@ def plan_menu():
     try:
         inputs = _prepare_solver_inputs(request.get_json() or {})
 
-        pool_warnings = _validate_pools(
-            inputs.pools, inputs.cfg, inputs.rules,
-            inputs.weekday_dates, skip_cells=inputs.skip_cells,
-        )
+        # Pre-flight gate: run every rule's diagnose() against the
+        # assembled inputs. If any diagnostic is severity=error, the
+        # solver would (with overwhelming probability) fail — so we
+        # short-circuit with 422 and the structured diagnostics
+        # before spending solver budget.
+        diagnostics, summary = _run_preflight(inputs)
+        _record_diag_metrics(diagnostics)
+        diag_dicts = [d.to_dict() for d in diagnostics]
+        # Denormalised pool_warnings projection kept for one release so
+        # older Streamlit builds that still read this key keep rendering
+        # something. New code consumes ``rule_diagnostics``.
+        pool_warnings = pool_warnings_projection(diagnostics)
+
+        if has_blocking_errors(diagnostics):
+            metrics.incr('plan_requests_total', outcome='preflight_blocked')
+            body = {
+                'success': False,
+                'error': 'rule_diagnostics_blocked',
+                'message': (
+                    f"Pre-flight diagnostics found "
+                    f"{summary['errors']} blocking issue"
+                    f"{'s' if summary['errors'] != 1 else ''} for "
+                    f"{inputs.client_name}; solver skipped."
+                ),
+                'rule_diagnostics': diag_dicts,
+                'summary': summary,
+            }
+            if pool_warnings:
+                body['pool_warnings'] = pool_warnings
+            return jsonify(body), 422
 
         solver = MenuSolver(
             pools=inputs.pools,
@@ -590,6 +630,8 @@ def plan_menu():
             'success': True,
             'message': f'Menu plan generated for {inputs.client_name}',
             'solution': formatter.to_dict(),
+            'rule_diagnostics': diag_dicts,
+            'summary': summary,
         }
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
@@ -717,6 +759,9 @@ def save_plan():
         # Get Supabase client for persistent storage
         from src.db import get_supabase
         sb = get_supabase()
+        # HistoryManager.save is now overwrite-on-conflict: re-saving for
+        # the same (client, dates) replaces the prior rows instead of
+        # appending. See HistoryManager.save docstring.
         hm.save(week_plan, dates, client_name, week_start, sig,
                 supabase_client=sb,
                 strip_color_fn=strip_color_suffix)
@@ -730,6 +775,150 @@ def save_plan():
         return _internal_error_response(500)
     except Exception as e:
         logger.error("Unexpected save error: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
+def _build_item_color_lookup(df) -> Dict[str, str]:
+    """Return ``{normalised_item_name: color_initial_letter}``.
+
+    Used by ``saved_plan`` to re-attach a color suffix to history rows.
+    ``menu_history.item_base`` is stored without color (the cooldown
+    rules are color-agnostic), but the UI's table renderer expects
+    ``item(C)``-shaped strings — without this lookup, loaded plans show
+    no color pills.
+
+    Falls back gracefully: items not in *df* (admin-renamed, removed,
+    legacy entries) round-trip without a color suffix instead of
+    crashing.
+    """
+    from src.preprocessor.column_mapper import _norm_str, _norm_color
+
+    out: Dict[str, str] = {}
+    if df is None or 'item' not in df.columns:
+        return out
+    color_col = 'item_color' if 'item_color' in df.columns else None
+    for _, row in df[['item'] + ([color_col] if color_col else [])].iterrows():
+        name = _norm_str(row.get('item', ''))
+        if not name:
+            continue
+        if color_col is None:
+            out.setdefault(name, '')
+            continue
+        col = _norm_color(row.get(color_col, 'unknown'))
+        if col == 'unknown' or '_' not in col:
+            out.setdefault(name, '')
+            continue
+        # _norm_color returns shapes like "light_red", "medium_green";
+        # the UI's display logic uses the last token's first letter
+        # (matches src.solver.menu_solver._color_initial).
+        base = col.split('_')[-1]
+        out.setdefault(name, base[:1].upper() if base else '')
+    return out
+
+
+def _enrich_history_plan(
+    saved: Dict[dt.date, Dict[str, str]], df,
+) -> Dict[dt.date, Dict[str, str]]:
+    """Turn ``{date: {slot: item_base}}`` (history shape) into
+    ``{date: {slot: item_with_color}}`` (UI shape) by looking up each
+    item's color in the loaded Excel *df* and appending ``(C)``.
+
+    Constant slots (white_rice, papad, pickle, chutney) round-trip as-is
+    since they never carried a color suffix in the first place. Items
+    that no longer exist in the ontology fall through without a suffix
+    — the UI handles missing-color gracefully (no color pill).
+    """
+    color_lookup = _build_item_color_lookup(df)
+    out: Dict[dt.date, Dict[str, str]] = {}
+    for d, slots in saved.items():
+        day_out: Dict[str, str] = {}
+        for slot_id, item_base in slots.items():
+            if not item_base:
+                continue
+            if slot_id in CONST_SLOTS:
+                day_out[slot_id] = item_base
+                continue
+            initial = color_lookup.get(item_base, '')
+            day_out[slot_id] = f'{item_base}({initial})' if initial else item_base
+        out[d] = day_out
+    return out
+
+
+@app.route('/api/v1/saved-plan', methods=['GET'])
+@require_api_auth()
+def saved_plan():
+    """Return the saved plan for a client + date range, if one exists.
+
+    Query params:
+        client_name (required): the client to look up.
+        start_date  (optional): YYYY-MM-DD; defaults to today in
+            APP_TZ.
+        num_days    (optional): number of weekdays from start_date;
+            defaults to 5. Sat/Sun are skipped, mirroring /plan.
+
+    Response shape mirrors /plan so the UI can use one code path:
+        {
+          "success": True,
+          "exists": <bool>,           # True iff every requested date
+                                      # has at least one saved row.
+          "covered_dates": [...],     # ISO date strings that DID have
+                                      # saved rows (could be a strict
+                                      # subset of the requested range).
+          "source": "history",
+          "solution": <SolutionFormatter.to_dict() output>,
+        }
+
+    When ``exists`` is False the ``solution`` only contains the days
+    that were partially saved; the caller decides whether to fall back
+    to /plan. We never call the solver from this endpoint — it's a
+    pure read path.
+    """
+    try:
+        client_name = request.args.get('client_name', '').strip()
+        _require_known_client(client_name)
+
+        start_date_str = request.args.get('start_date')
+        num_days = max(
+            MIN_NUM_DAYS,
+            min(MAX_NUM_DAYS, int(request.args.get('num_days', 5))),
+        )
+        start_date = (
+            dt.date.fromisoformat(start_date_str)
+            if start_date_str else today_in_app_tz()
+        )
+        weekday_dates = _weekdays_from(start_date, num_days)
+
+        loader = _get_client_loader()
+        client_cfg = loader.get_client(client_name)
+
+        from src.db import get_supabase
+        sb = get_supabase()
+        raw_saved = HistoryManager.load_saved_plan(
+            sb, client_name, weekday_dates,
+        )
+
+        # Enrich with color suffix so the UI's renderer matches /plan.
+        df, _pools = _get_menu_data()
+        enriched = _enrich_history_plan(raw_saved, df)
+
+        formatter = SolutionFormatter(
+            enriched, weekday_dates,
+            theme_map=client_cfg.theme_map or None,
+        )
+        covered = sorted(d.isoformat() for d in enriched.keys())
+        exists = len(enriched) == len(weekday_dates) and len(enriched) > 0
+
+        return jsonify({
+            'success': True,
+            'exists': exists,
+            'covered_dates': covered,
+            'source': 'history',
+            'solution': formatter.to_dict(),
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error("Failed to load saved plan: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 
@@ -910,32 +1099,46 @@ def delete_client(client_name):
         return _internal_error_response(500)
 
 
-@app.route('/api/v1/validate-pools', methods=['POST'])
+@app.route('/api/v1/diagnose', methods=['POST'])
 @require_api_auth()
-def validate_pools():
-    """Check pool sizes after theme filtering — returns warnings without running solver."""
+def diagnose_plan():
+    """Pre-flight rule diagnostic. Same body shape as /plan but never
+    invokes the solver — returns structured ``rule_diagnostics`` so the
+    UI can show *why* a plan would fail before the user spends solver
+    budget.
+
+    Replaces the old /validate-pools endpoint; pool-size warnings are
+    folded into the same ``rule_diagnostics`` list (look for entries
+    with ``rule_type == 'pool_size'``).
+
+    Response::
+
+        {
+          "success": true,
+          "rule_diagnostics": [{rule, rule_type, severity, phase,
+                                message, suggestion, affected}, …],
+          "summary": {errors, warnings, infos, would_succeed},
+          "pool_warnings": [...]   # back-compat projection, one release
+        }
+    """
     try:
-        data = request.get_json(silent=True) or {}
-        client_name = data.get('client_name')
-        start_date_str = data.get('start_date')
-        num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
-
-        _require_known_client(client_name)
-
-        loader = _get_client_loader()
-        client_cfg = loader.get_client(client_name)
-        df, pools = _get_menu_data()
-        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
-        weekday_dates = _weekdays_from(start_date, num_days)
-        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180, weekday_dates)
-
-        warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
-        return jsonify({'success': True, 'warnings': warnings})
+        inputs = _prepare_solver_inputs(request.get_json() or {})
+        diagnostics, summary = _run_preflight(inputs)
+        _record_diag_metrics(diagnostics)
+        diag_dicts = [d.to_dict() for d in diagnostics]
+        body = {
+            'success': True,
+            'rule_diagnostics': diag_dicts,
+            'summary': summary,
+        }
+        pool_warnings = pool_warnings_projection(diagnostics)
+        if pool_warnings:
+            body['pool_warnings'] = pool_warnings
+        return jsonify(body)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        logger.error("Failed to validate pools: %s", e, exc_info=True)
+        logger.error("Failed to run diagnostics: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 

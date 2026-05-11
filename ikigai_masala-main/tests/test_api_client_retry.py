@@ -152,8 +152,11 @@ class TestClientIntegration:
         assert len(log["post"]) == 2
 
     def test_save_is_not_retried(self, monkeypatch):
-        """menu_history is the one table the client writes to directly;
-        retrying /save would double-insert the weekly rows."""
+        """Server-side /save is overwrite-idempotent (DELETE + INSERT)
+        so a retry would be safe — but the auto-retry path stays off:
+        a user-facing "Plan saved" toast on the second attempt is more
+        confusing than just bubbling the error up so the user can
+        explicitly retry. Pin the single-shot behaviour."""
         responses = iter([
             _fake_response(503, {"success": False, "error": "queue full"}),
         ])
@@ -171,3 +174,67 @@ class TestClientIntegration:
         result = client.get_client_config("X")
         assert result["version"] == 1
         assert len(log["get"]) == 2
+
+    def test_get_saved_plan_retries_on_503(self, monkeypatch):
+        """/saved-plan is a pure read — a transient 503 from a proxy or
+        upstream blip should auto-retry once like every other GET."""
+        responses = iter([
+            _fake_response(503, {"success": False, "error": "blip"}),
+            _fake_response(200, {
+                "success": True, "exists": False, "covered_dates": [],
+                "source": "history", "solution": {},
+            }),
+        ])
+        client, log = self._patch_session(monkeypatch, responses)
+        result = client.get_saved_plan("X", "2026-03-23", num_days=1)
+        assert result["exists"] is False
+        assert len(log["get"]) == 2
+
+    def test_plan_422_raises_rule_diagnostics_blocked_error(self, monkeypatch):
+        """/plan returns 422 with rule_diagnostics_blocked when pre-flight
+        fails. The client must raise the typed exception so the UI can
+        render the structured expander without re-querying.
+        """
+        from ui.api_client import RuleDiagnosticsBlockedError
+        diag = {
+            "rule": "item_cooldown_20d",
+            "rule_type": "item_cooldown",
+            "severity": "error", "phase": "pre_filter",
+            "message": "cooldown banned all candidates",
+            "suggestion": "lower cooldown_days",
+            "affected": {"date": "2026-05-13", "slot": "starter"},
+        }
+        responses = iter([
+            _fake_response(422, {
+                "success": False, "error": "rule_diagnostics_blocked",
+                "message": "Pre-flight blocked the request.",
+                "rule_diagnostics": [diag],
+                "summary": {"errors": 1, "warnings": 0, "infos": 0,
+                            "would_succeed": False},
+            }),
+        ])
+        client, log = self._patch_session(monkeypatch, responses)
+        with pytest.raises(RuleDiagnosticsBlockedError) as exc_info:
+            client.plan("X", "2026-03-23", num_days=1, time_limit_seconds=30)
+        # Diagnostics + summary survive to the caller — UI can render
+        # them directly without a second round-trip.
+        assert exc_info.value.diagnostics == [diag]
+        assert exc_info.value.summary["errors"] == 1
+        # 422 is NOT in _RETRY_STATUSES, so no second call.
+        assert len(log["post"]) == 1
+
+    def test_diagnose_endpoint_retries_on_503(self, monkeypatch):
+        """The new /diagnose endpoint is a pure read, same retry policy
+        as other GET-shaped readbacks."""
+        responses = iter([
+            _fake_response(503, {"success": False, "error": "blip"}),
+            _fake_response(200, {
+                "success": True, "rule_diagnostics": [],
+                "summary": {"errors": 0, "warnings": 0, "infos": 0,
+                            "would_succeed": True},
+            }),
+        ])
+        client, log = self._patch_session(monkeypatch, responses)
+        result = client.diagnose("X", "2026-03-23", num_days=1)
+        assert result["summary"]["would_succeed"] is True
+        assert len(log["post"]) == 2

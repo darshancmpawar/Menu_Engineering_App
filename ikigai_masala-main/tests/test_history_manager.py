@@ -100,42 +100,177 @@ class TestHistoryManager:
         assert result[('2026-03-17', 'rice')] == 'lemon rice'
 
     def test_save_writes_to_supabase(self):
-        """save() inserts long rows + week signature into Supabase tables."""
+        """save() inserts long rows + week signature, and deletes any
+        previous rows for the same (client, dates) first so re-saving
+        produces overwrite semantics."""
+        from tests.fake_supabase import FakeSupabase
+        fake = FakeSupabase(seed={'menu_history': [], 'week_signatures': []})
         plan = {
             dt.date(2026, 3, 16): {'rice': 'jeera rice', 'bread': 'naan'},
         }
         dates = [dt.date(2026, 3, 16)]
 
-        inserts = []
-
-        class _FakeTable:
-            def __init__(self, name):
-                self.name = name
-
-            def insert(self, rows):
-                inserts.append((self.name, rows))
-                return self
-
-            def execute(self):
-                return None
-
-        class _FakeClient:
-            def table(self, name):
-                return _FakeTable(name)
-
         hm = HistoryManager()
         hm.save(plan, dates, 'Rippling', dt.date(2026, 3, 16), 'test_sig',
-                supabase_client=_FakeClient())
+                supabase_client=fake)
 
-        names = [n for n, _ in inserts]
-        assert 'menu_history' in names
-        assert 'week_signatures' in names
-        long_rows = next(rows for n, rows in inserts if n == 'menu_history')
+        long_rows = fake.rows('menu_history')
         assert len(long_rows) == 2  # rice + bread
         assert all(r['client_name'] == 'Rippling' for r in long_rows)
+        sigs = fake.rows('week_signatures')
+        assert len(sigs) == 1
+        assert sigs[0]['week_signature'] == 'test_sig'
+
+    def test_save_overwrites_existing_rows_for_same_dates(self):
+        """A second save for the same (client, dates) replaces the
+        first save's rows rather than appending. The UNIQUE INDEX on
+        menu_history only blocks *identical* duplicates; without the
+        explicit delete, two different items in the same slot for the
+        same date would both be stored — making cooldown + load
+        ambiguous.
+        """
+        from tests.fake_supabase import FakeSupabase
+        fake = FakeSupabase(seed={'menu_history': [], 'week_signatures': []})
+        dates = [dt.date(2026, 3, 16)]
+        hm = HistoryManager()
+
+        # First save.
+        hm.save({dt.date(2026, 3, 16): {'rice': 'jeera rice'}},
+                dates, 'Rippling', dt.date(2026, 3, 16),
+                'sig_a', supabase_client=fake)
+        assert {r['item_base'] for r in fake.rows('menu_history')} == {'jeera rice'}
+        assert len(fake.rows('week_signatures')) == 1
+
+        # Second save with a different item in the same slot — must
+        # leave only the new row.
+        hm.save({dt.date(2026, 3, 16): {'rice': 'biryani'}},
+                dates, 'Rippling', dt.date(2026, 3, 16),
+                'sig_b', supabase_client=fake)
+        items = [r['item_base'] for r in fake.rows('menu_history')]
+        assert items == ['biryani']
+        # Signature row also overwrites, not appends.
+        sigs = fake.rows('week_signatures')
+        assert len(sigs) == 1
+        assert sigs[0]['week_signature'] == 'sig_b'
+
+    def test_save_only_overwrites_for_matching_client(self):
+        """Re-saving for Rippling must not touch Stripe's history rows
+        for the same date — the delete filter is keyed on client_name.
+        """
+        from tests.fake_supabase import FakeSupabase
+        fake = FakeSupabase(seed={
+            'menu_history': [
+                {'id': 1, 'client_name': 'Stripe',
+                 'service_date': '2026-03-16', 'slot': 'rice',
+                 'item_base': 'stripe rice'},
+            ],
+            'week_signatures': [],
+        })
+
+        hm = HistoryManager()
+        hm.save({dt.date(2026, 3, 16): {'rice': 'jeera rice'}},
+                [dt.date(2026, 3, 16)], 'Rippling', dt.date(2026, 3, 16),
+                'sig_a', supabase_client=fake)
+        clients = {r['client_name'] for r in fake.rows('menu_history')}
+        assert clients == {'Stripe', 'Rippling'}
 
     def test_save_requires_supabase_client(self):
         hm = HistoryManager()
         with pytest.raises(ValueError):
             hm.save({}, [], 'Rippling', dt.date(2026, 3, 16), 'sig',
                     supabase_client=None)
+
+
+class TestLoadSavedPlan:
+    """Verify the readback path used by /api/v1/saved-plan."""
+
+    def _seed(self, rows):
+        from tests.fake_supabase import FakeSupabase
+        return FakeSupabase(seed={'menu_history': rows})
+
+    def test_returns_empty_when_no_rows(self):
+        fake = self._seed([])
+        out = HistoryManager.load_saved_plan(
+            fake, 'Rippling', [dt.date(2026, 3, 16)],
+        )
+        assert out == {}
+
+    def test_returns_saved_items_grouped_by_date(self):
+        fake = self._seed([
+            {'id': 1, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'jeera_rice'},
+            {'id': 2, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'bread',
+             'item_base': 'naan'},
+            {'id': 3, 'client_name': 'Rippling',
+             'service_date': '2026-03-17', 'slot': 'rice',
+             'item_base': 'lemon_rice'},
+        ])
+        out = HistoryManager.load_saved_plan(
+            fake, 'Rippling',
+            [dt.date(2026, 3, 16), dt.date(2026, 3, 17)],
+        )
+        assert out[dt.date(2026, 3, 16)] == {
+            'rice': 'jeera_rice', 'bread': 'naan',
+        }
+        assert out[dt.date(2026, 3, 17)] == {'rice': 'lemon_rice'}
+
+    def test_newest_row_wins_per_slot(self):
+        """Legacy data (pre-overwrite) can have multiple rows for the
+        same (date, slot). Highest-id wins so the most recent save is
+        what callers see — matches the human intuition for the
+        'overwrite on save' semantics."""
+        fake = self._seed([
+            {'id': 1, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'old_rice'},
+            {'id': 7, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'new_rice'},
+        ])
+        out = HistoryManager.load_saved_plan(
+            fake, 'Rippling', [dt.date(2026, 3, 16)],
+        )
+        assert out[dt.date(2026, 3, 16)] == {'rice': 'new_rice'}
+
+    def test_filters_other_clients(self):
+        fake = self._seed([
+            {'id': 1, 'client_name': 'Stripe',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'stripe_rice'},
+            {'id': 2, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'rippling_rice'},
+        ])
+        out = HistoryManager.load_saved_plan(
+            fake, 'Rippling', [dt.date(2026, 3, 16)],
+        )
+        assert out[dt.date(2026, 3, 16)] == {'rice': 'rippling_rice'}
+
+    def test_only_returns_dates_with_rows(self):
+        """Caller distinguishes 'fully saved' from 'partial' by checking
+        len(out) vs len(requested_dates). Don't pad missing dates with
+        empty dicts."""
+        fake = self._seed([
+            {'id': 1, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'jeera_rice'},
+        ])
+        out = HistoryManager.load_saved_plan(
+            fake, 'Rippling',
+            [dt.date(2026, 3, 16), dt.date(2026, 3, 17)],
+        )
+        assert list(out.keys()) == [dt.date(2026, 3, 16)]
+
+    def test_empty_dates_is_noop(self):
+        fake = self._seed([
+            {'id': 1, 'client_name': 'Rippling',
+             'service_date': '2026-03-16', 'slot': 'rice',
+             'item_base': 'jeera_rice'},
+        ])
+        assert HistoryManager.load_saved_plan(fake, 'Rippling', []) == {}
+
+    def test_requires_supabase_client(self):
+        with pytest.raises(ValueError):
+            HistoryManager.load_saved_plan(None, 'Rippling', [dt.date(2026, 3, 16)])

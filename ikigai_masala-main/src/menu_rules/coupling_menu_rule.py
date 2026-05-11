@@ -7,7 +7,14 @@ Max 1 rice-bread day per week, max 1 deep-fried veg_dry day per week.
 
 from typing import Dict, Any, List
 from ortools.sat.python import cp_model
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    DiagnoseContext,
+    MenuRuleType,
+)
 
 
 class CouplingMenuRule(BaseMenuRule):
@@ -109,3 +116,77 @@ class CouplingMenuRule(BaseMenuRule):
             model.Add(sum(bread_rb_day) <= 1)
         if vegdry_df_day:
             model.Add(sum(vegdry_df_day) <= 1)
+
+    def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
+        """Coupling constraints are upper bounds (rice-bread ⇒ liquid
+        rice, etc.) so they rarely cause hard infeasibility on their
+        own. The diagnostic value here is calling out **asymmetric
+        data**: a client whose bread pool has rice-bread items but
+        whose rice pool has NO liquid-rice items will silently never
+        pick those rice-breads — and the user's intent ("I added these
+        rice-breads so they'd appear") is lost.
+
+        Emits WARNING per asymmetric pair so the user can either add
+        the missing pair or remove the orphaned data.
+        """
+        diags: List[Diagnostic] = []
+        bread = ctx.pools.get('bread')
+        rice = ctx.pools.get('rice')
+        starter = ctx.pools.get('starter')
+
+        def _flag_count(pool, col):
+            if pool is None or col not in pool.columns:
+                return None
+            return int(pool[col].fillna(0).astype(int).eq(1).sum())
+
+        rb = _flag_count(bread, 'is_rice_bread')
+        liquid = _flag_count(rice, 'is_liquid_rice')
+        fried_starter = _flag_count(starter, 'is_deep_fried_starter')
+
+        if rb and liquid == 0:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.WARNING,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Bread pool has {rb} rice-bread item"
+                    f"{'s' if rb != 1 else ''} but rice pool has 0 "
+                    f"liquid-rice items. The coupling constraint "
+                    f"forbids picking rice-bread without liquid rice, "
+                    f"so those rice-breads will never be selected."
+                ),
+                suggestion=(
+                    "Add at least one liquid-rice item (is_liquid_rice=1) "
+                    "to the rice pool, or remove the rice-bread items if "
+                    "the asymmetry is intentional."
+                ),
+                affected={
+                    'is_rice_bread_count': rb,
+                    'is_liquid_rice_count': liquid,
+                },
+            ))
+
+        if rb and fried_starter == 0 and starter is not None:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.WARNING,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Bread pool has {rb} rice-bread item"
+                    f"{'s' if rb != 1 else ''} but starter pool has 0 "
+                    f"deep-fried starters. The coupling constraint "
+                    f"forbids picking rice-bread without a deep-fried "
+                    f"starter, so those rice-breads will never be "
+                    f"selected."
+                ),
+                suggestion=(
+                    "Add at least one deep-fried starter "
+                    "(is_deep_fried_starter=1) to the starter pool, or "
+                    "remove the rice-bread items."
+                ),
+                affected={
+                    'is_rice_bread_count': rb,
+                    'is_deep_fried_starter_count': fried_starter,
+                },
+            ))
+        return diags

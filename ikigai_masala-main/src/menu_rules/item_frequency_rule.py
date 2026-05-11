@@ -11,7 +11,15 @@ not total occurrences.  For slots with count=1/day this is equivalent.
 from typing import Dict, Any, List, Optional
 
 from ortools.sat.python import cp_model
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    DiagnoseContext,
+    MenuRuleType,
+)
+from src.constants import BASE_SLOT_NAMES
 from ..preprocessor.column_mapper import _norm_str
 
 
@@ -144,3 +152,80 @@ class ItemFrequencyRule(BaseMenuRule):
             model.Add(sum(day_vars) <= self.max_per_week)
         if self.min_per_week is not None:
             model.Add(sum(day_vars) >= self.min_per_week)
+
+    def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
+        """Per-week, count how many dates have at least one item
+        matching the selector across the configured slot(s).
+
+        Emits ERROR when ``min_per_week`` cannot be met because there
+        aren't enough qualifying days (the selector doesn't match any
+        item in any active slot pool on enough dates).
+        """
+        diags: List[Diagnostic] = []
+        if not self.sel_kind or self.min_per_week is None or self.min_per_week == 0:
+            return diags
+        scoped_slots = (
+            [self.base_slot]
+            if self.base_slot
+            else (ctx.active_base_slots or list(BASE_SLOT_NAMES))
+        )
+
+        qualifying_days = 0
+        for d in ctx.dates:
+            day_has_match = False
+            for base in scoped_slots:
+                if (d, base) in ctx.skip_cells:
+                    continue
+                pool = ctx.pools.get(base)
+                if pool is None or len(pool) == 0:
+                    continue
+                if self._pool_has_match(pool):
+                    day_has_match = True
+                    break
+            if day_has_match:
+                qualifying_days += 1
+
+        if qualifying_days < self.min_per_week:
+            sel_summary = f"{self.sel_kind}={self.sel_value!r}"
+            scope = self.base_slot or "any active slot"
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.ERROR,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"item_frequency requires ≥{self.min_per_week} day"
+                    f"{'s' if self.min_per_week != 1 else ''} matching "
+                    f"{sel_summary} in {scope}, but only "
+                    f"{qualifying_days} of {len(ctx.dates)} dates can "
+                    f"satisfy it."
+                ),
+                suggestion=(
+                    f"Add items matching {sel_summary} to the relevant "
+                    f"slot pool, or lower min_per_week in the config."
+                ),
+                affected={
+                    'selector_kind': self.sel_kind,
+                    'selector_value': self.sel_value,
+                    'base_slot': self.base_slot,
+                    'min_per_week': self.min_per_week,
+                    'qualifying_days': qualifying_days,
+                    'total_dates': len(ctx.dates),
+                },
+            ))
+        return diags
+
+    def _pool_has_match(self, pool) -> bool:
+        """Vectorised version of ``_row_matches`` over a pool DataFrame."""
+        if self.sel_kind == 'flag':
+            if self.sel_value not in pool.columns:
+                return False
+            return bool((pool[self.sel_value].fillna(0).astype(int) == 1).any())
+        col_map = {
+            'sub_category': 'sub_category',
+            'item': 'item',
+            'key_ingredient': 'key_ingredient',
+        }
+        col = col_map.get(self.sel_kind, '')
+        if not col or col not in pool.columns:
+            return False
+        return bool((pool[col].astype(str).map(_norm_str) == self.sel_value).any())

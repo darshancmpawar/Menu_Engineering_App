@@ -102,6 +102,45 @@ performance, testing, and documentation.
 4. **In-memory rate limiter** is per-process; documented as a future
    swap to Redis when scaling out workers. Acceptable today.
 
+### Follow-up landed in this branch
+
+After the original audit, three product-level changes landed on this
+branch on top of the audit fixes:
+
+- **Save now overwrites instead of appending.** Re-saving a week with
+  different items used to leave both rows in `menu_history`, breaking
+  the cooldown rules' single-source-of-truth assumption. `HistoryManager.save`
+  now DELETEs prior rows for the same `(client_name, dates)` before
+  INSERTing, and the same for `week_signatures` keyed on
+  `(client_name, week_start)`.
+- **Generate replays saved plans.** New `GET /api/v1/saved-plan`
+  endpoint + `HistoryManager.load_saved_plan` static method. Streamlit's
+  Generate button hits this first; if every requested weekday is
+  covered, it shows the saved plan with a "Loaded from history" badge
+  instead of running the solver. Falls back to `/plan` for any partial
+  / missing coverage.
+- **Pre-flight rule diagnostics.** New `POST /api/v1/diagnose` endpoint
+  + `Diagnostic` / `DiagnoseContext` / `run_diagnostics` model in
+  `src/menu_rules/`. Every high-signal rule now implements `diagnose()`
+  (10 rules: cuisine, theme_day, theme_slot_filter, item_cooldown,
+  ricebread_gap, premium, coupling, ingredient_ban, item_frequency,
+  nonveg_biryani_weekly) — they inspect pools + history *without*
+  running CP-SAT and return structured findings explaining what would
+  fail and how to fix it. `/api/v1/plan` runs the same pass first and
+  returns **HTTP 422** with structured diagnostics if any `error`
+  severity is present, skipping the solver entirely. The old
+  `/validate-pools` endpoint is **removed** — its pool-size warnings
+  are folded into `rule_diagnostics` as `rule_type == "pool_size"`
+  entries. Streamlit renders an inline "Diagnostics" expander above
+  the plan table, auto-expanded on errors. Most concretely: the
+  chinese-starter cooldown scenario now surfaces as *"Item cooldown
+  (20 days) banned all 8 starter candidates on 2026-05-13 (chinese).
+  Pool is empty after cooldown."* in <1 second, instead of a generic
+  500 after the multi-restart loop exhausts. A buggy `diagnose()`
+  implementation degrades to a single `warning` diagnostic — never
+  an `error` — so no rule can self-promote into the pre-flight gate
+  and freeze the planner.
+
 5. **No CSRF on Streamlit-served `/auth/login`** — Streamlit's XSRF
    guard covers WebSocket + form submissions; the API itself runs on
    loopback inside the container. Adding API-level CSRF would be
@@ -223,36 +262,54 @@ See `docs/architecture.md` for the canonical version with mermaid diagrams.
 
 ### UI → API → DB flow (Generate plan)
 
+The Generate button now reads history first:
+
 ```
 1. User clicks "Generate Menu Plan" in app.py
-2. ui/api_client.MenuApiClient.plan() → POST /api/v1/plan (Bearer token)
-3. api/app.py::plan_menu — solver_gate decorator queues if 2 active solves
-4. _prepare_solver_inputs():
-     ├─ ClientConfigLoader.get_client(name) — Supabase live read
-     ├─ ExcelReader → ColumnMapper → DataCleanser → PoolBuilder
-     ├─ MenuRuleLoader.load_for_client() — generic + per-client rules
-     └─ HistoryManager — pulls last N days of menu_history + week_sigs
-5. MenuSolver.solve() — multi-restart CP-SAT; widens cap on infeasibility
-6. SolutionFormatter.to_dict() — date → {theme, day_type, items: {slot: {...}}}
-7. Response: { success, solution, pool_warnings?, rule_warnings? }
-8. app.py renders the menu table; user can Save / Regenerate / Export CSV
+2. ui/api_client.MenuApiClient.get_saved_plan() → GET /api/v1/saved-plan
+   (pure read — never invokes the solver)
+3. api/app.py::saved_plan:
+     ├─ HistoryManager.load_saved_plan(sb, client, dates)
+     │     SELECT FROM menu_history WHERE client_name=... AND
+     │     service_date IN (dates), newest-id-wins per (date, slot)
+     └─ _enrich_history_plan(saved, df) — re-attach color suffix from
+        the Excel ontology so the UI renderer matches /plan exactly
+4. If response.exists is True (all requested weekdays covered):
+     → render with a "Loaded from history" badge.
+   Otherwise:
+     → fall through to /plan as below.
+5. POST /api/v1/plan (solver path, unchanged from prior revisions):
+     ├─ solver_gate decorator queues if 2 active solves
+     ├─ _prepare_solver_inputs() — Supabase config, Excel pools,
+     │   menu_rules, history-context (banned items + recent sigs)
+     ├─ MenuSolver.solve() — multi-restart CP-SAT
+     └─ SolutionFormatter.to_dict()
+6. app.py renders the menu table with a "Freshly generated" badge.
 ```
 
-### Database writeback flow (Save)
+### Database writeback flow (Save — overwrite semantics)
 
 ```
 1. User clicks "Save to History" in app.py
 2. ui/api_client.MenuApiClient.save() → POST /api/v1/save
-   (single-shot, no retry — idempotency comes from the UNIQUE INDEX)
+   (single-shot — overwrite-idempotent server-side, but auto-retry is
+    off to avoid duplicate "saved" toasts)
 3. api/app.py::save_plan → HistoryManager.compute_week_signature(plan)
-4. HistoryManager.save():
-     ├─ INSERT N rows into menu_history (UNIQUE on
-     │    (client_name, service_date, slot, item_base) prevents dupes)
-     └─ INSERT 1 row into week_signatures (UNIQUE on
-          (client_name, week_start, week_signature) prevents dupes)
+4. HistoryManager.save() — DELETE-then-INSERT for both tables:
+     ├─ DELETE FROM menu_history
+     │    WHERE client_name=... AND service_date IN (dates)
+     ├─ INSERT new rows into menu_history
+     ├─ DELETE FROM week_signatures
+     │    WHERE client_name=... AND week_start=...
+     └─ INSERT 1 row into week_signatures
 5. Response: { success, message }
-6. app.py shows toast confirmation
+6. app.py flips plan_source → "history" and shows a toast.
 ```
+
+The UNIQUE INDEX on `(client_name, service_date, slot, item_base)` is
+still the safety net against double-insert from a network retry mid-
+save; the explicit DELETE handles the "same slot, different item"
+case that the index can't catch.
 
 ### Authentication flow (Login)
 

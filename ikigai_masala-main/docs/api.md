@@ -18,8 +18,9 @@ accept or supply it to correlate traces across logs.
 | GET    | `/clients` | List client names |
 | POST   | `/plan` | Generate a plan |
 | POST   | `/regenerate` | Regenerate selected cells |
-| POST   | `/save` | Persist plan to history |
-| POST   | `/validate-pools` | Dry-run pool sizes (no solve) |
+| POST   | `/save` | Persist plan to history (overwrites prior rows for the same `(client, dates)`) |
+| GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
+| POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
 | GET    | `/editor-metadata` | Slot / theme metadata for the editor UI |
 | GET    | `/client-config/<name>` | Read a client's config (returns `ETag: "<version>"`) |
 | PUT    | `/client-config/<name>` | Update a client's config (requires `version` body field or `If-Match` header) |
@@ -100,6 +101,137 @@ Counter names follow Prometheus conventions so a future swap to
 `rule_warnings` only appears when one or more soft rules failed during the
 winning solve attempt. Each entry carries `attempt_seed` so the failure can
 be reproduced.
+
+---
+
+## Saved-plan response
+
+`GET /api/v1/saved-plan?client_name=<name>&start_date=YYYY-MM-DD&num_days=<n>`
+
+Returns the same `solution` shape as `/plan`, sourced from `menu_history`
+instead of the solver. Used by Streamlit's **Generate** button so a user
+who has already saved a plan for the selected dates sees that exact plan
+back, deterministically. Never invokes the solver.
+
+```json
+{
+  "success": true,
+  "exists": true,
+  "covered_dates": ["2026-03-23", "2026-03-24"],
+  "source": "history",
+  "solution": {
+    "2026-03-23": {
+      "theme": "Mix of South + North",
+      "day_type": "mix",
+      "items": {
+        "rice": { "display_name": "Flavor Rice",
+                  "item": "jeera_rice(Y)", "item_base": "jeera_rice" }
+      }
+    }
+  }
+}
+```
+
+- `exists` is `true` iff **every** requested weekday has at least one
+  saved row. `false` covers both "nothing saved" and "partially saved"
+  cases — the Streamlit UI falls back to `POST /plan` when `exists` is
+  false. `covered_dates` shows which dates did have rows, so a future
+  UI revision can offer "load partial + generate the rest".
+- Color suffixes (`(Y)`, `(R)`, …) on `item` are re-attached server-side
+  by looking each `item_base` up in the loaded Excel ontology, so the
+  UI's renderer doesn't need a code branch.
+- The plan's `theme` / `day_type` come from the **current** client
+  config — i.e. if the day-theme map was changed after the plan was
+  saved, the loaded plan shows the new theme labels. The underlying
+  items don't move.
+
+---
+
+## Pre-flight diagnostics
+
+`POST /api/v1/diagnose` (and the same pass embedded in `POST /api/v1/plan`)
+runs every registered rule's `diagnose()` method against the request's
+client config + history + pool state, returning structured findings
+**without running the CP-SAT solver**.
+
+```json
+{
+  "success": true,
+  "rule_diagnostics": [
+    {
+      "rule": "item_cooldown_20d",
+      "rule_type": "item_cooldown",
+      "severity": "error",
+      "phase": "pre_filter",
+      "message": "Item cooldown (20 days) banned all 8 starter candidates on 2026-05-13 (chinese). Pool is empty after cooldown.",
+      "suggestion": "Lower cooldown_days for this rule, add more starter items to the ontology, or choose a later start date so recent history falls outside the cooldown window.",
+      "affected": {
+        "date": "2026-05-13", "slot": "starter", "day_type": "chinese",
+        "banned_count": 8, "pool_size_before": 8, "pool_size_after": 0,
+        "cooldown_days": 20
+      }
+    }
+  ],
+  "summary": {"errors": 1, "warnings": 3, "infos": 2, "would_succeed": false},
+  "pool_warnings": ["Chinese Tuesday 13 May: only 0 starter items available, need 1"]
+}
+```
+
+### Severity model
+
+- `error` — solver would **fail**. `POST /api/v1/plan` short-circuits to **HTTP 422** before invoking CP-SAT.
+- `warning` — solver may succeed but the configuration is risky (tight pools, silent fallback after a theme filter empties a pool, asymmetric coupling data).
+- `info` — notable but expected (e.g. "cooldown banned 4/12 items, pool still healthy"; "ingredient ban removes 3 mushroom items").
+
+`summary.would_succeed` is `false` iff any diagnostic carries `severity=error`.
+
+### /plan pre-flight gate (HTTP 422)
+
+When `/api/v1/plan` runs and pre-flight finds at least one `error`:
+
+```json
+HTTP/1.1 422 Unprocessable Entity
+{
+  "success": false,
+  "error": "rule_diagnostics_blocked",
+  "message": "Pre-flight diagnostics found 1 blocking issue for Rippling; solver skipped.",
+  "rule_diagnostics": [...],
+  "summary": {"errors": 1, ...},
+  "pool_warnings": [...]
+}
+```
+
+`MenuApiClient._parse_response` recognises this envelope and raises
+`RuleDiagnosticsBlockedError(diagnostics, summary)` — a subclass of
+`RuntimeError` — so the Streamlit UI can render the diagnostics
+expander directly without a second round-trip.
+
+### pool_warnings (back-compat)
+
+`pool_warnings` is now a string-projection of the `rule_diagnostics`
+entries with `rule_type == "pool_size"`. The key stays in the response
+for one release so older Streamlit builds keep rendering something;
+new code should consume `rule_diagnostics` directly.
+
+The old `POST /api/v1/validate-pools` endpoint is **removed** — its
+surface is fully subsumed by `/diagnose`.
+
+---
+
+## Save semantics
+
+`POST /api/v1/save` writes **overwrite** to `menu_history` and
+`week_signatures`: any rows previously stored for the same
+`(client_name, service_date)` (and `(client_name, week_start)` for
+signatures) are deleted before the new rows are inserted. Re-saving the
+same week therefore replaces the prior plan instead of accumulating.
+This is what makes the Generate → load-from-history flow deterministic:
+the latest save is always the canonical answer.
+
+The single-shot retry policy in `MenuApiClient.save()` is unchanged —
+even though server-side `/save` is now idempotent on retry, a popped
+"Plan saved" toast on a silent second attempt is more confusing than
+just bubbling the error and letting the user retry explicitly.
 
 ---
 

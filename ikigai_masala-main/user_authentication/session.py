@@ -15,7 +15,8 @@ _TOKEN_KEY = "auth_token"
 # Keys managed by the planner that should be cleared on logout
 _PLANNER_KEYS = [
     "plan", "plan_dates", "day_types", "pool_warnings",
-    "client_name", "changes_log", "view",
+    "client_name", "changes_log", "view", "plan_source",
+    "rule_diagnostics", "diagnostics_summary",
     "flask_started",  # keep backend running but reset UI state
 ]
 
