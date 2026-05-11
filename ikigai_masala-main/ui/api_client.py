@@ -21,6 +21,24 @@ _RETRY_BACKOFF_MIN_SEC = 0.2
 _RETRY_BACKOFF_MAX_SEC = 0.7
 
 
+class RuleDiagnosticsBlockedError(RuntimeError):
+    """Raised by ``_parse_response`` when the server returned 422 with
+    ``error == 'rule_diagnostics_blocked'``.
+
+    Carries the structured ``rule_diagnostics`` list + ``summary`` dict
+    so the Streamlit UI can render the diagnostics expander without
+    needing a second API round-trip. The default str() of the
+    exception is the human-readable server message — works as a plain
+    RuntimeError for any caller that doesn't know about the subclass.
+    """
+
+    def __init__(self, message: str, diagnostics: List[Dict[str, Any]],
+                 summary: Dict[str, Any]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
+        self.summary = summary
+
+
 def _parse_response(resp: requests.Response, default_error: str) -> Dict[str, Any]:
     """Decode a JSON API response and raise on any non-success.
 
@@ -28,9 +46,28 @@ def _parse_response(resp: requests.Response, default_error: str) -> Dict[str, An
     server returned HTML or a non-JSON body (for example a 502 from an
     upstream proxy), ``data`` becomes ``{}`` and the fallback message is
     built from the default prefix and status code.
+
+    A 422 with ``error == 'rule_diagnostics_blocked'`` raises a
+    :class:`RuleDiagnosticsBlockedError` (subclass of RuntimeError) so
+    callers that catch RuntimeError keep working, but the UI can
+    isinstance-check to render the diagnostics expander directly.
     """
     ct = resp.headers.get("content-type", "")
     data: Dict[str, Any] = resp.json() if ct.startswith("application/json") else {}
+    if (
+        resp.status_code == 422
+        and data.get("error") == "rule_diagnostics_blocked"
+    ):
+        # The 422 path carries structured diagnostics in the body —
+        # expose them via the typed exception. The .message defaults
+        # to the server's human-readable text so plain RuntimeError
+        # handlers still get something useful.
+        raise RuleDiagnosticsBlockedError(
+            data.get("message")
+            or "Pre-flight diagnostics blocked the request.",
+            diagnostics=data.get("rule_diagnostics") or [],
+            summary=data.get("summary") or {},
+        )
     if not resp.ok or not data.get("success"):
         raise RuntimeError(data.get("error", f"{default_error} ({resp.status_code})"))
     return data
@@ -184,6 +221,32 @@ class MenuApiClient:
             headers=self._auth_headers(),
         )
         return _parse_response(resp, "Save failed")
+
+    def diagnose(
+        self, client_name: str, start_date: str, num_days: int = 5,
+    ) -> Dict[str, Any]:
+        """Run pre-flight diagnostics for *(client, start_date, num_days)*.
+
+        Never invokes the solver. Returns the structured envelope:
+        ``{success, rule_diagnostics, summary, pool_warnings?}``.
+
+        Used by Streamlit to dry-run a config before committing solver
+        time, and by the unit tests that verify /diagnose and /plan's
+        pre-flight produce identical diagnostics.
+        """
+        payload = {
+            "client_name": client_name,
+            "start_date": start_date,
+            "num_days": num_days,
+        }
+
+        def _do():
+            return self.session.post(
+                f"{self.base_url}/api/v1/diagnose", json=payload,
+                timeout=15, headers=self._auth_headers(),
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        return _parse_response(resp, "Diagnose failed")
 
     def get_saved_plan(
         self, client_name: str, start_date: str, num_days: int = 5,

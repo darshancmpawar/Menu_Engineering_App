@@ -26,7 +26,7 @@ import time
 
 import streamlit as st
 
-from ui.api_client import MenuApiClient
+from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
 from ui.formatters import (
     display_label_for_slot_id,
     flatten_api_solution,
@@ -297,8 +297,15 @@ _SESSION_DEFAULTS = {
     # "history" when the current plan was loaded from /saved-plan,
     # "solver" when it came from /plan, "modified" once the user has
     # regenerated a cell (so the on-screen plan no longer matches the
-    # DB version). Drives the "Saved" / "New" badge on the page header.
+    # DB version), "preflight_blocked" when the diagnostic gate stopped
+    # the solver from running. Drives the badge on the page header.
     "plan_source": None,
+    # Pre-flight rule_diagnostics from the most recent /plan or
+    # /saved-plan response (or from a RuleDiagnosticsBlockedError).
+    # Empty list = nothing to show. Rendered as the inline expander
+    # above the plan table.
+    "rule_diagnostics": [],
+    "diagnostics_summary": None,
 }
 for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
@@ -404,7 +411,97 @@ _SOURCE_BADGES = {
                  "No saved plan for these dates — solver produced this from scratch."),
     "modified": ("#2a1508", "#fdba74", "Modified — unsaved",
                  "You regenerated at least one cell since this plan was loaded."),
+    "preflight_blocked": ("#3b1114", "#fca5a5", "Pre-flight blocked",
+                 "Diagnostic checks found a guaranteed failure; solver skipped."),
 }
+
+
+# bg, fg, label per Diagnostic severity (matches docs/api.md examples).
+_SEVERITY_STYLE = {
+    "error":   ("#3b1114", "#fca5a5", "Error"),
+    "warning": ("#2a1508", "#fdba74", "Warning"),
+    "info":    ("#0f1a2e", "#93c5fd", "Info"),
+}
+
+
+def _render_diagnostics_expander(diagnostics, summary):
+    """Render the inline 'Diagnostics' expander above the plan table.
+
+    Auto-expanded when any error is present (the user must act);
+    collapsed otherwise. Sectioned by severity so errors are visible
+    first. Reuses the design tokens from ``ui/styles.py``.
+    """
+    if not diagnostics:
+        return
+    has_error = bool(summary and summary.get("errors", 0)) or any(
+        d.get("severity") == "error" for d in diagnostics
+    )
+    counts = []
+    if summary:
+        if summary.get("errors"):
+            counts.append(f"{summary['errors']} error"
+                          f"{'s' if summary['errors'] != 1 else ''}")
+        if summary.get("warnings"):
+            counts.append(f"{summary['warnings']} warning"
+                          f"{'s' if summary['warnings'] != 1 else ''}")
+        if summary.get("infos"):
+            counts.append(f"{summary['infos']} info")
+    label = (
+        f"Diagnostics ({', '.join(counts)})" if counts else "Diagnostics"
+    )
+
+    with st.expander(label, expanded=has_error):
+        # Group by severity so errors come first regardless of how the
+        # server sorted them.
+        order = ("error", "warning", "info")
+        grouped = {sev: [d for d in diagnostics if d.get("severity") == sev] for sev in order}
+        for sev in order:
+            items = grouped[sev]
+            if not items:
+                continue
+            bg, fg, sev_label = _SEVERITY_STYLE.get(sev, ("#27272a", "#a1a1aa", sev.title()))
+            st.markdown(
+                f'<p style="font-size:0.85rem;font-weight:700;color:{fg};'
+                f'margin:0.5rem 0 0.4rem;">{sev_label}'
+                f' ({len(items)})</p>',
+                unsafe_allow_html=True,
+            )
+            for d in items:
+                rule_pill = html.escape(d.get("rule_type") or d.get("rule") or "?")
+                msg = html.escape(d.get("message") or "")
+                suggestion = html.escape(d.get("suggestion") or "")
+                affected = d.get("affected") or {}
+                chips = []
+                # Surface the most commonly-useful affected fields as
+                # chips; everything else stays inside ``affected`` for
+                # the API surface but isn't visualised.
+                for k in ("date", "day_type", "slot"):
+                    if k in affected:
+                        chips.append(
+                            f'<span style="background:#27272a;color:#a1a1aa;'
+                            f'border-radius:99px;padding:1px 8px;font-size:0.65rem;'
+                            f'margin-right:4px;">{html.escape(str(affected[k]))}</span>'
+                        )
+                chip_html = ''.join(chips)
+                st.markdown(
+                    f'<div style="background:{bg};border-left:3px solid {fg};'
+                    f'padding:0.55rem 0.8rem;border-radius:8px;'
+                    f'margin-bottom:0.45rem;">'
+                    f'<div style="display:flex;align-items:center;gap:0.45rem;'
+                    f'margin-bottom:0.2rem;">'
+                    f'<span style="background:{fg};color:{bg};font-weight:700;'
+                    f'font-size:0.6rem;letter-spacing:0.04em;text-transform:uppercase;'
+                    f'padding:1px 7px;border-radius:99px;">{rule_pill}</span>'
+                    f'{chip_html}'
+                    f'</div>'
+                    f'<div style="color:#fafafa;font-size:0.85rem;'
+                    f'line-height:1.4;">{msg}</div>'
+                    + (f'<div style="color:#a1a1aa;font-size:0.75rem;'
+                       f'margin-top:0.25rem;">Fix: {suggestion}</div>'
+                       if suggestion else '')
+                    + '</div>',
+                    unsafe_allow_html=True,
+                )
 
 
 with _hdr_col1:
@@ -481,6 +578,8 @@ if generate_clicked:
                 st.session_state.changes_log = []
                 st.session_state.pool_warnings = []
                 st.session_state.plan_source = "history"
+                st.session_state.rule_diagnostics = []
+                st.session_state.diagnostics_summary = None
                 st.rerun()
         else:
             with st.spinner(f"Generating plan for {selected_client}..."):
@@ -499,6 +598,29 @@ if generate_clicked:
                     st.session_state.changes_log = []
                     st.session_state.pool_warnings = result.get("pool_warnings", [])
                     st.session_state.plan_source = "solver"
+                    # Pre-flight diagnostics from the solver path —
+                    # may be empty, may carry warnings / info entries
+                    # that should still show in the expander.
+                    st.session_state.rule_diagnostics = (
+                        result.get("rule_diagnostics") or []
+                    )
+                    st.session_state.diagnostics_summary = (
+                        result.get("summary")
+                    )
+                    st.rerun()
+                except RuleDiagnosticsBlockedError as e:
+                    # Pre-flight gate fired. Stash the structured
+                    # diagnostics and show the expander on the next
+                    # render — no plan table, badge = preflight_blocked.
+                    st.session_state.plan = None
+                    st.session_state.plan_dates = []
+                    st.session_state.day_types = {}
+                    st.session_state.client_name = selected_client
+                    st.session_state.changes_log = []
+                    st.session_state.pool_warnings = []
+                    st.session_state.plan_source = "preflight_blocked"
+                    st.session_state.rule_diagnostics = e.diagnostics or []
+                    st.session_state.diagnostics_summary = e.summary or None
                     st.rerun()
                 except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                     st.error(f"Generation failed: {e}")
@@ -510,6 +632,28 @@ if generate_clicked:
 # ---------------------------------------------------------------------------
 plan = st.session_state.plan
 plan_dates = st.session_state.plan_dates
+
+# Diagnostics expander renders above the plan table (or instead of the
+# empty state, when pre-flight blocked the solver). Reads the stashed
+# rule_diagnostics + summary from the most recent /plan response or
+# RuleDiagnosticsBlockedError.
+_render_diagnostics_expander(
+    st.session_state.get("rule_diagnostics") or [],
+    st.session_state.get("diagnostics_summary"),
+)
+
+# Pre-flight-blocked: no plan rendered, but a clear CTA + the
+# diagnostics expander already rendered above.
+if (
+    not plan
+    and st.session_state.get("plan_source") == "preflight_blocked"
+):
+    st.warning(
+        "Pre-flight diagnostics found a guaranteed failure for these "
+        "dates. Fix the issues above (or change the dates / client) "
+        "and try again."
+    )
+    st.stop()
 
 if plan and plan_dates:
     if st.session_state.get('save_success_msg'):
@@ -639,6 +783,8 @@ if plan and plan_dates:
             st.session_state.plan_dates = []
             st.session_state.changes_log = []
             st.session_state.plan_source = None
+            st.session_state.rule_diagnostics = []
+            st.session_state.diagnostics_summary = None
             st.rerun()
 
     # Regeneration

@@ -305,6 +305,76 @@ class TestPlanEndpoint:
         assert data['success'] is True
         assert 'solution' in data
         assert len(data['solution']) == 1
+        # Pre-flight surface always rides along on the 200 path so the
+        # UI can render info/warning entries even on a successful plan.
+        assert 'rule_diagnostics' in data
+        assert 'summary' in data
+        assert data['summary']['would_succeed'] is True
+
+
+class TestDiagnoseEndpoint:
+    """Coverage for the new /api/v1/diagnose pre-flight endpoint. The
+    solver is never invoked here; we just verify the structured
+    diagnostic envelope.
+    """
+
+    def test_requires_known_client(self, client, auth_headers, fake_supabase):
+        resp = client.post('/api/v1/diagnose', json={
+            'client_name': 'NotAClient',
+            'start_date': '2026-03-23', 'num_days': 1,
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert 'Unknown client' in resp.get_json()['error']
+
+    def test_returns_structured_envelope(self, client, auth_headers, fake_supabase):
+        resp = client.post('/api/v1/diagnose', json={
+            'client_name': 'Rippling',
+            'start_date': '2026-03-23', 'num_days': 1,
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['success'] is True
+        assert 'rule_diagnostics' in body
+        assert 'summary' in body
+        # Summary must carry the four canonical keys so the UI's badge
+        # rendering doesn't have to .get() with defaults.
+        for key in ('errors', 'warnings', 'infos', 'would_succeed'):
+            assert key in body['summary']
+
+    def test_diagnose_matches_plan_preflight_for_same_body(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """Drift guard: /diagnose and /plan's pre-flight pass share the
+        same _run_preflight call, so identical bodies must yield
+        identical diagnostics. A divergence here would mean a user
+        could pass /diagnose then have /plan still 422 — which is the
+        exact UX bug we're avoiding.
+        """
+        body = {
+            'client_name': 'Rippling',
+            'start_date': '2026-03-23', 'num_days': 1,
+        }
+        diag_resp = client.post('/api/v1/diagnose', json=body,
+                                headers=auth_headers)
+        # /plan also runs the same pre-flight and emits identical
+        # diagnostics — needs time_limit_seconds for the solver, but
+        # the solver shouldn't run if pre-flight errors. In the fake
+        # supabase fixture no history is seeded, so no errors expected.
+        plan_resp = client.post('/api/v1/plan', json={
+            **body, 'time_limit_seconds': 30,
+        }, headers=auth_headers)
+        assert diag_resp.status_code == 200
+        # /plan either runs to 200 (no errors) or returns 422 with
+        # rule_diagnostics. Either way the diagnostic *list* must match.
+        diag_list = diag_resp.get_json()['rule_diagnostics']
+        plan_list = plan_resp.get_json().get('rule_diagnostics', [])
+        # Compare as tuple of (rule, severity, message) — affected
+        # carries pool counts that may shift if anything resamples.
+        def _key(d):
+            return (d['rule'], d['severity'], d['message'])
+        assert sorted(_key(d) for d in diag_list) == sorted(
+            _key(d) for d in plan_list
+        )
 
 
 class TestRegenerateEndpoint:

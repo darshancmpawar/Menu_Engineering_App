@@ -104,7 +104,7 @@ performance, testing, and documentation.
 
 ### Follow-up landed in this branch
 
-After the original audit, two product-level changes landed on this
+After the original audit, three product-level changes landed on this
 branch on top of the audit fixes:
 
 - **Save now overwrites instead of appending.** Re-saving a week with
@@ -119,6 +119,27 @@ branch on top of the audit fixes:
   covered, it shows the saved plan with a "Loaded from history" badge
   instead of running the solver. Falls back to `/plan` for any partial
   / missing coverage.
+- **Pre-flight rule diagnostics.** New `POST /api/v1/diagnose` endpoint
+  + `Diagnostic` / `DiagnoseContext` / `run_diagnostics` model in
+  `src/menu_rules/`. Every high-signal rule now implements `diagnose()`
+  (10 rules: cuisine, theme_day, theme_slot_filter, item_cooldown,
+  ricebread_gap, premium, coupling, ingredient_ban, item_frequency,
+  nonveg_biryani_weekly) — they inspect pools + history *without*
+  running CP-SAT and return structured findings explaining what would
+  fail and how to fix it. `/api/v1/plan` runs the same pass first and
+  returns **HTTP 422** with structured diagnostics if any `error`
+  severity is present, skipping the solver entirely. The old
+  `/validate-pools` endpoint is **removed** — its pool-size warnings
+  are folded into `rule_diagnostics` as `rule_type == "pool_size"`
+  entries. Streamlit renders an inline "Diagnostics" expander above
+  the plan table, auto-expanded on errors. Most concretely: the
+  chinese-starter cooldown scenario now surfaces as *"Item cooldown
+  (20 days) banned all 8 starter candidates on 2026-05-13 (chinese).
+  Pool is empty after cooldown."* in <1 second, instead of a generic
+  500 after the multi-restart loop exhausts. A buggy `diagnose()`
+  implementation degrades to a single `warning` diagnostic — never
+  an `error` — so no rule can self-promote into the pre-flight gate
+  and freeze the planner.
 
 5. **No CSRF on Streamlit-served `/auth/login`** — Streamlit's XSRF
    guard covers WebSocket + form submissions; the API itself runs on

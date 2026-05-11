@@ -54,6 +54,13 @@ from src.client import ClientConfigLoader
 from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: F401 — surfaced in editor-metadata response
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
+from src.menu_rules import (
+    DiagnoseContext,
+    run_diagnostics,
+    summarize as _summarize_diags,
+    has_blocking_errors,
+    pool_warnings_projection,
+)
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -485,58 +492,65 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
     )
 
 
-def _validate_pools(pools, solver_config, menu_rules, dates, skip_cells=None):
-    """Check pool sizes after theme filtering vs required slot counts.
+def _build_diagnose_context(inputs: SolverInputs) -> DiagnoseContext:
+    """Project the SolverInputs bundle into a DiagnoseContext the
+    rule diagnose() methods can consume.
 
-    Returns a list of warning strings for any (day, slot) where the filtered
-    pool is smaller than needed.  An empty list means no issues detected.
+    Computes the per-date day_types map up front (the rules want
+    O(1) lookup, not repeated weekday_type_for_config calls), and
+    surfaces the client's active base slots so diagnose() iterates
+    over the slots that will actually be solved (not the global
+    BASE_SLOT_NAMES list).
     """
-    warnings = []
-    base_slots = solver_config.active_base_slots or list(BASE_SLOT_NAMES)
-    slot_counts = solver_config.slot_counts or {s: 1 for s in base_slots}
-
-    filter_ctx_base = {
-        'cfg': solver_config,
-        'banned_by_date': {},
-        'ricebread_ban_day': {},
-        'pools': pools,
+    day_types = {
+        d: _weekday_type_cfg(d, inputs.cfg.theme_map)
+        for d in inputs.weekday_dates
     }
+    active_base = inputs.cfg.active_base_slots
+    return DiagnoseContext(
+        pools=inputs.pools,
+        dates=inputs.weekday_dates,
+        day_types=day_types,
+        cfg=inputs.cfg,
+        df=inputs.df,
+        banned_by_date=inputs.banned,
+        ricebread_ban_day=inputs.rb_ban,
+        skip_cells=inputs.skip_cells,
+        client_cfg=inputs.client_cfg,
+        active_base_slots=active_base,
+    )
 
-    for d in dates:
-        day_type = _weekday_type_cfg(d, solver_config.theme_map)
-        for base in base_slots:
-            if skip_cells and (d, base) in skip_cells:
-                continue
-            if base not in pools:
-                continue
-            pool = pools[base].copy()
 
-            # Exclude steamed rice etc.
-            if base in ('rice', 'healthy_rice') and len(pool) > 0:
-                pool = pool[~pool['item'].isin(solver_config.rice_exclude_items)]
+def _run_preflight(inputs: SolverInputs):
+    """Shared pre-flight pass used by both /plan and /diagnose.
 
-            # Apply rule pre-filters (theme slot filters, etc.)
-            ctx = {**filter_ctx_base, 'slot_num': None}
-            for rule in menu_rules:
-                pool = rule.pre_filter_pool(pool, d, base, day_type, ctx)
+    Returns ``(diagnostics, summary)`` where:
+      - ``diagnostics`` is the full sorted list of Diagnostic objects
+        produced by every rule + the synthetic pool_size pass.
+      - ``summary`` is the ``{errors, warnings, infos, would_succeed}``
+        dict produced by ``summarize()``.
 
-            count_needed = slot_counts.get(base, 1)
-            pool_size = len(pool)
-            if pool_size < count_needed:
-                day_label = d.strftime('%A %d %b')
-                warnings.append(
-                    f"{day_type.capitalize()} {day_label}: "
-                    f"only {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
-                    f"available, need {count_needed}"
-                )
-            elif pool_size == count_needed:
-                day_label = d.strftime('%A %d %b')
-                warnings.append(
-                    f"{day_type.capitalize()} {day_label}: "
-                    f"exactly {pool_size} {base.replace('_', ' ')} item{'s' if pool_size != 1 else ''} "
-                    f"available for {count_needed} needed (no variety)"
-                )
-    return warnings
+    A single call site for both endpoints keeps the two surfaces in
+    lockstep: /diagnose and /plan's gate emit identical diagnostics
+    for identical inputs. ``test_diagnose_matches_plan_preflight``
+    pins this invariant.
+    """
+    ctx = _build_diagnose_context(inputs)
+    diags = run_diagnostics(inputs.rules, ctx)
+    return diags, _summarize_diags(diags)
+
+
+def _record_diag_metrics(diagnostics) -> None:
+    """Bump ``rule_diagnostics_total{rule=<name>,severity=<sev>}`` once
+    per emitted Diagnostic. Mirrors ``_count_rule_failures`` so a
+    Prometheus alert can fire on either surface symmetrically.
+    """
+    for d in diagnostics:
+        metrics.incr(
+            'rule_diagnostics_total',
+            rule=d.rule,
+            severity=d.severity.value,
+        )
 
 
 app.add_url_rule('/api/v1/auth/login', 'api_login', api_login, methods=['POST'])
@@ -566,10 +580,36 @@ def plan_menu():
     try:
         inputs = _prepare_solver_inputs(request.get_json() or {})
 
-        pool_warnings = _validate_pools(
-            inputs.pools, inputs.cfg, inputs.rules,
-            inputs.weekday_dates, skip_cells=inputs.skip_cells,
-        )
+        # Pre-flight gate: run every rule's diagnose() against the
+        # assembled inputs. If any diagnostic is severity=error, the
+        # solver would (with overwhelming probability) fail — so we
+        # short-circuit with 422 and the structured diagnostics
+        # before spending solver budget.
+        diagnostics, summary = _run_preflight(inputs)
+        _record_diag_metrics(diagnostics)
+        diag_dicts = [d.to_dict() for d in diagnostics]
+        # Denormalised pool_warnings projection kept for one release so
+        # older Streamlit builds that still read this key keep rendering
+        # something. New code consumes ``rule_diagnostics``.
+        pool_warnings = pool_warnings_projection(diagnostics)
+
+        if has_blocking_errors(diagnostics):
+            metrics.incr('plan_requests_total', outcome='preflight_blocked')
+            body = {
+                'success': False,
+                'error': 'rule_diagnostics_blocked',
+                'message': (
+                    f"Pre-flight diagnostics found "
+                    f"{summary['errors']} blocking issue"
+                    f"{'s' if summary['errors'] != 1 else ''} for "
+                    f"{inputs.client_name}; solver skipped."
+                ),
+                'rule_diagnostics': diag_dicts,
+                'summary': summary,
+            }
+            if pool_warnings:
+                body['pool_warnings'] = pool_warnings
+            return jsonify(body), 422
 
         solver = MenuSolver(
             pools=inputs.pools,
@@ -590,6 +630,8 @@ def plan_menu():
             'success': True,
             'message': f'Menu plan generated for {inputs.client_name}',
             'solution': formatter.to_dict(),
+            'rule_diagnostics': diag_dicts,
+            'summary': summary,
         }
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
@@ -1057,32 +1099,46 @@ def delete_client(client_name):
         return _internal_error_response(500)
 
 
-@app.route('/api/v1/validate-pools', methods=['POST'])
+@app.route('/api/v1/diagnose', methods=['POST'])
 @require_api_auth()
-def validate_pools():
-    """Check pool sizes after theme filtering — returns warnings without running solver."""
+def diagnose_plan():
+    """Pre-flight rule diagnostic. Same body shape as /plan but never
+    invokes the solver — returns structured ``rule_diagnostics`` so the
+    UI can show *why* a plan would fail before the user spends solver
+    budget.
+
+    Replaces the old /validate-pools endpoint; pool-size warnings are
+    folded into the same ``rule_diagnostics`` list (look for entries
+    with ``rule_type == 'pool_size'``).
+
+    Response::
+
+        {
+          "success": true,
+          "rule_diagnostics": [{rule, rule_type, severity, phase,
+                                message, suggestion, affected}, …],
+          "summary": {errors, warnings, infos, would_succeed},
+          "pool_warnings": [...]   # back-compat projection, one release
+        }
+    """
     try:
-        data = request.get_json(silent=True) or {}
-        client_name = data.get('client_name')
-        start_date_str = data.get('start_date')
-        num_days = max(MIN_NUM_DAYS, min(MAX_NUM_DAYS, int(data.get('num_days', 5))))
-
-        _require_known_client(client_name)
-
-        loader = _get_client_loader()
-        client_cfg = loader.get_client(client_name)
-        df, pools = _get_menu_data()
-        start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
-        weekday_dates = _weekdays_from(start_date, num_days)
-        rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
-        cfg = _build_solver_config(df, client_cfg, start_date, num_days, 180, weekday_dates)
-
-        warnings = _validate_pools(pools, cfg, rules, weekday_dates, skip_cells=skip_cells)
-        return jsonify({'success': True, 'warnings': warnings})
+        inputs = _prepare_solver_inputs(request.get_json() or {})
+        diagnostics, summary = _run_preflight(inputs)
+        _record_diag_metrics(diagnostics)
+        diag_dicts = [d.to_dict() for d in diagnostics]
+        body = {
+            'success': True,
+            'rule_diagnostics': diag_dicts,
+            'summary': summary,
+        }
+        pool_warnings = pool_warnings_projection(diagnostics)
+        if pool_warnings:
+            body['pool_warnings'] = pool_warnings
+        return jsonify(body)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        logger.error("Failed to validate pools: %s", e, exc_info=True)
+        logger.error("Failed to run diagnostics: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 

@@ -57,7 +57,7 @@ class TestProtectedRoutesRejectAnon:
         ("put", "/api/v1/client-config/Rippling"),
         ("post", "/api/v1/client"),
         ("delete", "/api/v1/client/Rippling"),
-        ("post", "/api/v1/validate-pools"),
+        ("post", "/api/v1/diagnose"),
         ("get", "/api/v1/metrics"),
         ("get", "/api/v1/auth/whoami"),
     ])
