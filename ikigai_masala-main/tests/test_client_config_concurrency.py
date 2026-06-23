@@ -11,9 +11,6 @@ import pytest
 
 flask = pytest.importorskip("flask", reason="Flask not installed")
 from api.app import app
-import api.auth as api_auth
-from api.auth import issue_token
-from user_authentication.models import ROLE_SUPER_ADMIN
 
 
 @pytest.fixture
@@ -23,14 +20,10 @@ def client():
         yield c
 
 
-@pytest.fixture(autouse=True)
-def _auth_secret(monkeypatch):
-    monkeypatch.setattr(api_auth, "API_SECRET_KEY", "test-secret-key")
-
-
 @pytest.fixture
 def auth_headers():
-    return {"Authorization": f"Bearer {issue_token('test@example.com', ROLE_SUPER_ADMIN)}"}
+    """No-op header map; the API is now public (auth removed)."""
+    return {}
 
 
 class TestGetSurfacesVersion:

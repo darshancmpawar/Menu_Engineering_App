@@ -23,10 +23,10 @@ class TestValidateRequiredEnv:
     def test_empty_string_counts_as_missing(self, monkeypatch):
         for name in REQUIRED_ENV_VARS:
             monkeypatch.setenv(name, "x")
-        monkeypatch.setenv("API_SECRET_KEY", "")
+        monkeypatch.setenv("SUPABASE_KEY", "")
         with pytest.raises(RuntimeError) as exc:
             validate_required_env()
-        assert "API_SECRET_KEY" in str(exc.value)
+        assert "SUPABASE_KEY" in str(exc.value)
 
     def test_whitespace_only_counts_as_missing(self, monkeypatch):
         for name in REQUIRED_ENV_VARS:
@@ -44,5 +44,4 @@ class TestValidateRequiredEnv:
             validate_required_env()
         msg = str(exc.value)
         assert "SUPABASE_KEY" in msg
-        assert "API_SECRET_KEY" not in msg
         assert "SUPABASE_URL" not in msg

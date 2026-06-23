@@ -110,31 +110,6 @@ class MenuApiClient:
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
-    def login(self, email: str, password: str) -> Dict[str, Any]:
-        """Exchange credentials for a bearer token; stores the token on success."""
-        resp = self.session.post(
-            f"{self.base_url}/api/v1/auth/login",
-            json={"email": email, "password": password},
-            timeout=15,
-        )
-        data = _parse_response(resp, "Login failed")
-        self.token = data["token"]
-        return data
-
-    def whoami(self) -> Dict[str, Any]:
-        """Confirm self.token is still valid and return the principal.
-
-        Used by the Streamlit frontend to rehydrate a session from a
-        cookie on page load. Raises RuntimeError if the token is
-        expired / invalid (401) — the caller wipes the cookie and
-        shows the login form.
-        """
-        resp = self.session.get(
-            f"{self.base_url}/api/v1/auth/whoami",
-            timeout=5, headers=self._auth_headers(),
-        )
-        return _parse_response(resp, "Session expired")
-
     def health(self) -> Dict[str, Any]:
         resp = self.session.get(f"{self.base_url}/api/v1/health", timeout=5)
         resp.raise_for_status()

@@ -115,19 +115,13 @@ class TestSolverInputsPicksCorrectWindow:
             lambda name, dates: ([_DeepRule()], set()),
         )
 
-        import api.auth as api_auth
-        from api.auth import issue_token
-        from user_authentication.models import ROLE_SUPER_ADMIN
-        monkeypatch.setattr(api_auth, "API_SECRET_KEY", "test-secret-key")
-        token = issue_token("t@test.com", ROLE_SUPER_ADMIN)
-
         with api_app.app.test_client() as c:
             c.post("/api/v1/plan", json={
                 "client_name": "Rippling",
                 "start_date": "2026-03-23",
                 "num_days": 1,
                 "time_limit_seconds": 30,
-            }, headers={"Authorization": f"Bearer {token}"})
+            })
 
         # 90 + 15 slack = 105; the default 45-day floor must be ignored.
         assert captured["window_days"] == 105, (

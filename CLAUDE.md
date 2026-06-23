@@ -15,7 +15,6 @@ ikigai_masala-main/          active project (Indian menu planner)
 ├── src/                     solver + rules + preprocessor + client/history/db
 ├── ui/                      Streamlit-side API client & formatters
 ├── customisation/           Streamlit editor UIs for per-client config
-├── user_authentication/     Supabase-backed auth
 ├── data/                    menu ontology (xlsx) + rule configs (json)
 ├── scripts/                 Supabase seeders + SQL schema
 ├── tests/                   pytest suite
@@ -32,7 +31,6 @@ ikigai_masala-main/          active project (Indian menu planner)
 | `streamlit run app.py` | `ikigai_masala-main/app.py` | UI; auto-starts Flask on port 5000 |
 | `flask --app api.app run` | `ikigai_masala-main/api/app.py` | API standalone |
 | `python scripts/seed_supabase.py` | `ikigai_masala-main/scripts/seed_supabase.py` | seed clients from `data/configs/clients.json` |
-| `python scripts/seed_admin.py` | `ikigai_masala-main/scripts/seed_admin.py` | create default admin user |
 | `pytest` | `ikigai_masala-main/pytest.ini` | run tests |
 
 Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
@@ -58,6 +56,9 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 Helpers:
 - `api/concurrency.py` — `@solver_gate` queue; caps active solves (dynamic CP-SAT workers).
 - `api/config.py` — path constants, day/time limits.
+- `api/rate_limit.py` — per-IP token-bucket throttle on `/plan` + `/regenerate`.
+
+No authentication: every endpoint is public (the auth feature was removed).
 
 ---
 
@@ -136,14 +137,6 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - `main.py` → `render_customisation_editor` (dispatcher).
 - `slot_editor.py`, `multi_slot_editor.py`, `theme_editor.py` — per-concern panels writing to Supabase via `/api/v1/client-config/<name>`.
 
-### `user_authentication/`
-- `models.py` → `User`, roles `ROLE_SUPER_ADMIN` / `ROLE_ADMIN` / `ROLE_USER`.
-- `auth_manager.py` → `AuthManager` (bcrypt + Supabase `users` table).
-- `session.py` → `init_auth_state`, `is_authenticated`, `current_user`, `require_role`.
-- `login_ui.py` → `render_login_form` (calls `persist_token` + 300 ms sleep before `st.rerun`).
-- `cookie_store.py` → `persist_token`, `clear_persisted_token`, `get_all_cookies`, `get_persisted_token`; wraps `streamlit-cookies-controller` with a warmup-aware `_get_controller()` that calls `ctl.refresh()` when the library takes its cached path to keep the component in Streamlit's render tree.
-- `user_manager_ui.py` → admin CRUD UI.
-
 ---
 
 ## 6. Data & config files
@@ -156,7 +149,6 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
 | `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema |
 | `ikigai_masala-main/scripts/create_history_tables.sql` | history + signatures schema |
-| `ikigai_masala-main/scripts/create_users_table.sql` | auth schema |
 
 ---
 
@@ -218,7 +210,6 @@ Streamlit customisation/* → PUT /api/v1/client-config/<name>  [api/app.py]
 | `test_prefilter_integration.py` | multi-rule pre-filter chain |
 | `test_history_manager.py` | cooldowns & signatures |
 | `test_client_config.py` | Supabase-backed config |
-| `test_auth.py` | auth manager + session |
 | `test_formatters.py`, `test_helpers.py`, `test_solution_formatter.py` | UI/utility layers |
 
 Run: `pytest` from `ikigai_masala-main/`.
@@ -233,7 +224,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 4. **Dynamic worker allocation** in `api/concurrency.py`: 1 active solve → 9 workers; 2 active → 5 each. Tuned for ~1 GB RAM.
 5. **Theme dispatch**: global weekday→theme map, per-client overridable via `theme_overrides` table. Solver honors it via `theme_*` rules.
 6. **History split**: `menu_history` is item-level; `week_signatures` is a weekly hash for week-level cooldowns.
-7. **Supabase is the source of truth** for clients, users, history, overrides — Flask and Streamlit both read it directly.
+7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.
 9. **Per-client custom rules**: `data/configs/client_rules.json` stores extra rules per client (keyed by client name). Loaded fresh per request by `MenuRuleLoader.load_for_client()`. Three types: `ingredient_ban` (pre-filter), `item_frequency` (CP-SAT cardinality cap), `slot_day_restriction` (skip slot on certain weekdays via `skip_cells` kwarg on `MenuSolver`). Generic rules are cached globally; per-client rules are appended per request.
 
@@ -241,7 +232,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 
 ## 10. Dependencies
 
-Solver `ortools` · data `pandas numpy openpyxl` · web `flask flask-cors requests` · auth/db `supabase bcrypt python-dotenv` · UI `streamlit` · tests `pytest pytest-cov`.
+Solver `ortools` · data `pandas numpy openpyxl` · web `flask flask-cors requests` · db `supabase python-dotenv` · UI `streamlit` · tests `pytest pytest-cov`.
 
 ---
 

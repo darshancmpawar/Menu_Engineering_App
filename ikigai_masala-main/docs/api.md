@@ -1,7 +1,7 @@
 # API reference
 
-All endpoints are under `/api/v1`. Every endpoint except `/health`, `/`, and
-`/auth/login` requires an `Authorization: Bearer <token>` header.
+All endpoints are under `/api/v1` and are open — no authentication header is
+required.
 
 Requests and responses are JSON. Responses carry an `X-Request-ID` header —
 accept or supply it to correlate traces across logs.
@@ -12,9 +12,8 @@ accept or supply it to correlate traces across logs.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST   | `/auth/login` | Exchange email + password for a bearer token |
 | GET    | `/health` | Liveness + readiness — see [health response](#health-response) |
-| GET    | `/metrics` | In-process counter snapshot (auth-gated) |
+| GET    | `/metrics` | In-process counter snapshot |
 | GET    | `/clients` | List client names |
 | POST   | `/plan` | Generate a plan |
 | POST   | `/regenerate` | Regenerate selected cells |
@@ -65,8 +64,7 @@ Counter names follow Prometheus conventions so a future swap to
     "plan_requests_total{outcome=\"solver_error\"}": 1,
     "regenerate_requests_total{outcome=\"success\"}": 3,
     "solver_failures_total": 1,
-    "rule_failures_total{rule=\"theme_day\"}": 2,
-    "legacy_sha256_verifications_total{result=\"success\"}": 0
+    "rule_failures_total{rule=\"theme_day\"}": 2
   }
 }
 ```
@@ -258,11 +256,9 @@ Failures return HTTP 4xx/5xx with:
 ```
 
 - 400: validation failure (missing field, unknown client, malformed JSON)
-- 401: missing / invalid token
-- 403: insufficient role for an admin-only route
 - 409: optimistic concurrency conflict (on `PUT /client-config`)
 - 500: unexpected server error — a generic message, never exception details
-- 429: per-principal rate limit tripped (`/plan`: 10/min burst 10; `/regenerate`: 20/min burst 20). Response includes `Retry-After` and `retry_after_seconds`. `MenuApiClient` retries once with jitter automatically.
+- 429: per-IP rate limit tripped (`/plan`: 10/min burst 10; `/regenerate`: 20/min burst 20). Response includes `Retry-After` and `retry_after_seconds`. `MenuApiClient` retries once with jitter automatically.
 - 503: server at capacity (solver queue full) or supabase unreachable (on `/health`)
 - 504: request timed out waiting in the solver queue
 
@@ -322,7 +318,6 @@ that failed and skipped — the solver never sees them.
 | `slot_count_overrides` | `client_name`, `slot`, `count` | e.g. `veg_dry = 2` |
 | `theme_overrides` | `client_name`, `day`, `theme` | Per-day theme override |
 | `app_settings` | `key`, `value` | Misc tunables |
-| `users` | `email (pk)`, `profile_name`, `password_hash`, `role` | Auth (bcrypt + legacy SHA-256 fallback) |
 | `menu_history` | `service_date`, `slot`, `item_base`, `client_name` | Item-level history |
 | `week_signatures` | `week_start`, `week_signature`, `client_name` | Week-level hash |
 

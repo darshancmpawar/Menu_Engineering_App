@@ -10,8 +10,8 @@ this file has the full story.
 
 - Python 3.10+
 - A Supabase project (URL + service-role key)
-- The three schema scripts applied once (see [Supabase schema](#3-supabase-schema))
-- Secrets: `SUPABASE_URL`, `SUPABASE_KEY`, `API_SECRET_KEY`
+- The two schema scripts applied once (see [Supabase schema](#3-supabase-schema))
+- Secrets: `SUPABASE_URL`, `SUPABASE_KEY`
 
 ---
 
@@ -23,11 +23,6 @@ pip install -r requirements-dev.txt   # runtime + pytest + ruff + bandit
 # or `-r requirements.txt` for runtime only (prod containers)
 ```
 
-> **Cookie persistence dep:** `requirements.txt` pins
-> `streamlit-cookies-controller>=0.0.3,<1.0`. PyPI versions follow
-> `0.0.x` numbering — the constraint `>=0.3` (without the leading `0.`)
-> resolves to nothing and breaks the install. Don't "fix" it to `>=0.3`.
-
 ---
 
 ## 3. Supabase schema
@@ -38,7 +33,6 @@ In the Supabase SQL editor, run each of these once. Re-running is idempotent
 ```
 scripts/create_tables.sql          clients, menu_categories, slot_count_overrides, theme_overrides, app_settings
 scripts/create_history_tables.sql  menu_history, week_signatures
-scripts/create_users_table.sql     users (auth)
 ```
 
 ---
@@ -46,19 +40,12 @@ scripts/create_users_table.sql     users (auth)
 ## 4. Secrets
 
 The app reads secrets from `.streamlit/secrets.toml` locally (or the Secrets
-panel on Streamlit Cloud). All three values are required; the API fails at
-startup if any is missing.
+panel on Streamlit Cloud). Both values are required; the API fails at
+startup if either is missing.
 
 ```toml
-SUPABASE_URL   = "https://<your-project-ref>.supabase.co"
-SUPABASE_KEY   = "<service_role / sb_secret_... key — NOT publishable>"
-API_SECRET_KEY = "<64-hex string>"
-```
-
-Generate `API_SECRET_KEY` locally:
-
-```bash
-python -c "import secrets; print(secrets.token_hex(32))"
+SUPABASE_URL = "https://<your-project-ref>.supabase.co"
+SUPABASE_KEY = "<service_role / sb_secret_... key — NOT publishable>"
 ```
 
 ### Key-class notes
@@ -66,22 +53,19 @@ python -c "import secrets; print(secrets.token_hex(32))"
 - **`SUPABASE_KEY` must be the service-role key** (`sb_secret_...` or the
   legacy JWT `eyJ...`). The publishable / anon key obeys RLS and will block
   the backend from writing history.
-- **`API_SECRET_KEY`** signs the bearer tokens issued to the Streamlit
-  frontend. Rotating it logs every user out but doesn't break anything else.
-- Never commit either secret. Rotate immediately if one leaks.
+- Never commit the secret. Rotate immediately if it leaks.
 
 ### Optional env vars
 
 ```toml
-APP_TIMEZONE               = "Asia/Kolkata"   # default; any IANA name
-LOG_FORMAT                 = "json"           # structured logs for prod
-LOG_LEVEL                  = "INFO"
-APP_VERSION                = "$(git rev-parse --short HEAD)"   # surfaced in /health + /
-AUTH_DISABLE_LEGACY_SHA256 = "false"          # flip to "true" once no users remain on legacy hashes
-SUPABASE_TIMEOUT_SECONDS   = "5"              # bound on every Supabase read/write; default 5s
-CORS_ALLOWED_ORIGINS       = "https://prod.example.com"   # comma-separated; defaults to loopback only
-API_HOST                   = "127.0.0.1"      # loopback. Containers / prod may want 0.0.0.0
-API_PORT                   = "5000"
+APP_TIMEZONE             = "Asia/Kolkata"   # default; any IANA name
+LOG_FORMAT               = "json"           # structured logs for prod
+LOG_LEVEL                = "INFO"
+APP_VERSION              = "$(git rev-parse --short HEAD)"   # surfaced in /health + /
+SUPABASE_TIMEOUT_SECONDS = "5"              # bound on every Supabase read/write; default 5s
+CORS_ALLOWED_ORIGINS     = "https://prod.example.com"   # comma-separated; defaults to loopback only
+API_HOST                 = "127.0.0.1"      # loopback. Containers / prod may want 0.0.0.0
+API_PORT                 = "5000"
 ```
 
 `APP_TIMEZONE` decides what "today" means when the client doesn't pass an
@@ -98,13 +82,6 @@ export SUPABASE_URL=...
 export SUPABASE_KEY=...
 
 python scripts/seed_supabase.py   # migrate data/configs/clients.json into Supabase
-
-# Create the first super_admin. Credentials come from env so nothing is
-# committed to git. Password must be at least 8 characters.
-export ADMIN_EMAIL="you@company.com"
-export ADMIN_PASSWORD="<choose a strong password>"
-# export ADMIN_NAME="Your Name"   # optional; defaults to the email local part
-python scripts/seed_admin.py
 ```
 
 ---
@@ -132,7 +109,7 @@ A single-process container (Streamlit on `:8501`, auto-spawned Flask on
 loopback `:5000`) lives at the repo root.
 
 ```bash
-cp .env.example .env       # fill in real SUPABASE_URL / SUPABASE_KEY / API_SECRET_KEY
+cp .env.example .env       # fill in real SUPABASE_URL / SUPABASE_KEY
 docker compose up --build  # → http://localhost:8501
 ```
 
@@ -146,7 +123,7 @@ The container:
   shows `healthy`/`unhealthy` correctly. Set `APP_VERSION` in `.env` to
   the build SHA so `/health` and `/` surface what's running.
 
-The schema migrations and the admin seed still need a one-time run
+The schema migrations and the client seed still need a one-time run
 against Supabase from your laptop (sections 3 + 5 above) — they're
 deliberately out of the container so a forgotten `docker run` can't
 mutate the database.

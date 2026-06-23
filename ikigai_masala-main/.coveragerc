@@ -8,14 +8,10 @@ source =
     api
     src
     ui
-    user_authentication
 
 omit =
     # Streamlit UI surfaces — tested manually / via Selenium, not pytest.
     ui/styles.py
-    user_authentication/login_ui.py
-    user_authentication/session.py
-    user_authentication/user_manager_ui.py
     customisation/*
     # Entry point; the whole module body runs at Streamlit import time
     # but the units inside are thin glue.
