@@ -1,18 +1,17 @@
 """
-Per-principal rate limiter.
+Per-client rate limiter.
 
 Token bucket, in-memory, thread-safe. Bucket capacity and refill rate are
 fixed per-decorator and intentionally small — the target is preventing a
-single admin holding the login token from hammering /plan rather than a
-general-purpose throttle. A future multi-process deployment should swap
-this out for ``flask-limiter`` with a Redis backend; the decorator
-interface stays stable.
+single client from hammering /plan rather than a general-purpose throttle.
+A future multi-process deployment should swap this out for
+``flask-limiter`` with a Redis backend; the decorator interface stays
+stable.
 
-Keys come from ``g.api_user['email']`` (populated by require_api_auth).
-Requests that haven't passed auth fall back to ``remote_addr`` so the
-decorator is still meaningful on routes we forget to gate — but the
-common path is: auth runs first, so every limited request has a real
-principal.
+Keys come from the request's ``remote_addr`` so each client IP gets its
+own bucket. (If something upstream ever populates ``g.api_user`` — e.g. a
+future auth gateway — that identity takes precedence; see
+``_principal_key``.)
 """
 
 from __future__ import annotations
@@ -89,15 +88,9 @@ class _TokenBucketLimiter:
 
 
 # Named limits referenced by symbol from decorators / inline checks.
-# Tuned for realistic humans-in-the-loop workloads:
-#  - "plan" / "regenerate": an admin clicking through the planner
-#    should never hit these; an automated client looping on /plan
-#    definitely should.
-#  - "login_ip" / "login_email": both are checked at /auth/login
-#    BEFORE the bcrypt verify so a brute-force script can't saturate
-#    the threadpool with ~250ms-each password checks. login_email is
-#    tight (per-account cap); login_ip is looser to tolerate
-#    corporate NAT where many users share one egress address.
+# Tuned for realistic humans-in-the-loop workloads: a user clicking
+# through the planner should never hit these; an automated client
+# looping on /plan definitely should.
 _LIMITS: Dict[str, _TokenBucketLimiter] = {
     "plan": _TokenBucketLimiter(
         name="plan", capacity=10, refill_per_second=10 / 60.0,
@@ -105,16 +98,6 @@ _LIMITS: Dict[str, _TokenBucketLimiter] = {
     "regenerate": _TokenBucketLimiter(
         name="regenerate", capacity=20, refill_per_second=20 / 60.0,
     ),  # 20 per minute, burst 20
-    "login_ip": _TokenBucketLimiter(
-        name="login_ip", capacity=30, refill_per_second=30 / 60.0,
-    ),  # 30 per minute per source IP — high enough for NAT (50 users
-        #   sharing one IP can each retry login twice / minute)
-    "login_email": _TokenBucketLimiter(
-        name="login_email", capacity=5, refill_per_second=5 / 60.0,
-    ),  # 5 per minute per email address — tight credential-stuffing
-        #   protection. After the burst it's one attempt every 12s,
-        #   slow enough that a guess-list-of-100k-passwords run takes
-        #   weeks instead of hours.
 }
 
 
@@ -130,9 +113,11 @@ def _principal_key() -> str:
 
 
 def check_rate_limit(limit_name: str, key: str):
-    """Public helper for non-decorator contexts (e.g. /auth/login,
-    where there's no ``g.api_user`` yet so the key has to come from
-    request-scoped data the caller derives manually).
+    """Apply the named rate-limit bucket *limit_name* to *key* directly.
+
+    Used by the :func:`rate_limit` decorator (which derives *key* via
+    :func:`_principal_key`); also callable from non-decorator contexts
+    that supply their own key.
 
     Returns:
         ``None`` when the request is allowed (caller proceeds normally),
@@ -171,12 +156,11 @@ def check_rate_limit(limit_name: str, key: str):
 def rate_limit(limit_name: str) -> Callable:
     """Decorate a route with one of the named limits.
 
-    Place it *after* ``require_api_auth`` so ``g.api_user`` is populated
-    before the bucket key is computed. Returns 429 with a
-    ``Retry-After`` header when the bucket is empty. Internally this
-    just defers to :func:`check_rate_limit` so the decorator and the
-    inline call site (used by /auth/login) emit the same metrics and
-    the same response shape.
+    The bucket key is the client IP (see :func:`_principal_key`).
+    Returns 429 with a ``Retry-After`` header when the bucket is empty.
+    Internally this just defers to :func:`check_rate_limit` so the
+    decorator and any direct call site emit the same metrics and the
+    same response shape.
     """
 
     def _wrap(fn):

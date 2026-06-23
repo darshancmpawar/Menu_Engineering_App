@@ -99,7 +99,9 @@ class TestRateLimitDecoratorViaFlask:
 
         @app.before_request
         def _fake_auth():
-            # Emulate what require_api_auth would have set.
+            # Emulate an upstream-populated principal so we can exercise
+            # the user-keyed branch of _principal_key (production keys
+            # by IP, since the app no longer sets g.api_user).
             g.api_user = {"email": "alice@test.com", "role": "admin"}
 
         @app.route("/plan", methods=["POST"])
@@ -157,9 +159,8 @@ class TestRateLimitDecoratorViaFlask:
 
 
 class TestCheckRateLimitHelper:
-    """Public helper used by /auth/login (which can't use the decorator
-    because there's no g.api_user yet — the bucket key has to come
-    from request body / headers)."""
+    """Public helper backing the rate_limit decorator; can also be
+    called directly with an explicit bucket key."""
 
     def test_returns_none_when_allowed(self, monkeypatch):
         from flask import Flask
@@ -194,202 +195,3 @@ class TestCheckRateLimitHelper:
         from api.rate_limit import check_rate_limit
         with pytest.raises(KeyError):
             check_rate_limit("never-registered", "u")
-
-
-class TestLoginEndpointRateLimit:
-    """Tier 1 #2 — /auth/login is gated by login_ip + login_email
-    buckets BEFORE bcrypt so a flood can't saturate the threadpool.
-    Both buckets are checked; either rejection is enough to 429."""
-
-    @pytest.fixture
-    def app(self, monkeypatch):
-        """Shrink the login buckets so tests don't have to send 31
-        requests to exercise them."""
-        from api.rate_limit import _LIMITS, _TokenBucketLimiter
-        # capacity 2, refill so slow it's effectively zero in test time
-        monkeypatch.setitem(
-            _LIMITS, "login_ip",
-            _TokenBucketLimiter("login_ip", capacity=2, refill_per_second=0.001),
-        )
-        monkeypatch.setitem(
-            _LIMITS, "login_email",
-            _TokenBucketLimiter("login_email", capacity=2, refill_per_second=0.001),
-        )
-        from api.app import app
-        app.config['TESTING'] = True
-        return app
-
-    def _post_login(self, client, email, password="wrong", **headers):
-        """Send a login attempt. We expect 401 (bad credentials) on
-        allowed attempts and 429 once the bucket is exhausted — never
-        a 500. The email_lookup is mocked away because we're testing
-        the rate-limit gate, not authentication itself."""
-        return client.post(
-            "/api/v1/auth/login",
-            json={"email": email, "password": password},
-            headers=headers,
-        )
-
-    def test_third_attempt_from_same_ip_and_email_is_blocked(
-        self, app, monkeypatch,
-    ):
-        # Stub the AuthManager so we don't pay bcrypt and we don't
-        # need a Supabase fake — every call is "Invalid credentials".
-        import api.auth as api_auth
-        monkeypatch.setattr(
-            api_auth.AuthManager, "authenticate",
-            lambda self, email, pw: None,
-        )
-
-        with app.test_client() as c:
-            # Capacity 2 — first two attempts pass the rate-limit
-            # gate (and 401 because creds are wrong). Third hits 429.
-            assert self._post_login(c, "alice@test.com").status_code == 401
-            assert self._post_login(c, "alice@test.com").status_code == 401
-            resp = self._post_login(c, "alice@test.com")
-            assert resp.status_code == 429
-            data = resp.get_json()
-            assert "Too many requests" in data["error"]
-            assert resp.headers.get("Retry-After")
-
-    def test_different_emails_from_same_ip_share_ip_bucket(
-        self, app, monkeypatch,
-    ):
-        """The IP bucket protects the bcrypt threadpool, so it must
-        deplete regardless of which email is being attempted. With
-        capacity 2 the third email_X@... attempt from the same IP
-        is rejected — even though no individual email's bucket is full."""
-        import api.auth as api_auth
-        monkeypatch.setattr(
-            api_auth.AuthManager, "authenticate",
-            lambda self, email, pw: None,
-        )
-
-        with app.test_client() as c:
-            assert self._post_login(c, "a@test.com").status_code == 401
-            assert self._post_login(c, "b@test.com").status_code == 401
-            # IP bucket exhausted; a NEW email can't sneak past.
-            resp = self._post_login(c, "c@test.com")
-            assert resp.status_code == 429
-
-    def test_different_ips_have_separate_ip_buckets(
-        self, app, monkeypatch,
-    ):
-        """A user behind another IP can still log in even after
-        someone else has fully drained their IP bucket. The Flask
-        test client lets us spoof remote_addr via the WSGI
-        environ hook 'REMOTE_ADDR'."""
-        import api.auth as api_auth
-        monkeypatch.setattr(
-            api_auth.AuthManager, "authenticate",
-            lambda self, email, pw: None,
-        )
-
-        with app.test_client() as c:
-            # First IP — drain to empty (capacity 2).
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "a@test.com", "password": "x"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.1"},
-            ).status_code == 401
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "a@test.com", "password": "x"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.1"},
-            ).status_code == 401
-            # Same IP, third attempt → 429.
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "a@test.com", "password": "x"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.1"},
-            ).status_code == 429
-            # Different IP, NEW email (so login_email bucket is fresh).
-            # The ip bucket for 10.0.0.2 is also fresh → 401, not 429.
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "z@test.com", "password": "x"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.2"},
-            ).status_code == 401
-
-    def test_email_bucket_blocks_credential_stuffing_across_ips(
-        self, app, monkeypatch,
-    ):
-        """Per-account brute force protection: even if the attacker
-        rotates source IPs, a single email can't be hammered past the
-        login_email cap."""
-        import api.auth as api_auth
-        monkeypatch.setattr(
-            api_auth.AuthManager, "authenticate",
-            lambda self, email, pw: None,
-        )
-
-        with app.test_client() as c:
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "victim@test.com", "password": "guess1"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.10"},
-            ).status_code == 401
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "victim@test.com", "password": "guess2"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.20"},
-            ).status_code == 401
-            # Email bucket exhausted; rotating IP doesn't help.
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "victim@test.com", "password": "guess3"},
-                environ_overrides={"REMOTE_ADDR": "10.0.0.30"},
-            ).status_code == 429
-
-    def test_email_normalised_before_bucket_lookup(
-        self, app, monkeypatch,
-    ):
-        """``Foo@Test.com``, ``foo@test.com`` and ``  FOO@TEST.com  ``
-        must all hit the same email bucket — otherwise an attacker
-        could trivially side-step the cap by varying the case."""
-        import api.auth as api_auth
-        monkeypatch.setattr(
-            api_auth.AuthManager, "authenticate",
-            lambda self, email, pw: None,
-        )
-
-        with app.test_client() as c:
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "Foo@Test.com", "password": "x"},
-            ).status_code == 401
-            assert c.post(
-                "/api/v1/auth/login",
-                json={"email": "  FOO@TEST.com  ", "password": "x"},
-            ).status_code == 401
-            # Same logical email, third attempt → 429 from email bucket.
-            resp = c.post(
-                "/api/v1/auth/login",
-                json={"email": "foo@test.com", "password": "x"},
-            )
-            assert resp.status_code == 429
-
-    def test_429_does_not_call_authenticate(self, app, monkeypatch):
-        """Critical: the rate-limit gate must short-circuit BEFORE
-        bcrypt. Otherwise the whole point — protecting the
-        threadpool — is defeated."""
-        import api.auth as api_auth
-        call_count = {"n": 0}
-
-        def _counting_auth(self, email, pw):
-            call_count["n"] += 1
-            return None
-
-        monkeypatch.setattr(api_auth.AuthManager, "authenticate", _counting_auth)
-
-        with app.test_client() as c:
-            # Drain the email bucket (capacity 2).
-            self._post_login(c, "alice@test.com")
-            self._post_login(c, "alice@test.com")
-            # Third attempt should NOT reach AuthManager.authenticate.
-            resp = self._post_login(c, "alice@test.com")
-            assert resp.status_code == 429
-            assert call_count["n"] == 2, (
-                "rate-limited request must short-circuit before "
-                f"calling authenticate(); got {call_count['n']} calls"
-            )

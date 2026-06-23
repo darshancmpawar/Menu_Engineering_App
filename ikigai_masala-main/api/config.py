@@ -97,17 +97,10 @@ def today_in_app_tz() -> dt.date:
     """
     return dt.datetime.now(APP_TZ).date()
 
-# Auth — signed bearer tokens issued by POST /api/v1/auth/login.
-# Set API_SECRET_KEY to a long random string in production.
-API_SECRET_KEY = os.getenv('API_SECRET_KEY', '')
-API_TOKEN_TTL_SECONDS = int(os.getenv('API_TOKEN_TTL_SECONDS', str(60 * 60 * 24)))
-
-
 # Vars that the API and solver cannot operate without. Validated at
 # api.app import time so the process fails with a clear message instead
-# of crashing on the first request that needs Supabase or tries to sign
-# a token.
-REQUIRED_ENV_VARS = ("API_SECRET_KEY", "SUPABASE_URL", "SUPABASE_KEY")
+# of crashing on the first request that needs Supabase.
+REQUIRED_ENV_VARS = ("SUPABASE_URL", "SUPABASE_KEY")
 
 
 def validate_required_env() -> None:

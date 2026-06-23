@@ -4,6 +4,14 @@ End-to-end review of the Ikigai Masala codebase, focused on code quality,
 architecture, UI/UX, database writeback, traceability, security,
 performance, testing, and documentation.
 
+> **Historical note (post-audit):** the user-authentication feature
+> reviewed below — bcrypt logins, signed bearer tokens, the `users`
+> table, roles, the `ikigai_auth` cookie, and `API_SECRET_KEY` — has
+> since been removed. The app and its API are now open: no login, no
+> tokens, no `API_SECRET_KEY`. Mentions of those mechanics below are
+> preserved as a point-in-time record of the May 2026 codebase, not as
+> setup instructions for today. For current setup see `docs/setup.md`.
+
 ---
 
 ## 1. Executive Summary
@@ -156,11 +164,9 @@ branch on top of the audit fixes:
 | 1 | DB | Add an `idempotency_key` column to `menu_history` so a retry of `/save` can't double-insert (today the UNIQUE INDEX absorbs most cases, but partial-day mid-failure can leave half a week saved). |
 | 2 | Tests | Add an integration test that runs both SQL migrations against an ephemeral Postgres + asserts the resulting schema matches expectations. Locks in the schema-drift fix from this audit. |
 | 3 | Solver | Profile multi-restart wall-clock — the 4 × 2 = 8 attempts dominate p95; a smarter restart that escalates only on infeasibility could shave 30–50 % off median latency. |
-| 4 | Auth | Surface remaining bearer-token TTL (e.g. as response header) so the Streamlit UI can warn on imminent expiry instead of bouncing to login mid-flow. |
-| 5 | Observability | Emit a histogram of `solve_duration_seconds` once `api/metrics.py` swaps to `prometheus_client`. The current counter-only snapshot tells you success/failure but not tail latency. |
-| 6 | Cleanup | Once `legacy_sha256_verifications_total{result="success"}` stays 0 for a quarter, flip `AUTH_DISABLE_LEGACY_SHA256=true`, watch metrics, then delete the legacy code path entirely. |
-| 7 | UI | `customisation/` panels show "Unsaved" indicator only on edit mode, not create — small UX gap. |
-| 8 | Docs | Add a "common-failure runbook" in `docs/operations.md` keyed by request-id grep patterns + `rule_warnings` shapes. |
+| 4 | Observability | Emit a histogram of `solve_duration_seconds` once `api/metrics.py` swaps to `prometheus_client`. The current counter-only snapshot tells you success/failure but not tail latency. |
+| 5 | UI | `customisation/` panels show "Unsaved" indicator only on edit mode, not create — small UX gap. |
+| 6 | Docs | Add a "common-failure runbook" in `docs/operations.md` keyed by request-id grep patterns + `rule_warnings` shapes. |
 
 ---
 

@@ -1,7 +1,7 @@
 # One-command boot. Reads secrets from .env (copy from .env.example).
 #
 # Usage:
-#   cp .env.example .env       # then fill in SUPABASE_URL / SUPABASE_KEY / API_SECRET_KEY
+#   cp .env.example .env       # then fill in SUPABASE_URL / SUPABASE_KEY
 #   docker compose up --build
 #
 # The Streamlit UI is on http://localhost:8501; Flask only listens inside

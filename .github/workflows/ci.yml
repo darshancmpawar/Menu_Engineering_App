@@ -84,7 +84,7 @@ jobs:
       # Scanning tests is noisy and uninteresting (assert statements etc.).
       - name: Run bandit
         working-directory: ikigai_masala-main
-        run: bandit -ll -r api src user_authentication scripts
+        run: bandit -ll -r api src scripts
 
   # Full-pipeline integration test: real Excel, real rules, 5-day solve.
   # Not gated onto every PR because a cold solve costs ~30-60s; PR feedback

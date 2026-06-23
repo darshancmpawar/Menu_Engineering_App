@@ -1,6 +1,6 @@
 """Shared Supabase client — one connection per process.
 
-Consumers (client_config, auth_manager, api.app) import ``get_supabase``
+Consumers (client_config, history_manager, api.app) import ``get_supabase``
 from this module so they all reuse the same ``supabase.Client`` instance
 rather than each maintaining their own singleton.
 

@@ -2,14 +2,12 @@
 
 ```mermaid
 graph TD
-    subgraph UI ["Streamlit (app.py, customisation/, user_authentication/)"]
+    subgraph UI ["Streamlit (app.py, customisation/)"]
         MP[Menu Planner]
         CE[Customisation Editor]
-        AU[Login / User Admin]
     end
 
     subgraph API ["Flask API (api/app.py)"]
-        AUTH[/auth/login/]
         PLAN[/plan/]
         REGEN[/regenerate/]
         SAVE[/save/]
@@ -30,7 +28,7 @@ graph TD
         SUPA[(Supabase)]
     end
 
-    UI -- HTTPS + Bearer --> API
+    UI -- HTTP --> API
     API --> Core
     POOLS --> XLS
     RULES --> CFG
@@ -43,8 +41,8 @@ graph TD
 
 | Layer | Location | Responsibility |
 |---|---|---|
-| Frontend | `app.py`, `customisation/`, `user_authentication/`, `ui/` | Streamlit views, login form, API client |
-| API | `api/app.py`, `api/auth.py`, `api/concurrency.py`, `api/logging_config.py`, `api/metrics.py` | REST surface, bearer-token auth, concurrent-solve gate, structured logging, in-process counters |
+| Frontend | `app.py`, `customisation/`, `ui/` | Streamlit views, API client |
+| API | `api/app.py`, `api/concurrency.py`, `api/logging_config.py`, `api/metrics.py` | REST surface, concurrent-solve gate, structured logging, in-process counters |
 | Solver | `src/solver/` | CP-SAT model, multi-restart strategy, regeneration, solution formatting |
 | Rules | `src/menu_rules/` | Hard/soft/pre-filter constraints, loaded from JSON |
 | Preprocessor | `src/preprocessor/` | Excel ingest, column mapping, data cleanse, per-slot pool build |
@@ -61,48 +59,9 @@ graph TD
 - **No config cache:** `ClientConfigLoader` reads Supabase on every call so edits are live with no restart. Per-request memoization on Flask's `g` avoids the intra-request round trips.
 - **Dynamic worker allocation:** `api/concurrency.py` caps concurrent solves (`MAX_RUNNING=2`) and tunes CP-SAT worker count to RAM (1 active → 9 workers, 2 active → 5 each).
 - **History split:** `menu_history` is item-level (one row per `(date, slot, item)`), `week_signatures` is week-level (a deterministic `|`-delimited hash of a saved week). The former drives item cooldown; the latter drives week-signature cooldown.
-- **Optimistic concurrency:** the `clients` table carries a `version` column. `GET /client-config` returns it as an ETag; `PUT` must send it back, mismatch returns 409 so two admins editing the same client can't last-write-wins.
+- **Optimistic concurrency:** the `clients` table carries a `version` column. `GET /client-config` returns it as an ETag; `PUT` must send it back, mismatch returns 409 so two concurrent editors of the same client can't last-write-wins.
 
 ## Key flows
-
-### Login
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant B as Browser cookie
-    participant S as Streamlit
-    participant F as Flask
-    participant DB as Supabase
-
-    U->>S: email + password
-    S->>F: POST /api/v1/auth/login
-    F->>DB: SELECT users WHERE email=...
-    DB-->>F: row (or none)
-    F->>F: bcrypt verify
-    F->>F: issue_token (HMAC w/ API_SECRET_KEY)
-    F-->>S: { token, role, profile_name }
-    S->>S: login_user() → session_state
-    S->>B: persist_token() → ikigai_auth cookie (12 h, SameSite=Lax)
-    Note over S,B: 300 ms pause before rerun so browser receives postMessage
-```
-
-### Session restore (hard refresh / new tab)
-
-```mermaid
-sequenceDiagram
-    participant B as Browser cookie
-    participant S as Streamlit
-    participant F as Flask
-
-    S->>B: CookieController.getAll() — run 1: returns {} (warmup)
-    S->>S: sleep 150 ms, st.rerun()
-    S->>B: CookieController.refresh() — run 2: returns {ikigai_auth: token}
-    S->>F: GET /api/v1/auth/whoami (Bearer token)
-    F->>F: decode_token() — HMAC verify, expiry check (no DB)
-    F-->>S: { email, role, profile_name }
-    S->>S: login_user() → session_state, skip login form
-```
 
 ### Generate menu
 
@@ -114,7 +73,7 @@ sequenceDiagram
     participant H as HistoryManager
     participant M as MenuSolver
 
-    S->>F: POST /api/v1/plan (Bearer)
+    S->>F: POST /api/v1/plan
     F->>L: get_client(name) (Supabase)
     F->>H: load history from Supabase
     H-->>F: banned items, rice-bread bans, recent signatures
@@ -159,10 +118,9 @@ Two SQL files live under `scripts/`:
 - `create_history_tables.sql` defines `menu_history` and
   `week_signatures` (with FK + UNIQUE INDEX safety nets) and their RLS
   policies.
-- `create_users_table.sql` defines the `users` table for auth.
 
-Run order: `create_tables.sql` → `create_history_tables.sql` →
-`create_users_table.sql`. All three are idempotent — re-running them
-is a no-op once the schema is in place. See `docs/REVIEW.md` for the
-history of the schema-duplication fix that consolidated the
-`menu_history` / `week_signatures` DDL into a single file.
+Run order: `create_tables.sql` → `create_history_tables.sql`. Both are
+idempotent — re-running them is a no-op once the schema is in place. See
+`docs/REVIEW.md` for the history of the schema-duplication fix that
+consolidated the `menu_history` / `week_signatures` DDL into a single
+file.
