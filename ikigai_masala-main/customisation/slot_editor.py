@@ -1,5 +1,8 @@
-"""
-Category Editor -- Toggle categories on/off for a client.
+"""Food-category editor — pick which categories a counter serves.
+
+Rendered inside a counter panel (one per counter for multi-cuisine clients).
+The caller wraps this in a bordered container; this function only draws the
+heading + multiselect and returns the selected base categories.
 """
 
 import streamlit as st
@@ -12,16 +15,15 @@ def render_slot_editor(
     all_base_slots: List[str],
     current_active: List[str],
     const_slots: List[str],
-    client_name: str = "",
+    key_prefix: str = "",
 ) -> List[str]:
-    """Render category toggle UI. Returns the list of selected base categories."""
+    """Render the food-category multiselect. Returns selected base categories."""
 
     st.markdown(
-        '<div class="section-card">'
-        '<p class="section-title">Categories</p>'
-        '<p class="section-desc">'
-        'Toggle which categories this client uses. '
-        'Constant items (White Rice, Papad, Pickle, Chutney) are always included.</p>',
+        '<p class="pulse-sub-title">Food Categories</p>'
+        '<p class="pulse-sub-desc">'
+        'Choose which dishes this counter serves. Constant items '
+        '(White Rice, Papad, Pickle, Chutney) are always included.</p>',
         unsafe_allow_html=True,
     )
 
@@ -29,21 +31,25 @@ def render_slot_editor(
     active_set = set(current_active)
 
     selected = st.multiselect(
-        "Active Categories",
+        "Food Categories",
         options=toggleable,
         default=[s for s in toggleable if s in active_set],
         format_func=prettify_slot_name,
-        key=f"editor_slot_multiselect_{client_name}",
+        key=f"slot_ms_{key_prefix}",
         label_visibility="collapsed",
     )
 
     if selected:
         st.markdown(
-            f'<p style="font-size:0.72rem;color:#a1a1aa;margin:0.25rem 0 0;">'
-            f'{len(selected)} of {len(toggleable)} categories active</p>',
+            f'<p class="pulse-hint">{len(selected)} of {len(toggleable)} '
+            f'categories active</p>',
             unsafe_allow_html=True,
         )
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<p class="pulse-hint warn">Select at least one category '
+            'for this counter.</p>',
+            unsafe_allow_html=True,
+        )
 
     return selected

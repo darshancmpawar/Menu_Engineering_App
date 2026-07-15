@@ -129,7 +129,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(STYLES, unsafe_allow_html=True)
+# The planner uses the dark theme (ui/styles.py); the customisation editor is
+# a self-contained full-page view rendered against the Pulse light theme, so
+# skip the dark stylesheet while the editor is active — otherwise the two sets
+# of !important rules fight and the editor renders half-dark. The editor
+# injects its own Pulse CSS in render_customisation_editor().
+if st.session_state.get("view", "planner") != "editor":
+    st.markdown(STYLES, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Backend must be up before we render anything (the UI hits the API).

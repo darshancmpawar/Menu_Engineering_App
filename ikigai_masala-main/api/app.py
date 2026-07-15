@@ -49,7 +49,11 @@ from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
 from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
 from src.client import ClientConfigLoader
-from src.client.client_config import DEFAULT_THEME_MAP, AVAILABLE_THEMES  # noqa: F401 — surfaced in editor-metadata response
+from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
+    DEFAULT_THEME_MAP,
+    AVAILABLE_THEMES,
+    MAX_COUNTERS,
+)
 from src.history import HistoryManager
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules import (
@@ -912,6 +916,7 @@ def editor_metadata():
             'available_themes': AVAILABLE_THEMES,
             'clients': _request_client_names(),
             'menu_categories': _request_menu_categories(),
+            'max_counters': MAX_COUNTERS,
         })
     except Exception as e:
         logger.error("Failed to load editor metadata: %s", e, exc_info=True)
@@ -931,6 +936,8 @@ def get_client_config(client_name):
         menu_category = loader.get_client_menu_category(client_name)
         cfg = loader.get_client(client_name)
         version = loader.get_client_version(client_name)
+        counter_mode = loader.get_counter_mode(client_name)
+        counters = loader.get_counters_for_client(client_name)
         response = jsonify({
             'success': True,
             'name': cfg.name,
@@ -939,6 +946,8 @@ def get_client_config(client_name):
             'slot_counts': cfg.slot_counts,
             'theme_map': cfg.theme_map,
             'version': version,
+            'counter_mode': counter_mode,
+            'counters': counters,
         })
         response.headers['ETag'] = f'"{version}"'
         return response
@@ -1008,12 +1017,24 @@ def update_client_config(client_name):
         # partial sub-update.
         new_version = loader.bump_version_if_matches(client_name, expected)
 
-        if 'active_base_slots' in data:
-            loader.update_client_slots(client_name, data['active_base_slots'])
-        if 'slot_counts' in data:
-            loader.update_client_slot_counts(client_name, data['slot_counts'])
-        if 'theme_map' in data:
-            loader.update_client_theme_overrides(client_name, data['theme_map'])
+        # Counter-aware path: when the caller sends ``counters`` it is the
+        # source of truth for categories/frequency/themes (the primary
+        # counter is mirrored into the legacy tables inside
+        # set_counters_for_client), so the per-field updates below are
+        # skipped to avoid writing the same data twice.
+        if 'counters' in data:
+            loader.set_counters_for_client(
+                client_name,
+                data.get('counter_mode', 'single'),
+                data['counters'],
+            )
+        else:
+            if 'active_base_slots' in data:
+                loader.update_client_slots(client_name, data['active_base_slots'])
+            if 'slot_counts' in data:
+                loader.update_client_slot_counts(client_name, data['slot_counts'])
+            if 'theme_map' in data:
+                loader.update_client_theme_overrides(client_name, data['theme_map'])
 
         response = jsonify({
             'success': True,
@@ -1037,16 +1058,30 @@ def update_client_config(client_name):
 
 @app.route('/api/v1/client', methods=['POST'])
 def create_client():
-    """Create a new client."""
+    """Create a new client.
+
+    Two body shapes are accepted:
+      * classic: ``{"name", "active_slots": [...]}`` — one implicit counter.
+      * counter-aware: ``{"name", "counter_mode": "single"|"multi",
+        "counters": [{name, categories, slot_counts, theme_map}, ...]}``.
+    """
     try:
         data = request.get_json(silent=True) or {}
         name = data.get('name', '').strip()
-        active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
         if not name:
             return jsonify({'success': False, 'error': 'name is required'}), 400
 
         loader = _get_client_loader()
-        loader.create_client(name, active_slots)
+        counters = data.get('counters')
+        if counters:
+            loader.create_client(
+                name,
+                counter_mode=data.get('counter_mode', 'single'),
+                counters=counters,
+            )
+        else:
+            active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
+            loader.create_client(name, active_slots)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
