@@ -113,9 +113,10 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `theme_filter.py` | `ThemeFilter` |
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
-- `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`.
-- No in-memory cache; every read hits Supabase. Supabase tables: `clients`, `menu_categories`, `slot_count_overrides`, `theme_overrides`, `app_settings`.
+- `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`.
+- No in-memory cache; every read hits Supabase. Supabase tables: `clients`, `menu_categories`, `slot_count_overrides`, `theme_overrides`, `client_counters`, `app_settings`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
+- **Cuisine counters**: a client is `single` (one counter, classic) or `multi` (N counters, each with its own categories/frequency/theme_map), tracked by `clients.counter_mode`/`counter_count` and rows in `client_counters`. `get_counters_for_client` / `set_counters_for_client` read/write the canonical counter shape `{name, categories, slot_counts, theme_map}`. The **primary** counter (index 0) is always mirrored into `menu_category` + `slot_count_overrides` + `theme_overrides` so `MenuSolver` keeps working unchanged regardless of mode. All counter methods degrade gracefully (log + fall back) when the migration hasn't been applied.
 
 ### 4.5 `src/history/`
 - `history_manager.py` → `HistoryManager.banned_items_by_date`, `.ricebread_ban_by_date`, `.recent_week_signatures`.
@@ -133,9 +134,11 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - `api_client.py` → `MenuApiClient` (HTTP wrapper used by Streamlit).
 - `formatters.py` → `format_item_html`, `THEME_TAG_COLORS`, `THEME_ICONS`.
 
-### `customisation/` (Streamlit editors)
-- `main.py` → `render_customisation_editor` (dispatcher).
-- `slot_editor.py`, `multi_slot_editor.py`, `theme_editor.py` — per-concern panels writing to Supabase via `/api/v1/client-config/<name>`.
+### `customisation/` (Streamlit editors) — Pulse light theme
+- `main.py` → `render_customisation_editor` (dispatcher). Stepped flow: (1) select/create client → (2) Single vs Multi Cuisine Counter (+ number of counters) → (3) per-counter config. Builds the `counters` payload for `POST /client` and `PUT /client-config`.
+- `counter_editor.py` → `render_counter_editor` — composes the 3 panels for one counter; returns `{name, categories, slot_counts, theme_map}`.
+- `slot_editor.py`, `multi_slot_editor.py`, `theme_editor.py` — per-concern panels (categories / frequency / day themes), counter-scoped via a `key_prefix`.
+- `pulse.py` → `PULSE_EDITOR_CSS`, `PULSE_THEME_COLORS` — the light (OP Lens) design tokens; injected by the editor. `app.py` skips the dark `ui/styles.py` `STYLES` while `view == "editor"`.
 
 ---
 
@@ -147,7 +150,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `ikigai_masala-main/data/configs/indian_menu_rules.json` | rule config consumed by `MenuRuleLoader` |
 | `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
-| `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema |
+| `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema (incl. `clients.counter_mode`/`counter_count` + `client_counters` table) |
 | `ikigai_masala-main/scripts/create_history_tables.sql` | history + signatures schema |
 
 ---

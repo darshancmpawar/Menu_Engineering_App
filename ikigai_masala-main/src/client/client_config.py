@@ -37,10 +37,19 @@ logger = logging.getLogger(__name__)
 # editor keeps working) while logging a loud, actionable hint so the
 # operator knows to run scripts/create_tables.sql.
 _PG_UNDEFINED_COLUMN = "42703"
+# Postgres "undefined_table" plus the PostgREST schema-cache codes it maps
+# to (PGRST205 = table missing from the cache, PGRST204 = column missing).
+_PG_UNDEFINED_TABLE = "42P01"
 _MIGRATION_HINT = (
     "Re-run scripts/create_tables.sql in the Supabase SQL editor to apply "
     "the latest migrations. Optimistic-concurrency on PUT /client-config "
     "is degraded until the column exists."
+)
+_MIGRATION_HINT_COUNTERS = (
+    "Re-run scripts/create_tables.sql in the Supabase SQL editor to create "
+    "the client_counters table and the clients.counter_mode / counter_count "
+    "columns. Multi-counter configs fall back to the legacy single-counter "
+    "storage until the migration is applied."
 )
 
 
@@ -56,6 +65,26 @@ def _is_undefined_column(exc: BaseException) -> bool:
         return True
     msg = str(exc).lower()
     return "does not exist" in msg and "column" in msg
+
+
+def _is_missing_relation(exc: BaseException) -> bool:
+    """Return True if *exc* looks like a missing table / column / schema-cache
+    error — i.e. the multi-counter migration hasn't been applied yet.
+
+    Covers the raw Postgres codes (undefined_column / undefined_table) and
+    the PostgREST wrappers (``PGRST205`` unknown table, ``PGRST204`` unknown
+    column), plus a stringified-message fallback for supabase-py versions
+    that don't surface ``code``.
+    """
+    code = getattr(exc, "code", None)
+    if code in (_PG_UNDEFINED_COLUMN, _PG_UNDEFINED_TABLE, "PGRST205", "PGRST204"):
+        return True
+    msg = str(exc).lower()
+    return (
+        "does not exist" in msg
+        or "could not find" in msg
+        or "schema cache" in msg
+    )
 
 DEFAULT_THEME_MAP: Dict[str, str] = {
     'monday': 'mix',
@@ -97,6 +126,79 @@ def _dedupe_preserve_order(values: List[str]) -> List[str]:
             out.append(v)
             seen.add(v)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Counter helpers
+# ---------------------------------------------------------------------------
+# A "counter" is the config for one cuisine station: which food categories it
+# serves, how many of each (frequency), and the per-weekday theme. A client is
+# either 'single' (one counter — the classic setup) or 'multi' (N counters).
+# The canonical in-memory shape is:
+#     {'name': str, 'categories': [slot],
+#      'slot_counts': {slot: int}, 'theme_map': {day: theme}}
+
+# Frequency bounds mirror the editor's number_input (1..3 per category).
+_MIN_SLOT_COUNT = 1
+_MAX_SLOT_COUNT = 3
+# Hard cap on counters per client — keeps the editor UI and payloads sane.
+MAX_COUNTERS = 6
+
+_TOGGLEABLE_BASE_SLOTS: List[str] = [s for s in BASE_SLOTS if s not in CONST_SLOTS]
+
+
+def default_counter(index: int = 0, name: str = "") -> Dict:
+    """Return a fresh counter config with sensible defaults.
+
+    Defaults to every (non-constant) category active at frequency 1 and the
+    global default day themes — the same starting point the single-counter
+    editor used before multi-counter existed.
+    """
+    return {
+        'name': name or f'Counter {index + 1}',
+        'categories': list(_TOGGLEABLE_BASE_SLOTS),
+        'slot_counts': {s: 1 for s in _TOGGLEABLE_BASE_SLOTS},
+        'theme_map': dict(DEFAULT_THEME_MAP),
+    }
+
+
+def normalize_counter(raw: Dict, index: int = 0) -> Dict:
+    """Coerce arbitrary/partial counter input into the canonical shape.
+
+    - drops unknown / constant slots from ``categories`` (dedup, order-preserving)
+    - clamps every ``slot_counts`` value to [1, 3]; only keeps active categories
+    - merges ``theme_map`` over the global defaults, ignoring invalid days/themes
+    - falls back to ``Counter N`` for a blank name
+    """
+    raw = raw or {}
+    name = str(raw.get('name') or '').strip() or f'Counter {index + 1}'
+
+    cats = _dedupe_preserve_order([
+        c for c in (raw.get('categories') or [])
+        if c in BASE_SLOTS and c not in CONST_SLOTS
+    ])
+
+    raw_counts = raw.get('slot_counts') or {}
+    slot_counts: Dict[str, int] = {}
+    for c in cats:
+        try:
+            v = int(raw_counts.get(c, 1))
+        except (TypeError, ValueError):
+            v = 1
+        slot_counts[c] = max(_MIN_SLOT_COUNT, min(_MAX_SLOT_COUNT, v))
+
+    theme_map = dict(DEFAULT_THEME_MAP)
+    for day, theme in (raw.get('theme_map') or {}).items():
+        d = str(day).lower()
+        if d in theme_map and theme in AVAILABLE_THEMES:
+            theme_map[d] = theme
+
+    return {
+        'name': name,
+        'categories': cats,
+        'slot_counts': slot_counts,
+        'theme_map': theme_map,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +378,94 @@ class ClientConfigLoader:
                 merged[day_lower] = r['theme']
         return merged
 
+    # ---- counter read methods ----------------------------------------------
+
+    def get_counter_mode(self, name: str) -> str:
+        """Return 'single' or 'multi' for a client.
+
+        Falls back to 'single' when the ``counter_mode`` column is missing
+        (pre-migration deployment) — the editor stays usable and the client
+        behaves as a classic single-counter client.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('counter_mode')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.counter_mode missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                self._require_client_exists(name)
+                return 'single'
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return 'multi' if row.data.get('counter_mode') == 'multi' else 'single'
+
+    def get_counters_for_client(self, name: str) -> List[Dict]:
+        """Return the ordered list of counter configs for a client.
+
+        Reads the ``client_counters`` table. When no rows exist (a legacy
+        single-counter client, or the table hasn't been migrated in yet) a
+        single counter is synthesised from the legacy menu_category /
+        slot_count_overrides / theme_overrides so callers always get at
+        least one usable counter.
+        """
+        rows = None
+        try:
+            resp = (
+                self._sb.table('client_counters')
+                .select('*')
+                .eq('client_name', name)
+                .order('counter_index')
+                .execute()
+            )
+            rows = resp.data
+        except Exception as exc:
+            if not _is_missing_relation(exc):
+                raise
+            logger.error(
+                "client_counters unavailable for %r — %s",
+                name, _MIGRATION_HINT_COUNTERS,
+            )
+
+        counters: List[Dict] = []
+        for r in sorted(rows or [], key=lambda x: x.get('counter_index', 0)):
+            counters.append(normalize_counter({
+                'name': r.get('counter_name'),
+                'categories': r.get('categories'),
+                'slot_counts': r.get('slot_counts'),
+                'theme_map': r.get('theme_map'),
+            }, r.get('counter_index', 0)))
+
+        if counters:
+            return counters
+        return [self._legacy_single_counter(name)]
+
+    def _legacy_single_counter(self, name: str) -> Dict:
+        """Synthesise one counter from the classic single-counter tables."""
+        try:
+            base = self.get_active_slots_for_client(name)
+        except ValueError:
+            # Client has no / an empty menu category — fall back to the
+            # default category set rather than blowing up the editor.
+            base = list(_TOGGLEABLE_BASE_SLOTS)
+        cats = [s for s in base if s not in CONST_SLOTS]
+        counts = self.get_slot_counts_for_client(name)
+        theme = self.get_theme_map_for_client(name)
+        return normalize_counter({
+            'name': 'Counter 1',
+            'categories': cats,
+            'slot_counts': {c: counts.get(c, 1) for c in cats},
+            'theme_map': theme,
+        }, 0)
+
     # ---- mutation methods --------------------------------------------------
 
     def find_or_create_menu_category(self, slots: List[str]) -> str:
@@ -307,13 +497,133 @@ class ClientConfigLoader:
         }).execute()
         return new_name
 
-    def create_client(self, name: str, active_slots: List[str]) -> None:
-        """Create a new client. Auto-assigns or creates a menu_category."""
+    def create_client(
+        self,
+        name: str,
+        active_slots: List[str] | None = None,
+        *,
+        counter_mode: str = 'single',
+        counters: List[Dict] | None = None,
+    ) -> None:
+        """Create a new client. Auto-assigns or creates a menu_category.
+
+        Two ways to call:
+          * classic single-counter: ``create_client(name, active_slots)`` —
+            unchanged behaviour, one implicit counter.
+          * counter-aware: ``create_client(name, counter_mode='multi',
+            counters=[...])`` — persists each counter and mirrors the
+            primary one into the legacy tables.
+        """
+        if counters:
+            norm = [normalize_counter(c, i) for i, c in enumerate(counters)]
+            self._validate_counters(norm)
+            primary_cats = norm[0]['categories']
+            cat_name = self.find_or_create_menu_category(primary_cats)
+            self._sb.table('clients').insert({
+                'name': name,
+                'menu_category': cat_name,
+            }).execute()
+            self.set_counters_for_client(name, counter_mode, norm)
+            return
+
+        if active_slots is None:
+            active_slots = list(_TOGGLEABLE_BASE_SLOTS)
         cat_name = self.find_or_create_menu_category(active_slots)
         self._sb.table('clients').insert({
             'name': name,
             'menu_category': cat_name,
         }).execute()
+
+    @staticmethod
+    def _validate_counters(counters: List[Dict]) -> None:
+        """Raise ValueError unless every counter has ≥1 category."""
+        if not counters:
+            raise ValueError("At least one counter is required.")
+        if len(counters) > MAX_COUNTERS:
+            raise ValueError(f"At most {MAX_COUNTERS} counters are allowed.")
+        for i, c in enumerate(counters):
+            if not c.get('categories'):
+                raise ValueError(
+                    f"Counter {i + 1} ('{c.get('name', '')}') needs at least "
+                    "one food category."
+                )
+
+    def set_counters_for_client(
+        self, name: str, counter_mode: str, counters: List[Dict],
+    ) -> None:
+        """Persist the full counter configuration for an existing client.
+
+        - normalises + validates every counter
+        - mirrors the primary counter (index 0) into the legacy
+          menu_category / slot_count_overrides / theme_overrides tables so
+          the solver keeps working unchanged
+        - replaces the ``client_counters`` rows and updates the client's
+          ``counter_mode`` / ``counter_count`` (both degrade gracefully if
+          the migration hasn't been applied)
+        """
+        self._require_client_exists(name)
+        normalized = [normalize_counter(c, i) for i, c in enumerate(counters)]
+        mode = 'multi' if counter_mode == 'multi' else 'single'
+        if mode == 'single':
+            normalized = normalized[:1]
+        self._validate_counters(normalized)
+
+        primary = normalized[0]
+        self.update_client_slots(name, primary['categories'])
+        self.update_client_slot_counts(name, primary['slot_counts'])
+        self.update_client_theme_overrides(name, primary['theme_map'])
+
+        self._write_counter_rows(name, normalized)
+        self._set_counter_meta(name, mode, len(normalized))
+
+    def _write_counter_rows(self, name: str, counters: List[Dict]) -> None:
+        """Replace all ``client_counters`` rows for a client.
+
+        Degrades to a no-op (with a loud log) if the table hasn't been
+        migrated in — the legacy mirror written by the caller still keeps
+        single-counter planning working.
+        """
+        try:
+            self._sb.table('client_counters').delete().eq(
+                'client_name', name,
+            ).execute()
+            rows = [
+                {
+                    'client_name': name,
+                    'counter_index': i,
+                    'counter_name': c['name'],
+                    'categories': c['categories'],
+                    'slot_counts': c['slot_counts'],
+                    'theme_map': c['theme_map'],
+                }
+                for i, c in enumerate(counters)
+            ]
+            if rows:
+                self._sb.table('client_counters').insert(rows).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "Could not persist client_counters for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                return
+            raise
+
+    def _set_counter_meta(self, name: str, mode: str, count: int) -> None:
+        """Update clients.counter_mode / counter_count (best-effort)."""
+        try:
+            self._sb.table('clients').update({
+                'counter_mode': mode,
+                'counter_count': int(count),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.counter_mode/counter_count missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                return
+            raise
 
     def delete_client(self, name: str) -> None:
         row = (

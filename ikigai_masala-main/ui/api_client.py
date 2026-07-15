@@ -279,13 +279,31 @@ class MenuApiClient:
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Save failed")
 
-    def create_client(self, name: str, active_slots: list) -> Dict[str, Any]:
+    def create_client(
+        self,
+        name: str,
+        active_slots: Optional[list] = None,
+        *,
+        counter_mode: Optional[str] = None,
+        counters: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         # Creating the same name twice is caught server-side (409 / "already
         # exists"), so a retry after a proxy 502 is self-correcting.
+        #
+        # Two shapes: classic (active_slots → one implicit counter) or
+        # counter-aware (counter_mode + counters). When counters are given
+        # they take precedence server-side.
+        payload: Dict[str, Any] = {"name": name}
+        if counters is not None:
+            payload["counters"] = counters
+            payload["counter_mode"] = counter_mode or "single"
+        else:
+            payload["active_slots"] = active_slots or []
+
         def _do():
             return self.session.post(
                 f"{self.base_url}/api/v1/client",
-                json={"name": name, "active_slots": active_slots},
+                json=payload,
                 timeout=10, headers=self._auth_headers(),
             )
         resp = _with_one_retry(_do, retryable=True)

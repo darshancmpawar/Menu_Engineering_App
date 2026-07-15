@@ -625,3 +625,164 @@ class TestClientNamesRequestCache:
         # validator's client_names read.
         assert resp.status_code == 400
         assert calls["n"] == 1
+
+
+class TestEditorMetadataCounters:
+    def test_metadata_exposes_max_counters(
+        self, client, auth_headers, fake_supabase,
+    ):
+        from src.client.client_config import MAX_COUNTERS
+        resp = client.get('/api/v1/editor-metadata', headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()['max_counters'] == MAX_COUNTERS
+
+
+class TestCounterClientEndpoints:
+    """End-to-end coverage for the single/multi cuisine-counter flow through
+    the create + client-config endpoints (backed by FakeSupabase)."""
+
+    def test_existing_client_reports_single_counter(
+        self, client, auth_headers, fake_supabase,
+    ):
+        # Rippling is seeded with the classic single-counter storage; add a
+        # veg_dry x2 override so we can prove it surfaces in the synthesised
+        # counter's frequency.
+        fake_supabase.seed('slot_count_overrides', [
+            {'client_name': 'Rippling', 'slot': 'veg_dry', 'count': 2},
+        ])
+        resp = client.get('/api/v1/client-config/Rippling', headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['counter_mode'] == 'single'
+        assert len(body['counters']) == 1
+        primary = body['counters'][0]
+        assert 'veg_dry' in primary['categories']
+        assert primary['slot_counts'].get('veg_dry') == 2
+
+    def test_create_multi_counter_client_then_read_back(
+        self, client, auth_headers, fake_supabase,
+    ):
+        payload = {
+            'name': 'Acme',
+            'counter_mode': 'multi',
+            'counters': [
+                {
+                    'name': 'North Counter',
+                    'categories': ['bread', 'veg_gravy', 'rice'],
+                    'slot_counts': {'veg_gravy': 2},
+                    'theme_map': {'monday': 'north'},
+                },
+                {
+                    'name': 'Chinese Counter',
+                    'categories': ['starter', 'veg_dry'],
+                    'slot_counts': {'veg_dry': 3},
+                    'theme_map': {'tuesday': 'chinese'},
+                },
+            ],
+        }
+        resp = client.post('/api/v1/client', json=payload, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+
+        # Client now shows up in the list.
+        listing = client.get('/api/v1/clients', headers=auth_headers).get_json()
+        assert 'Acme' in listing['clients']
+
+        cfg = client.get('/api/v1/client-config/Acme', headers=auth_headers).get_json()
+        assert cfg['counter_mode'] == 'multi'
+        assert [c['name'] for c in cfg['counters']] == ['North Counter', 'Chinese Counter']
+        assert cfg['counters'][0]['categories'] == ['bread', 'veg_gravy', 'rice']
+        assert cfg['counters'][0]['slot_counts']['veg_gravy'] == 2
+        assert cfg['counters'][1]['slot_counts']['veg_dry'] == 3
+
+        # Primary counter is mirrored into the legacy tables so the solver
+        # keeps working: config's top-level slot_counts/theme_map reflect it.
+        assert cfg['slot_counts'].get('veg_gravy') == 2
+        assert cfg['theme_map']['monday'] == 'north'
+        # A stored client_counters row exists per counter.
+        assert len(fake_supabase.rows('client_counters')) == 2
+
+    def test_create_rejects_counter_without_categories(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/client', json={
+            'name': 'BadClient',
+            'counter_mode': 'multi',
+            'counters': [
+                {'name': 'Empty', 'categories': [], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert 'category' in resp.get_json()['error'].lower()
+        # Nothing should have been created.
+        assert 'BadClient' not in client.get(
+            '/api/v1/clients', headers=auth_headers,
+        ).get_json()['clients']
+
+    def test_create_rejects_too_many_counters(
+        self, client, auth_headers, fake_supabase,
+    ):
+        from src.client.client_config import MAX_COUNTERS
+        counters = [
+            {'name': f'C{i}', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}}
+            for i in range(MAX_COUNTERS + 1)
+        ]
+        resp = client.post('/api/v1/client', json={
+            'name': 'TooMany', 'counter_mode': 'multi', 'counters': counters,
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+
+    def test_classic_create_defaults_to_single(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/client', json={
+            'name': 'Legacy', 'active_slots': ['rice', 'dal', 'veg_dry'],
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        cfg = client.get('/api/v1/client-config/Legacy', headers=auth_headers).get_json()
+        assert cfg['counter_mode'] == 'single'
+        assert len(cfg['counters']) == 1
+        assert set(cfg['counters'][0]['categories']) == {'rice', 'dal', 'veg_dry'}
+
+    def test_put_switches_single_to_multi(
+        self, client, auth_headers, fake_supabase,
+    ):
+        # Start from the seeded single-counter Rippling, fetch its version.
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        version = cfg['version']
+
+        resp = client.put('/api/v1/client-config/Rippling', json={
+            'version': version,
+            'counter_mode': 'multi',
+            'counters': [
+                {'name': 'Main', 'categories': ['rice', 'dal'],
+                 'slot_counts': {'rice': 2}, 'theme_map': {'friday': 'north'}},
+                {'name': 'Live', 'categories': ['starter'],
+                 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+
+        updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert updated['counter_mode'] == 'multi'
+        assert [c['name'] for c in updated['counters']] == ['Main', 'Live']
+        assert updated['counters'][0]['slot_counts']['rice'] == 2
+        # Version bumped by the PUT.
+        assert updated['version'] == version + 1
+
+    def test_put_single_mode_keeps_only_primary_counter(
+        self, client, auth_headers, fake_supabase,
+    ):
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        resp = client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'],
+            'counter_mode': 'single',
+            'counters': [
+                {'name': 'Only', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'Dropped', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert updated['counter_mode'] == 'single'
+        assert len(updated['counters']) == 1
+        assert updated['counters'][0]['name'] == 'Only'
