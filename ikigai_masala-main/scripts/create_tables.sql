@@ -14,42 +14,29 @@ CREATE TABLE IF NOT EXISTS menu_categories (
 -- returns the current value; PUT must send the same value back and
 -- fails with 409 Conflict if another writer bumped it in the meantime.
 --
--- ``counter_mode`` / ``counter_count`` describe the cuisine-counter setup:
---   'single' (one counter — the classic single-cuisine setup) or
---   'multi'  (N independent counters, each with its own categories,
---            frequency, and day themes — stored in client_counters).
--- The *primary* counter (counter_index 0) is always mirrored into
--- menu_category + slot_count_overrides + theme_overrides so the menu
--- solver keeps working unchanged regardless of the mode.
+-- Cuisine counters (single vs multi) live in the ``counters`` JSONB column
+-- rather than a separate table — one row per client already carries all the
+-- config we need, so there is nothing to normalise out:
+--   * single-cuisine client (the only kind today): ``counters = '[]'`` and
+--     the config is read from the existing menu_category / slot_count_overrides
+--     / theme_overrides tables. No duplicated data.
+--   * multi-cuisine client (future): ``counters`` holds the ordered list
+--     ``[{name, categories, slot_counts, theme_map}, …]``. The primary
+--     counter (index 0) is *also* mirrored into menu_category /
+--     slot_count_overrides / theme_overrides so the menu solver keeps working
+--     unchanged. ``single`` vs ``multi`` is derived (multi ⇔ counters non-empty),
+--     so no separate mode/count columns are needed.
 CREATE TABLE IF NOT EXISTS clients (
     name           TEXT PRIMARY KEY,
     menu_category  TEXT NOT NULL REFERENCES menu_categories(name),
     version        INT  NOT NULL DEFAULT 1,
-    counter_mode   TEXT NOT NULL DEFAULT 'single'
-                     CHECK (counter_mode IN ('single','multi')),
-    counter_count  INT  NOT NULL DEFAULT 1 CHECK (counter_count >= 1),
+    counters       JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at     TIMESTAMPTZ DEFAULT now()
 );
 -- Migrations for deployments that created the table before these columns
 -- existed. No-ops on fresh installs since CREATE TABLE above includes them.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS counter_mode TEXT NOT NULL DEFAULT 'single';
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS counter_count INT NOT NULL DEFAULT 1;
-
--- 2b. Client counters — the per-counter configuration for multi-cuisine
--- clients. One row per (client, counter_index). counter_index 0 is the
--- primary counter (also mirrored into the legacy single-counter tables).
--- Single-counter clients may have exactly one row here or none (in which
--- case the loader synthesises one from the legacy tables).
-CREATE TABLE IF NOT EXISTS client_counters (
-    client_name   TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
-    counter_index INT  NOT NULL CHECK (counter_index >= 0),
-    counter_name  TEXT NOT NULL DEFAULT '',
-    categories    JSONB NOT NULL DEFAULT '[]'::jsonb,
-    slot_counts   JSONB NOT NULL DEFAULT '{}'::jsonb,
-    theme_map     JSONB NOT NULL DEFAULT '{}'::jsonb,
-    PRIMARY KEY (client_name, counter_index)
-);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 3. Slot count overrides — e.g. Rippling gets veg_dry x2
 CREATE TABLE IF NOT EXISTS slot_count_overrides (
@@ -81,7 +68,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_slot_overrides_client ON slot_count_overrides(client_name);
 CREATE INDEX IF NOT EXISTS idx_theme_overrides_client ON theme_overrides(client_name);
-CREATE INDEX IF NOT EXISTS idx_client_counters_client ON client_counters(client_name);
 
 -- =============================================================================
 -- Enable Row Level Security (keep tables accessible via service/anon key)
@@ -93,7 +79,6 @@ ALTER TABLE menu_categories     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slot_count_overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE theme_overrides     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE client_counters     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_settings        ENABLE ROW LEVEL SECURITY;
 
 -- Allow full access via the anon key (single-tenant app)
@@ -110,9 +95,6 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on theme_overrides') THEN
     CREATE POLICY "Allow all on theme_overrides"     ON theme_overrides     FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on client_counters') THEN
-    CREATE POLICY "Allow all on client_counters"     ON client_counters     FOR ALL USING (true) WITH CHECK (true);
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on app_settings') THEN
     CREATE POLICY "Allow all on app_settings"        ON app_settings        FOR ALL USING (true) WITH CHECK (true);

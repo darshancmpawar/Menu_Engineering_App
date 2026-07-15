@@ -698,8 +698,11 @@ class TestCounterClientEndpoints:
         # keeps working: config's top-level slot_counts/theme_map reflect it.
         assert cfg['slot_counts'].get('veg_gravy') == 2
         assert cfg['theme_map']['monday'] == 'north'
-        # A stored client_counters row exists per counter.
-        assert len(fake_supabase.rows('client_counters')) == 2
+        # Counters are persisted in the clients.counters JSONB column — no
+        # separate table.
+        acme = [r for r in fake_supabase.rows('clients') if r['name'] == 'Acme'][0]
+        assert len(acme['counters']) == 2
+        assert [c['name'] for c in acme['counters']] == ['North Counter', 'Chinese Counter']
 
     def test_create_rejects_counter_without_categories(
         self, client, auth_headers, fake_supabase,
@@ -785,4 +788,10 @@ class TestCounterClientEndpoints:
         updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
         assert updated['counter_mode'] == 'single'
         assert len(updated['counters']) == 1
-        assert updated['counters'][0]['name'] == 'Only'
+        # Single mode drops the extra counter and keeps only the primary,
+        # read back from the legacy tables (categories preserved; the single
+        # counter's name is cosmetic and not persisted separately).
+        assert updated['counters'][0]['categories'] == ['rice']
+        # Nothing is stored in the clients.counters column for a single client.
+        rip = [r for r in fake_supabase.rows('clients') if r['name'] == 'Rippling'][0]
+        assert rip['counters'] == []
