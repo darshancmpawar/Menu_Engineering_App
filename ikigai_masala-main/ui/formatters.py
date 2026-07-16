@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, Optional, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES
+from ui.theme_tokens import ITEM_COLOR_MAP, PULSE_THEME_COLORS
 
 
 # Day-of-week theme labels (Monday=0)
@@ -20,26 +21,14 @@ THEME_LABELS = {
     6: "Weekend Special",
 }
 
-# Map color initial -> (full name, CSS bg color, CSS text color)
-_COLOR_MAP: Dict[str, Tuple[str, str, str]] = {
-    'R': ('Red',    '#3b1114', '#fca5a5'),
-    'G': ('Green',  '#0f2a1d', '#86efac'),
-    'B': ('Brown',  '#2a1a08', '#d4a56a'),
-    'Y': ('Yellow', '#2a2308', '#fde68a'),
-    'W': ('White',  '#1f1f23', '#d4d4d8'),
-    'O': ('Orange', '#2a1508', '#fdba74'),
-    'K': ('Black',  '#18181b', '#a1a1aa'),
-}
+# Map color initial -> (full name, CSS bg color, CSS text color).
+# Sourced from the shared Pulse palette (light tints).
+_COLOR_MAP: Dict[str, Tuple[str, str, str]] = ITEM_COLOR_MAP
 
 
-# Theme badge colors keyed by theme name: (background, foreground, icon)
-THEME_TAG_COLORS = {
-    'mix':     ('#0f2a1d', '#86efac'),
-    'chinese': ('#2a1508', '#fdba74'),
-    'biryani': ('#3b1114', '#fca5a5'),
-    'south':   ('#0f1a2e', '#93c5fd'),
-    'north':   ('#1e0a3a', '#c4b5fd'),
-}
+# Theme badge colors keyed by theme name: (background, foreground).
+# Shared with the customisation editor via the Pulse palette.
+THEME_TAG_COLORS = PULSE_THEME_COLORS
 
 THEME_ICONS = {
     'mix':     '&#9670;',   # diamond
@@ -95,7 +84,7 @@ def format_item_html(item_str: str) -> str:
 
     if m:
         initial = m.group(1)
-        color_name, bg, fg = _COLOR_MAP.get(initial, (initial, '#1f1f23', '#a1a1aa'))
+        color_name, bg, fg = _COLOR_MAP.get(initial, (initial, '#F0F0F0', '#555555'))
         return (
             f'<span class="item-name">{name}</span>'
             f'<span class="color-pill" style="background:{bg};color:{fg};">'

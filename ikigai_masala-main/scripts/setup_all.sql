@@ -116,6 +116,10 @@ DROP TABLE IF EXISTS client_counters CASCADE;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_mode;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_count;
 
+-- Drop the dead `users` table left over from the removed authentication
+-- feature (no application code references it).
+DROP TABLE IF EXISTS users CASCADE;
+
 -- -----------------------------------------------------------------------------
 -- Indexes
 -- -----------------------------------------------------------------------------
