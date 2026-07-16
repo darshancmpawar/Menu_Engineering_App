@@ -4,23 +4,18 @@
 -- Re-running is idempotent (every CREATE/ALTER guards against duplication).
 -- =============================================================================
 
--- 1. Menu history — one row per (client, date, slot, item) served
+-- 1. Menu history — one row per (client, date); the day's whole menu lives in
+--    the `menu` JSONB column ({slot: item_base}). The PK (client_name,
+--    service_date) both enforces one-menu-per-day and serves the cooldown
+--    "client + date range" query, so no extra index is needed.
+-- (To migrate an OLD item-per-row menu_history, run scripts/setup_all.sql.)
 CREATE TABLE IF NOT EXISTS menu_history (
-    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
     service_date DATE NOT NULL,
-    slot         TEXT NOT NULL,
-    item_base    TEXT NOT NULL,
-    created_at   TIMESTAMPTZ DEFAULT now()
+    menu         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (client_name, service_date)
 );
-
--- Fast lookups: cooldown queries filter by client + date range
-CREATE INDEX IF NOT EXISTS idx_menu_history_client_date
-    ON menu_history(client_name, service_date DESC);
-
--- Prevent exact duplicate entries
-CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_history_unique
-    ON menu_history(client_name, service_date, slot, item_base);
 
 -- 2. Week signatures — one row per saved week plan
 CREATE TABLE IF NOT EXISTS week_signatures (

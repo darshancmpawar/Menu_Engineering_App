@@ -38,14 +38,15 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value JSONB NOT NULL
 );
 
--- 3. Menu history — one row per (client, date, slot, item) served
+-- 3. Menu history — one row per (client, date); the day's whole menu lives in
+--    the `menu` JSONB column ({slot: item_base}). Item-level cooldowns explode
+--    this in memory. (Was one row per dish — collapsed to one row per day.)
 CREATE TABLE IF NOT EXISTS menu_history (
-    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
     service_date DATE NOT NULL,
-    slot         TEXT NOT NULL,
-    item_base    TEXT NOT NULL,
-    created_at   TIMESTAMPTZ DEFAULT now()
+    menu         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (client_name, service_date)
 );
 
 -- 4. Week signatures — one row per saved week plan
@@ -130,13 +131,40 @@ ALTER TABLE clients DROP COLUMN IF EXISTS menu_category;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_mode;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_count;
 
+-- (d) Reshape an OLD item-per-row menu_history into one JSONB row per day.
+--     Aggregates each day's slots into a {slot: item_base} object, taking the
+--     newest row per (client, date, slot). No-op on the new/fresh shape.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'menu_history'
+                 AND column_name = 'item_base') THEN
+        CREATE TABLE menu_history_new (
+            client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
+            service_date DATE NOT NULL,
+            menu         JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at   TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (client_name, service_date)
+        );
+        INSERT INTO menu_history_new (client_name, service_date, menu)
+        SELECT client_name, service_date, jsonb_object_agg(slot, item_base)
+        FROM (
+            SELECT DISTINCT ON (client_name, service_date, slot)
+                   client_name, service_date, slot, item_base
+            FROM menu_history
+            ORDER BY client_name, service_date, slot, id DESC
+        ) t
+        GROUP BY client_name, service_date;
+        DROP TABLE menu_history CASCADE;
+        ALTER TABLE menu_history_new RENAME TO menu_history;
+    END IF;
+END $$;
+
 -- -----------------------------------------------------------------------------
 -- Indexes
 -- -----------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_menu_history_client_date
-    ON menu_history(client_name, service_date DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_history_unique
-    ON menu_history(client_name, service_date, slot, item_base);
+-- menu_history is keyed by its PK (client_name, service_date), which already
+-- serves the "client + date range" cooldown query — no extra index needed.
 CREATE INDEX IF NOT EXISTS idx_week_signatures_client_date
     ON week_signatures(client_name, week_start DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_week_signatures_unique

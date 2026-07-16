@@ -425,7 +425,8 @@ class TestSaveEndpoint:
         }, headers=auth_headers)
         assert first.status_code == 200
         rows = fake_supabase.rows('menu_history')
-        assert [r['item_base'] for r in rows] == ['jeera_rice']
+        # One JSONB day row; colour suffix stripped for storage.
+        assert [r['menu'] for r in rows] == [{'rice': 'jeera_rice'}]
 
         second = client.post('/api/v1/save', json={
             'client_name': 'Rippling',
@@ -434,7 +435,7 @@ class TestSaveEndpoint:
         }, headers=auth_headers)
         assert second.status_code == 200
         rows = fake_supabase.rows('menu_history')
-        assert [r['item_base'] for r in rows] == ['lemon_rice']
+        assert [r['menu'] for r in rows] == [{'rice': 'lemon_rice'}]
         # week_signatures also overwrites — exactly one row per
         # (client, week_start) post-save.
         assert len(fake_supabase.rows('week_signatures')) == 1
