@@ -159,41 +159,35 @@ class HistoryManager:
         """Persist a completed week plan to Supabase with **overwrite**
         semantics.
 
-        Re-saving a plan for the same (client, dates) replaces the
-        previously saved rows instead of appending — so the UI's "Save
-        again after regenerating" flow ends up with exactly one set of
-        rows per date, and "Load saved plan" returns the freshest pick.
-
-        Implementation: DELETE existing rows for (client_name,
-        service_date IN dates), then INSERT the new rows. The same goes
-        for ``week_signatures`` keyed by ``(client_name, week_start)``.
-        The brief window between DELETE and INSERT is the only time the
-        DB has no plan for these dates; an INSERT failure surfaces to
-        the caller (the API returns 500), and the user retries. We
-        accept that small risk in exchange for not needing a transactional
-        RPC against Supabase.
+        Storage: one row per (client, service_date) in ``menu_history``,
+        with the day's whole menu in a ``menu`` JSONB column
+        (``{slot: item_base}``) — not one row per dish. Re-saving a plan
+        for the same (client, dates) replaces those day rows (DELETE then
+        INSERT, since the primary key is ``(client_name, service_date)``).
+        The ``week_signatures`` row is overwritten the same way, keyed by
+        ``(client_name, week_start)``.
         """
         if supabase_client is None:
             raise ValueError("supabase_client is required to save history.")
 
-        # Build long-history rows (keep original client_name to match FK)
-        long_rows = []
+        # One JSONB row per date. Empty days are skipped so "partially
+        # saved" ranges stay distinguishable from fully-saved ones.
+        day_rows = []
         for d in dates:
             day_map = week_plan.get(d, {})
+            menu = {}
             for slot_id, item_val in day_map.items():
                 item_base = strip_color_fn(item_val) if strip_color_fn else item_val
-                long_rows.append({
-                    'service_date': d.isoformat(),
-                    'slot': slot_id,
-                    'item_base': _norm_str(item_base),
+                item_base = _norm_str(item_base)
+                if item_base:
+                    menu[slot_id] = item_base
+            if menu:
+                day_rows.append({
                     'client_name': client_name,
+                    'service_date': d.isoformat(),
+                    'menu': menu,
                 })
 
-        # Overwrite: clear any previous rows for these (client, date) pairs
-        # before inserting the fresh plan. Without this a second save for
-        # the same week would accumulate rows (the UNIQUE INDEX only
-        # blocks identical-item duplicates, not different items in the
-        # same slot).
         date_isos = [d.isoformat() for d in dates]
         if date_isos:
             (
@@ -203,8 +197,8 @@ class HistoryManager:
                 .in_('service_date', date_isos)
                 .execute()
             )
-        if long_rows:
-            supabase_client.table('menu_history').insert(long_rows).execute()
+        if day_rows:
+            supabase_client.table('menu_history').insert(day_rows).execute()
 
         # Same overwrite rule for the per-week signature row.
         (
@@ -230,19 +224,14 @@ class HistoryManager:
     ) -> Dict[dt.date, Dict[str, str]]:
         """Return the saved menu for *client_name* across *dates*.
 
-        Result shape: ``{date: {slot_id: item_base}}``. Only dates that
-        have at least one saved row are present in the dict, so callers
-        can distinguish "fully saved" (all requested dates present) from
-        "partially saved" (some missing) or "not saved" (empty dict).
+        Result shape: ``{date: {slot_id: item_base}}``, read straight from
+        the ``menu`` JSONB column (one row per day, PK on
+        ``(client_name, service_date)``). Only dates with a non-empty menu
+        are present, so callers distinguish "fully saved" (all requested
+        dates present) from "partial" / "not saved".
 
-        ``item_base`` is the de-colorised normalised name we persisted
-        in ``menu_history``. The caller is responsible for re-attaching
-        a color suffix for display (see ``api.app._enrich_history_plan``).
-
-        If multiple rows exist for the same (date, slot) — possible from
-        legacy data before this revision added overwrite semantics — the
-        row with the highest ``id`` (newest) wins, so the most recent
-        save is what callers see.
+        ``item_base`` is the de-colorised name we persisted; the caller
+        re-attaches a color suffix for display (``_enrich_history_plan``).
         """
         if supabase_client is None:
             raise ValueError("supabase_client is required to load history.")
@@ -252,37 +241,52 @@ class HistoryManager:
         date_isos = [d.isoformat() for d in dates]
         resp = (
             supabase_client.table('menu_history')
-            .select('service_date, slot, item_base, id')
+            .select('service_date, menu')
             .eq('client_name', client_name)
             .in_('service_date', date_isos)
             .execute()
         )
         rows = resp.data or []
 
-        # Newest row wins per (date, slot). Sort by id ascending then
-        # overwrite — final state holds the highest-id pick. ``id`` is a
-        # monotonically increasing identity column in menu_history.
-        rows.sort(key=lambda r: r.get('id') or 0)
-
-        by_iso: Dict[str, Dict[str, str]] = {}
+        out: Dict[dt.date, Dict[str, str]] = {}
         for r in rows:
             iso = r.get('service_date')
-            slot = r.get('slot')
-            item_base = r.get('item_base')
-            if not iso or not slot:
+            menu = r.get('menu')
+            if not iso or not isinstance(menu, dict) or not menu:
                 continue
-            by_iso.setdefault(iso, {})[slot] = item_base or ''
-
-        # Translate ISO strings back to dt.date for the caller. We do
-        # this last (rather than at row-iteration time) so an unexpected
-        # date format from Supabase doesn't silently drop a row.
-        out: Dict[dt.date, Dict[str, str]] = {}
-        for iso, slots in by_iso.items():
             try:
-                out[dt.date.fromisoformat(iso)] = slots
+                d = dt.date.fromisoformat(iso)
             except (TypeError, ValueError):
                 continue
+            out[d] = {slot: (item or '') for slot, item in menu.items()}
         return out
+
+    # ----- Explode JSONB day rows into the long (per-item) form -----
+
+    @staticmethod
+    def explode_history_rows(rows: Optional[List[Dict]]) -> Optional[pd.DataFrame]:
+        """Turn ``menu_history`` day rows (``{client_name, service_date,
+        menu:{slot:item}}``) into the long ``(client_name, service_date,
+        slot, item_base)`` DataFrame the cooldown readers expect.
+
+        Returns None for empty input so ``load_from_dataframes`` treats it
+        as "no history".
+        """
+        long_rows: List[Dict] = []
+        for r in rows or []:
+            menu = r.get('menu')
+            if not isinstance(menu, dict):
+                continue
+            cn = r.get('client_name')
+            sd = r.get('service_date')
+            for slot, item in menu.items():
+                long_rows.append({
+                    'client_name': cn,
+                    'service_date': sd,
+                    'slot': slot,
+                    'item_base': item,
+                })
+        return pd.DataFrame(long_rows) if long_rows else None
 
     # ----- Signature computation -----
 

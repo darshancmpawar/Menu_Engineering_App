@@ -119,8 +119,8 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
 
 ### 4.5 `src/history/`
-- `history_manager.py` → `HistoryManager.banned_items_by_date`, `.ricebread_ban_by_date`, `.recent_week_signatures`.
-- Tables: `menu_history` (item×date), `week_signatures` (weekly hash).
+- `history_manager.py` → `HistoryManager.banned_items_by_date`, `.ricebread_ban_by_date`, `.recent_week_signatures`, `.explode_history_rows`.
+- Tables: `menu_history` — **one JSONB row per (client, service_date)**, `menu = {slot: item_base}` (PK on `(client_name, service_date)`); cooldown readers `explode_history_rows()` it into per-item rows in memory. `week_signatures` — weekly hash for week-level cooldowns.
 
 ### 4.6 `src/` top-level
 - `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DISPLAY_SLOT_NAME`.
@@ -227,7 +227,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 3. **No config cache**: `ClientConfigLoader` reads Supabase on every call — live edits, no restart. Don't add caching without thinking through invalidation.
 4. **Dynamic worker allocation** in `api/concurrency.py`: 1 active solve → 9 workers; 2 active → 5 each. Tuned for ~1 GB RAM.
 5. **Theme dispatch**: global weekday→theme map, per-client overridable via `theme_overrides` table. Solver honors it via `theme_*` rules.
-6. **History split**: `menu_history` is item-level; `week_signatures` is a weekly hash for week-level cooldowns.
+6. **History split**: `menu_history` is one JSON document per client-day (`menu={slot:item}`), exploded to item-level in memory for cooldowns; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.
 9. **Per-client custom rules**: `data/configs/client_rules.json` stores extra rules per client (keyed by client name). Loaded fresh per request by `MenuRuleLoader.load_for_client()`. Three types: `ingredient_ban` (pre-filter), `item_frequency` (CP-SAT cardinality cap), `slot_day_restriction` (skip slot on certain weekdays via `skip_cells` kwarg on `MenuSolver`). Generic rules are cached globally; per-client rules are appended per request.

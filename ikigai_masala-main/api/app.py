@@ -297,7 +297,9 @@ def _build_history_context(
         .gte('week_start', earliest_iso)
         .execute()
     )
-    long_df = pd.DataFrame(long_resp.data) if long_resp.data else None
+    # menu_history stores one JSONB row per (client, date); explode it into
+    # the long per-item form the cooldown readers consume.
+    long_df = HistoryManager.explode_history_rows(long_resp.data)
     weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
     hm.load_from_dataframes(long_df, weeks_df)
     # Rows are already scoped to this client at the DB layer, but leave
