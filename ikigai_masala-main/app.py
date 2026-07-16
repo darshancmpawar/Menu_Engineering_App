@@ -37,6 +37,7 @@ from ui.formatters import (
     THEME_ICONS,
 )
 from ui.styles import STYLES
+from ui.branding import favicon as _favicon, logo_img_tag
 from ui.backend_probe import health_check, pick_backend_port
 from customisation.main import render_customisation_editor
 
@@ -124,7 +125,7 @@ def _ensure_backend_running() -> str:
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Ikigai Masala - Menu Planner",
-    page_icon="https://em-content.zobj.net/source/apple/391/curry-rice_1f35b.png",
+    page_icon=_favicon(),  # SmartQ logo if ui/assets/smartq_logo.png exists, else emoji
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -222,9 +223,16 @@ if st.session_state.view == "editor":
 # Sidebar (planner view)
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("""<div class="sidebar-brand">
+    _logo_tag = logo_img_tag(height=30)
+    _brand_icon = (
+        f'<div class="sidebar-brand-icon" style="background:transparent;'
+        f'box-shadow:none;">{_logo_tag}</div>'
+        if _logo_tag
+        else '<div class="sidebar-brand-icon">&#127835;</div>'
+    )
+    st.markdown(f"""<div class="sidebar-brand">
         <div class="sidebar-brand-row">
-            <div class="sidebar-brand-icon">&#127835;</div>
+            {_brand_icon}
             <div>
                 <h2>Ikigai Masala</h2>
                 <p>Weekly Menu Planner</p>
