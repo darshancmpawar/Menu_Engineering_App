@@ -39,48 +39,32 @@ def main():
     with open(args.json) as f:
         data = json.load(f)
 
-    # 1. Upsert menu categories (must be done first — clients FK references them)
+    # The whole per-client config is one document in clients.counters. Fold the
+    # legacy clients.json shape (menu_categories + slot_count_overrides +
+    # theme_overrides) into a single primary counter per client.
     categories = data.get("menu_categories", {})
-    cat_rows = [{"name": name, "slots": slots} for name, slots in categories.items()]
-    if cat_rows:
-        sb.table("menu_categories").upsert(cat_rows).execute()
-    print(f"  Upserted {len(cat_rows)} menu categories")
+    slot_counts = data.get("slot_count_overrides", {})
+    themes = data.get("theme_overrides", {})
 
-    # 2. Upsert clients
-    client_rows = [
-        {"name": c["name"], "menu_category": c["menu_category"]}
-        for c in data["clients"]
-    ]
+    client_rows = []
+    for c in data["clients"]:
+        name = c["name"]
+        cat = c.get("menu_category")
+        counter = {
+            "name": "Counter 1",
+            "categories": categories.get(cat, []),
+            "slot_counts": {
+                slot: int(cnt) for slot, cnt in slot_counts.get(name, {}).items()
+            },
+            "theme_map": {
+                day.lower(): theme for day, theme in themes.get(name, {}).items()
+            },
+        }
+        client_rows.append({"name": name, "counters": [counter]})
     sb.table("clients").upsert(client_rows).execute()
-    print(f"  Upserted {len(client_rows)} clients")
+    print(f"  Upserted {len(client_rows)} clients (config folded into counters)")
 
-    # 3. Upsert slot count overrides
-    sco_rows = []
-    for client_name, overrides in data.get("slot_count_overrides", {}).items():
-        for slot, count in overrides.items():
-            sco_rows.append({
-                "client_name": client_name,
-                "slot": slot,
-                "count": int(count),
-            })
-    if sco_rows:
-        sb.table("slot_count_overrides").upsert(sco_rows).execute()
-    print(f"  Upserted {len(sco_rows)} slot count overrides")
-
-    # 4. Upsert theme overrides
-    to_rows = []
-    for client_name, themes in data.get("theme_overrides", {}).items():
-        for day, theme in themes.items():
-            to_rows.append({
-                "client_name": client_name,
-                "day": day.lower(),
-                "theme": theme,
-            })
-    if to_rows:
-        sb.table("theme_overrides").upsert(to_rows).execute()
-    print(f"  Upserted {len(to_rows)} theme overrides")
-
-    # 5. Upsert app settings
+    # Upsert app settings
     settings = [
         {"key": "core_min_one_slots", "value": json.dumps(data.get("core_min_one_slots", []))},
         {"key": "constant_slots", "value": json.dumps(data.get("constant_slots", []))},

@@ -140,8 +140,12 @@ class TestPutRejectsStaleVersion:
             headers=auth_headers,
         )
 
-        # Capture what's in the theme_overrides table after writer A won.
-        after_winner = list(fake_supabase.rows('theme_overrides'))
+        # Capture the stored config (clients.counters) after writer A won.
+        def _counters():
+            row = [r for r in fake_supabase.rows('clients') if r['name'] == 'Rippling'][0]
+            import copy
+            return copy.deepcopy(row.get('counters'))
+        after_winner = _counters()
 
         # Writer B tries with a stale version + a very different theme_map.
         resp = client.put(
@@ -154,7 +158,7 @@ class TestPutRejectsStaleVersion:
         )
         assert resp.status_code == 409
 
-        after_loser = list(fake_supabase.rows('theme_overrides'))
+        after_loser = _counters()
         assert after_loser == after_winner, (
-            "a rejected PUT must not modify theme_overrides"
+            "a rejected PUT must not modify clients.counters"
         )

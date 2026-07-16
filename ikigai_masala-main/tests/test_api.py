@@ -640,14 +640,12 @@ class TestEditorMetadataCounters:
 class TestGetCounterSetup:
     """The single-read (mode, counters) accessor used by /client-config."""
 
-    def test_single_client_builds_from_cfg(self, fake_supabase):
+    def test_single_client_setup(self, fake_supabase):
         import api.app as api_app
         loader = api_app._get_client_loader()
-        cfg = loader.get_client('Rippling')
-        mode, counters = loader.get_counter_setup('Rippling', client_cfg=cfg)
+        mode, counters = loader.get_counter_setup('Rippling')
         assert mode == 'single'
         assert len(counters) == 1
-        # Built from cfg (expanded slot ids collapsed back to base categories).
         assert 'veg_dry' in counters[0]['categories']
         assert all('__' not in c for c in counters[0]['categories'])
 
@@ -665,14 +663,16 @@ class TestGetCounterSetup:
         assert mode == 'multi'
         assert [c['name'] for c in counters] == ['A', 'B']
 
-    def test_single_client_stores_empty_counters_column(self, fake_supabase):
+    def test_classic_create_stores_single_counter(self, fake_supabase):
         import api.app as api_app
         loader = api_app._get_client_loader()
         loader.create_client('Plain', ['rice', 'dal'])
-        # Classic create writes nothing to the counters column (defaults to []).
+        # Classic create stores a one-element counters list (the config's only
+        # home now — no legacy tables).
         rows = [r for r in fake_supabase.rows('clients') if r['name'] == 'Plain']
-        assert rows and rows[0].get('counters', []) == []
-        mode, counters = loader.get_counter_setup('Plain', client_cfg=loader.get_client('Plain'))
+        assert rows and len(rows[0]['counters']) == 1
+        assert set(rows[0]['counters'][0]['categories']) == {'rice', 'dal'}
+        mode, counters = loader.get_counter_setup('Plain')
         assert mode == 'single'
         assert set(counters[0]['categories']) == {'rice', 'dal'}
 
@@ -684,12 +684,7 @@ class TestCounterClientEndpoints:
     def test_existing_client_reports_single_counter(
         self, client, auth_headers, fake_supabase,
     ):
-        # Rippling is seeded with the classic single-counter storage; add a
-        # veg_dry x2 override so we can prove it surfaces in the synthesised
-        # counter's frequency.
-        fake_supabase.seed('slot_count_overrides', [
-            {'client_name': 'Rippling', 'slot': 'veg_dry', 'count': 2},
-        ])
+        # Rippling is seeded with a single counter in clients.counters.
         resp = client.get('/api/v1/client-config/Rippling', headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
@@ -697,7 +692,6 @@ class TestCounterClientEndpoints:
         assert len(body['counters']) == 1
         primary = body['counters'][0]
         assert 'veg_dry' in primary['categories']
-        assert primary['slot_counts'].get('veg_dry') == 2
 
     def test_create_multi_counter_client_then_read_back(
         self, client, auth_headers, fake_supabase,
@@ -734,8 +728,8 @@ class TestCounterClientEndpoints:
         assert cfg['counters'][0]['slot_counts']['veg_gravy'] == 2
         assert cfg['counters'][1]['slot_counts']['veg_dry'] == 3
 
-        # Primary counter is mirrored into the legacy tables so the solver
-        # keeps working: config's top-level slot_counts/theme_map reflect it.
+        # The flat fields the editor consumes come from the primary counter,
+        # so the solver (which reads the primary) plans the same config.
         assert cfg['slot_counts'].get('veg_gravy') == 2
         assert cfg['theme_map']['monday'] == 'north'
         # Counters are persisted in the clients.counters JSONB column — no
@@ -832,6 +826,6 @@ class TestCounterClientEndpoints:
         # read back from the legacy tables (categories preserved; the single
         # counter's name is cosmetic and not persisted separately).
         assert updated['counters'][0]['categories'] == ['rice']
-        # Nothing is stored in the clients.counters column for a single client.
+        # Single mode stores exactly one counter in clients.counters.
         rip = [r for r in fake_supabase.rows('clients') if r['name'] == 'Rippling'][0]
-        assert rip['counters'] == []
+        assert len(rip['counters']) == 1
