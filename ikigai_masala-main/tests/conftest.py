@@ -53,24 +53,28 @@ def seeded_fake_supabase():
     """
     from tests.fake_supabase import FakeSupabase
 
+    # Consolidated schema: the whole client config lives in clients.counters
+    # (counters[0] is the primary the solver plans from). version=1 mirrors
+    # the Supabase schema default returned by /client-config GET.
     fake = FakeSupabase(seed={
         'clients': [
-            # version=1 mirrors the Supabase schema default and is
-            # what /client-config GET returns for a fresh row.
-            {'name': 'Rippling', 'menu_category': 'default_cat', 'version': 1},
-        ],
-        'menu_categories': [
             {
-                'name': 'default_cat',
-                'slots': [
-                    'welcome_drink', 'starter', 'soup', 'salad',
-                    'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
-                    'curd_side', 'dessert',
+                'name': 'Rippling',
+                'version': 1,
+                'counters': [
+                    {
+                        'name': 'Counter 1',
+                        'categories': [
+                            'welcome_drink', 'starter', 'soup', 'salad',
+                            'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+                            'curd_side', 'dessert',
+                        ],
+                        'slot_counts': {},
+                        'theme_map': {},
+                    },
                 ],
             },
         ],
-        'slot_count_overrides': [],
-        'theme_overrides': [],
         'app_settings': [],
         'menu_history': [],
         'week_signatures': [],

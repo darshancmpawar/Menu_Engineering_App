@@ -16,6 +16,7 @@ from typing import Dict, List
 import streamlit as st
 
 from ui.api_client import MenuApiClient
+from ui.branding import logo_img_tag
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
 
@@ -66,10 +67,12 @@ def render_customisation_editor(api: MenuApiClient):
             st.session_state.view = "planner"
             st.rerun()
     with col_title:
+        _logo = logo_img_tag(height=34, extra_style="flex-shrink:0;")
         st.markdown(
+            f'<div style="display:flex;align-items:center;gap:0.7rem;">{_logo}'
             '<div><p class="pulse-title">Customisation Editor</p>'
             '<p class="pulse-subtitle">Create or edit clients, cuisine counters, '
-            'categories, frequency, and day themes</p></div>',
+            'categories, frequency, and day themes</p></div></div>',
             unsafe_allow_html=True,
         )
 

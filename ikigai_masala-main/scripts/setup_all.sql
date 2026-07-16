@@ -1,64 +1,44 @@
 -- =============================================================================
 -- IKIGAI MASALA — MASTER SETUP + OPTIMIZE (idempotent, safe to re-run)
 -- =============================================================================
--- One script that brings ANY database to the final optimized schema:
---   * fresh install                         → creates every table
---   * original DB (pre cuisine-counters)    → adds clients.counters
---   * earlier build with client_counters    → backfills, then drops it
+-- One script that brings ANY database to the final, consolidated schema:
+--   * fresh install                          → creates the 4 tables
+--   * original DB (normalized config tables) → backfills clients.counters,
+--                                               then drops the old tables
+--   * earlier counter build (client_counters / counter_mode / counter_count)
+--                                            → folds it in, then drops it
 --
 -- Run it in the Supabase SQL Editor (Dashboard > SQL Editor > New query).
--- It supersedes running create_tables.sql + create_history_tables.sql
--- separately, and folds in the cuisine-counter migration.
 --
--- Cuisine counters are stored in ONE column, clients.counters (JSONB):
---   * single-cuisine client (every client today): counters = '[]'; the config
---     is read from the legacy menu_category / slot_count_overrides /
---     theme_overrides tables — no duplicated data.
---   * multi-cuisine client (future): counters holds the ordered list
---     [{name, categories, slot_counts, theme_map}, …]; the primary counter
---     (index 0) is also mirrored into the legacy tables so the solver keeps
---     working unchanged. single vs multi is derived (multi <=> counters <> '[]').
+-- FINAL SCHEMA (4 tables):
+--   clients (name PK, version, counters JSONB, created_at)
+--   app_settings (key PK, value JSONB)
+--   menu_history / week_signatures (history + cooldown tracking)
+--
+-- The whole per-client config is ONE document — clients.counters:
+--     [{name, categories, slot_counts, theme_map}, …]
+--   counters[0] is the primary (what the menu solver plans from); extra
+--   entries are additional cuisine stations. Mode is derived (single ⇔ 1
+--   counter, multi ⇔ 2+). The old menu_categories / slot_count_overrides /
+--   theme_overrides tables (premature normalization — every read/write hit
+--   one client as a whole, never cross-client) are folded into this column.
 -- =============================================================================
 
--- 1. Menu categories — slot presets (menu_cat_1 … menu_cat_N)
-CREATE TABLE IF NOT EXISTS menu_categories (
-    name  TEXT PRIMARY KEY,
-    slots TEXT[] NOT NULL
-);
-
--- 2. Clients — references a menu category; `version` is the optimistic-
---    concurrency counter; `counters` (JSONB) holds the multi-cuisine config.
+-- 1. Clients — the whole config lives in the counters JSONB column.
 CREATE TABLE IF NOT EXISTS clients (
-    name           TEXT PRIMARY KEY,
-    menu_category  TEXT NOT NULL REFERENCES menu_categories(name),
-    version        INT  NOT NULL DEFAULT 1,
-    counters       JSONB NOT NULL DEFAULT '[]'::jsonb,
-    created_at     TIMESTAMPTZ DEFAULT now()
+    name        TEXT PRIMARY KEY,
+    version     INT  NOT NULL DEFAULT 1,
+    counters    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at  TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Slot count overrides — per-client, per-slot frequency (e.g. veg_dry x2)
-CREATE TABLE IF NOT EXISTS slot_count_overrides (
-    client_name TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
-    slot        TEXT NOT NULL,
-    count       INT  NOT NULL DEFAULT 1 CHECK (count >= 0),
-    PRIMARY KEY (client_name, slot)
-);
-
--- 4. Theme overrides — per-client day-to-theme mapping
-CREATE TABLE IF NOT EXISTS theme_overrides (
-    client_name TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
-    day         TEXT NOT NULL CHECK (day IN ('monday','tuesday','wednesday','thursday','friday')),
-    theme       TEXT NOT NULL CHECK (theme IN ('mix','chinese','biryani','south','north')),
-    PRIMARY KEY (client_name, day)
-);
-
--- 5. App-level settings (core_min_one_slots, constant_slots, fallback, etc.)
+-- 2. App-level settings (core_min_one_slots, constant_slots, fallback, etc.)
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT  PRIMARY KEY,
     value JSONB NOT NULL
 );
 
--- 6. Menu history — one row per (client, date, slot, item) served
+-- 3. Menu history — one row per (client, date, slot, item) served
 CREATE TABLE IF NOT EXISTS menu_history (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
@@ -68,7 +48,7 @@ CREATE TABLE IF NOT EXISTS menu_history (
     created_at   TIMESTAMPTZ DEFAULT now()
 );
 
--- 7. Week signatures — one row per saved week plan
+-- 4. Week signatures — one row per saved week plan
 CREATE TABLE IF NOT EXISTS week_signatures (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     client_name     TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
@@ -78,15 +58,13 @@ CREATE TABLE IF NOT EXISTS week_signatures (
 );
 
 -- -----------------------------------------------------------------------------
--- MIGRATE existing databases to the optimized shape
+-- MIGRATE existing databases into clients.counters
 -- -----------------------------------------------------------------------------
--- Ensure the columns exist on a pre-existing `clients` table.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS version  INT   NOT NULL DEFAULT 1;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters JSONB NOT NULL DEFAULT '[]'::jsonb;
 
--- If an older `client_counters` table exists, fold any genuinely-multi client
--- (2+ rows) into clients.counters, ordered by counter_index; single clients
--- stay '[]'. No-op when the table was never created / is empty.
+-- (a) Fold an older `client_counters` table (multi-cuisine build) into the
+--     column: aggregate ALL of a client's rows, ordered by counter_index.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables
@@ -105,26 +83,56 @@ BEGIN
                    ) AS arr
             FROM client_counters
             GROUP BY client_name
-            HAVING count(*) >= 2
         ) sub
-        WHERE sub.client_name = c.name;
+        WHERE sub.client_name = c.name
+          AND (c.counters = '[]'::jsonb OR c.counters IS NULL);
     END IF;
 END $$;
 
--- Drop the redundant table + columns from any earlier build.
-DROP TABLE IF EXISTS client_counters CASCADE;
+-- (b) Backfill the remaining (single-cuisine) clients from the normalized
+--     config tables → a one-element counters list.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+               WHERE table_schema = 'public' AND table_name = 'menu_categories')
+       AND EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'clients'
+                     AND column_name = 'menu_category') THEN
+        UPDATE clients c
+        SET counters = jsonb_build_array(
+            jsonb_build_object(
+                'name', 'Counter 1',
+                'categories', COALESCE(
+                    (SELECT to_jsonb(mc.slots) FROM menu_categories mc WHERE mc.name = c.menu_category),
+                    '[]'::jsonb),
+                'slot_counts', COALESCE(
+                    (SELECT jsonb_object_agg(s.slot, s.count)
+                     FROM slot_count_overrides s WHERE s.client_name = c.name),
+                    '{}'::jsonb),
+                'theme_map', COALESCE(
+                    (SELECT jsonb_object_agg(t.day, t.theme)
+                     FROM theme_overrides t WHERE t.client_name = c.name),
+                    '{}'::jsonb)
+            )
+        )
+        WHERE (c.counters = '[]'::jsonb OR c.counters IS NULL)
+          AND c.menu_category IS NOT NULL;
+    END IF;
+END $$;
+
+-- (c) Drop the redundant tables + columns from any earlier build.
+DROP TABLE IF EXISTS client_counters       CASCADE;
+DROP TABLE IF EXISTS slot_count_overrides   CASCADE;
+DROP TABLE IF EXISTS theme_overrides        CASCADE;
+DROP TABLE IF EXISTS menu_categories        CASCADE;  -- CASCADE drops clients.menu_category FK
+DROP TABLE IF EXISTS users                  CASCADE;  -- dead: auth feature was removed
+ALTER TABLE clients DROP COLUMN IF EXISTS menu_category;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_mode;
 ALTER TABLE clients DROP COLUMN IF EXISTS counter_count;
-
--- Drop the dead `users` table left over from the removed authentication
--- feature (no application code references it).
-DROP TABLE IF EXISTS users CASCADE;
 
 -- -----------------------------------------------------------------------------
 -- Indexes
 -- -----------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_slot_overrides_client   ON slot_count_overrides(client_name);
-CREATE INDEX IF NOT EXISTS idx_theme_overrides_client  ON theme_overrides(client_name);
 CREATE INDEX IF NOT EXISTS idx_menu_history_client_date
     ON menu_history(client_name, service_date DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_history_unique
@@ -134,47 +142,37 @@ CREATE INDEX IF NOT EXISTS idx_week_signatures_client_date
 CREATE UNIQUE INDEX IF NOT EXISTS idx_week_signatures_unique
     ON week_signatures(client_name, week_start, week_signature);
 -- (No index on clients.counters — it is never filtered on, so skipping it
---  saves storage and keeps writes cheap.)
+--  saves storage and keeps writes cheap. Clients are looked up by PK.)
 
 -- -----------------------------------------------------------------------------
 -- Row Level Security + open policies (single-tenant app, anon key)
 -- -----------------------------------------------------------------------------
-ALTER TABLE menu_categories      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE clients              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE slot_count_overrides ENABLE ROW LEVEL SECURITY;
-ALTER TABLE theme_overrides      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_settings         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE menu_history         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE week_signatures      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clients          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_history     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE week_signatures  ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on menu_categories') THEN
-        CREATE POLICY "Allow all on menu_categories"      ON menu_categories      FOR ALL USING (true) WITH CHECK (true);
-    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on clients') THEN
-        CREATE POLICY "Allow all on clients"              ON clients              FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on slot_count_overrides') THEN
-        CREATE POLICY "Allow all on slot_count_overrides" ON slot_count_overrides FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on theme_overrides') THEN
-        CREATE POLICY "Allow all on theme_overrides"      ON theme_overrides      FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Allow all on clients"        ON clients        FOR ALL USING (true) WITH CHECK (true);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on app_settings') THEN
-        CREATE POLICY "Allow all on app_settings"         ON app_settings         FOR ALL USING (true) WITH CHECK (true);
+        CREATE POLICY "Allow all on app_settings"   ON app_settings   FOR ALL USING (true) WITH CHECK (true);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on menu_history') THEN
-        CREATE POLICY "Allow all on menu_history"         ON menu_history         FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+        CREATE POLICY "Allow all on menu_history"   ON menu_history   FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow all on week_signatures') THEN
-        CREATE POLICY "Allow all on week_signatures"      ON week_signatures      FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+        CREATE POLICY "Allow all on week_signatures" ON week_signatures FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
     END IF;
 END
 $$;
 
 -- -----------------------------------------------------------------------------
--- Optional sanity check (safe to run separately):
---   SELECT name, counters FROM clients ORDER BY name;   -- existing clients → []
---   SELECT to_regclass('public.client_counters');       -- → NULL (table gone)
+-- Optional sanity check (run separately):
+--   SELECT name, counters FROM clients ORDER BY name;      -- 1+ counters each
+--   SELECT to_regclass('public.menu_categories');          -- → NULL (gone)
+--   SELECT to_regclass('public.slot_count_overrides');     -- → NULL (gone)
+--   SELECT to_regclass('public.theme_overrides');          -- → NULL (gone)
 -- -----------------------------------------------------------------------------

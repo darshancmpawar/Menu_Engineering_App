@@ -347,13 +347,6 @@ def _request_client_names():
     )
 
 
-def _request_menu_categories():
-    return _cached_on_g(
-        'menu_categories',
-        lambda: _get_client_loader().menu_categories,
-    )
-
-
 def _count_rule_failures(failures) -> None:
     """Bump ``rule_failures_total{rule=<name>}`` for every failure the
     solver recorded on this request. Keeps the metrics surface aligned
@@ -915,7 +908,6 @@ def editor_metadata():
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
             'clients': _request_client_names(),
-            'menu_categories': _request_menu_categories(),
             'max_counters': MAX_COUNTERS,
         })
     except Exception as e:
@@ -932,20 +924,18 @@ def get_client_config(client_name):
     """
     try:
         loader = _get_client_loader()
-        base_slots = loader.get_active_slots_for_client(client_name)
-        menu_category = loader.get_client_menu_category(client_name)
-        cfg = loader.get_client(client_name)
+        # The whole config is one document: a single counters read gives the
+        # mode + list; the primary counter (index 0) supplies the flat fields
+        # the editor still consumes (active_base_slots / slot_counts / themes).
+        counter_mode, counters = loader.get_counter_setup(client_name)
         version = loader.get_client_version(client_name)
-        # Single read of clients.counters; the single-counter view is derived
-        # from the cfg we already loaded (no extra Supabase round-trips).
-        counter_mode, counters = loader.get_counter_setup(client_name, client_cfg=cfg)
+        primary = counters[0]
         response = jsonify({
             'success': True,
-            'name': cfg.name,
-            'menu_category': menu_category,
-            'active_base_slots': [s for s in base_slots if s not in CONST_SLOTS],
-            'slot_counts': cfg.slot_counts,
-            'theme_map': cfg.theme_map,
+            'name': client_name,
+            'active_base_slots': list(primary['categories']),
+            'slot_counts': primary['slot_counts'],
+            'theme_map': primary['theme_map'],
             'version': version,
             'counter_mode': counter_mode,
             'counters': counters,
@@ -1018,24 +1008,23 @@ def update_client_config(client_name):
         # partial sub-update.
         new_version = loader.bump_version_if_matches(client_name, expected)
 
-        # Counter-aware path: when the caller sends ``counters`` it is the
-        # source of truth for categories/frequency/themes (the primary
-        # counter is mirrored into the legacy tables inside
-        # set_counters_for_client), so the per-field updates below are
-        # skipped to avoid writing the same data twice.
+        # Counter-aware path: ``counters`` is the full source of truth for the
+        # client's cuisine setup. Otherwise, accept the legacy per-field shape
+        # (active_base_slots / slot_counts / theme_map) and apply it to the
+        # primary counter for backward compatibility.
         if 'counters' in data:
             loader.set_counters_for_client(
                 client_name,
                 data.get('counter_mode', 'single'),
                 data['counters'],
             )
-        else:
-            if 'active_base_slots' in data:
-                loader.update_client_slots(client_name, data['active_base_slots'])
-            if 'slot_counts' in data:
-                loader.update_client_slot_counts(client_name, data['slot_counts'])
-            if 'theme_map' in data:
-                loader.update_client_theme_overrides(client_name, data['theme_map'])
+        elif any(k in data for k in ('active_base_slots', 'slot_counts', 'theme_map')):
+            loader.update_primary_counter(
+                client_name,
+                active_base_slots=data.get('active_base_slots'),
+                slot_counts=data.get('slot_counts'),
+                theme_map=data.get('theme_map'),
+            )
 
         response = jsonify({
             'success': True,
