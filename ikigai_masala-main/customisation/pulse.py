@@ -1,48 +1,21 @@
 """Pulse / OP Lens light-theme styling for the customisation editor.
 
-The main planner keeps its dark theme (see ``ui/styles.py``); the editor is a
-self-contained full-page view, so we render it against the Pulse light design
-language instead:
-
-  * Figtree typeface, light-gray canvas, white cards
-  * Brand Yellow (#FEBF34) primary actions, Brand Blue (#0D6EFD) accents
-  * status colours (green / orange / red / blue) for badges + validation
-
-``app.py`` skips injecting the dark ``STYLES`` while the editor view is active,
-so these rules render on Streamlit's light base rather than fighting the dark
-overrides.
+The whole app now uses the Pulse light theme (see ``ui/styles.py`` for the
+planner). This module holds the editor-specific components (step cards,
+counter panels, etc.) layered on the shared palette from
+``ui.theme_tokens``.
 """
 
 # ---------------------------------------------------------------------------
-# Brand tokens (mirrors UI_THEMING.md)
+# Brand tokens — single source of truth in ui.theme_tokens.
+# PULSE_THEME_COLORS is re-exported here for callers that import it from this
+# module (e.g. customisation.theme_editor).
 # ---------------------------------------------------------------------------
-YELLOW = "#FEBF34"
-YELLOW_HOVER = "#F0B020"
-BLUE = "#0D6EFD"
-BLUE_HOVER = "#0A58CA"
-PURPLE = "#6F42C1"
-GREEN = "#1AA45B"
-ORANGE = "#F78D00"
-RED = "#FA1024"
-
-PAGE_BG = "#F5F5F5"
-CARD_BG = "#FFFFFF"
-ALT_ROW = "#F9F9F9"
-TEXT_PRIMARY = "#131313"
-TEXT_SECONDARY = "#414141"
-TEXT_TERTIARY = "#777777"
-TEXT_DISABLED = "#AEAEAE"
-BORDER = "#E5E5E5"
-
-# Low-emphasis theme badges: soft tint background + darker foreground text,
-# matching the Pulse "low emphasis" badge style (light theme friendly).
-PULSE_THEME_COLORS = {
-    "mix":     ("#E5FFF1", "#1AA45B"),
-    "chinese": ("#FFF5E8", "#C56A00"),
-    "biryani": ("#FFE7E9", "#C40D1B"),
-    "south":   ("#EBF3FF", "#0D6EFD"),
-    "north":   ("#F3ECFF", "#6F42C1"),
-}
+from ui.theme_tokens import (  # noqa: F401 — re-exported / used in the f-string
+    YELLOW, YELLOW_HOVER, BLUE, BLUE_HOVER, PURPLE, GREEN, ORANGE, RED,
+    PAGE_BG, CARD_BG, ALT_ROW, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
+    TEXT_DISABLED, BORDER, PULSE_THEME_COLORS,
+)
 
 
 PULSE_EDITOR_CSS = f"""

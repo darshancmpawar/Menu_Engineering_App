@@ -257,23 +257,23 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 _hdr_col1, _hdr_col2 = st.columns([5, 2])
 _SOURCE_BADGES = {
-    # bg, fg, label, title attr
-    "history":  ("#0f2a1d", "#86efac", "Loaded from history",
+    # bg, fg, label, title attr — Pulse low-emphasis badge tints
+    "history":  ("#E5FFF1", "#1AA45B", "Loaded from history",
                  "These exact dates already had a saved plan — shown as-is."),
-    "solver":   ("#1e0a3a", "#c4b5fd", "Freshly generated",
+    "solver":   ("#F3ECFF", "#6F42C1", "Freshly generated",
                  "No saved plan for these dates — solver produced this from scratch."),
-    "modified": ("#2a1508", "#fdba74", "Modified — unsaved",
+    "modified": ("#FFF5E8", "#C56A00", "Modified — unsaved",
                  "You regenerated at least one cell since this plan was loaded."),
-    "preflight_blocked": ("#3b1114", "#fca5a5", "Pre-flight blocked",
+    "preflight_blocked": ("#FFE7E9", "#C40D1B", "Pre-flight blocked",
                  "Diagnostic checks found a guaranteed failure; solver skipped."),
 }
 
 
-# bg, fg, label per Diagnostic severity (matches docs/api.md examples).
+# bg, fg, label per Diagnostic severity (Pulse status tints).
 _SEVERITY_STYLE = {
-    "error":   ("#3b1114", "#fca5a5", "Error"),
-    "warning": ("#2a1508", "#fdba74", "Warning"),
-    "info":    ("#0f1a2e", "#93c5fd", "Info"),
+    "error":   ("#FFE7E9", "#C40D1B", "Error"),
+    "warning": ("#FFF5E8", "#C56A00", "Warning"),
+    "info":    ("#EBF3FF", "#0D6EFD", "Info"),
 }
 
 
@@ -312,7 +312,7 @@ def _render_diagnostics_expander(diagnostics, summary):
             items = grouped[sev]
             if not items:
                 continue
-            bg, fg, sev_label = _SEVERITY_STYLE.get(sev, ("#27272a", "#a1a1aa", sev.title()))
+            bg, fg, sev_label = _SEVERITY_STYLE.get(sev, ("#F0F0F0", "#555555", sev.title()))
             st.markdown(
                 f'<p style="font-size:0.85rem;font-weight:700;color:{fg};'
                 f'margin:0.5rem 0 0.4rem;">{sev_label}'
@@ -331,7 +331,7 @@ def _render_diagnostics_expander(diagnostics, summary):
                 for k in ("date", "day_type", "slot"):
                     if k in affected:
                         chips.append(
-                            f'<span style="background:#27272a;color:#a1a1aa;'
+                            f'<span style="background:#F0F0F0;color:#555555;'
                             f'border-radius:99px;padding:1px 8px;font-size:0.65rem;'
                             f'margin-right:4px;">{html.escape(str(affected[k]))}</span>'
                         )
@@ -347,9 +347,9 @@ def _render_diagnostics_expander(diagnostics, summary):
                     f'padding:1px 7px;border-radius:99px;">{rule_pill}</span>'
                     f'{chip_html}'
                     f'</div>'
-                    f'<div style="color:#fafafa;font-size:0.85rem;'
+                    f'<div style="color:#131313;font-size:0.85rem;'
                     f'line-height:1.4;">{msg}</div>'
-                    + (f'<div style="color:#a1a1aa;font-size:0.75rem;'
+                    + (f'<div style="color:#777777;font-size:0.75rem;'
                        f'margin-top:0.25rem;">Fix: {suggestion}</div>'
                        if suggestion else '')
                     + '</div>',
@@ -549,7 +549,7 @@ if plan and plan_dates:
         for d_str in plan_dates:
             d = dt.date.fromisoformat(d_str)
             day_type = _day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
             icon = THEME_ICONS.get(day_type, "")
             label = day_type.replace("_", " ").title() if day_type else ""
             header_html += (
@@ -654,7 +654,7 @@ if plan and plan_dates:
         for i, d_str in enumerate(plan_dates):
             d = dt.date.fromisoformat(d_str)
             day_type = _day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#27272a", "#71717a"))
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
             icon = THEME_ICONS.get(day_type, "")
             label = day_type.replace("_", " ").title() if day_type else ""
             col = cols[i % regen_cols_per_row]
