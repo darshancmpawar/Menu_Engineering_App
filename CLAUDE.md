@@ -150,6 +150,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `ikigai_masala-main/data/configs/indian_menu_rules.json` | rule config consumed by `MenuRuleLoader` |
 | `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
+| `ikigai_masala-main/scripts/setup_all.sql` | **master** idempotent schema: creates every table + applies the counter migration in one run (supersedes running the two files below separately) |
 | `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema (incl. `clients.counters` JSONB for multi-cuisine counters) |
 | `ikigai_masala-main/scripts/create_history_tables.sql` | history + signatures schema |
 
