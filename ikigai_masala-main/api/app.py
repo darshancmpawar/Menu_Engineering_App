@@ -936,8 +936,9 @@ def get_client_config(client_name):
         menu_category = loader.get_client_menu_category(client_name)
         cfg = loader.get_client(client_name)
         version = loader.get_client_version(client_name)
-        counter_mode = loader.get_counter_mode(client_name)
-        counters = loader.get_counters_for_client(client_name)
+        # Single read of clients.counters; the single-counter view is derived
+        # from the cfg we already loaded (no extra Supabase round-trips).
+        counter_mode, counters = loader.get_counter_setup(client_name, client_cfg=cfg)
         response = jsonify({
             'success': True,
             'name': cfg.name,

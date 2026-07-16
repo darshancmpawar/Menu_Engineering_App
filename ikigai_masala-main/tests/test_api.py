@@ -637,6 +637,46 @@ class TestEditorMetadataCounters:
         assert resp.get_json()['max_counters'] == MAX_COUNTERS
 
 
+class TestGetCounterSetup:
+    """The single-read (mode, counters) accessor used by /client-config."""
+
+    def test_single_client_builds_from_cfg(self, fake_supabase):
+        import api.app as api_app
+        loader = api_app._get_client_loader()
+        cfg = loader.get_client('Rippling')
+        mode, counters = loader.get_counter_setup('Rippling', client_cfg=cfg)
+        assert mode == 'single'
+        assert len(counters) == 1
+        # Built from cfg (expanded slot ids collapsed back to base categories).
+        assert 'veg_dry' in counters[0]['categories']
+        assert all('__' not in c for c in counters[0]['categories'])
+
+    def test_multi_client_reads_stored_list(self, fake_supabase):
+        import api.app as api_app
+        loader = api_app._get_client_loader()
+        loader.create_client(
+            'Multi', counter_mode='multi',
+            counters=[
+                {'name': 'A', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'B', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        )
+        mode, counters = loader.get_counter_setup('Multi')
+        assert mode == 'multi'
+        assert [c['name'] for c in counters] == ['A', 'B']
+
+    def test_single_client_stores_empty_counters_column(self, fake_supabase):
+        import api.app as api_app
+        loader = api_app._get_client_loader()
+        loader.create_client('Plain', ['rice', 'dal'])
+        # Classic create writes nothing to the counters column (defaults to []).
+        rows = [r for r in fake_supabase.rows('clients') if r['name'] == 'Plain']
+        assert rows and rows[0].get('counters', []) == []
+        mode, counters = loader.get_counter_setup('Plain', client_cfg=loader.get_client('Plain'))
+        assert mode == 'single'
+        assert set(counters[0]['categories']) == {'rice', 'dal'}
+
+
 class TestCounterClientEndpoints:
     """End-to-end coverage for the single/multi cuisine-counter flow through
     the create + client-config endpoints (backed by FakeSupabase)."""

@@ -23,6 +23,7 @@ from typing import Dict, List, Set
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
+    SLOT_SUFFIX_SEP,
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
@@ -159,6 +160,26 @@ def default_counter(index: int = 0, name: str = "") -> Dict:
         'slot_counts': {s: 1 for s in _TOGGLEABLE_BASE_SLOTS},
         'theme_map': dict(DEFAULT_THEME_MAP),
     }
+
+
+def _counter_from_config(cfg: "ClientConfig") -> Dict:
+    """Build the single-counter view from an already-loaded ``ClientConfig``.
+
+    Avoids re-querying Supabase: ``cfg`` already carries the expanded active
+    slots, base slot_counts, and theme_map. Expanded slot ids (``veg_dry__1``)
+    are collapsed back to their base category name.
+    """
+    base_cats = _dedupe_preserve_order([
+        s.split(SLOT_SUFFIX_SEP)[0]
+        for s in cfg.active_slots
+        if s.split(SLOT_SUFFIX_SEP)[0] not in CONST_SLOTS
+    ])
+    return normalize_counter({
+        'name': 'Counter 1',
+        'categories': base_cats,
+        'slot_counts': {c: cfg.slot_counts.get(c, 1) for c in base_cats},
+        'theme_map': cfg.theme_map,
+    }, 0)
 
 
 def normalize_counter(raw: Dict, index: int = 0) -> Dict:
@@ -408,6 +429,26 @@ class ClientConfigLoader:
         stored = row.data.get('counters')
         return stored if isinstance(stored, list) else []
 
+    def get_counter_setup(self, name: str, client_cfg: "ClientConfig | None" = None):
+        """Return ``(mode, counters)`` in a single ``clients.counters`` read.
+
+        This is the efficient accessor callers should prefer when they need
+        both the mode and the list (e.g. the /client-config endpoint): it hits
+        the ``counters`` column exactly once and, for a single-cuisine client,
+        synthesises the one counter from *client_cfg* (already loaded by the
+        caller) instead of re-querying menu_category / slot_counts / themes.
+
+        Pass *client_cfg* (a ``ClientConfig`` from :meth:`get_client`) to avoid
+        the extra round-trips; omit it and the single-counter fallback reads
+        the legacy tables itself.
+        """
+        stored = self._read_counters_column(name)
+        if stored:
+            return 'multi', [normalize_counter(c, i) for i, c in enumerate(stored)]
+        if client_cfg is not None:
+            return 'single', [_counter_from_config(client_cfg)]
+        return 'single', [self._legacy_single_counter(name)]
+
     def get_counter_mode(self, name: str) -> str:
         """Return 'single' or 'multi', derived from ``clients.counters``.
 
@@ -426,13 +467,15 @@ class ClientConfigLoader:
         a single counter is synthesised from the legacy menu_category /
         slot_count_overrides / theme_overrides tables — no duplicated data.
         """
-        stored = self._read_counters_column(name)
-        if stored:
-            return [normalize_counter(c, i) for i, c in enumerate(stored)]
-        return [self._legacy_single_counter(name)]
+        return self.get_counter_setup(name)[1]
 
     def _legacy_single_counter(self, name: str) -> Dict:
-        """Synthesise one counter from the classic single-counter tables."""
+        """Synthesise one counter from the classic single-counter tables.
+
+        Fallback for callers that don't already hold a ``ClientConfig``;
+        prefer :meth:`get_counter_setup` with ``client_cfg`` to avoid these
+        extra reads.
+        """
         try:
             base = self.get_active_slots_for_client(name)
         except ValueError:
