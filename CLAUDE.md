@@ -114,9 +114,9 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
 - `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`.
-- No in-memory cache; every read hits Supabase. Supabase tables: `clients`, `menu_categories`, `slot_count_overrides`, `theme_overrides`, `client_counters`, `app_settings`.
+- No in-memory cache; every read hits Supabase. Supabase tables: `clients`, `menu_categories`, `slot_count_overrides`, `theme_overrides`, `app_settings`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
-- **Cuisine counters**: a client is `single` (one counter, classic) or `multi` (N counters, each with its own categories/frequency/theme_map), tracked by `clients.counter_mode`/`counter_count` and rows in `client_counters`. `get_counters_for_client` / `set_counters_for_client` read/write the canonical counter shape `{name, categories, slot_counts, theme_map}`. The **primary** counter (index 0) is always mirrored into `menu_category` + `slot_count_overrides` + `theme_overrides` so `MenuSolver` keeps working unchanged regardless of mode. All counter methods degrade gracefully (log + fall back) when the migration hasn't been applied.
+- **Cuisine counters** (no separate table): a client is `single` (one counter, classic) or `multi` (N counters, each with its own categories/frequency/theme_map). Stored in the single `clients.counters` JSONB column — `[]` for single clients (config read from the legacy `menu_category`/`slot_count_overrides`/`theme_overrides` tables, **no duplicated data**), the full ordered list for multi. Mode is *derived* (`multi` ⇔ `counters` non-empty). `get_counters_for_client` / `set_counters_for_client` read/write the canonical counter shape `{name, categories, slot_counts, theme_map}`. The **primary** counter (index 0) is always mirrored into `menu_category` + `slot_count_overrides` + `theme_overrides` so `MenuSolver` keeps working unchanged regardless of mode. All counter methods degrade gracefully (log + fall back to single) when the `clients.counters` column hasn't been migrated in.
 
 ### 4.5 `src/history/`
 - `history_manager.py` → `HistoryManager.banned_items_by_date`, `.ricebread_ban_by_date`, `.recent_week_signatures`.
@@ -150,7 +150,8 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `ikigai_masala-main/data/configs/indian_menu_rules.json` | rule config consumed by `MenuRuleLoader` |
 | `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
-| `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema (incl. `clients.counter_mode`/`counter_count` + `client_counters` table) |
+| `ikigai_masala-main/scripts/setup_all.sql` | **master** idempotent schema: creates every table + applies the counter migration in one run (supersedes running the two files below separately) |
+| `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema (incl. `clients.counters` JSONB for multi-cuisine counters) |
 | `ikigai_masala-main/scripts/create_history_tables.sql` | history + signatures schema |
 
 ---
