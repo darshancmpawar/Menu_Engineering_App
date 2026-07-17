@@ -214,6 +214,70 @@ class HistoryManager:
             'client_name': client_name,
         }).execute()
 
+    def save_counters(
+        self,
+        counter_plans,
+        dates: List[dt.date],
+        client_name: str,
+        week_start: dt.date,
+        week_signature: str,
+        supabase_client,
+        strip_color_fn=None,
+    ):
+        """Persist a multi-cuisine week: one ``menu_history`` row per day with
+        a **nested** menu ``{counter_name: {slot: item_base}}``.
+
+        ``counter_plans`` is a list of ``(counter_name, week_plan)`` where each
+        ``week_plan`` is ``{date: {slot: item}}``. Overwrite semantics + the
+        single week-signature row match :meth:`save`.
+        """
+        if supabase_client is None:
+            raise ValueError("supabase_client is required to save history.")
+
+        day_rows = []
+        for d in dates:
+            day_menu = {}
+            for cname, wp in counter_plans:
+                menu = {}
+                for slot_id, item_val in (wp.get(d, {}) or {}).items():
+                    item_base = strip_color_fn(item_val) if strip_color_fn else item_val
+                    item_base = _norm_str(item_base)
+                    if item_base:
+                        menu[slot_id] = item_base
+                if menu:
+                    day_menu[cname] = menu
+            if day_menu:
+                day_rows.append({
+                    'client_name': client_name,
+                    'service_date': d.isoformat(),
+                    'menu': day_menu,
+                })
+
+        date_isos = [d.isoformat() for d in dates]
+        if date_isos:
+            (
+                supabase_client.table('menu_history')
+                .delete()
+                .eq('client_name', client_name)
+                .in_('service_date', date_isos)
+                .execute()
+            )
+        if day_rows:
+            supabase_client.table('menu_history').insert(day_rows).execute()
+
+        (
+            supabase_client.table('week_signatures')
+            .delete()
+            .eq('client_name', client_name)
+            .eq('week_start', week_start.isoformat())
+            .execute()
+        )
+        supabase_client.table('week_signatures').insert({
+            'week_start': week_start.isoformat(),
+            'week_signature': week_signature,
+            'client_name': client_name,
+        }).execute()
+
     # ----- Load saved plan -----
 
     @staticmethod
@@ -279,13 +343,20 @@ class HistoryManager:
                 continue
             cn = r.get('client_name')
             sd = r.get('service_date')
-            for slot, item in menu.items():
-                long_rows.append({
-                    'client_name': cn,
-                    'service_date': sd,
-                    'slot': slot,
-                    'item_base': item,
-                })
+            for key, val in menu.items():
+                if isinstance(val, dict):
+                    # nested (multi-cuisine): key=counter, val={slot: item}
+                    for slot, item in val.items():
+                        long_rows.append({
+                            'client_name': cn, 'service_date': sd,
+                            'slot': slot, 'item_base': item,
+                        })
+                else:
+                    # flat (single-cuisine): key=slot, val=item
+                    long_rows.append({
+                        'client_name': cn, 'service_date': sd,
+                        'slot': key, 'item_base': val,
+                    })
         return pd.DataFrame(long_rows) if long_rows else None
 
     # ----- Signature computation -----

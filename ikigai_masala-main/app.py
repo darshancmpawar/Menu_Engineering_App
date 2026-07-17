@@ -201,6 +201,11 @@ _SESSION_DEFAULTS = {
     # above the plan table.
     "rule_diagnostics": [],
     "diagnostics_summary": None,
+    # Unified plan state: a list of per-counter "blocks". Single-cuisine
+    # clients have one block; multi-cuisine clients have one per counter.
+    # Each block: {name, plan, plan_dates, day_types, pool_warnings, source, error}.
+    "plan_blocks": [],
+    "plan_mode": "single",
 }
 for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
@@ -395,386 +400,439 @@ with _hdr_col2:
         st.rerun()
 
 # ---------------------------------------------------------------------------
+# Planner render helpers (shared by the single- and multi-counter paths)
+# ---------------------------------------------------------------------------
+def _flatten_result(result: dict) -> dict:
+    """Turn a /plan or /saved-plan response into a plan "block"."""
+    flat, day_types = flatten_api_solution(result.get("solution", {}))
+    return {
+        "plan": flat,
+        "plan_dates": sorted(flat.keys()),
+        "day_types": day_types,
+        "pool_warnings": result.get("pool_warnings", []),
+        "source": "solver",
+        "error": None,
+    }
+
+
+def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
+    header_html = '<tr><th>Slot</th>'
+    for d_str in plan_dates:
+        try:
+            d_lbl = dt.date.fromisoformat(d_str).strftime("%a %d %b")
+        except ValueError:
+            d_lbl = d_str
+        day_type = day_types.get(d_str, "")
+        bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
+        icon = THEME_ICONS.get(day_type, "")
+        label = day_type.replace("_", " ").title() if day_type else ""
+        header_html += (
+            f'<th><span class="day-label">{d_lbl}</span>'
+            f'<span class="theme-tag" style="background:{bg};color:{fg};">'
+            f'{icon} {label}</span></th>')
+    header_html += '</tr>'
+    all_slots = set()
+    for d_str in plan_dates:
+        all_slots.update(plan.get(d_str, {}).keys())
+    sorted_slots = sorted(all_slots, key=slot_sort_key)
+    body_html = ''
+    for slot_id in sorted_slots:
+        body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
+        for d_str in plan_dates:
+            body_html += f'<td>{format_item_html(plan.get(d_str, {}).get(slot_id, ""))}</td>'
+        body_html += '</tr>'
+    return (
+        f'<div class="menu-table-wrap"><table class="menu-table">'
+        f'<thead>{header_html}</thead><tbody>{body_html}</tbody></table></div>'
+    )
+
+
+def _plan_csv(blocks: list) -> str:
+    """CSV for all non-empty blocks. Multi adds a leading Counter column."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    multi = len([b for b in blocks if b.get("plan")]) > 1
+    dates = sorted({d for b in blocks for d in b.get("plan_dates", [])})
+    writer.writerow((["Counter"] if multi else []) + ["Slot"] + dates)
+    for b in blocks:
+        if not b.get("plan"):
+            continue
+        slots = sorted(
+            {s for d in b["plan_dates"] for s in b["plan"].get(d, {})},
+            key=slot_sort_key,
+        )
+        for slot_id in slots:
+            row = ([b["name"]] if multi else []) + [display_label_for_slot_id(slot_id)]
+            for d in dates:
+                row.append(format_item_for_ui(b["plan"].get(d, {}).get(slot_id, "")))
+            writer.writerow(row)
+    return buf.getvalue()
+
+
+def _pool_warnings_expander(block: dict) -> None:
+    warns = block.get("pool_warnings") or []
+    if warns:
+        with st.expander(f"Pool warnings ({len(warns)})", expanded=False):
+            for w in warns:
+                st.markdown(
+                    f'<div class="pool-warn-bar">&#9888; {html.escape(str(w))}</div>',
+                    unsafe_allow_html=True)
+
+
+def _render_regen_expander(api, block_index: int, counter_index: int,
+                           key_ns: str) -> None:
+    """Regenerate-cells panel for one plan block; mutates
+    st.session_state.plan_blocks[block_index] in place and reruns."""
+    b = st.session_state.plan_blocks[block_index]
+    plan, plan_dates, day_types = b["plan"], b["plan_dates"], b["day_types"]
+    with st.expander("Regenerate cells"):
+        st.caption("Pick slots to replace with fresh items.")
+        regen_selections = {}
+        cols_per_row = min(len(plan_dates), 3) or 1
+        cols = st.columns(cols_per_row)
+        for i, d_str in enumerate(plan_dates):
+            try:
+                d_lbl = dt.date.fromisoformat(d_str).strftime("%a %d %b")
+            except ValueError:
+                d_lbl = d_str
+            day_type = day_types.get(d_str, "")
+            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
+            icon = THEME_ICONS.get(day_type, "")
+            label = day_type.replace("_", " ").title() if day_type else ""
+            with cols[i % cols_per_row]:
+                st.markdown(
+                    f'<div class="regen-day-header">{d_lbl} '
+                    f'<span class="theme-tag" style="background:{bg};color:{fg};'
+                    f'font-size:0.6rem;">{icon} {label}</span></div>',
+                    unsafe_allow_html=True)
+                day_map = plan.get(d_str, {})
+
+                def _fmt(slot_id, _dm=day_map):
+                    cur = format_item_for_ui(_dm.get(slot_id, ""))
+                    lbl = display_label_for_slot_id(slot_id)
+                    return f"{lbl} — {cur}" if cur else lbl
+
+                day_slots = sorted(day_map.keys(), key=slot_sort_key)
+                selected = st.multiselect(
+                    f"Slots for {d_str}", day_slots, format_func=_fmt,
+                    key=f"regen_{key_ns}_{d_str}", label_visibility="collapsed")
+                if selected:
+                    regen_selections[d_str] = selected
+
+        if st.button("Regenerate Selected", type="primary",
+                     key=f"regen_btn_{key_ns}"):
+            if not regen_selections:
+                st.warning("Select at least one cell.")
+                return
+            old_snap = {
+                (d, s): plan.get(d, {}).get(s, "")
+                for d, slots in regen_selections.items() for s in slots
+            }
+            with st.spinner("Regenerating..."):
+                try:
+                    result = api.regenerate(
+                        client_name=st.session_state.client_name,
+                        base_plan=plan, replace_slots=regen_selections,
+                        start_date=plan_dates[0], num_days=len(plan_dates),
+                        time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
+                        counter_index=counter_index)
+                    flat_regen, regen_day_types = flatten_api_solution(
+                        result.get("solution", {}))
+                    new_plan = flat_regen if flat_regen else plan
+                    b["plan"] = new_plan
+                    if regen_day_types:
+                        b["day_types"] = regen_day_types
+                    b["plan_dates"] = sorted(new_plan.keys())
+
+                    diffs = []
+                    for (d, s), old_raw in old_snap.items():
+                        op = format_item_for_ui(old_raw)
+                        np = format_item_for_ui(new_plan.get(d, {}).get(s, ""))
+                        if op == np:
+                            continue
+                        try:
+                            dl = dt.date.fromisoformat(d).strftime("%a %d %b")
+                        except ValueError:
+                            dl = d
+                        diffs.append({
+                            "kind": "regen", "counter": b["name"], "day": dl,
+                            "slot": display_label_for_slot_id(s),
+                            "old": op, "new": np,
+                        })
+                    if diffs:
+                        st.session_state.changes_log.extend(diffs)
+                        b["source"] = "modified"
+                        st.session_state.plan_source = "modified"
+                    st.rerun()
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Regeneration failed: {e}")
+
+
+def _render_changes_log() -> None:
+    log = st.session_state.get("changes_log") or []
+    if not log:
+        return
+    with st.expander("Changes log", expanded=True):
+        for entry in log:
+            if isinstance(entry, dict) and entry.get("kind") == "regen":
+                ctr = entry.get("counter")
+                ctr_html = (
+                    f'<span class="log-slot">{html.escape(ctr)}</span>'
+                    f'<span class="log-sep">&middot;</span>' if ctr else ''
+                )
+                st.markdown(
+                    '<div class="log-entry log-diff">'
+                    f'{ctr_html}'
+                    f'<span class="log-day">{html.escape(entry["day"])}</span>'
+                    f'<span class="log-sep">&middot;</span>'
+                    f'<span class="log-slot">{html.escape(entry["slot"])}</span>'
+                    f'<span class="log-sep">&middot;</span>'
+                    f'<span class="log-old">{html.escape(entry["old"] or "(empty)")}</span>'
+                    '<span class="log-arrow">&rarr;</span>'
+                    f'<span class="log-new">{html.escape(entry["new"] or "(empty)")}</span>'
+                    '</div>',
+                    unsafe_allow_html=True)
+            else:
+                text = entry.get("text", "") if isinstance(entry, dict) else str(entry)
+                st.markdown(
+                    f'<div class="log-entry">{html.escape(text)}</div>',
+                    unsafe_allow_html=True)
+
+
+def _client_counter_names(api, name: str):
+    """Return (mode, [counter names]) for a client; degrade to single."""
+    try:
+        cfg = api.get_client_config(name)
+        counters = cfg.get("counters") or []
+        names = [(c.get("name") or f"Counter {i + 1}")
+                 for i, c in enumerate(counters)] or ["Counter 1"]
+        return cfg.get("counter_mode", "single"), names
+    except Exception:
+        return "single", ["Counter 1"]
+
+
+# ---------------------------------------------------------------------------
 # Generate
 # ---------------------------------------------------------------------------
 if generate_clicked:
-    if selected_client and selected_client != "(no clients)":
-        # Two-step Generate:
-        #   1. Ask the API whether a saved plan covers the requested
-        #      range. If yes, load it (no solve) and flag the source.
-        #   2. Otherwise run the solver as usual and save-on-click
-        #      will overwrite if the user later re-runs Save.
-        # The user always gets a deterministic Generate: same dates →
-        # same plan, until they explicitly Regenerate cells.
-        try:
-            saved = client.get_saved_plan(
-                client_name=selected_client,
-                start_date=start_date.isoformat(),
-                num_days=num_days,
-            )
-        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-            # Failure here is non-fatal — fall through to the solver
-            # path. Log via st.warning so the user sees that the
-            # history lookup misbehaved but Generate still completes.
-            st.warning(f"Couldn't check saved history ({e}); generating fresh.")
-            saved = {"exists": False}
-
-        if saved.get("exists"):
-            with st.spinner(f"Loading saved plan for {selected_client}..."):
-                flat_plan, day_types = flatten_api_solution(
-                    saved.get("solution", {}),
-                )
-                st.session_state.plan = flat_plan
-                st.session_state.plan_dates = sorted(flat_plan.keys())
-                st.session_state.day_types = day_types
-                st.session_state.client_name = selected_client
-                st.session_state.changes_log = []
-                st.session_state.pool_warnings = []
-                st.session_state.plan_source = "history"
-                st.session_state.rule_diagnostics = []
-                st.session_state.diagnostics_summary = None
-                st.rerun()
-        else:
-            with st.spinner(f"Generating plan for {selected_client}..."):
-                try:
-                    result = client.plan(
-                        client_name=selected_client,
-                        start_date=start_date.isoformat(),
-                        num_days=num_days,
-                        time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
-                    )
-                    flat_plan, day_types = flatten_api_solution(result.get("solution", {}))
-                    st.session_state.plan = flat_plan
-                    st.session_state.plan_dates = sorted(flat_plan.keys())
-                    st.session_state.day_types = day_types
-                    st.session_state.client_name = selected_client
-                    st.session_state.changes_log = []
-                    st.session_state.pool_warnings = result.get("pool_warnings", [])
-                    st.session_state.plan_source = "solver"
-                    # Pre-flight diagnostics from the solver path —
-                    # may be empty, may carry warnings / info entries
-                    # that should still show in the expander.
-                    st.session_state.rule_diagnostics = (
-                        result.get("rule_diagnostics") or []
-                    )
-                    st.session_state.diagnostics_summary = (
-                        result.get("summary")
-                    )
-                    st.rerun()
-                except RuleDiagnosticsBlockedError as e:
-                    # Pre-flight gate fired. Stash the structured
-                    # diagnostics and show the expander on the next
-                    # render — no plan table, badge = preflight_blocked.
-                    st.session_state.plan = None
-                    st.session_state.plan_dates = []
-                    st.session_state.day_types = {}
-                    st.session_state.client_name = selected_client
-                    st.session_state.changes_log = []
-                    st.session_state.pool_warnings = []
-                    st.session_state.plan_source = "preflight_blocked"
-                    st.session_state.rule_diagnostics = e.diagnostics or []
-                    st.session_state.diagnostics_summary = e.summary or None
-                    st.rerun()
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Generation failed: {e}")
-    else:
+    if not selected_client or selected_client == "(no clients)":
         st.warning("Select a valid client first.")
+    else:
+        mode, counter_names = _client_counter_names(client, selected_client)
+        st.session_state.client_name = selected_client
+        st.session_state.plan_mode = mode
+        st.session_state.changes_log = []
+        st.session_state.plan_source = None
+        st.session_state.rule_diagnostics = []
+        st.session_state.diagnostics_summary = None
+
+        if mode != "multi":
+            # Single-cuisine: saved-plan replay, else solve (unchanged flow).
+            try:
+                saved = client.get_saved_plan(
+                    client_name=selected_client,
+                    start_date=start_date.isoformat(), num_days=num_days)
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.warning(f"Couldn't check saved history ({e}); generating fresh.")
+                saved = {"exists": False}
+
+            if saved.get("exists"):
+                with st.spinner(f"Loading saved plan for {selected_client}..."):
+                    blk = _flatten_result(saved)
+                    blk["name"] = counter_names[0]
+                    blk["source"] = "history"
+                    st.session_state.plan_blocks = [blk]
+                    st.session_state.plan_source = "history"
+                    st.rerun()
+            else:
+                with st.spinner(f"Generating plan for {selected_client}..."):
+                    try:
+                        result = client.plan(
+                            client_name=selected_client,
+                            start_date=start_date.isoformat(), num_days=num_days,
+                            time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
+                        blk = _flatten_result(result)
+                        blk["name"] = counter_names[0]
+                        st.session_state.plan_blocks = [blk]
+                        st.session_state.plan_source = "solver"
+                        st.session_state.rule_diagnostics = result.get("rule_diagnostics") or []
+                        st.session_state.diagnostics_summary = result.get("summary")
+                        st.rerun()
+                    except RuleDiagnosticsBlockedError as e:
+                        st.session_state.plan_blocks = [{
+                            "name": counter_names[0], "plan": {}, "plan_dates": [],
+                            "day_types": {}, "pool_warnings": [],
+                            "source": "preflight_blocked",
+                            "error": str(e) or "Pre-flight blocked",
+                        }]
+                        st.session_state.plan_source = "preflight_blocked"
+                        st.session_state.rule_diagnostics = e.diagnostics or []
+                        st.session_state.diagnostics_summary = e.summary or None
+                        st.rerun()
+                    except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                        st.error(f"Generation failed: {e}")
+        else:
+            # Multi-cuisine: solve each counter independently. Divide the
+            # time budget across counters so total wall-clock stays bounded.
+            per_limit = max(45, _PLANNING_TIME_LIMIT_SECONDS // max(1, len(counter_names)))
+            blocks = []
+            with st.spinner(
+                f"Generating {len(counter_names)} counters for {selected_client}..."
+            ):
+                for i, cname in enumerate(counter_names):
+                    try:
+                        result = client.plan(
+                            client_name=selected_client,
+                            start_date=start_date.isoformat(), num_days=num_days,
+                            time_limit_seconds=per_limit, counter_index=i)
+                        blk = _flatten_result(result)
+                        blk["name"] = cname
+                    except RuleDiagnosticsBlockedError as e:
+                        blk = {"name": cname, "plan": {}, "plan_dates": [],
+                               "day_types": {}, "pool_warnings": [],
+                               "source": "preflight_blocked",
+                               "error": str(e) or "Pre-flight blocked for this counter"}
+                    except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                        blk = {"name": cname, "plan": {}, "plan_dates": [],
+                               "day_types": {}, "pool_warnings": [],
+                               "source": "error", "error": str(e)}
+                    blocks.append(blk)
+            st.session_state.plan_blocks = blocks
+            st.session_state.plan_source = "solver"
+            st.rerun()
 
 # ---------------------------------------------------------------------------
-# Display plan
+# Display
 # ---------------------------------------------------------------------------
-plan = st.session_state.plan
-plan_dates = st.session_state.plan_dates
+_blocks = st.session_state.get("plan_blocks") or []
+_plan_mode = st.session_state.get("plan_mode", "single")
 
-# Diagnostics expander renders above the plan table (or instead of the
-# empty state, when pre-flight blocked the solver). Reads the stashed
-# rule_diagnostics + summary from the most recent /plan response or
-# RuleDiagnosticsBlockedError.
 _render_diagnostics_expander(
     st.session_state.get("rule_diagnostics") or [],
     st.session_state.get("diagnostics_summary"),
 )
 
-# Pre-flight-blocked: no plan rendered, but a clear CTA + the
-# diagnostics expander already rendered above.
+# Single-counter pre-flight block: no table, just the CTA + diagnostics above.
 if (
-    not plan
-    and st.session_state.get("plan_source") == "preflight_blocked"
+    _plan_mode != "multi" and _blocks
+    and _blocks[0].get("source") == "preflight_blocked"
+    and not _blocks[0].get("plan")
 ):
     st.warning(
-        "Pre-flight diagnostics found a guaranteed failure for these "
-        "dates. Fix the issues above (or change the dates / client) "
-        "and try again."
-    )
+        "Pre-flight diagnostics found a guaranteed failure for these dates. "
+        "Fix the issues above (or change the dates / client) and try again.")
     st.stop()
 
-if plan and plan_dates:
-    if st.session_state.get('save_success_msg'):
-        # Legacy session_state key for sessions that pre-date the toast
-        # switch; remove it without rerunning so old sessions clear out.
-        st.session_state.pop('save_success_msg', None)
+if _blocks and any(b.get("plan") for b in _blocks):
+    dates_union = sorted({d for b in _blocks for d in b.get("plan_dates", [])})
+    total_items = sum(
+        1 for b in _blocks for d in b.get("plan_dates", [])
+        for s in b["plan"].get(d, {}) if b["plan"][d].get(s)
+    )
+    # Metric cards (Counters is always shown now).
+    cards = [
+        ("Client", html.escape(st.session_state.client_name or "")),
+        ("Counters", str(len(_blocks))),
+        ("Days", str(len(dates_union))),
+    ]
+    if _plan_mode != "multi":
+        b0 = _blocks[0]
+        slots_per_day = len({s for d in b0["plan_dates"] for s in b0["plan"].get(d, {})})
+        cards.append(("Slots per day", str(slots_per_day)))
+    cards.append(("Total items", str(total_items)))
+    st.markdown(
+        '<div class="metrics-grid">' + ''.join(
+            f'<div class="metric-card"><div class="metric-label">{lbl}</div>'
+            f'<div class="metric-value">{val}</div></div>'
+            for lbl, val in cards
+        ) + '</div>', unsafe_allow_html=True)
 
-    all_slots = set()
-    for date_str in plan_dates:
-        all_slots.update(plan.get(date_str, {}).keys())
-    sorted_slots = sorted(all_slots, key=slot_sort_key)
+    if _plan_mode == "multi":
+        # Shared Save / Download / Clear-all bar.
+        sc1, sc2, sc3, _sc = st.columns([1.3, 1, 1, 3])
+        with sc1:
+            if st.button("Save All to History", type="primary",
+                         key="multi_save_btn", use_container_width=True):
+                payload = [{"name": b["name"], "week_plan": b["plan"]}
+                           for b in _blocks if b.get("plan")]
+                try:
+                    client.save(client_name=st.session_state.client_name,
+                                week_start=dates_union[0], counters=payload)
+                    for b in _blocks:
+                        if b.get("plan"):
+                            b["source"] = "history"
+                    st.session_state.plan_source = "history"
+                    st.toast("All counters saved to history", icon="✅")
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Save failed: {e}")
+        with sc2:
+            st.download_button(
+                "Download CSV", data=_plan_csv(_blocks),
+                file_name=f"menu_{st.session_state.client_name}.csv",
+                mime="text/csv", key="multi_dl_btn", use_container_width=True)
+        with sc3:
+            if st.button("Clear All", key="multi_clear_btn",
+                         use_container_width=True):
+                st.session_state.plan_blocks = []
+                st.session_state.changes_log = []
+                st.session_state.plan_source = None
+                st.rerun()
 
-    total_items = sum(1 for d in plan_dates for s in sorted_slots
-                      if plan.get(d, {}).get(s, ""))
-
-    st.markdown(f"""<div class="metrics-grid">
-        <div class="metric-card">
-            <div class="metric-label">Client</div>
-            <div class="metric-value">{html.escape(st.session_state.client_name or "")}</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Days</div>
-            <div class="metric-value">{len(plan_dates)}</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Slots per day</div>
-            <div class="metric-value">{len(sorted_slots)}</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">Total items</div>
-            <div class="metric-value">{total_items}</div>
-        </div>
-    </div>""", unsafe_allow_html=True)
-
-    if st.session_state.pool_warnings:
-        with st.expander(f"Pool warnings ({len(st.session_state.pool_warnings)})", expanded=False):
-            for w in st.session_state.pool_warnings:
-                st.markdown(f'<div class="pool-warn-bar">&#9888; {html.escape(str(w))}</div>', unsafe_allow_html=True)
-
-    # Menu table.
-    # Wrapped because the ISO date parse on session_state values
-    # (plan_dates) is the most likely place for stale / corrupted
-    # state to crash a rerun. If it throws, we'd rather show a clean
-    # error + a one-click recovery than render half a table.
-    try:
-        _day_types = st.session_state.day_types
-        header_html = '<tr><th>Slot</th>'
-        for d_str in plan_dates:
-            d = dt.date.fromisoformat(d_str)
-            day_type = _day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
-            icon = THEME_ICONS.get(day_type, "")
-            label = day_type.replace("_", " ").title() if day_type else ""
-            header_html += (
-                f'<th><span class="day-label">{d.strftime("%a %d %b")}</span>'
-                f'<span class="theme-tag" style="background:{bg};color:{fg};">'
-                f'{icon} {label}</span></th>')
-        header_html += '</tr>'
-
-        body_html = ''
-        for slot_id in sorted_slots:
-            body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
-            for d_str in plan_dates:
-                raw_item = plan.get(d_str, {}).get(slot_id, "")
-                body_html += f'<td>{format_item_html(raw_item)}</td>'
-            body_html += '</tr>'
-
-        st.markdown(
-            f'<div class="menu-table-wrap"><table class="menu-table">'
-            f'<thead>{header_html}</thead>'
-            f'<tbody>{body_html}</tbody></table></div>',
-            unsafe_allow_html=True)
-    except Exception as _exc:
-        logger.exception("Failed to render menu table")
-        st.error(
-            "Couldn't render the saved plan — the stored data may be "
-            "from an older version. Click below to clear it and start "
-            "fresh."
-        )
-        if st.button("Clear plan and reload", key="err_clear_plan"):
-            for _k in ("plan", "plan_dates", "day_types", "pool_warnings",
-                       "client_name", "changes_log"):
-                st.session_state.pop(_k, None)
-            st.rerun()
-
-    st.markdown("")
-
-    # Action buttons
-    c1, c2, c3, _ = st.columns([1, 1, 1, 3])
-    with c1:
-        if st.button("Save to History", key="planner_save_btn",
-                     use_container_width=True):
-            try:
-                client.save(client_name=st.session_state.client_name,
-                            week_plan=plan, week_start=plan_dates[0])
-                # After Save, what's on screen now matches what's in the
-                # DB — flip the source badge so the user can tell the
-                # plan is persisted (and the next Generate for these
-                # dates will replay this saved version, not run the
-                # solver again).
-                st.session_state.plan_source = "history"
-                # Toast skips the full-page rerun — visibly faster than
-                # the previous "set flag, rerun, render st.success, pop"
-                # round-trip. The icon must be a real emoji ("✓" U+2713
-                # is a dingbat, not an emoji — Streamlit's
-                # validate_emoji rejects it with a StreamlitAPIException
-                # on newer Streamlit / Python 3.14 builds).
-                st.toast("Plan saved to history", icon="✅")
-            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                st.error(f"Save failed: {e}")
-    with c2:
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["Slot"] + plan_dates)
-        for slot_id in sorted_slots:
-            row = [display_label_for_slot_id(slot_id)]
-            for d_str in plan_dates:
-                row.append(format_item_for_ui(plan.get(d_str, {}).get(slot_id, "")))
-            writer.writerow(row)
-        st.download_button("Download CSV", data=buf.getvalue(),
-            file_name=f"menu_{st.session_state.client_name}.csv",
-            mime="text/csv", key="planner_download_csv_btn",
-            use_container_width=True)
-    with c3:
-        if st.button("Clear", key="planner_clear_btn", use_container_width=True):
-            st.session_state.plan = None
-            st.session_state.plan_dates = []
-            st.session_state.changes_log = []
-            st.session_state.plan_source = None
-            st.session_state.rule_diagnostics = []
-            st.session_state.diagnostics_summary = None
-            st.rerun()
-
-    # Regeneration
-    with st.expander("Regenerate cells"):
-        st.caption("Pick slots to replace with fresh items.")
-
-        # Show current item alongside slot id so the picker is readable
-        # ("Veg Dry — Aloo Gobi") instead of just the slot label.
-        def _slot_with_current(d_str: str):
-            day_map = plan.get(d_str, {})
-            def _fmt(slot_id: str) -> str:
-                slot_label = display_label_for_slot_id(slot_id)
-                cur = format_item_for_ui(day_map.get(slot_id, ""))
-                return f"{slot_label} — {cur}" if cur else slot_label
-            return _fmt
-
-        # Wider columns avoid pill truncation. Past 3 days we wrap into
-        # a second row instead of squeezing 5 columns into the panel.
-        regen_selections = {}
-        regen_cols_per_row = min(len(plan_dates), 3)
-        cols = st.columns(regen_cols_per_row)
-        for i, d_str in enumerate(plan_dates):
-            d = dt.date.fromisoformat(d_str)
-            day_type = _day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
-            icon = THEME_ICONS.get(day_type, "")
-            label = day_type.replace("_", " ").title() if day_type else ""
-            col = cols[i % regen_cols_per_row]
-            with col:
+        tabs = st.tabs([b["name"] for b in _blocks])
+        for i, (tab, b) in enumerate(zip(tabs, _blocks)):
+            with tab:
+                if b.get("error") and not b.get("plan"):
+                    st.warning(f"&#9888; {b['name']}: {b['error']}")
+                    continue
+                _pool_warnings_expander(b)
                 st.markdown(
-                    f'<div class="regen-day-header">{d.strftime("%a %d %b")} '
-                    f'<span class="theme-tag" style="background:{bg};color:{fg};'
-                    f'font-size:0.6rem;">{icon} {label}</span></div>',
+                    _menu_table_html(b["plan"], b["plan_dates"], b["day_types"]),
                     unsafe_allow_html=True)
-                day_slots = sorted(plan.get(d_str, {}).keys(), key=slot_sort_key)
-                selected = st.multiselect(f"Slots for {d_str}", day_slots,
-                    format_func=_slot_with_current(d_str),
-                    key=f"regen_{d_str}", label_visibility="collapsed")
-                if selected:
-                    regen_selections[d_str] = selected
-
-        if st.button("Regenerate Selected", type="primary",
-                     key="planner_regenerate_btn"):
-            if regen_selections:
-                # Snapshot current items for the cells the user picked.
-                # We diff against the regenerated plan after the call so
-                # the changes log can show "Aloo Gobi -> Bhindi Masala"
-                # for each cell that actually changed.
-                old_snap = {
-                    (d_str, sid): plan.get(d_str, {}).get(sid, "")
-                    for d_str, slots in regen_selections.items()
-                    for sid in slots
-                }
-                with st.spinner("Regenerating..."):
-                    try:
-                        result = client.regenerate(
-                            client_name=st.session_state.client_name,
-                            base_plan=plan, replace_slots=regen_selections,
-                            start_date=plan_dates[0],
-                            num_days=len(plan_dates),
-                            time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
-                        flat_regen, regen_day_types = flatten_api_solution(result.get("solution", {}))
-                        st.session_state.plan = flat_regen if flat_regen else plan
-                        if regen_day_types:
-                            st.session_state.day_types = regen_day_types
-                        st.session_state.plan_dates = sorted(st.session_state.plan.keys())
-
-                        diffs = []
-                        for (d_str, sid), old_raw in old_snap.items():
-                            new_raw = st.session_state.plan.get(d_str, {}).get(sid, "")
-                            old_pretty = format_item_for_ui(old_raw)
-                            new_pretty = format_item_for_ui(new_raw)
-                            if old_pretty == new_pretty:
-                                # Solver picked the same item back — don't
-                                # spam the log with no-op rows.
-                                continue
-                            try:
-                                day_label = dt.date.fromisoformat(d_str).strftime("%a %d %b")
-                            except ValueError:
-                                day_label = d_str
-                            diffs.append({
-                                "kind": "regen",
-                                "day": day_label,
-                                "slot": display_label_for_slot_id(sid),
-                                "old": old_pretty,
-                                "new": new_pretty,
-                            })
-                        if diffs:
-                            st.session_state.changes_log.extend(diffs)
-                            # Cell-level regen means the on-screen plan
-                            # no longer matches the saved version (if
-                            # there was one). Flip to "modified" so the
-                            # badge nudges the user to Save again to
-                            # persist their edits.
-                            st.session_state.plan_source = "modified"
-                        else:
-                            st.session_state.changes_log.append({
-                                "kind": "info",
-                                "text": (
-                                    f"Regenerated {sum(len(v) for v in regen_selections.values())} "
-                                    "cell(s); solver returned the same items."
-                                ),
-                            })
-                            # No actual change — leave plan_source alone so a
-                            # no-op regen on a freshly loaded saved plan keeps
-                            # the "Loaded from history" badge.
+                st.markdown("")
+                cc1, cc2, _cc = st.columns([1, 1, 4])
+                with cc2:
+                    if st.button("Clear", key=f"clear_c{i}",
+                                 use_container_width=True):
+                        b["plan"], b["plan_dates"], b["day_types"] = {}, [], {}
                         st.rerun()
-                    except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                        st.error(f"Regeneration failed: {e}")
-            else:
-                st.warning("Select at least one cell.")
+                _render_regen_expander(client, i, i, f"c{i}")
+    else:
+        b = _blocks[0]
+        _pool_warnings_expander(b)
+        st.markdown(
+            _menu_table_html(b["plan"], b["plan_dates"], b["day_types"]),
+            unsafe_allow_html=True)
+        st.markdown("")
+        c1, c2, c3, _c = st.columns([1, 1, 1, 3])
+        with c1:
+            if st.button("Save to History", key="planner_save_btn",
+                         use_container_width=True):
+                try:
+                    client.save(client_name=st.session_state.client_name,
+                                week_start=b["plan_dates"][0], week_plan=b["plan"])
+                    st.session_state.plan_source = "history"
+                    b["source"] = "history"
+                    st.toast("Plan saved to history", icon="✅")
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Save failed: {e}")
+        with c2:
+            st.download_button(
+                "Download CSV", data=_plan_csv(_blocks),
+                file_name=f"menu_{st.session_state.client_name}.csv",
+                mime="text/csv", key="planner_download_csv_btn",
+                use_container_width=True)
+        with c3:
+            if st.button("Clear", key="planner_clear_btn",
+                         use_container_width=True):
+                st.session_state.plan_blocks = []
+                st.session_state.changes_log = []
+                st.session_state.plan_source = None
+                st.session_state.rule_diagnostics = []
+                st.session_state.diagnostics_summary = None
+                st.rerun()
+        _render_regen_expander(client, 0, 0, "single")
 
-    if st.session_state.changes_log:
-        with st.expander("Changes log", expanded=True):
-            for entry in st.session_state.changes_log:
-                # Entries are dicts (regen diffs / info rows). Strings are
-                # tolerated for backward-compat with any session that was
-                # alive across the upgrade.
-                if isinstance(entry, dict) and entry.get("kind") == "regen":
-                    st.markdown(
-                        '<div class="log-entry log-diff">'
-                        f'<span class="log-day">{html.escape(entry["day"])}</span>'
-                        f'<span class="log-sep">&middot;</span>'
-                        f'<span class="log-slot">{html.escape(entry["slot"])}</span>'
-                        f'<span class="log-sep">&middot;</span>'
-                        f'<span class="log-old">{html.escape(entry["old"] or "(empty)")}</span>'
-                        '<span class="log-arrow">&rarr;</span>'
-                        f'<span class="log-new">{html.escape(entry["new"] or "(empty)")}</span>'
-                        '</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    text = entry.get("text", "") if isinstance(entry, dict) else str(entry)
-                    st.markdown(
-                        f'<div class="log-entry">{html.escape(text)}</div>',
-                        unsafe_allow_html=True,
-                    )
+    _render_changes_log()
 
 else:
     st.markdown("""<div class="empty-state">

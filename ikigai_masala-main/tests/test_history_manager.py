@@ -184,6 +184,26 @@ class TestHistoryManager:
             hm.save({}, [], 'Rippling', dt.date(2026, 3, 16), 'sig',
                     supabase_client=None)
 
+    def test_save_counters_writes_nested_menu(self):
+        from tests.fake_supabase import FakeSupabase
+        fake = FakeSupabase(seed={'menu_history': [], 'week_signatures': []})
+        hm = HistoryManager()
+        d = dt.date(2026, 3, 16)
+        hm.save_counters(
+            [
+                ('Main', {d: {'rice': 'jeera rice', 'dal': 'tadka'}}),
+                ('Live', {d: {'starter': 'tikka'}}),
+            ],
+            [d], 'Rippling', d, 'sig', supabase_client=fake,
+        )
+        rows = fake.rows('menu_history')
+        assert len(rows) == 1
+        assert rows[0]['menu'] == {
+            'Main': {'rice': 'jeera rice', 'dal': 'tadka'},
+            'Live': {'starter': 'tikka'},
+        }
+        assert len(fake.rows('week_signatures')) == 1
+
 
 class TestLoadSavedPlan:
     """Verify the readback path used by /api/v1/saved-plan (JSON day rows)."""
@@ -274,6 +294,15 @@ class TestExplodeHistoryRows:
         assert set(df.columns) >= {'client_name', 'service_date', 'slot', 'item_base'}
         assert len(df) == 3
         assert set(df['item_base']) == {'jeera rice', 'naan', 'lemon rice'}
+
+    def test_explode_nested_menu_flattens_all_counters(self):
+        rows = [
+            {'client_name': 'Rippling', 'service_date': '2026-03-16',
+             'menu': {'Main': {'rice': 'jeera rice'}, 'Live': {'starter': 'tikka'}}},
+        ]
+        df = HistoryManager.explode_history_rows(rows)
+        assert len(df) == 2
+        assert set(df['item_base']) == {'jeera rice', 'tikka'}
 
     def test_explode_empty_is_none(self):
         assert HistoryManager.explode_history_rows([]) is None

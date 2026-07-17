@@ -304,6 +304,81 @@ class TestPlanEndpoint:
         assert 'summary' in data
         assert data['summary']['would_succeed'] is True
 
+    def test_plan_reports_single_counter_metadata(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit_seconds': 30,
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['counter_mode'] == 'single'
+        assert data['counter_count'] == 1
+        assert data['counter_index'] == 0
+        assert data['counter_name']
+
+
+_VIABLE = ['welcome_drink', 'starter', 'soup', 'salad', 'rice', 'dal',
+           'veg_gravy', 'veg_dry', 'bread', 'curd_side', 'dessert']
+
+
+class TestMultiCounterPlanning:
+    """Per-counter generate/save for a multi-cuisine client."""
+
+    def _make_multi(self, client, auth_headers):
+        resp = client.post('/api/v1/client', json={
+            'name': 'MultiCo', 'counter_mode': 'multi',
+            'counters': [
+                {'name': 'Main', 'categories': _VIABLE, 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'Live', 'categories': _VIABLE, 'slot_counts': {},
+                 'theme_map': {'monday': 'chinese'}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+
+    def test_plan_each_counter_independently(self, client, auth_headers, fake_supabase):
+        self._make_multi(client, auth_headers)
+        p0 = client.post('/api/v1/plan', json={
+            'client_name': 'MultiCo', 'start_date': '2026-03-23', 'num_days': 1,
+            'time_limit_seconds': 30, 'counter_index': 0,
+        }, headers=auth_headers).get_json()
+        p1 = client.post('/api/v1/plan', json={
+            'client_name': 'MultiCo', 'start_date': '2026-03-23', 'num_days': 1,
+            'time_limit_seconds': 30, 'counter_index': 1,
+        }, headers=auth_headers).get_json()
+        assert p0['success'] and p1['success']
+        assert p0['counter_mode'] == 'multi' and p0['counter_count'] == 2
+        assert p0['counter_name'] == 'Main' and p1['counter_name'] == 'Live'
+        assert 'solution' in p0 and 'solution' in p1
+
+    def test_plan_rejects_out_of_range_counter(self, client, auth_headers, fake_supabase):
+        self._make_multi(client, auth_headers)
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'MultiCo', 'start_date': '2026-03-23', 'num_days': 1,
+            'counter_index': 9,
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert 'out of range' in resp.get_json()['error']
+
+    def test_save_multi_counters_nested(self, client, auth_headers, fake_supabase):
+        self._make_multi(client, auth_headers)
+        resp = client.post('/api/v1/save', json={
+            'client_name': 'MultiCo', 'week_start': '2026-03-23',
+            'counters': [
+                {'name': 'Main', 'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)', 'dal': 'tadka'}}},
+                {'name': 'Live', 'week_plan': {'2026-03-23': {'starter': 'tikka(R)'}}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+        rows = fake_supabase.rows('menu_history')
+        assert len(rows) == 1
+        menu = rows[0]['menu']
+        # Nested per counter, colour suffix stripped.
+        assert set(menu.keys()) == {'Main', 'Live'}
+        assert menu['Main'] == {'rice': 'jeera_rice', 'dal': 'tadka'}
+        assert menu['Live'] == {'starter': 'tikka'}
+
 
 class TestDiagnoseEndpoint:
     """Coverage for the new /api/v1/diagnose pre-flight endpoint. The

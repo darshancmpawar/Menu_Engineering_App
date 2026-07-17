@@ -131,12 +131,14 @@ class MenuApiClient:
         start_date: str,
         num_days: int = 5,
         time_limit_seconds: int = 240,
+        counter_index: int = 0,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
             "start_date": start_date,
             "num_days": num_days,
             "time_limit_seconds": time_limit_seconds,
+            "counter_index": counter_index,
         }
 
         def _do():
@@ -157,6 +159,7 @@ class MenuApiClient:
         start_date: Optional[str] = None,
         num_days: int = 5,
         time_limit_seconds: int = 240,
+        counter_index: int = 0,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -164,6 +167,7 @@ class MenuApiClient:
             "replace_slots": replace_slots,
             "num_days": num_days,
             "time_limit_seconds": time_limit_seconds,
+            "counter_index": counter_index,
         }
         if start_date:
             payload["start_date"] = start_date
@@ -179,18 +183,22 @@ class MenuApiClient:
     def save(
         self,
         client_name: str,
-        week_plan: Dict[str, Dict[str, str]],
         week_start: str,
+        week_plan: Optional[Dict[str, Dict[str, str]]] = None,
+        counters: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         # /save overwrites on (client, dates) — re-saving the same week
-        # is idempotent (DELETE + INSERT under the hood). We still keep
-        # this single-shot: a 502/504 retry after a partial write would
-        # be a brief flicker but the second call lands on a clean slate.
-        payload = {
+        # is idempotent (DELETE + INSERT under the hood). Pass ``week_plan``
+        # for a single-cuisine client, or ``counters`` (a list of
+        # {name, week_plan}) for a multi-cuisine client.
+        payload: Dict[str, Any] = {
             "client_name": client_name,
-            "week_plan": week_plan,
             "week_start": week_start,
         }
+        if counters is not None:
+            payload["counters"] = counters
+        else:
+            payload["week_plan"] = week_plan or {}
         resp = self.session.post(
             f"{self.base_url}/api/v1/save", json=payload, timeout=30,
             headers=self._auth_headers(),
