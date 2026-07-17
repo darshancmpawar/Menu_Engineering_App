@@ -139,6 +139,9 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'menu_history'
                  AND column_name = 'item_base') THEN
+        -- Clean any half-built table left by an earlier failed run so this
+        -- block is safe to re-run.
+        DROP TABLE IF EXISTS menu_history_new CASCADE;
         CREATE TABLE menu_history_new (
             client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
             service_date DATE NOT NULL,
@@ -146,12 +149,16 @@ BEGIN
             created_at   TIMESTAMPTZ DEFAULT now(),
             PRIMARY KEY (client_name, service_date)
         );
+        -- Skip orphaned history (rows whose client_name is no longer in
+        -- `clients` — e.g. a deleted client, or a name that never matched).
+        -- They can't satisfy the FK and are dead data anyway.
         INSERT INTO menu_history_new (client_name, service_date, menu)
         SELECT client_name, service_date, jsonb_object_agg(slot, item_base)
         FROM (
             SELECT DISTINCT ON (client_name, service_date, slot)
                    client_name, service_date, slot, item_base
             FROM menu_history
+            WHERE client_name IN (SELECT name FROM clients)
             ORDER BY client_name, service_date, slot, id DESC
         ) t
         GROUP BY client_name, service_date;

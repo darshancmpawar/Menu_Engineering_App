@@ -348,21 +348,19 @@ class ClientConfigLoader:
 
     # ---- client read methods -----------------------------------------------
 
-    def get_client(self, name: str) -> ClientConfig:
-        """Return a fully-populated ClientConfig, sourced from the primary
-        counter (``counters[0]``). Output shape is unchanged from the legacy
-        implementation, so the solver is unaffected."""
-        primary = self._counters_list(name)[0]
-
+    def _config_from_counter(self, name: str, counter: Dict) -> ClientConfig:
+        """Build a ClientConfig for one (normalized) counter — the shape the
+        solver consumes. Shared by the primary-counter path (get_client) and
+        the per-counter path (get_client_configs)."""
         counts = {s: 1 for s in BASE_SLOTS}
-        for slot, cnt in primary['slot_counts'].items():
+        for slot, cnt in (counter.get('slot_counts') or {}).items():
             if slot in counts:
                 counts[slot] = max(0, int(cnt))
         for must in self.core_min_one_slots:
             counts[must] = max(1, int(counts.get(must, 1)))
 
         expanded: List[str] = []
-        for slot in primary['categories']:
+        for slot in counter.get('categories') or []:
             if slot in CONST_SLOTS:
                 expanded.append(slot)
             else:
@@ -375,8 +373,26 @@ class ClientConfigLoader:
             name=name,
             active_slots=expanded,
             slot_counts=counts,
-            theme_map=dict(primary['theme_map']),
+            theme_map=dict(counter.get('theme_map') or DEFAULT_THEME_MAP),
         )
+
+    def get_client(self, name: str) -> ClientConfig:
+        """Return a ClientConfig sourced from the primary counter
+        (``counters[0]``). Output shape is unchanged, so the solver is
+        unaffected."""
+        return self._config_from_counter(name, self._counters_list(name)[0])
+
+    def get_client_configs(self, name: str):
+        """Return ``[(counter_name, ClientConfig), …]`` — one per counter.
+
+        Single-cuisine clients yield a one-element list; multi-cuisine clients
+        yield one config per counter, each with that counter's categories /
+        frequency / day-themes for an independent solve.
+        """
+        return [
+            (c['name'], self._config_from_counter(name, c))
+            for c in self._counters_list(name)
+        ]
 
     def get_counters_for_client(self, name: str) -> List[Dict]:
         """Return the ordered, normalised list of counter configs (>=1)."""

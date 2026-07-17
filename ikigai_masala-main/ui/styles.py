@@ -160,7 +160,7 @@ STYLES = f"""
        METRIC CARDS
        ================================================================ */
     .metrics-grid {{
-        display: grid; grid-template-columns: repeat(4, 1fr);
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 0.75rem; margin-bottom: 1.75rem;
     }}
     .metric-card {{
@@ -177,9 +177,10 @@ STYLES = f"""
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
     }}
     .metric-card:nth-child(1)::before {{ background: {BLUE}; }}
-    .metric-card:nth-child(2)::before {{ background: {GREEN}; }}
-    .metric-card:nth-child(3)::before {{ background: {YELLOW}; }}
+    .metric-card:nth-child(2)::before {{ background: {YELLOW}; }}
+    .metric-card:nth-child(3)::before {{ background: {GREEN}; }}
     .metric-card:nth-child(4)::before {{ background: {PURPLE}; }}
+    .metric-card:nth-child(5)::before {{ background: {ORANGE}; }}
     .metric-label {{
         font-size: 0.65rem; color: var(--text-tertiary);
         text-transform: uppercase; letter-spacing: 0.06em;

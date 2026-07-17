@@ -42,9 +42,9 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 | Method | Route | Purpose |
 |---|---|---|
 | GET  | `/api/v1/clients` | list clients |
-| POST | `/api/v1/plan` | generate full menu |
-| POST | `/api/v1/regenerate` | regenerate selected cells |
-| POST | `/api/v1/save` | persist plan → history |
+| POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`) |
+| POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`) |
+| POST | `/api/v1/save` | persist plan → history (single `week_plan`, or multi `counters: [{name, week_plan}]` → nested `menu_history`) |
 | GET  | `/api/v1/editor-metadata` | slot/theme metadata for editor |
 | GET  | `/api/v1/client-config/<name>` | fetch client config |
 | PUT  | `/api/v1/client-config/<name>` | update client config |
@@ -116,7 +116,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`.
 - No in-memory cache; every read hits Supabase. Supabase tables (consolidated to 4): `clients`, `app_settings`, `menu_history`, `week_signatures`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
-- **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
+- **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. `get_client_configs` yields one `ClientConfig` per counter — the API solves each independently (client-orchestrated: the planner calls `/plan` once per counter with `counter_index`), and the planner renders one table per counter (tabs) with per-counter regenerate/clear + a shared save/download. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
 
 ### 4.5 `src/history/`
 - `history_manager.py` → `HistoryManager.banned_items_by_date`, `.ricebread_ban_by_date`, `.recent_week_signatures`, `.explode_history_rows`.

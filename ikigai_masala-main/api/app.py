@@ -439,8 +439,32 @@ class SolverInputs:
     cfg: SolverConfig
 
 
-def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
+def _resolve_counter(client_name: str, data: Dict[str, Any]):
+    """Return ``(counter_index, counter_name, counter_count, client_cfg)`` for
+    the requested counter. ``counter_index`` defaults to 0 (primary). Raises
+    ValueError for an out-of-range index."""
+    configs = _get_client_loader().get_client_configs(client_name)
+    counter_count = len(configs)
+    try:
+        idx = int(data.get('counter_index', 0) or 0)
+    except (TypeError, ValueError):
+        idx = 0
+    if idx < 0 or idx >= counter_count:
+        raise ValueError(
+            f"counter_index {idx} out of range (client has {counter_count} counter"
+            f"{'s' if counter_count != 1 else ''})"
+        )
+    name, cfg = configs[idx]
+    return idx, name, counter_count, cfg
+
+
+def _prepare_solver_inputs(
+    data: Dict[str, Any], client_cfg: Any = None,
+) -> SolverInputs:
     """Parse request body and assemble all inputs the solver/regenerator need.
+
+    Pass ``client_cfg`` (a specific counter's config) to plan that counter;
+    when omitted the client's primary counter is used.
 
     Raises ``ValueError`` with a user-facing message on missing/invalid input.
     """
@@ -454,7 +478,8 @@ def _prepare_solver_inputs(data: Dict[str, Any]) -> SolverInputs:
         min(MAX_TIME_LIMIT_SECONDS, int(data.get('time_limit_seconds', 240))),
     )
 
-    client_cfg = _get_client_loader().get_client(client_name)
+    if client_cfg is None:
+        client_cfg = _get_client_loader().get_client(client_name)
     df, pools = _get_menu_data()
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(start_date, num_days)
@@ -558,7 +583,12 @@ def list_clients():
 @solver_gate
 def plan_menu():
     try:
-        inputs = _prepare_solver_inputs(request.get_json() or {})
+        data = request.get_json() or {}
+        _require_known_client(data.get('client_name'))
+        counter_index, counter_name, counter_count, client_cfg = _resolve_counter(
+            data.get('client_name'), data,
+        )
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
 
         # Pre-flight gate: run every rule's diagnose() against the
         # assembled inputs. If any diagnostic is severity=error, the
@@ -612,6 +642,10 @@ def plan_menu():
             'solution': formatter.to_dict(),
             'rule_diagnostics': diag_dicts,
             'summary': summary,
+            'counter_mode': 'multi' if counter_count > 1 else 'single',
+            'counter_count': counter_count,
+            'counter_index': counter_index,
+            'counter_name': counter_name,
         }
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
@@ -652,7 +686,11 @@ def regenerate_cells():
         if not replace_slots_raw:
             return jsonify({'success': False, 'error': 'replace_slots is required'}), 400
 
-        inputs = _prepare_solver_inputs(data)
+        _require_known_client(data.get('client_name'))
+        _idx, _cname, _ccount, client_cfg = _resolve_counter(
+            data.get('client_name'), data,
+        )
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
 
         base_plan = {
             dt.date.fromisoformat(d_str): _items_from_day(slots)
@@ -710,39 +748,56 @@ def save_plan():
     try:
         data = request.get_json(silent=True) or {}
         client_name = data.get('client_name')
-        week_plan_raw = data.get('week_plan', {})
         week_start_str = data.get('week_start')
 
         _require_known_client(client_name)
-        if not week_plan_raw:
-            return jsonify({'success': False, 'error': 'week_plan is required'}), 400
         if not week_start_str:
             return jsonify({'success': False, 'error': 'week_start is required'}), 400
+        week_start = dt.date.fromisoformat(week_start_str)
 
-        # Convert string date keys to date objects, extracting items from solution format
+        from src.db import get_supabase
+        sb = get_supabase()
+        hm = HistoryManager()
+
+        # Multi-cuisine: {counters: [{name, week_plan}, …]} — one nested
+        # menu_history row per day; week signature taken from the primary
+        # counter for a stable one-row-per-(client,week) record.
+        counters_raw = data.get('counters')
+        if counters_raw:
+            counter_plans = []
+            for c in counters_raw:
+                wp = {
+                    dt.date.fromisoformat(d_str): _items_from_day(day_data)
+                    for d_str, day_data in (c.get('week_plan') or {}).items()
+                }
+                counter_plans.append((c.get('name') or 'Counter', wp))
+            all_dates = sorted({d for _n, wp in counter_plans for d in wp.keys()})
+            if not all_dates:
+                return jsonify({'success': False, 'error': 'week_plan is required'}), 400
+            primary_wp = counter_plans[0][1]
+            sig = HistoryManager.compute_week_signature(
+                primary_wp, all_dates, const_slots=CONST_SLOTS,
+                strip_color_fn=strip_color_suffix,
+            )
+            hm.save_counters(counter_plans, all_dates, client_name, week_start, sig,
+                             supabase_client=sb, strip_color_fn=strip_color_suffix)
+            return jsonify({'success': True, 'message': 'Plan saved to history'})
+
+        # Single-cuisine (classic) path.
+        week_plan_raw = data.get('week_plan', {})
+        if not week_plan_raw:
+            return jsonify({'success': False, 'error': 'week_plan is required'}), 400
         week_plan = {
             dt.date.fromisoformat(d_str): _items_from_day(day_data)
             for d_str, day_data in week_plan_raw.items()
         }
-
         dates = sorted(week_plan.keys())
-        week_start = dt.date.fromisoformat(week_start_str)
-
         sig = HistoryManager.compute_week_signature(
             week_plan, dates, const_slots=CONST_SLOTS,
             strip_color_fn=strip_color_suffix,
         )
-
-        hm = HistoryManager()
-        # Get Supabase client for persistent storage
-        from src.db import get_supabase
-        sb = get_supabase()
-        # HistoryManager.save is now overwrite-on-conflict: re-saving for
-        # the same (client, dates) replaces the prior rows instead of
-        # appending. See HistoryManager.save docstring.
         hm.save(week_plan, dates, client_name, week_start, sig,
-                supabase_client=sb,
-                strip_color_fn=strip_color_suffix)
+                supabase_client=sb, strip_color_fn=strip_color_suffix)
 
         return jsonify({'success': True, 'message': 'Plan saved to history'})
 
