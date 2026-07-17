@@ -415,8 +415,15 @@ def _flatten_result(result: dict) -> dict:
     }
 
 
+def _date_label(d_str: str) -> str:
+    try:
+        return dt.date.fromisoformat(d_str).strftime("%a %d %b")
+    except ValueError:
+        return d_str
+
+
 def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
-    header_html = '<tr><th>Slot</th>'
+    header_html = '<tr><th>Category</th>'
     for d_str in plan_dates:
         try:
             d_lbl = dt.date.fromisoformat(d_str).strftime("%a %d %b")
@@ -448,21 +455,24 @@ def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
 
 
 def _plan_csv(blocks: list) -> str:
-    """CSV for all non-empty blocks. Multi adds a leading Counter column."""
+    """CSV for all non-empty blocks, sectioned by counter — the counter name,
+    then its Category × date menu. Works for single (one section) and multi
+    (one section per counter)."""
     buf = io.StringIO()
     writer = csv.writer(buf)
-    multi = len([b for b in blocks if b.get("plan")]) > 1
-    dates = sorted({d for b in blocks for d in b.get("plan_dates", [])})
-    writer.writerow((["Counter"] if multi else []) + ["Slot"] + dates)
-    for b in blocks:
-        if not b.get("plan"):
-            continue
+    real = [b for b in blocks if b.get("plan")]
+    for idx, b in enumerate(real):
+        if idx > 0:
+            writer.writerow([])  # blank line between counters
+        dates = b["plan_dates"]
+        writer.writerow(["Counter", b["name"]])
+        writer.writerow(["Category"] + [_date_label(d) for d in dates])
         slots = sorted(
-            {s for d in b["plan_dates"] for s in b["plan"].get(d, {})},
+            {s for d in dates for s in b["plan"].get(d, {})},
             key=slot_sort_key,
         )
         for slot_id in slots:
-            row = ([b["name"]] if multi else []) + [display_label_for_slot_id(slot_id)]
+            row = [display_label_for_slot_id(slot_id)]
             for d in dates:
                 row.append(format_item_for_ui(b["plan"].get(d, {}).get(slot_id, "")))
             writer.writerow(row)

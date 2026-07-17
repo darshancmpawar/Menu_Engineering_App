@@ -233,6 +233,9 @@ STYLES = f"""
     }}
     .menu-table tbody td:last-child {{ border-right: none; }}
     .menu-table tbody tr:last-child td {{ border-bottom: none; }}
+    /* Full black grid borders on every cell (spreadsheet-style). */
+    .menu-table {{ border: 1px solid #131313; }}
+    .menu-table th, .menu-table td {{ border: 1px solid #131313 !important; }}
     .menu-table tbody tr:hover td {{ background: var(--bg-hover); }}
     .menu-table tbody tr:hover td:first-child {{ background: {TINT_BLUE}; }}
     .item-name {{ color: var(--text-primary); font-weight: 500; font-size: 0.8rem; }}

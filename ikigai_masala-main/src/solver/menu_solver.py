@@ -63,6 +63,10 @@ class SolverConfig:
     time_limit_sec: int = 240
     slot_counts: Optional[Dict[str, int]] = None
     active_base_slots: Optional[List[str]] = None
+    # Constant items (white_rice / papad / pickle / chutney) to append to every
+    # day. ``None`` means "all of them" (legacy behaviour); an explicit list
+    # (possibly empty) is the per-client selection.
+    const_slots: Optional[List[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
     # Color constraints
     color_col: str = 'item_color'
@@ -783,6 +787,13 @@ class MenuSolver:
                     day_out[slot_id] = _fmt_item_with_color(
                         chosen_rows[d][slot_id], self.cfg.color_col
                     )
-            day_out.update(CONSTANT_ITEMS)
+            # Append the client's selected constant items. None = all
+            # (legacy default); an explicit list scopes them per-client.
+            if self.cfg.const_slots is None:
+                day_out.update(CONSTANT_ITEMS)
+            else:
+                for k in self.cfg.const_slots:
+                    if k in CONSTANT_ITEMS:
+                        day_out[k] = CONSTANT_ITEMS[k]
             week_plan[d] = day_out
         return week_plan
