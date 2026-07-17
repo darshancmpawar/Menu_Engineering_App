@@ -164,14 +164,18 @@ def normalize_counter(raw: Dict, index: int = 0) -> Dict:
     raw = raw or {}
     name = str(raw.get('name') or '').strip() or f'Counter {index + 1}'
 
+    # Categories may be base slots or constant slots (white_rice / papad /
+    # pickle / chutney) — the latter are per-client selectable, not forced.
+    valid = set(BASE_SLOTS) | set(CONST_SLOTS)
     cats = _dedupe_preserve_order([
-        c for c in (raw.get('categories') or [])
-        if c in BASE_SLOTS and c not in CONST_SLOTS
+        c for c in (raw.get('categories') or []) if c in valid
     ])
 
     raw_counts = raw.get('slot_counts') or {}
     slot_counts: Dict[str, int] = {}
     for c in cats:
+        if c in CONST_SLOTS:
+            continue  # constant items are single fixed dishes — no frequency
         try:
             v = int(raw_counts.get(c, 1))
         except (TypeError, ValueError):

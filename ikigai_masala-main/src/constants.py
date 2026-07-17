@@ -52,7 +52,7 @@ RICE_EXCLUDE_ITEMS: Set[str] = {
 }
 
 DISPLAY_SLOT_NAME: Dict[str, str] = {
-    'rice': 'Flavor Rice',
+    'rice': 'Flavoured Rice',
     'healthy_rice': 'Healthy Rice',
     'white_rice': 'White Rice',
     'welcome_drink': 'Welcome Drink',
@@ -62,4 +62,7 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'veg_dry': 'Veg Dry',
     'nonveg_main': 'Nonveg Main',
     'curd_side': 'Curd Side',
+    'papad': 'Papad',
+    'pickle': 'Pickle',
+    'chutney': 'Chutney',
 }

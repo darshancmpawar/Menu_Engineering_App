@@ -408,12 +408,16 @@ def _client_base_slots(client_cfg):
 def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates):
     """Shared helper to build SolverConfig."""
     active_base = _client_base_slots(client_cfg)
+    # Constant items are per-client selectable now (not forced on everyone):
+    # only append the ones this client actually selected.
+    const_selected = [s for s in client_cfg.active_slots if s in CONST_SLOTS]
     return SolverConfig(
         days=num_days,
         start_date=start_date,
         time_limit_sec=time_limit,
         slot_counts=client_cfg.slot_counts,
         active_base_slots=active_base or None,
+        const_slots=const_selected,
         explicit_dates=weekday_dates,
         premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
         theme_map=client_cfg.theme_map or None,

@@ -204,15 +204,18 @@ class TestHelpers:
     def test_dedupe_preserve_order(self):
         assert _dedupe_preserve_order(['a', 'b', 'a', 'c']) == ['a', 'b', 'c']
 
-    def test_normalize_counter_clamps_and_drops(self):
+    def test_normalize_counter_clamps_and_keeps_constants(self):
         c = normalize_counter({
             'name': '', 'categories': ['veg_dry', 'bogus', 'white_rice', 'veg_dry'],
             'slot_counts': {'veg_dry': 9, 'rice': 'x'},
             'theme_map': {'monday': 'chinese', 'zzz': 'north'},
         }, 2)
         assert c['name'] == 'Counter 3'
-        assert c['categories'] == ['veg_dry']            # bogus/const dropped, deduped
+        # bogus dropped + deduped; constants (white_rice) are now KEPT as
+        # selectable categories.
+        assert c['categories'] == ['veg_dry', 'white_rice']
         assert c['slot_counts']['veg_dry'] == 3          # clamped to max 3
+        assert 'white_rice' not in c['slot_counts']      # constants have no frequency
         assert c['theme_map']['monday'] == 'chinese'
         assert c['theme_map']['tuesday'] == DEFAULT_THEME_MAP['tuesday']
 

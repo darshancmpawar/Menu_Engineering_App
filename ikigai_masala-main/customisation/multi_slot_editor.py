@@ -7,7 +7,7 @@ per day (Veg Dry 1 & Veg Dry 2). Rendered inside a counter panel.
 import streamlit as st
 from typing import Dict, List
 
-from ui.formatters import prettify_slot_name
+from ui.formatters import display_label_for_slot_id as prettify_slot_name
 
 
 def render_multi_slot_editor(
