@@ -801,6 +801,20 @@ class TestNonvegFlag:
         assert items, "expected a populated day"
         assert all('is_nonveg' in v for v in items.values())
 
+    def test_egg_dishes_flagged_nonveg(self, fake_supabase):
+        """Egg dishes must be non-veg — including ones the ontology mislabels
+        with a veg primary_protein but flags via is_egg_dish."""
+        import api.app as api_app
+        nonveg = api_app._get_nonveg_items()
+        # protein-tagged egg dish + chicken
+        assert 'kolkata_egg_curry' in nonveg
+        assert 'chicken_65' in nonveg
+        # egg dishes the data tags primary_protein='chana' (caught via is_egg_dish)
+        assert 'anda_mirch_masala' in nonveg
+        assert 'anda_ghotala' in nonveg
+        # a veg peas bread must NOT be flagged
+        assert 'mutter_kulcha' not in nonveg
+
 
 class TestGetCounterSetup:
     """The single-read (mode, counters) accessor used by /client-config."""

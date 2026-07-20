@@ -210,20 +210,30 @@ _nonveg_items = None
 def _get_nonveg_items():
     """Return a cached set of lower-cased non-vegetarian item base-names.
 
-    Built once from the ontology (``primary_protein`` column). Used to tag
-    solver output so non-veg dishes render red in the app and the download.
+    Built once from the ontology. An item is non-veg when its
+    ``primary_protein`` is a non-veg protein OR its ``is_egg_dish`` flag is
+    set — the latter catches egg dishes the data mislabels with a veg protein
+    (e.g. ``anda_mirch_masala`` tagged ``chana``). Used to tag solver output
+    so non-veg dishes render red in the app and the download.
     """
     global _nonveg_items
     if _nonveg_items is None:
+        import pandas as pd
+
         df, _ = _get_menu_data()
-        if 'primary_protein' in df.columns and 'item' in df.columns:
-            proteins = df['primary_protein'].astype(str).str.strip().str.lower()
-            mask = proteins.isin(_NONVEG_PROTEINS)
-            _nonveg_items = {
-                str(name).strip().lower() for name in df.loc[mask, 'item']
-            }
-        else:
+        if 'item' not in df.columns:
             _nonveg_items = set()
+            return _nonveg_items
+        mask = pd.Series(False, index=df.index)
+        if 'primary_protein' in df.columns:
+            proteins = df['primary_protein'].astype(str).str.strip().str.lower()
+            mask = mask | proteins.isin(_NONVEG_PROTEINS)
+        if 'is_egg_dish' in df.columns:
+            egg = pd.to_numeric(df['is_egg_dish'], errors='coerce').fillna(0) == 1
+            mask = mask | egg
+        _nonveg_items = {
+            str(name).strip().lower() for name in df.loc[mask, 'item']
+        }
     return _nonveg_items
 
 
