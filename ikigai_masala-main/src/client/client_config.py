@@ -89,6 +89,25 @@ DEFAULT_THEME_MAP: Dict[str, str] = {
 
 AVAILABLE_THEMES: List[str] = ['mix', 'chinese', 'biryani', 'south', 'north']
 
+# Cities a client can be located in. A client's ``city`` is a plain column on
+# the ``clients`` row (not per-counter). ``None``/empty means "unset".
+AVAILABLE_CITIES: List[str] = ['Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'NCR']
+
+
+def normalize_city(value: Optional[str]) -> Optional[str]:
+    """Return a canonical city from ``AVAILABLE_CITIES`` or ``None``.
+
+    Matching is case-insensitive so ``'bangalore'`` resolves to ``'Bangalore'``.
+    Any unknown / blank value normalises to ``None`` (unset).
+    """
+    if not value:
+        return None
+    v = str(value).strip().lower()
+    for city in AVAILABLE_CITIES:
+        if city.lower() == v:
+            return city
+    return None
+
 
 class ConcurrentEditError(ValueError):
     """Raised when an optimistic-concurrency version check fails.
@@ -416,6 +435,28 @@ class ClientConfigLoader:
         """Return the primary counter's food categories (non-constant)."""
         return list(self._counters_list(name)[0]['categories'])
 
+    def get_client_city(self, name: str) -> Optional[str]:
+        """Return the client's city (or ``None`` if unset / pre-migration).
+
+        Degrades gracefully to ``None`` when the ``clients.city`` column is
+        missing so an un-migrated database keeps working.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('city')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return normalize_city(row.data.get('city'))
+
     # ---- mutation methods --------------------------------------------------
 
     @staticmethod
@@ -456,6 +497,7 @@ class ClientConfigLoader:
         *,
         counter_mode: str = 'single',
         counters: List[Dict] | None = None,
+        city: str | None = None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -463,12 +505,34 @@ class ClientConfigLoader:
           * classic single-counter: ``create_client(name, active_slots)``
           * counter-aware: ``create_client(name, counter_mode='multi',
             counters=[...])``
+
+        ``city`` is an optional client location from ``AVAILABLE_CITIES``.
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
         self._sb.table('clients').insert({
             'name': name,
             'counters': norm,
+            'city': normalize_city(city),
         }).execute()
+
+    def set_client_city(self, name: str, city: str | None) -> None:
+        """Update a client's city (normalised to ``AVAILABLE_CITIES`` / None)."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'city': normalize_city(city),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.city column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save city: the clients.city column is missing. "
+                    + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
 
     def set_counters_for_client(
         self, name: str, counter_mode: str, counters: List[Dict],

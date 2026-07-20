@@ -25,10 +25,13 @@
 -- =============================================================================
 
 -- 1. Clients — the whole config lives in the counters JSONB column.
+--    `city` is an optional client location (Bangalore / Pune / Chennai /
+--    Hyderabad / NCR); NULL means unset.
 CREATE TABLE IF NOT EXISTS clients (
     name        TEXT PRIMARY KEY,
     version     INT  NOT NULL DEFAULT 1,
     counters    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    city        TEXT,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 
@@ -63,6 +66,7 @@ CREATE TABLE IF NOT EXISTS week_signatures (
 -- -----------------------------------------------------------------------------
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS version  INT   NOT NULL DEFAULT 1;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city     TEXT;
 
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.

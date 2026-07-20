@@ -42,13 +42,13 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 | Method | Route | Purpose |
 |---|---|---|
 | GET  | `/api/v1/clients` | list clients |
-| POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`) |
-| POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`) |
+| POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`; each item carries `is_nonveg`) |
+| POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`; items carry `is_nonveg`) |
 | POST | `/api/v1/save` | persist plan → history (single `week_plan`, or multi `counters: [{name, week_plan}]` → nested `menu_history`) |
-| GET  | `/api/v1/editor-metadata` | slot/theme metadata for editor |
-| GET  | `/api/v1/client-config/<name>` | fetch client config |
-| PUT  | `/api/v1/client-config/<name>` | update client config |
-| POST | `/api/v1/client` | create client |
+| GET  | `/api/v1/editor-metadata` | slot/theme/**city** metadata for editor (`available_cities`) |
+| GET  | `/api/v1/client-config/<name>` | fetch client config (incl. `city`) |
+| PUT  | `/api/v1/client-config/<name>` | update client config (accepts `city`) |
+| POST | `/api/v1/client` | create client (accepts `city`) |
 | DELETE | `/api/v1/client/<name>` | delete client |
 | POST | `/api/v1/validate-pools` | dry-run pool build |
 | GET  | `/api/v1/health` | health check |
@@ -69,7 +69,7 @@ No authentication: every endpoint is public (the auth feature was removed).
 |---|---|---|
 | `menu_solver.py` | `MenuSolver.solve`, `SolverConfig`, `_Cell` | cell-based CP-SAT: one bool var per (day, slot, candidate) |
 | `solver_context.py` | `SolverContext` | runtime bundle passed to rules |
-| `solution_formatter.py` | `SolutionFormatter.to_dict` | solver output → API JSON |
+| `solution_formatter.py` | `SolutionFormatter.to_dict` | solver output → API JSON (tags each item `is_nonveg` from a passed nonveg name-set) |
 | `regenerator.py` | `MenuRegenerator.regenerate`, `similarity_score` | locks fixed cells, re-solves selected ones |
 | `_helpers.py` | `weekday_type_for_config`, `strip_color_suffix`, `items_from_day` | shared utilities |
 
@@ -113,7 +113,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `theme_filter.py` | `ThemeFilter` |
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
-- `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`.
+- `client_config.py` → `ClientConfig` (dataclass), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`. City: `AVAILABLE_CITIES` + `normalize_city`; a client's `city` is a plain `clients.city` column (not per-counter) read/written via `get_client_city` / `set_client_city` / `create_client(city=...)`.
 - No in-memory cache; every read hits Supabase. Supabase tables (consolidated to 4): `clients`, `app_settings`, `menu_history`, `week_signatures`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
 - **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. `get_client_configs` yields one `ClientConfig` per counter — the API solves each independently (client-orchestrated: the planner calls `/plan` once per counter with `counter_index`), and the planner renders one table per counter (tabs) with per-counter regenerate/clear + a shared save/download. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
@@ -123,7 +123,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - Tables: `menu_history` — **one JSONB row per (client, service_date)**, `menu = {slot: item_base}` (PK on `(client_name, service_date)`); cooldown readers `explode_history_rows()` it into per-item rows in memory. `week_signatures` — weekly hash for week-level cooldowns.
 
 ### 4.6 `src/` top-level
-- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DISPLAY_SLOT_NAME`.
+- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DISPLAY_SLOT_NAME` (rice→"Flavoured Rice", bread→"Indian Bread").
 - `db.py` — `get_supabase()` (thread-safe singleton).
 
 ---
@@ -131,11 +131,12 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 ## 5. UI layer
 
 ### `ui/`
-- `api_client.py` → `MenuApiClient` (HTTP wrapper used by Streamlit).
-- `formatters.py` → `format_item_html`, `THEME_TAG_COLORS`, `THEME_ICONS`.
+- `api_client.py` → `MenuApiClient` (HTTP wrapper used by Streamlit; no auth — endpoints are public).
+- `formatters.py` → `format_item_html(item, is_nonveg=…)`, `nonveg_slots_from_solution`, `display_label_for_slot_id`, `THEME_TAG_COLORS`, `THEME_ICONS`.
+- `app.py` planner: menu table renders non-veg dishes red (`.item-nonveg`); **Download Excel** (openpyxl, `_plan_xlsx`) — one sheet per counter, bold bordered headers, red non-veg; filename `menu_<client>_<date-range>.xlsx` (`_download_filename`). A **City** metric card shows the client's city.
 
 ### `customisation/` (Streamlit editors) — Pulse light theme
-- `main.py` → `render_customisation_editor` (dispatcher). Stepped flow: (1) select/create client → (2) Single vs Multi Cuisine Counter (+ number of counters) → (3) per-counter config. Builds the `counters` payload for `POST /client` and `PUT /client-config`.
+- `main.py` → `render_customisation_editor` (dispatcher). Stepped flow: (1) select/create client **+ pick city** → (2) Single vs Multi Cuisine Counter (+ number of counters) → (3) per-counter config. Builds the `counters` + `city` payload for `POST /client` and `PUT /client-config`.
 - `counter_editor.py` → `render_counter_editor` — composes the 3 panels for one counter; returns `{name, categories, slot_counts, theme_map}`.
 - `slot_editor.py`, `multi_slot_editor.py`, `theme_editor.py` — per-concern panels (categories / frequency / day themes), counter-scoped via a `key_prefix`.
 - `pulse.py` → `PULSE_EDITOR_CSS`, `PULSE_THEME_COLORS` — the light (OP Lens) design tokens; injected by the editor. `app.py` skips the dark `ui/styles.py` `STYLES` while `view == "editor"`.

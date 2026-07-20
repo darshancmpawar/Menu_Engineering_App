@@ -4,22 +4,11 @@ UI formatting utilities for menu plan display.
 
 import html
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Set, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES
 from ui.theme_tokens import ITEM_COLOR_MAP, PULSE_THEME_COLORS
 
-
-# Day-of-week theme labels (Monday=0)
-THEME_LABELS = {
-    0: "Mix of South + North",
-    1: "Chinese / Indo-Chinese",
-    2: "Biryani Day",
-    3: "South Indian",
-    4: "North Indian",
-    5: "Weekend Special",
-    6: "Weekend Special",
-}
 
 # Map color initial -> (full name, CSS bg color, CSS text color).
 # Sourced from the shared Pulse palette (light tints).
@@ -39,18 +28,8 @@ THEME_ICONS = {
 }
 
 
-def theme_label(weekday: int) -> str:
-    return THEME_LABELS.get(weekday, "")
-
-
 def display_label_for_slot_id(slot_id: str) -> str:
     return DISPLAY_SLOT_NAME.get(slot_id, slot_id.replace("_", " ").title())
-
-
-def prettify_slot_name(name: str) -> str:
-    if not name:
-        return ""
-    return name.replace("_", " ").strip().title()
 
 
 def _prettify_item_name(name: str) -> str:
@@ -67,11 +46,14 @@ def format_item_for_ui(item_str: str) -> str:
     return _prettify_item_name(cleaned)
 
 
-def format_item_html(item_str: str) -> str:
+def format_item_html(item_str: str, is_nonveg: bool = False) -> str:
     """Format item string as HTML with colored pill for the color tag.
 
     Input:  'veg_fried_rice(Y)'
     Output: 'Veg Fried Rice <span class="color-pill" ...>(Yellow)</span>'
+
+    When ``is_nonveg`` is True the item name carries the ``item-nonveg``
+    class so it renders red.
     """
     if not item_str:
         return '<span class="cell-empty">&mdash;</span>'
@@ -81,28 +63,37 @@ def format_item_html(item_str: str) -> str:
     # admin-editable, so escape before embedding into st.markdown output
     # that runs with unsafe_allow_html=True.
     name = html.escape(_prettify_item_name(cleaned))
+    name_cls = "item-name item-nonveg" if is_nonveg else "item-name"
 
     if m:
         initial = m.group(1)
         color_name, bg, fg = _COLOR_MAP.get(initial, (initial, '#F0F0F0', '#555555'))
         return (
-            f'<span class="item-name">{name}</span>'
+            f'<span class="{name_cls}">{name}</span>'
             f'<span class="color-pill" style="background:{bg};color:{fg};">'
             f'{html.escape(color_name)}</span>'
         )
-    return f'<span class="item-name">{name}</span>'
+    return f'<span class="{name_cls}">{name}</span>'
 
 
-def pretty_text(item_str: str) -> str:
-    if not item_str:
-        return ""
-    cleaned = re.sub(r'\s*\([A-Z]\)\s*$', '', item_str)
-    return cleaned.strip().title()
+def nonveg_slots_from_solution(
+    raw_solution: Dict[str, Any],
+) -> Dict[str, Set[str]]:
+    """Return ``{date_iso: {slot_id, …}}`` for slots holding a non-veg dish.
 
-
-def color_suffix(item_str: str) -> Optional[str]:
-    m = re.search(r'\(([A-Z])\)\s*$', item_str)
-    return m.group(1) if m else None
+    Reads the ``is_nonveg`` flag the API attaches to each item so both the
+    on-screen table and the Excel export can colour non-veg dishes red.
+    """
+    out: Dict[str, Set[str]] = {}
+    for date_key, day_data in raw_solution.items():
+        source = day_data.get('items') if isinstance(day_data, dict) and 'items' in day_data else (day_data or {})
+        nv = {
+            slot_id for slot_id, val in source.items()
+            if isinstance(val, dict) and val.get('is_nonveg')
+        }
+        if nv:
+            out[date_key] = nv
+    return out
 
 
 def flatten_api_solution(

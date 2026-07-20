@@ -744,6 +744,52 @@ class TestEditorMetadataCounters:
         assert resp.status_code == 200
         assert resp.get_json()['max_counters'] == MAX_COUNTERS
 
+    def test_metadata_exposes_available_cities(
+        self, client, auth_headers, fake_supabase,
+    ):
+        from src.client.client_config import AVAILABLE_CITIES
+        resp = client.get('/api/v1/editor-metadata', headers=auth_headers)
+        assert resp.get_json()['available_cities'] == list(AVAILABLE_CITIES)
+
+
+class TestClientCity:
+    """City is a plain client attribute, set on create and PUT."""
+
+    def test_create_with_city_and_get_config(
+        self, client, auth_headers, fake_supabase,
+    ):
+        client.post('/api/v1/client', json={
+            'name': 'CityCo', 'active_slots': ['rice', 'dal'], 'city': 'chennai',
+        }, headers=auth_headers)
+        cfg = client.get('/api/v1/client-config/CityCo',
+                         headers=auth_headers).get_json()
+        assert cfg['city'] == 'Chennai'
+
+    def test_put_updates_city(self, client, auth_headers, fake_supabase):
+        cfg = client.get('/api/v1/client-config/Rippling',
+                         headers=auth_headers).get_json()
+        assert cfg['city'] is None
+        resp = client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'city': 'NCR',
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+        after = client.get('/api/v1/client-config/Rippling',
+                           headers=auth_headers).get_json()
+        assert after['city'] == 'NCR'
+
+
+class TestNonvegFlag:
+    def test_plan_items_carry_is_nonveg(
+        self, client, auth_headers, fake_supabase,
+    ):
+        data = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit_seconds': 30,
+        }, headers=auth_headers).get_json()
+        items = data['solution']['2026-03-23']['items']
+        assert items, "expected a populated day"
+        assert all('is_nonveg' in v for v in items.values())
+
 
 class TestGetCounterSetup:
     """The single-read (mode, counters) accessor used by /client-config."""

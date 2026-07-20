@@ -19,8 +19,8 @@ os.chdir(_APP_DIR)
 import datetime as dt
 import html
 import io
-import csv
 import logging
+import re
 import threading
 import time
 
@@ -32,6 +32,7 @@ from ui.formatters import (
     flatten_api_solution,
     format_item_for_ui,
     format_item_html,
+    nonveg_slots_from_solution,
     slot_sort_key,
     THEME_TAG_COLORS,
     THEME_ICONS,
@@ -404,11 +405,13 @@ with _hdr_col2:
 # ---------------------------------------------------------------------------
 def _flatten_result(result: dict) -> dict:
     """Turn a /plan or /saved-plan response into a plan "block"."""
-    flat, day_types = flatten_api_solution(result.get("solution", {}))
+    solution = result.get("solution", {})
+    flat, day_types = flatten_api_solution(solution)
     return {
         "plan": flat,
         "plan_dates": sorted(flat.keys()),
         "day_types": day_types,
+        "nonveg": nonveg_slots_from_solution(solution),
         "pool_warnings": result.get("pool_warnings", []),
         "source": "solver",
         "error": None,
@@ -422,7 +425,9 @@ def _date_label(d_str: str) -> str:
         return d_str
 
 
-def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
+def _menu_table_html(plan: dict, plan_dates: list, day_types: dict,
+                     nonveg: dict | None = None) -> str:
+    nonveg = nonveg or {}
     header_html = '<tr><th>Category</th>'
     for d_str in plan_dates:
         try:
@@ -446,7 +451,9 @@ def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
     for slot_id in sorted_slots:
         body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
         for d_str in plan_dates:
-            body_html += f'<td>{format_item_html(plan.get(d_str, {}).get(slot_id, ""))}</td>'
+            item = plan.get(d_str, {}).get(slot_id, "")
+            is_nv = slot_id in nonveg.get(d_str, ())
+            body_html += f'<td>{format_item_html(item, is_nonveg=is_nv)}</td>'
         body_html += '</tr>'
     return (
         f'<div class="menu-table-wrap"><table class="menu-table">'
@@ -454,29 +461,91 @@ def _menu_table_html(plan: dict, plan_dates: list, day_types: dict) -> str:
     )
 
 
-def _plan_csv(blocks: list) -> str:
-    """CSV for all non-empty blocks, sectioned by counter — the counter name,
-    then its Category × date menu. Works for single (one section) and multi
-    (one section per counter)."""
-    buf = io.StringIO()
-    writer = csv.writer(buf)
+def _sanitize_sheet_title(name: str, used: set) -> str:
+    """Excel sheet titles: <=31 chars, none of ``[]:*?/\\``, and unique."""
+    title = re.sub(r'[\[\]:*?/\\]', ' ', str(name or "Counter")).strip()[:31] or "Counter"
+    base, n = title, 2
+    while title.lower() in used:
+        suffix = f" ({n})"
+        title = base[:31 - len(suffix)] + suffix
+        n += 1
+    used.add(title.lower())
+    return title
+
+
+def _download_filename(blocks: list, client_name: str) -> str:
+    """``menu_<client>_<date-range>.xlsx`` — dates span every non-empty block."""
+    safe_client = re.sub(r'[^A-Za-z0-9]+', '_', client_name or "client").strip('_') or "client"
+    dates = sorted({d for b in blocks if b.get("plan") for d in b.get("plan_dates", [])})
+    if not dates:
+        return f"menu_{safe_client}.xlsx"
+    span = dates[0] if dates[0] == dates[-1] else f"{dates[0]}_to_{dates[-1]}"
+    return f"menu_{safe_client}_{span}.xlsx"
+
+
+def _plan_xlsx(blocks: list, client_name: str) -> bytes:
+    """Formatted workbook — one sheet per counter, with bold bordered headers
+    and non-veg dishes in red. Works for single (one sheet) and multi."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    thin = Side(style="thin", color="131313")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_font = Font(bold=True, color="131313")
+    header_fill = PatternFill("solid", fgColor="FEBF34")
+    title_font = Font(bold=True, size=13, color="131313")
+    nonveg_font = Font(color="C40D1B", bold=True)
+    wrap = Alignment(vertical="top", wrap_text=True)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    used_titles: set = set()
     real = [b for b in blocks if b.get("plan")]
-    for idx, b in enumerate(real):
-        if idx > 0:
-            writer.writerow([])  # blank line between counters
+
+    for b in real:
         dates = b["plan_dates"]
-        writer.writerow(["Counter", b["name"]])
-        writer.writerow(["Category"] + [_date_label(d) for d in dates])
+        nonveg = b.get("nonveg") or {}
+        ws = wb.create_sheet(_sanitize_sheet_title(b["name"], used_titles))
+
+        # Title row (counter name).
+        ws.cell(row=1, column=1, value=b["name"]).font = title_font
+
+        # Header row.
+        headers = ["Category"] + [_date_label(d) for d in dates]
+        for col, text in enumerate(headers, start=1):
+            c = ws.cell(row=2, column=col, value=text)
+            c.font, c.fill, c.border = header_font, header_fill, border
+            c.alignment = wrap
+
+        # Body rows.
         slots = sorted(
             {s for d in dates for s in b["plan"].get(d, {})},
             key=slot_sort_key,
         )
-        for slot_id in slots:
-            row = [display_label_for_slot_id(slot_id)]
-            for d in dates:
-                row.append(format_item_for_ui(b["plan"].get(d, {}).get(slot_id, "")))
-            writer.writerow(row)
+        for r, slot_id in enumerate(slots, start=3):
+            cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(slot_id))
+            cat.font, cat.border, cat.alignment = header_font, border, wrap
+            for col, d in enumerate(dates, start=2):
+                item = format_item_for_ui(b["plan"].get(d, {}).get(slot_id, ""))
+                cell = ws.cell(row=r, column=col, value=item)
+                cell.border, cell.alignment = border, wrap
+                if slot_id in nonveg.get(d, ()):
+                    cell.font = nonveg_font
+
+        # Column widths: Category a bit wider, dates comfortable.
+        ws.column_dimensions["A"].width = 18
+        for col in range(2, len(dates) + 2):
+            ws.column_dimensions[ws.cell(row=2, column=col).column_letter].width = 22
+
+    if not real:  # nothing generated yet — hand back an empty but valid file
+        wb.create_sheet("Menu")
+
+    buf = io.BytesIO()
+    wb.save(buf)
     return buf.getvalue()
+
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _pool_warnings_expander(block: dict) -> None:
@@ -546,13 +615,15 @@ def _render_regen_expander(api, block_index: int, counter_index: int,
                         start_date=plan_dates[0], num_days=len(plan_dates),
                         time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
                         counter_index=counter_index)
-                    flat_regen, regen_day_types = flatten_api_solution(
-                        result.get("solution", {}))
+                    solution = result.get("solution", {})
+                    flat_regen, regen_day_types = flatten_api_solution(solution)
                     new_plan = flat_regen if flat_regen else plan
                     b["plan"] = new_plan
                     if regen_day_types:
                         b["day_types"] = regen_day_types
                     b["plan_dates"] = sorted(new_plan.keys())
+                    if flat_regen:
+                        b["nonveg"] = nonveg_slots_from_solution(solution)
 
                     diffs = []
                     for (d, s), old_raw in old_snap.items():
@@ -610,15 +681,15 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """Return (mode, [counter names]) for a client; degrade to single."""
+    """Return (mode, [counter names], city) for a client; degrade to single."""
     try:
         cfg = api.get_client_config(name)
         counters = cfg.get("counters") or []
         names = [(c.get("name") or f"Counter {i + 1}")
                  for i, c in enumerate(counters)] or ["Counter 1"]
-        return cfg.get("counter_mode", "single"), names
+        return cfg.get("counter_mode", "single"), names, cfg.get("city")
     except Exception:
-        return "single", ["Counter 1"]
+        return "single", ["Counter 1"], None
 
 
 # ---------------------------------------------------------------------------
@@ -628,8 +699,9 @@ if generate_clicked:
     if not selected_client or selected_client == "(no clients)":
         st.warning("Select a valid client first.")
     else:
-        mode, counter_names = _client_counter_names(client, selected_client)
+        mode, counter_names, city = _client_counter_names(client, selected_client)
         st.session_state.client_name = selected_client
+        st.session_state.client_city = city
         st.session_state.plan_mode = mode
         st.session_state.changes_log = []
         st.session_state.plan_source = None
@@ -742,6 +814,11 @@ if _blocks and any(b.get("plan") for b in _blocks):
     # Metric cards (Counters is always shown now).
     cards = [
         ("Client", html.escape(st.session_state.client_name or "")),
+    ]
+    _city = st.session_state.get("client_city")
+    if _city:
+        cards.append(("City", html.escape(_city)))
+    cards += [
         ("Counters", str(len(_blocks))),
         ("Days", str(len(dates_union))),
     ]
@@ -777,9 +854,10 @@ if _blocks and any(b.get("plan") for b in _blocks):
                     st.error(f"Save failed: {e}")
         with sc2:
             st.download_button(
-                "Download CSV", data=_plan_csv(_blocks),
-                file_name=f"menu_{st.session_state.client_name}.csv",
-                mime="text/csv", key="multi_dl_btn", use_container_width=True)
+                "Download Excel",
+                data=_plan_xlsx(_blocks, st.session_state.client_name),
+                file_name=_download_filename(_blocks, st.session_state.client_name),
+                mime=_XLSX_MIME, key="multi_dl_btn", use_container_width=True)
         with sc3:
             if st.button("Clear All", key="multi_clear_btn",
                          use_container_width=True):
@@ -796,7 +874,8 @@ if _blocks and any(b.get("plan") for b in _blocks):
                     continue
                 _pool_warnings_expander(b)
                 st.markdown(
-                    _menu_table_html(b["plan"], b["plan_dates"], b["day_types"]),
+                    _menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
+                                     b.get("nonveg")),
                     unsafe_allow_html=True)
                 st.markdown("")
                 cc1, cc2, _cc = st.columns([1, 1, 4])
@@ -804,13 +883,15 @@ if _blocks and any(b.get("plan") for b in _blocks):
                     if st.button("Clear", key=f"clear_c{i}",
                                  use_container_width=True):
                         b["plan"], b["plan_dates"], b["day_types"] = {}, [], {}
+                        b["nonveg"] = {}
                         st.rerun()
                 _render_regen_expander(client, i, i, f"c{i}")
     else:
         b = _blocks[0]
         _pool_warnings_expander(b)
         st.markdown(
-            _menu_table_html(b["plan"], b["plan_dates"], b["day_types"]),
+            _menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
+                             b.get("nonveg")),
             unsafe_allow_html=True)
         st.markdown("")
         c1, c2, c3, _c = st.columns([1, 1, 1, 3])
@@ -827,9 +908,10 @@ if _blocks and any(b.get("plan") for b in _blocks):
                     st.error(f"Save failed: {e}")
         with c2:
             st.download_button(
-                "Download CSV", data=_plan_csv(_blocks),
-                file_name=f"menu_{st.session_state.client_name}.csv",
-                mime="text/csv", key="planner_download_csv_btn",
+                "Download Excel",
+                data=_plan_xlsx(_blocks, st.session_state.client_name),
+                file_name=_download_filename(_blocks, st.session_state.client_name),
+                mime=_XLSX_MIME, key="planner_download_xlsx_btn",
                 use_container_width=True)
         with c3:
             if st.button("Clear", key="planner_clear_btn",

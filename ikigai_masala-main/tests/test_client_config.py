@@ -7,6 +7,7 @@ from tests.fake_supabase import FakeSupabase
 from src.client.client_config import (
     ClientConfigLoader,
     normalize_counter,
+    normalize_city,
     default_counter,
     _dedupe_preserve_order,
     DEFAULT_THEME_MAP,
@@ -224,3 +225,39 @@ class TestHelpers:
         assert c['name'] == 'Counter 1'
         assert 'veg_dry' in c['categories']
         assert 'white_rice' not in c['categories']
+
+    def test_normalize_city_valid_case_insensitive(self):
+        assert normalize_city('bangalore') == 'Bangalore'
+        assert normalize_city('  NCR ') == 'NCR'
+
+    def test_normalize_city_unknown_or_blank(self):
+        assert normalize_city('Atlantis') is None
+        assert normalize_city('') is None
+        assert normalize_city(None) is None
+
+
+class TestCity:
+    def test_create_with_city_and_read_back(self):
+        ld, fake = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Acme', ['rice', 'dal'], city='pune')
+        row = [r for r in fake.rows('clients') if r['name'] == 'Acme'][0]
+        assert row['city'] == 'Pune'
+        assert ld.get_client_city('Acme') == 'Pune'
+
+    def test_create_without_city_is_none(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Acme', ['rice', 'dal'])
+        assert ld.get_client_city('Acme') is None
+
+    def test_set_client_city_updates(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Acme', ['rice', 'dal'], city='Chennai')
+        ld.set_client_city('Acme', 'Hyderabad')
+        assert ld.get_client_city('Acme') == 'Hyderabad'
+        ld.set_client_city('Acme', 'not-a-city')
+        assert ld.get_client_city('Acme') is None
+
+    def test_get_city_unknown_client_raises(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        with pytest.raises(ValueError, match="Unknown client"):
+            ld.get_client_city('Ghost')

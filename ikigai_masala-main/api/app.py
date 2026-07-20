@@ -52,6 +52,7 @@ from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
     DEFAULT_THEME_MAP,
     AVAILABLE_THEMES,
+    AVAILABLE_CITIES,
     MAX_COUNTERS,
 )
 from src.history import HistoryManager
@@ -194,6 +195,36 @@ def _get_menu_data():
                 _df = cleanser.clean()
                 _pools = PoolBuilder.build_pools(_df)
     return _df, _pools
+
+
+# Proteins that mark a dish non-vegetarian. Driven off the ontology's
+# ``primary_protein`` column so the UI / export can colour these dishes red.
+_NONVEG_PROTEINS = frozenset({
+    'chicken', 'egg', 'mutton', 'lamb', 'goat', 'fish', 'prawn', 'prawns',
+    'shrimp', 'crab', 'keema', 'kheema', 'meat', 'seafood', 'beef', 'pork',
+    'duck', 'turkey',
+})
+_nonveg_items = None
+
+
+def _get_nonveg_items():
+    """Return a cached set of lower-cased non-vegetarian item base-names.
+
+    Built once from the ontology (``primary_protein`` column). Used to tag
+    solver output so non-veg dishes render red in the app and the download.
+    """
+    global _nonveg_items
+    if _nonveg_items is None:
+        df, _ = _get_menu_data()
+        if 'primary_protein' in df.columns and 'item' in df.columns:
+            proteins = df['primary_protein'].astype(str).str.strip().str.lower()
+            mask = proteins.isin(_NONVEG_PROTEINS)
+            _nonveg_items = {
+                str(name).strip().lower() for name in df.loc[mask, 'item']
+            }
+        else:
+            _nonveg_items = set()
+    return _nonveg_items
 
 
 def _get_menu_rules():
@@ -639,6 +670,7 @@ def plan_menu():
 
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+            nonveg_items=_get_nonveg_items(),
         )
         response = {
             'success': True,
@@ -720,6 +752,7 @@ def regenerate_cells():
 
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+            nonveg_items=_get_nonveg_items(),
         )
         response = {
             'success': True,
@@ -940,6 +973,7 @@ def saved_plan():
         formatter = SolutionFormatter(
             enriched, weekday_dates,
             theme_map=client_cfg.theme_map or None,
+            nonveg_items=_get_nonveg_items(),
         )
         covered = sorted(d.isoformat() for d in enriched.keys())
         exists = len(enriched) == len(weekday_dates) and len(enriched) > 0
@@ -968,6 +1002,7 @@ def editor_metadata():
             'const_slots': list(CONST_SLOTS),
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
+            'available_cities': list(AVAILABLE_CITIES),
             'clients': _request_client_names(),
             'max_counters': MAX_COUNTERS,
         })
@@ -994,6 +1029,7 @@ def get_client_config(client_name):
         response = jsonify({
             'success': True,
             'name': client_name,
+            'city': loader.get_client_city(client_name),
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1087,6 +1123,11 @@ def update_client_config(client_name):
                 theme_map=data.get('theme_map'),
             )
 
+        # City is a plain client attribute (not per-counter); update it when
+        # the caller includes it.
+        if 'city' in data:
+            loader.set_client_city(client_name, data.get('city'))
+
         response = jsonify({
             'success': True,
             'message': f'Config updated for {client_name}',
@@ -1123,16 +1164,18 @@ def create_client():
             return jsonify({'success': False, 'error': 'name is required'}), 400
 
         loader = _get_client_loader()
+        city = data.get('city')
         counters = data.get('counters')
         if counters:
             loader.create_client(
                 name,
                 counter_mode=data.get('counter_mode', 'single'),
                 counters=counters,
+                city=city,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
-            loader.create_client(name, active_slots)
+            loader.create_client(name, active_slots, city=city)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
