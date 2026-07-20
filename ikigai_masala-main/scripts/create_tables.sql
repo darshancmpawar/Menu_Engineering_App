@@ -16,16 +16,20 @@
 -- ordered, non-empty list ``[{name, categories, slot_counts, theme_map}, …]``.
 -- counters[0] is the primary counter the solver plans from; extra entries are
 -- additional stations. single ⇔ 1 counter, multi ⇔ 2+ (derived, no mode column).
+-- ``city`` is an optional client location (Bangalore / Pune / Chennai /
+-- Hyderabad / NCR); NULL means unset.
 CREATE TABLE IF NOT EXISTS clients (
     name        TEXT PRIMARY KEY,
     version     INT  NOT NULL DEFAULT 1,
     counters    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    city        TEXT,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
 -- Migrations for tables created before these columns existed. No-ops on fresh
 -- installs. (To migrate an OLD normalized schema, run scripts/setup_all.sql.)
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS version  INT   NOT NULL DEFAULT 1;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city     TEXT;
 
 -- 2. App-level settings (core_min_one_slots, constant_slots, fallback, etc.)
 CREATE TABLE IF NOT EXISTS app_settings (

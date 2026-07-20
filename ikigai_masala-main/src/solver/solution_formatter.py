@@ -5,7 +5,7 @@ Handles slot-based output format with color suffixes and constant items.
 """
 
 import datetime as dt
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 
 from ._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -31,10 +31,18 @@ class SolutionFormatter:
     """
 
     def __init__(self, week_plan: Dict[dt.date, Dict[str, str]], dates: List[dt.date],
-                 theme_map: Optional[Dict[str, str]] = None):
+                 theme_map: Optional[Dict[str, str]] = None,
+                 nonveg_items: Optional[Set[str]] = None):
         self.week_plan = week_plan
         self.dates = dates
         self._theme_map = theme_map
+        # Lower-cased item base-names that are non-vegetarian, used to tag each
+        # item with ``is_nonveg`` so the UI / export can colour them. ``None``
+        # means "unknown" → everything reported as veg.
+        self._nonveg_items = nonveg_items or set()
+
+    def _is_nonveg(self, item_base: str) -> bool:
+        return bool(item_base) and item_base.strip().lower() in self._nonveg_items
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -48,9 +56,11 @@ class SolutionFormatter:
                 'items': {},
             }
             for slot_id, item_str in self.week_plan.get(d, {}).items():
+                item_base = _strip_color_suffix(item_str)
                 result[day_key]['items'][slot_id] = {
                     'display_name': _display_slot(slot_id),
                     'item': item_str,
-                    'item_base': _strip_color_suffix(item_str),
+                    'item_base': item_base,
+                    'is_nonveg': self._is_nonveg(item_base),
                 }
         return result

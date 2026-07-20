@@ -122,7 +122,7 @@ class TestClientIntegration:
     def _patch_session(self, monkeypatch, responses_iter):
         """Replace ``session.post/get/put/delete`` with a callable that
         emits the next response from *responses_iter*. Records calls."""
-        client = MenuApiClient("http://fake.invalid", token="t")
+        client = MenuApiClient("http://fake.invalid")
 
         log = {"post": [], "get": [], "put": [], "delete": []}
 

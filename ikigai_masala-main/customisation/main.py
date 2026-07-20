@@ -92,13 +92,16 @@ def render_customisation_editor(api: MenuApiClient):
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
     default_theme_map = metadata.get('default_theme_map', {})
+    available_cities = metadata.get('available_cities', [])
     max_counters = int(metadata.get('max_counters', 6) or 6)
 
     # ============================================================
     # Step 1 — Client
     # ============================================================
     with st.container(border=True):
-        _step_header(1, "Client", "Select an existing client or create a new one.")
+        _step_header(1, "Client",
+                     "Select an existing client or create a new one, and set "
+                     "its city.")
 
         mode = st.radio(
             "Mode", ["Select Existing", "Create New"],
@@ -108,6 +111,7 @@ def render_customisation_editor(api: MenuApiClient):
 
         selected_client = None
         new_client_name = ""
+        config = None
 
         if not is_create_mode:
             if not clients:
@@ -117,19 +121,33 @@ def render_customisation_editor(api: MenuApiClient):
                 "Client", clients, key="editor_client_select",
                 label_visibility="collapsed",
             )
+            try:
+                config = api.get_client_config(selected_client)
+            except Exception as e:
+                st.error(f"Failed to load config for {selected_client}: {e}")
+                return
         else:
             new_client_name = st.text_input(
                 "Client Name", key="editor_new_client_name",
                 placeholder="e.g. Acme Corp",
             )
 
+        # City picker — a plain client attribute, one of AVAILABLE_CITIES.
+        loaded_city = (config or {}).get('city') if not is_create_mode else None
+        city_options = list(available_cities)
+        city_index = (
+            city_options.index(loaded_city)
+            if loaded_city in city_options else 0
+        ) if city_options else 0
+        selected_city = st.selectbox(
+            "City", city_options,
+            index=city_index if city_options else 0,
+            key=f"editor_city_{'new' if is_create_mode else selected_client}",
+            help="Location this client is served from.",
+        ) if city_options else None
+
     # --- Resolve the config + counters we start from ---
     if not is_create_mode:
-        try:
-            config = api.get_client_config(selected_client)
-        except Exception as e:
-            st.error(f"Failed to load config for {selected_client}: {e}")
-            return
         loaded_mode = config.get('counter_mode', 'single')
         loaded_counters = config.get('counters') or [
             _default_counter(0, all_base_slots, const_slots, default_theme_map)
@@ -235,6 +253,7 @@ def render_customisation_editor(api: MenuApiClient):
     if not is_create_mode:
         dirty = (
             counter_mode != loaded_mode
+            or selected_city != loaded_city
             or not _counters_equal(result_counters, loaded_counters)
         )
         if dirty:
@@ -274,6 +293,7 @@ def render_customisation_editor(api: MenuApiClient):
                 try:
                     api.create_client(
                         name, counter_mode=counter_mode, counters=result_counters,
+                        city=selected_city,
                     )
                     st.cache_data.clear()
                     st.session_state['editor_success_msg'] = (
@@ -316,6 +336,7 @@ def render_customisation_editor(api: MenuApiClient):
                     'version': current_version,
                     'counter_mode': counter_mode,
                     'counters': result_counters,
+                    'city': selected_city,
                 }
                 try:
                     api.update_client_config(selected_client, payload)

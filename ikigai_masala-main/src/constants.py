@@ -53,6 +53,7 @@ RICE_EXCLUDE_ITEMS: Set[str] = {
 
 DISPLAY_SLOT_NAME: Dict[str, str] = {
     'rice': 'Flavoured Rice',
+    'bread': 'Indian Bread',
     'healthy_rice': 'Healthy Rice',
     'white_rice': 'White Rice',
     'welcome_drink': 'Welcome Drink',

@@ -98,6 +98,7 @@ def fake_supabase(monkeypatch, seeded_fake_supabase):
         monkeypatch.setattr(api_app, '_pools', None, raising=False)
         monkeypatch.setattr(api_app, '_df', None, raising=False)
         monkeypatch.setattr(api_app, '_menu_rules', None, raising=False)
+        monkeypatch.setattr(api_app, '_nonveg_items', None, raising=False)
     except ImportError:
         pass
 

@@ -1,35 +1,13 @@
 """Tests for UI formatters."""
 
 from ui.formatters import (
-    theme_label,
     display_label_for_slot_id,
     flatten_api_solution,
     format_item_for_ui,
     format_item_html,
-    pretty_text,
-    color_suffix,
+    nonveg_slots_from_solution,
     slot_sort_key,
 )
-
-
-def test_theme_label_monday():
-    assert theme_label(0) == "Mix of South + North"
-
-
-def test_theme_label_tuesday():
-    assert theme_label(1) == "Chinese / Indo-Chinese"
-
-
-def test_theme_label_wednesday():
-    assert theme_label(2) == "Biryani Day"
-
-
-def test_theme_label_thursday():
-    assert theme_label(3) == "South Indian"
-
-
-def test_theme_label_friday():
-    assert theme_label(4) == "North Indian"
 
 
 def test_display_label_known_slot():
@@ -49,22 +27,6 @@ def test_format_item_for_ui():
     assert format_item_for_ui("steamed rice") == "Steamed Rice"
     assert format_item_for_ui("") == ""
     assert format_item_for_ui(None) == ""
-
-
-def test_pretty_text_strips_color():
-    assert pretty_text("jeera rice (Y)") == "Jeera Rice"
-
-
-def test_pretty_text_no_suffix():
-    assert pretty_text("paneer butter masala") == "Paneer Butter Masala"
-
-
-def test_color_suffix_present():
-    assert color_suffix("dal makhani (R)") == "R"
-
-
-def test_color_suffix_absent():
-    assert color_suffix("dal makhani") is None
 
 
 def test_slot_sort_key_known():
@@ -142,3 +104,30 @@ def test_flatten_api_solution_falls_back_to_item_base():
     }
     flat, _ = flatten_api_solution(raw)
     assert flat["2026-03-23"]["bread"] == "plain_chapatti"
+
+
+def test_format_item_html_nonveg_adds_red_class():
+    out = format_item_html("chicken_65(R)", is_nonveg=True)
+    assert 'item-nonveg' in out
+    veg = format_item_html("paneer_tikka(G)", is_nonveg=False)
+    assert 'item-nonveg' not in veg
+
+
+def test_nonveg_slots_from_solution():
+    raw = {
+        "2026-03-23": {
+            "day_type": "mix",
+            "items": {
+                "nonveg_main": {"item": "chicken_65(R)", "is_nonveg": True},
+                "rice": {"item": "jeera_rice(Y)", "is_nonveg": False},
+                "veg_dry__1": {"item": "aloo_jeera(Y)", "is_nonveg": False},
+            },
+        },
+    }
+    nv = nonveg_slots_from_solution(raw)
+    assert nv == {"2026-03-23": {"nonveg_main"}}
+
+
+def test_nonveg_slots_from_solution_empty_when_all_veg():
+    raw = {"2026-03-23": {"items": {"rice": {"item": "jeera_rice(Y)", "is_nonveg": False}}}}
+    assert nonveg_slots_from_solution(raw) == {}

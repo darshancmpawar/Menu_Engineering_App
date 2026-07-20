@@ -239,6 +239,7 @@ STYLES = f"""
     .menu-table tbody tr:hover td {{ background: var(--bg-hover); }}
     .menu-table tbody tr:hover td:first-child {{ background: {TINT_BLUE}; }}
     .item-name {{ color: var(--text-primary); font-weight: 500; font-size: 0.8rem; }}
+    .item-nonveg {{ color: #C40D1B !important; font-weight: 700 !important; }}
     .color-pill {{
         display: inline-block; margin-left: 5px; padding: 1px 6px;
         border-radius: 99px; font-size: 0.6rem; font-weight: 600;

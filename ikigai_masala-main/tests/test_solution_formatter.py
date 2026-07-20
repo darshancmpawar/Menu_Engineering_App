@@ -49,3 +49,16 @@ class TestSolutionFormatter:
         f = SolutionFormatter({}, [])
         d = f.to_dict()
         assert d == {}
+
+    def test_is_nonveg_flag(self):
+        d1 = dt.date(2026, 3, 23)
+        plan = {d1: {'nonveg_main': 'chicken_65(R)', 'rice': 'jeera rice(Y)'}}
+        f = SolutionFormatter(plan, [d1], nonveg_items={'chicken_65'})
+        out = f.to_dict()['2026-03-23']['items']
+        assert out['nonveg_main']['is_nonveg'] is True
+        assert out['rice']['is_nonveg'] is False
+
+    def test_is_nonveg_defaults_false_without_lookup(self, sample_plan):
+        plan, dates = sample_plan
+        out = SolutionFormatter(plan, dates).to_dict()
+        assert out['2026-03-23']['items']['rice']['is_nonveg'] is False

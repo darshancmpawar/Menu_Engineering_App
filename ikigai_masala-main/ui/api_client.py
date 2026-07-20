@@ -99,16 +99,9 @@ def _with_one_retry(
 class MenuApiClient:
     """Wrapper around the Flask API endpoints."""
 
-    def __init__(self, base_url: str = "http://localhost:5000", token: Optional[str] = None):
+    def __init__(self, base_url: str = "http://localhost:5000"):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
-        self.token = token
-
-    def set_token(self, token: Optional[str]) -> None:
-        self.token = token
-
-    def _auth_headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
     def health(self) -> Dict[str, Any]:
         resp = self.session.get(f"{self.base_url}/api/v1/health", timeout=5)
@@ -119,7 +112,6 @@ class MenuApiClient:
         def _do():
             return self.session.get(
                 f"{self.base_url}/api/v1/clients", timeout=10,
-                headers=self._auth_headers(),
             )
         resp = _with_one_retry(_do, retryable=True)
         data = _parse_response(resp, "Failed to list clients")
@@ -144,7 +136,7 @@ class MenuApiClient:
         def _do():
             return self.session.post(
                 f"{self.base_url}/api/v1/plan", json=payload,
-                timeout=time_limit_seconds + 30, headers=self._auth_headers(),
+                timeout=time_limit_seconds + 30,
             )
         # Retry is safe: /plan has no side effects (nothing is written
         # to history until /save), so the worst case is a second solve.
@@ -175,7 +167,7 @@ class MenuApiClient:
         def _do():
             return self.session.post(
                 f"{self.base_url}/api/v1/regenerate", json=payload,
-                timeout=time_limit_seconds + 30, headers=self._auth_headers(),
+                timeout=time_limit_seconds + 30,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Regenerate failed")
@@ -201,7 +193,6 @@ class MenuApiClient:
             payload["week_plan"] = week_plan or {}
         resp = self.session.post(
             f"{self.base_url}/api/v1/save", json=payload, timeout=30,
-            headers=self._auth_headers(),
         )
         return _parse_response(resp, "Save failed")
 
@@ -226,7 +217,7 @@ class MenuApiClient:
         def _do():
             return self.session.post(
                 f"{self.base_url}/api/v1/diagnose", json=payload,
-                timeout=15, headers=self._auth_headers(),
+                timeout=15,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Diagnose failed")
@@ -250,7 +241,7 @@ class MenuApiClient:
         def _do():
             return self.session.get(
                 f"{self.base_url}/api/v1/saved-plan", params=params,
-                timeout=10, headers=self._auth_headers(),
+                timeout=10,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Failed to load saved plan")
@@ -261,7 +252,6 @@ class MenuApiClient:
         def _do():
             return self.session.get(
                 f"{self.base_url}/api/v1/editor-metadata", timeout=10,
-                headers=self._auth_headers(),
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Failed to load metadata")
@@ -270,7 +260,6 @@ class MenuApiClient:
         def _do():
             return self.session.get(
                 f"{self.base_url}/api/v1/client-config/{client_name}", timeout=10,
-                headers=self._auth_headers(),
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Failed to load config")
@@ -282,7 +271,7 @@ class MenuApiClient:
         def _do():
             return self.session.put(
                 f"{self.base_url}/api/v1/client-config/{client_name}",
-                json=config, timeout=10, headers=self._auth_headers(),
+                json=config, timeout=10,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Save failed")
@@ -294,6 +283,7 @@ class MenuApiClient:
         *,
         counter_mode: Optional[str] = None,
         counters: Optional[List[Dict[str, Any]]] = None,
+        city: Optional[str] = None,
     ) -> Dict[str, Any]:
         # Creating the same name twice is caught server-side (409 / "already
         # exists"), so a retry after a proxy 502 is self-correcting.
@@ -307,12 +297,14 @@ class MenuApiClient:
             payload["counter_mode"] = counter_mode or "single"
         else:
             payload["active_slots"] = active_slots or []
+        if city is not None:
+            payload["city"] = city
 
         def _do():
             return self.session.post(
                 f"{self.base_url}/api/v1/client",
                 json=payload,
-                timeout=10, headers=self._auth_headers(),
+                timeout=10,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Create failed")
@@ -322,7 +314,6 @@ class MenuApiClient:
         def _do():
             return self.session.delete(
                 f"{self.base_url}/api/v1/client/{client_name}", timeout=10,
-                headers=self._auth_headers(),
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Delete failed")
