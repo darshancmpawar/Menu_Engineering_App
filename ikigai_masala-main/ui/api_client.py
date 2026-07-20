@@ -117,6 +117,23 @@ class MenuApiClient:
         data = _parse_response(resp, "Failed to list clients")
         return data["clients"]
 
+    def list_clients_with_city(self) -> List[Dict[str, Any]]:
+        """Return ``[{'name', 'city'}, …]`` — powers the sidebar's city filter.
+
+        Falls back to ``city=None`` entries if the server is old enough not to
+        send ``clients_detail``.
+        """
+        def _do():
+            return self.session.get(
+                f"{self.base_url}/api/v1/clients", timeout=10,
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        data = _parse_response(resp, "Failed to list clients")
+        detail = data.get("clients_detail")
+        if detail is None:
+            return [{"name": n, "city": None} for n in data.get("clients", [])]
+        return detail
+
     def plan(
         self,
         client_name: str,

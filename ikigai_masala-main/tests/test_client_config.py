@@ -262,6 +262,16 @@ class TestCity:
         with pytest.raises(ValueError, match="Unknown client"):
             ld.get_client_city('Ghost')
 
+    def test_list_clients_with_city(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Zeta', ['rice'], city='NCR')
+        ld.create_client('Alpha', ['dal'], city='pune')
+        ld.create_client('Beta', ['rice'])  # no city
+        rows = ld.list_clients_with_city()
+        assert [r['name'] for r in rows] == ['Alpha', 'Beta', 'Zeta']  # sorted
+        by_name = {r['name']: r['city'] for r in rows}
+        assert by_name == {'Alpha': 'Pune', 'Beta': None, 'Zeta': 'NCR'}
+
     def test_create_degrades_when_city_column_missing(self):
         """A pre-migration DB (no clients.city) must still create clients —
         the city is dropped rather than hard-failing the insert."""
