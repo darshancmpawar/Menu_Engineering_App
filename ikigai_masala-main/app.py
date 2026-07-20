@@ -177,7 +177,8 @@ client = _get_api_client(_BACKEND_URL)
 # the hash key (Streamlit can't hash MenuApiClient).
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_list_clients(_api: MenuApiClient) -> list:
-    return _api.list_clients()
+    """Return ``[{'name', 'city'}, …]`` for the sidebar's client + city pickers."""
+    return _api.list_clients_with_city()
 
 # ---------------------------------------------------------------------------
 # Session state initialization
@@ -247,10 +248,21 @@ with st.sidebar:
     </div>""", unsafe_allow_html=True)
 
     try:
-        clients_list = _cached_list_clients(client)
+        clients_detail = _cached_list_clients(client)
     except (ConnectionError, OSError, ValueError):
-        clients_list = []
+        clients_detail = []
         st.error("Cannot reach API.")
+
+    # City filter — single-select, default "All". Only cities that actually
+    # have clients are offered, so no selection ever yields an empty list.
+    cities = sorted({c.get("city") for c in clients_detail if c.get("city")})
+    city_filter = st.selectbox("City", ["All"] + cities,
+                               key="planner_city_filter")
+    if city_filter == "All":
+        clients_list = [c["name"] for c in clients_detail]
+    else:
+        clients_list = [c["name"] for c in clients_detail
+                        if c.get("city") == city_filter]
 
     selected_client = st.selectbox("Client",
         clients_list if clients_list else ["(no clients)"],

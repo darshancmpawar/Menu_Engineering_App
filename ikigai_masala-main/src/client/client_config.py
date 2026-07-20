@@ -262,6 +262,28 @@ class ClientConfigLoader:
         )
         return [r['name'] for r in rows.data]
 
+    def list_clients_with_city(self) -> List[Dict]:
+        """Return ``[{'name', 'city'}, …]`` for all clients, sorted by name.
+
+        Degrades to ``city=None`` for every client when the ``clients.city``
+        column is missing (pre-migration database).
+        """
+        try:
+            rows = (
+                self._sb.table('clients')
+                .select('name, city')
+                .order('name')
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return [{'name': n, 'city': None} for n in self.client_names]
+            raise
+        return [
+            {'name': r['name'], 'city': normalize_city(r.get('city'))}
+            for r in rows.data
+        ]
+
     @property
     def core_min_one_slots(self) -> List[str]:
         val = self._setting('core_min_one_slots')

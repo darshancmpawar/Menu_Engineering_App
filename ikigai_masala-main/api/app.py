@@ -607,7 +607,14 @@ def _record_diag_metrics(diagnostics) -> None:
 @app.route('/api/v1/clients', methods=['GET'])
 def list_clients():
     try:
-        return jsonify({'success': True, 'clients': _request_client_names()})
+        detail = _get_client_loader().list_clients_with_city()
+        return jsonify({
+            'success': True,
+            # names only — backward-compatible with existing callers
+            'clients': [c['name'] for c in detail],
+            # {name, city} for city-aware pickers
+            'clients_detail': detail,
+        })
     except (FileNotFoundError, ValueError, KeyError) as e:
         logger.error("Failed to list clients: %s", e, exc_info=True)
         return _internal_error_response(500)

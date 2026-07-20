@@ -41,7 +41,7 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 
 | Method | Route | Purpose |
 |---|---|---|
-| GET  | `/api/v1/clients` | list clients |
+| GET  | `/api/v1/clients` | list clients (`clients` = names; `clients_detail` = `[{name, city}]` for the sidebar city filter) |
 | POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`; each item carries `is_nonveg`) |
 | POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`; items carry `is_nonveg`) |
 | POST | `/api/v1/save` | persist plan → history (single `week_plan`, or multi `counters: [{name, week_plan}]` → nested `menu_history`) |
@@ -133,7 +133,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 ### `ui/`
 - `api_client.py` → `MenuApiClient` (HTTP wrapper used by Streamlit; no auth — endpoints are public).
 - `formatters.py` → `format_item_html(item, is_nonveg=…)`, `nonveg_slots_from_solution`, `display_label_for_slot_id`, `THEME_TAG_COLORS`, `THEME_ICONS`.
-- `app.py` planner: menu table renders non-veg dishes red (`.item-nonveg`); **Download Excel** (openpyxl, `_plan_xlsx`) — one sheet per counter, bold bordered headers, red non-veg; filename `menu_<client>_<date-range>.xlsx` (`_download_filename`). A **City** metric card shows the client's city.
+- `app.py` planner: sidebar has a single-select **City** filter (default "All", options = cities present among clients) that narrows the Client picker via `/clients` `clients_detail`; menu table renders non-veg dishes red (`.item-nonveg`, driven off `primary_protein` incl. egg); **Download Excel** (openpyxl, `_plan_xlsx`) — one sheet per counter, bold bordered headers, red non-veg; filename `menu_<client>_<date-range>.xlsx` (`_download_filename`). A **City** metric card shows the client's city.
 
 ### `customisation/` (Streamlit editors) — Pulse light theme
 - `main.py` → `render_customisation_editor` (dispatcher). Stepped flow: (1) select/create client **+ pick city** → (2) Single vs Multi Cuisine Counter (+ number of counters) → (3) per-counter config. Builds the `counters` + `city` payload for `POST /client` and `PUT /client-config`.

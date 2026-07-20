@@ -237,6 +237,17 @@ class TestClientsEndpoint:
         assert isinstance(data['clients'], list)
         assert 'Rippling' in data['clients']
 
+    def test_list_clients_includes_city_detail(
+        self, client, auth_headers, fake_supabase,
+    ):
+        client.post('/api/v1/client', json={
+            'name': 'PuneCo', 'active_slots': ['rice', 'dal'], 'city': 'Pune',
+        }, headers=auth_headers)
+        data = client.get('/api/v1/clients', headers=auth_headers).get_json()
+        by_name = {c['name']: c['city'] for c in data['clients_detail']}
+        assert by_name['PuneCo'] == 'Pune'
+        assert by_name['Rippling'] is None
+
 
 class TestPlanEndpoint:
     def test_plan_requires_client_name(self, client, auth_headers):
@@ -684,10 +695,10 @@ class TestClientNamesRequestCache:
         real_loader = api_app._get_client_loader()
 
         class _CountingLoader:
-            @property
-            def client_names(self):
+            # /api/v1/clients reads the name+city detail; count that.
+            def list_clients_with_city(self):
                 calls["n"] += 1
-                return real_loader.client_names
+                return real_loader.list_clients_with_city()
 
             def __getattr__(self, name):
                 return getattr(real_loader, name)
@@ -698,7 +709,7 @@ class TestClientNamesRequestCache:
             resp = client.get('/api/v1/clients', headers=auth_headers)
             assert resp.status_code == 200
         assert calls["n"] == 3, (
-            "each request must re-read client_names so admin edits are "
+            "each request must re-read the client list so admin edits are "
             f"picked up live; got {calls['n']} reads across 3 requests"
         )
 
