@@ -261,3 +261,30 @@ class TestCity:
         ld, _ = _make_loader({'clients': [], 'app_settings': []})
         with pytest.raises(ValueError, match="Unknown client"):
             ld.get_client_city('Ghost')
+
+    def test_create_degrades_when_city_column_missing(self):
+        """A pre-migration DB (no clients.city) must still create clients —
+        the city is dropped rather than hard-failing the insert."""
+        class _NoCityFake(FakeSupabase):
+            def table(self, name):
+                tbl = super().table(name)
+                orig_insert = tbl.insert
+
+                def _insert(payload):
+                    rows = payload if isinstance(payload, list) else [payload]
+                    if any('city' in r for r in rows):
+                        exc = Exception("Could not find the 'city' column")
+                        exc.code = "PGRST204"
+                        raise exc
+                    return orig_insert(payload)
+
+                tbl.insert = _insert
+                return tbl
+
+        fake = _NoCityFake(seed={'clients': [], 'app_settings': []})
+        with patch('src.client.client_config.get_supabase', return_value=fake):
+            ld = ClientConfigLoader()
+            ld.create_client('Acme', ['rice', 'dal'], city='Pune')
+        row = [r for r in fake.rows('clients') if r['name'] == 'Acme'][0]
+        assert 'city' not in row  # dropped on the fallback insert
+        assert row['counters'][0]['categories']

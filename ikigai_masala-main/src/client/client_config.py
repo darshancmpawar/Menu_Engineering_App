@@ -509,11 +509,21 @@ class ClientConfigLoader:
         ``city`` is an optional client location from ``AVAILABLE_CITIES``.
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
-        self._sb.table('clients').insert({
-            'name': name,
-            'counters': norm,
-            'city': normalize_city(city),
-        }).execute()
+        row = {'name': name, 'counters': norm, 'city': normalize_city(city)}
+        try:
+            self._sb.table('clients').insert(row).execute()
+        except Exception as exc:
+            # Degrade gracefully on a database that predates the clients.city
+            # column: create the client without it rather than hard-failing.
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.city column missing on create for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                row.pop('city', None)
+                self._sb.table('clients').insert(row).execute()
+            else:
+                raise
 
     def set_client_city(self, name: str, city: str | None) -> None:
         """Update a client's city (normalised to ``AVAILABLE_CITIES`` / None)."""
