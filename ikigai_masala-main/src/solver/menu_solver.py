@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import random
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Set, Tuple
 
@@ -317,6 +318,14 @@ class MenuSolver:
         base_seed = int(self.cfg.seed)
         total_time = float(self.cfg.time_limit_sec)
         per_attempt_time = max(20.0, total_time / (len(cap_multipliers) * restarts_per_mult))
+        # ``time_limit_sec`` is a TOTAL wall-clock budget, not a per-attempt one.
+        # Without this deadline the multi-restart loop could run
+        # (attempts × per_attempt_time) — e.g. 8 × 20s = 160s for a 60s
+        # request — starving the solver-gate queue and outliving the HTTP
+        # client timeout. Each attempt is capped at the smaller of its normal
+        # slice and the time left in the budget; once the budget is spent we
+        # stop restarting. The happy path (attempt 1 succeeds) is unaffected.
+        deadline = time.monotonic() + total_time
         last_err = None
         orig_seed, orig_time = self.cfg.seed, self.cfg.time_limit_sec
 
@@ -326,10 +335,13 @@ class MenuSolver:
                 cap_by_slot = {k: v * mult for k, v in self.cfg.cap_by_slot.items()}
 
                 for r in range(restarts_per_mult):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 1.0:
+                        break  # budget spent — don't start another attempt
                     attempt_seed = base_seed + mult * DEFAULT_SEED_MULT_FACTOR + r * DEFAULT_SEED_RESTART_STEP
                     rng = random.Random(attempt_seed)
                     self.cfg.seed = attempt_seed
-                    self.cfg.time_limit_sec = int(per_attempt_time)
+                    self.cfg.time_limit_sec = max(1, int(min(per_attempt_time, remaining)))
                     # Reset per-attempt failure bucket and remember which
                     # attempt is running — callers that inspect
                     # rule_failures should only see the winning
@@ -353,6 +365,8 @@ class MenuSolver:
                     except RuntimeError as e:
                         last_err = e
                         continue
+                if deadline - time.monotonic() <= 1.0:
+                    break  # break the outer cap-multiplier loop too
 
             raise RuntimeError(
                 'No feasible plan found after CP-SAT restarts. '
@@ -722,9 +736,21 @@ class MenuSolver:
                                day_color_vars, day_rice_color_vars,
                                day_gravy_color_vars):
         cfg = self.cfg
+        # Upper bound on achievable distinct colours in a day = the number of
+        # colour-bearing slots the counter actually serves. A small counter
+        # (e.g. a Chinese station with only rice + veg_gravy) can never show
+        # more distinct colours than it has slots, so the configured minimum
+        # must be clamped to that or the day is trivially INFEASIBLE.
+        color_bases = set(cfg.color_slots)
+        active = cfg.active_base_slots or BASE_SLOT_NAMES
+        counts = cfg.slot_counts or {s: 1 for s in active}
+        n_color_slots = sum(
+            1 for s in _expand_slots_in_order(active, counts)
+            if _base_slot(s) in color_bases
+        )
         for di, _ in enumerate(dates):
             day_type = day_types[di]
-            min_dist = _min_distinct_for_day(cfg, day_type)
+            min_dist = min(_min_distinct_for_day(cfg, day_type), n_color_slots)
 
             for col in known_colors:
                 lits = day_color_vars.get((di, col), [])
@@ -739,8 +765,11 @@ class MenuSolver:
                 y = model.NewBoolVar(f'y_color_{di}_{col}')
                 _link_any(model, lits, y)
                 y_vars.append(y)
+            # Also cap by the number of colours actually present in the day's
+            # candidate pools (len(y_vars)); requiring more than exist is
+            # infeasible regardless of slot count.
             if y_vars:
-                model.Add(sum(y_vars) >= min_dist)
+                model.Add(sum(y_vars) >= min(min_dist, len(y_vars)))
 
             if not (cfg.ignore_rice_gravy_color_diff_on_chinese_day and day_type == 'chinese'):
                 for col in known_colors:

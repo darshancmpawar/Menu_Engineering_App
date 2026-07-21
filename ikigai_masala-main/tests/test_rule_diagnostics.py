@@ -35,7 +35,7 @@ from src.menu_rules.cooldown_rules import (
 )
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.cuisine_menu_rule import CuisineMenuRule
-from src.menu_rules.diagnostics import pool_size_diagnostics
+from src.menu_rules.diagnostics import pool_size_diagnostics, color_variety_diagnostics
 from src.menu_rules.ingredient_ban_rule import IngredientBanRule
 from src.menu_rules.item_frequency_rule import ItemFrequencyRule
 from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
@@ -237,6 +237,64 @@ class TestAggregator:
 # ---------------------------------------------------------------------------
 # pool_size_diagnostics — the synthetic /validate-pools replacement
 # ---------------------------------------------------------------------------
+
+class TestColorVarietyDiagnostics:
+    """The colour-variety / max-same-colour constraints are built into the
+    solver, so this synthetic pass surfaces their infeasibility pre-flight
+    instead of leaving a cryptic INFEASIBLE. Only a *provable* infeasibility
+    (colours_available * max_same < colour_cells) is an ERROR."""
+
+    @staticmethod
+    def _color_ctx(pools, slot_counts, active):
+        from src.solver.menu_solver import SolverConfig
+        d = dt.date(2026, 5, 11)
+        return DiagnoseContext(
+            pools=pools, dates=[d], day_types={d: 'mix'},
+            cfg=SolverConfig(active_base_slots=active, slot_counts=slot_counts),
+            df=pd.DataFrame(), banned_by_date={}, ricebread_ban_day={},
+            skip_cells=set(),
+            client_cfg=_StubClientCfg(slot_counts=slot_counts),
+            active_base_slots=active,
+        )
+
+    @staticmethod
+    def _pool(colors):
+        return pd.DataFrame({
+            'item': [f'x{i}' for i in range(len(colors))],
+            'course_type': ['?'] * len(colors),
+            'item_color': colors,
+        })
+
+    def test_error_when_colours_cannot_fill_cells(self):
+        # 3 colour cells, all pools only 'W' -> 1 colour * max_same(2) = 2 < 3.
+        ctx = self._color_ctx(
+            {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W']),
+             'dessert': self._pool(['W'])},
+            {'rice': 1, 'veg_gravy': 1, 'dessert': 1},
+            ['rice', 'veg_gravy', 'dessert'],
+        )
+        diags = color_variety_diagnostics([], ctx)
+        errs = [x for x in diags if x.severity == DiagnosticSeverity.ERROR]
+        assert len(errs) == 1 and 'infeasible' in errs[0].message.lower()
+
+    def test_no_diagnostic_when_colours_plentiful(self):
+        ctx = self._color_ctx(
+            {'rice': self._pool(['W', 'Y']), 'veg_gravy': self._pool(['R', 'G']),
+             'dessert': self._pool(['B', 'O'])},
+            {'rice': 1, 'veg_gravy': 1, 'dessert': 1},
+            ['rice', 'veg_gravy', 'dessert'],
+        )
+        assert color_variety_diagnostics([], ctx) == []
+
+    def test_warning_on_zero_slack(self):
+        # 2 cells, 1 colour, max_same 2 -> capacity 2 == 2 cells.
+        ctx = self._color_ctx(
+            {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W'])},
+            {'rice': 1, 'veg_gravy': 1}, ['rice', 'veg_gravy'],
+        )
+        diags = color_variety_diagnostics([], ctx)
+        assert [x.severity for x in diags] == [DiagnosticSeverity.WARNING]
+
 
 class TestPoolSizeDiagnostics:
     """The diagnostics produced by pool_size_diagnostics replace the
