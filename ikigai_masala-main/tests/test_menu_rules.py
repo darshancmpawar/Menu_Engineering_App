@@ -419,6 +419,27 @@ class TestThemeSlotFilterRule:
         filtered = rule.pre_filter_pool(pool, d, 'rice', 'biryani', {'cfg': None})
         assert list(filtered['item']) == ['veg_biryani']
 
+    def test_continental_filters_veg_gravy(self):
+        rule = ThemeSlotFilterRule({"name": "tf", "type": "theme_slot_filter"})
+        pool = pd.DataFrame({
+            'item': ['mushroom_stroganoff', 'paneer_butter_masala'],
+            'is_continental_veg_gravy': [1, 0],
+        })
+        d = dt.date(2026, 3, 24)
+        filtered = rule.pre_filter_pool(pool, d, 'veg_gravy', 'continental', {'cfg': None})
+        assert list(filtered['item']) == ['mushroom_stroganoff']
+
+    def test_continental_falls_back_when_flag_empty(self):
+        rule = ThemeSlotFilterRule({"name": "tf", "type": "theme_slot_filter"})
+        pool = pd.DataFrame({
+            'item': ['dal_tadka', 'dal_fry'],
+            'is_continental_veg_gravy': [0, 0],
+        })
+        d = dt.date(2026, 3, 24)
+        # No continental items → fall back to the full pool (day stays feasible).
+        filtered = rule.pre_filter_pool(pool, d, 'veg_gravy', 'continental', {'cfg': None})
+        assert list(filtered['item']) == ['dal_tadka', 'dal_fry']
+
     def test_chinese_does_not_force_starter_flag(self):
         rule = ThemeSlotFilterRule({"name": "tf", "type": "theme_slot_filter"})
         pool = pd.DataFrame({

@@ -25,6 +25,8 @@ THEME_ICONS = {
     'biryani': '&#9733;',   # star
     'south':   '&#9650;',   # triangle up
     'north':   '&#9632;',   # square
+    'continental': '&#9873;',        # flag
+    'chinese_continental': '&#8646;',  # left-right arrows (alternates)
 }
 
 

@@ -2,7 +2,37 @@
 
 import datetime as dt
 
-from src.solver._helpers import weekday_type, theme_label, strip_color_suffix
+from src.solver._helpers import (
+    weekday_type,
+    theme_label,
+    strip_color_suffix,
+    resolve_alternating_theme,
+    weekday_type_for_config,
+)
+
+
+class TestAlternatingTheme:
+    def test_resolve_even_iso_week_is_chinese(self):
+        d = dt.date(2026, 1, 8)  # ISO week 2 (even)
+        assert d.isocalendar()[1] % 2 == 0
+        assert resolve_alternating_theme('chinese_continental', d) == 'chinese'
+
+    def test_resolve_odd_iso_week_is_continental(self):
+        d = dt.date(2026, 1, 13)  # ISO week 3 (odd)
+        assert d.isocalendar()[1] % 2 == 1
+        assert resolve_alternating_theme('chinese_continental', d) == 'continental'
+
+    def test_non_alternating_theme_passthrough(self):
+        d = dt.date(2026, 1, 13)
+        assert resolve_alternating_theme('south', d) == 'south'
+
+    def test_weekday_type_for_config_resolves_alternation(self):
+        tm = {'tuesday': 'chinese_continental'}
+        assert weekday_type_for_config(dt.date(2026, 1, 6), tm) == 'chinese'      # ISO wk 2
+        assert weekday_type_for_config(dt.date(2026, 1, 13), tm) == 'continental'  # ISO wk 3
+
+    def test_continental_label(self):
+        assert theme_label('continental') == 'Continental'
 
 
 class TestWeekdayType:

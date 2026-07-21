@@ -87,7 +87,11 @@ DEFAULT_THEME_MAP: Dict[str, str] = {
     'friday': 'north',
 }
 
-AVAILABLE_THEMES: List[str] = ['mix', 'chinese', 'biryani', 'south', 'north']
+AVAILABLE_THEMES: List[str] = [
+    'mix', 'chinese', 'biryani', 'south', 'north', 'continental',
+    # Weekly-alternating meta-theme: even ISO week → chinese, odd → continental.
+    'chinese_continental',
+]
 
 # Cities a client can be located in. A client's ``city`` is a plain column on
 # the ``clients`` row (not per-counter). ``None``/empty means "unset".
