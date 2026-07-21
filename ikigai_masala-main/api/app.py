@@ -47,7 +47,9 @@ configure_logging()
 validate_required_env()
 from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
-from src.constants import BASE_SLOT_NAMES, CONST_SLOTS, REPEATABLE_ITEM_BASES
+from src.constants import (
+    BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
+)
 from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
     DEFAULT_THEME_MAP,
@@ -1017,6 +1019,7 @@ def editor_metadata():
             'success': True,
             'base_slot_names': list(BASE_SLOT_NAMES),
             'const_slots': list(CONST_SLOTS),
+            'default_off_slots': list(DEFAULT_OFF_SLOTS),
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
             'available_cities': list(AVAILABLE_CITIES),

@@ -32,6 +32,7 @@ from typing import Dict, List, Optional, Set
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
+    DEFAULT_OFF_SLOTS,
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
@@ -159,7 +160,11 @@ _MAX_SLOT_COUNT = 3
 # Hard cap on counters per client — keeps the editor UI and payloads sane.
 MAX_COUNTERS = 6
 
-_TOGGLEABLE_BASE_SLOTS: List[str] = [s for s in BASE_SLOTS if s not in CONST_SLOTS]
+# Categories a fresh client gets by default: every base slot except the
+# constants and the opt-in (default-off) stations like curd_rice.
+_TOGGLEABLE_BASE_SLOTS: List[str] = [
+    s for s in BASE_SLOTS if s not in CONST_SLOTS and s not in DEFAULT_OFF_SLOTS
+]
 
 
 def default_counter(index: int = 0, name: str = "") -> Dict:

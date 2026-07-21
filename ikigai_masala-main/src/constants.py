@@ -17,10 +17,15 @@ SLOT_SUFFIX_SEP = '__'
 BASE_SLOT_NAMES: List[str] = [
     'welcome_drink', 'soup', 'salad', 'starter', 'bread', 'rice',
     'healthy_rice', 'dal', 'sambar', 'rasam', 'veg_gravy', 'veg_dry',
-    'nonveg_main', 'curd_side', 'dessert',
+    'nonveg_main', 'curd_side', 'curd_rice', 'dessert',
 ]
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+
+# Categories that are selectable per client but OFF by default (a fresh client
+# does not get them until an admin adds them in the editor). ``curd_rice`` is
+# an optional station that serves a curd-rice dish.
+DEFAULT_OFF_SLOTS: Set[str] = {'curd_rice'}
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
@@ -30,7 +35,8 @@ CONSTANT_ITEMS: Dict[str, str] = {
 }
 
 EXEMPT_FROM_CUISINE: Set[str] = {
-    'welcome_drink', 'dal', 'sambar', 'rasam', 'starter', 'soup', 'salad', 'healthy_rice',
+    'welcome_drink', 'dal', 'sambar', 'rasam', 'starter', 'soup', 'salad',
+    'healthy_rice', 'curd_rice',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
@@ -63,6 +69,7 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'veg_dry': 'Veg Dry',
     'nonveg_main': 'Nonveg Main',
     'curd_side': 'Curd Side',
+    'curd_rice': 'Curd Rice',
     'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'Chutney',

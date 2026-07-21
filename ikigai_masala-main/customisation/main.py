@@ -22,9 +22,15 @@ from customisation.counter_editor import render_counter_editor
 
 
 def _default_counter(idx: int, all_base_slots: List[str], const_slots: List[str],
-                     default_theme_map: Dict[str, str]) -> Dict:
-    """Build a fresh counter config from editor metadata."""
-    cats = [s for s in all_base_slots if s not in const_slots]
+                     default_theme_map: Dict[str, str],
+                     default_off_slots: List[str] = ()) -> Dict:
+    """Build a fresh counter config from editor metadata.
+
+    ``default_off_slots`` (e.g. curd_rice) are selectable but excluded from a
+    new client's defaults.
+    """
+    skip = set(const_slots) | set(default_off_slots or ())
+    cats = [s for s in all_base_slots if s not in skip]
     return {
         'name': f'Counter {idx + 1}',
         'categories': list(cats),
@@ -91,6 +97,7 @@ def render_customisation_editor(api: MenuApiClient):
     clients = metadata.get('clients', [])
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
+    default_off_slots = metadata.get('default_off_slots', [])
     default_theme_map = metadata.get('default_theme_map', {})
     available_cities = metadata.get('available_cities', [])
     max_counters = int(metadata.get('max_counters', 6) or 6)
@@ -150,7 +157,7 @@ def render_customisation_editor(api: MenuApiClient):
     if not is_create_mode:
         loaded_mode = config.get('counter_mode', 'single')
         loaded_counters = config.get('counters') or [
-            _default_counter(0, all_base_slots, const_slots, default_theme_map)
+            _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
         ]
         current_version = config.get('version')
         client_key = f"exist_{selected_client}"
@@ -164,7 +171,7 @@ def render_customisation_editor(api: MenuApiClient):
             return
         loaded_mode = 'single'
         loaded_counters = [
-            _default_counter(0, all_base_slots, const_slots, default_theme_map)
+            _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
         ]
         current_version = None
         client_key = "_new_"
@@ -214,7 +221,7 @@ def render_customisation_editor(api: MenuApiClient):
     def _counter_seed(i: int) -> Dict:
         if i < len(loaded_counters):
             return loaded_counters[i]
-        return _default_counter(i, all_base_slots, const_slots, default_theme_map)
+        return _default_counter(i, all_base_slots, const_slots, default_theme_map, default_off_slots)
 
     result_counters: List[Dict] = []
 
@@ -352,7 +359,7 @@ def render_customisation_editor(api: MenuApiClient):
                 'version': current_version,
                 'counter_mode': 'single',
                 'counters': [
-                    _default_counter(0, all_base_slots, const_slots, default_theme_map)
+                    _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
                 ],
             }
             try:
