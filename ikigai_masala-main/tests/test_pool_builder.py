@@ -49,6 +49,15 @@ class TestPoolBuilder:
         expected = set(df.loc[df['is_curd_rice'] == 1, 'item'])
         assert expected and set(pools['curd_rice']['item']) == expected
 
+    def test_combo_pools_union_components(self):
+        df = _make_ontology_df()
+        pools = PoolBuilder.build_pools(df)
+        dal_items = set(pools['dal']['item'])
+        rasam_items = set(pools['rasam']['item'])
+        sambar_items = set(pools['sambar']['item'])
+        assert set(pools['dal_rasam']['item']) == dal_items | rasam_items
+        assert set(pools['sambar_rasam']['item']) == rasam_items | sambar_items
+
     def test_sambar_rasam_split(self):
         df = _make_ontology_df()
         pools = PoolBuilder.build_pools(df)

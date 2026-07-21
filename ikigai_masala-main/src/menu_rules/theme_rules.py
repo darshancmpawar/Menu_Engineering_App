@@ -216,8 +216,14 @@ class ThemeSlotFilterRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.THEME_SLOT_FILTER
+        # Always honour the canonical cuisine-exempt set (dal/rasam/curd_rice/
+        # combination slots, etc.) even if the JSON config lists a narrower
+        # set — the config can only ADD exemptions, never drop a canonical one.
         exempt = rule_config.get('exempt_slots')
-        self.exempt_slots: Set[str] = set(exempt) if exempt else set(EXEMPT_FROM_CUISINE)
+        self.exempt_slots: Set[str] = (
+            set(exempt) | set(EXEMPT_FROM_CUISINE) if exempt
+            else set(EXEMPT_FROM_CUISINE)
+        )
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,

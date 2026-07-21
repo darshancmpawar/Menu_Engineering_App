@@ -1,6 +1,29 @@
 """Tests for internal ``menu_solver`` helpers (cell lookup)."""
 
-from src.solver.menu_solver import _find_cells, _make_find_cells
+from src.solver.menu_solver import _find_cells, _make_find_cells, _combo_day_variant
+from src.constants import combo_minority_count
+
+
+class TestComboSplit:
+    def test_minority_count_anchored_to_2_of_5(self):
+        assert combo_minority_count(5) == 2   # 3 majority + 2 minority
+        assert combo_minority_count(7) == 3   # 4 majority + 3 minority
+        assert combo_minority_count(6) == 2
+        assert combo_minority_count(1) == 0   # single day → all majority
+        assert combo_minority_count(0) == 0
+
+    def test_minority_never_exceeds_majority(self):
+        for n in range(1, 21):
+            assert combo_minority_count(n) <= n // 2
+
+    def test_dal_rasam_variant_by_day(self):
+        # 5 days: majority (dal) on days 0-2, minority (rasam) on days 3-4.
+        got = [_combo_day_variant('dal_rasam', di, 5) for di in range(5)]
+        assert got == ['dal', 'dal', 'dal', 'rasam', 'rasam']
+
+    def test_sambar_rasam_variant_by_day(self):
+        got = [_combo_day_variant('sambar_rasam', di, 5) for di in range(5)]
+        assert got == ['rasam', 'rasam', 'rasam', 'sambar', 'sambar']
 
 
 class _Stub:

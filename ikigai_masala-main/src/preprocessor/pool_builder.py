@@ -11,7 +11,7 @@ import pandas as pd
 
 from .column_mapper import _norm_str
 from src.constants import (
-    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS,
+    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS, COMBO_CATEGORIES,
 )
 
 # course_type -> slot mapping for simple 1:1 cases
@@ -113,6 +113,18 @@ class PoolBuilder:
             ].copy()
         else:
             pools['curd_rice'] = df.iloc[0:0].copy()
+
+        # Combination categories: one slot whose pool is the union of two
+        # component pools. The solver picks the per-day variant by course_type.
+        for combo, (maj, minr) in COMBO_CATEGORIES.items():
+            parts = [pools.get(maj), pools.get(minr)]
+            parts = [p for p in parts if p is not None and len(p) > 0]
+            if parts:
+                pools[combo] = (
+                    pd.concat(parts).drop_duplicates(subset='item').copy()
+                )
+            else:
+                pools[combo] = df.iloc[0:0].copy()
 
         # Validate mandatory base slots have items. Optional (default-off)
         # stations like curd_rice may legitimately be empty in a minimal
