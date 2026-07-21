@@ -99,6 +99,12 @@ def run_diagnostics(
     # surface, not two.
     diagnostics.extend(pool_size_diagnostics(rules, ctx))
 
+    # Synthetic colour-variety pass. The colour-variety / max-same-colour
+    # constraints are built into the solver (not a rule), so they have no
+    # diagnose() of their own — this surfaces the case where they can't be
+    # met before the solver burns time and returns a cryptic INFEASIBLE.
+    diagnostics.extend(color_variety_diagnostics(list(rules), ctx))
+
     diagnostics.sort(key=lambda d: (
         _SEVERITY_ORDER.get(d.severity.value, 99),
         d.rule_type,
@@ -269,4 +275,124 @@ def pool_size_diagnostics(
                         'count_needed': count_needed,
                     },
                 ))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Synthetic colour-variety diagnostics (built-in solver constraint)
+# ---------------------------------------------------------------------------
+
+def color_variety_diagnostics(
+    rules: Iterable[BaseMenuRule], ctx: DiagnoseContext,
+) -> List[Diagnostic]:
+    """Flag days where the colour-variety / max-same-colour constraints can't
+    be satisfied, before the solver returns a cryptic INFEASIBLE.
+
+    The solver requires each colour used at most ``max_same_color_per_day``
+    times across a day's colour-bearing cells. With ``C`` distinct colours
+    available in those cells' (theme-filtered) pools, at most ``C * max_same``
+    cells can be filled — so if a day has ``N`` colour cells and
+    ``C * max_same < N`` the day is *provably* infeasible regardless of how
+    items are chosen. That is the only ERROR emitted here (no false positives:
+    history/cooldown bans are not applied, so ``C`` is an over-estimate, making
+    the check strictly conservative). ``C * max_same == N`` is a WARNING
+    (zero slack — any cooldown drop breaks it).
+    """
+    out: List[Diagnostic] = []
+    cfg = ctx.cfg
+    color_bases = set(getattr(cfg, 'color_slots', []) or [])
+    if not color_bases:
+        return out
+    base_slots = (
+        list(BASE_SLOT_NAMES) if ctx.active_base_slots is None
+        else ctx.active_base_slots
+    )
+    active_color = [b for b in base_slots if b in color_bases]
+    if not active_color:
+        return out
+
+    slot_counts = ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
+    max_same = max(1, int(getattr(cfg, 'max_same_color_per_day', 2)))
+    color_col = getattr(cfg, 'color_col', 'item_color')
+    rules_list = list(rules)
+    filter_ctx_base = {
+        'cfg': cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+        'pools': ctx.pools,
+    }
+    rule_type_value = MenuRuleType.COLOR_VARIETY.value
+
+    for d in ctx.dates:
+        day_type = ctx.day_types.get(d, '')
+        colours: set = set()
+        n_cells = 0
+        for base in active_color:
+            if (d, base) in ctx.skip_cells or base not in ctx.pools:
+                continue
+            cnt = int(slot_counts.get(base, 1)) if slot_counts else 1
+            if cnt <= 0:
+                continue
+            n_cells += cnt
+            pool = ctx.pools[base].copy()
+            if base in ('rice', 'healthy_rice') and len(pool) > 0:
+                pool = pool[~pool['item'].isin(cfg.rice_exclude_items)]
+            filter_ctx = {**filter_ctx_base, 'slot_num': None}
+            for rule in rules_list:
+                pool = rule.pre_filter_pool(pool, d, base, day_type, filter_ctx)
+            if len(pool) > 0 and color_col in pool.columns:
+                colours.update(
+                    str(c).strip() for c in pool[color_col].dropna().unique()
+                    if str(c).strip()
+                )
+        if n_cells == 0:
+            continue
+        capacity = len(colours) * max_same
+        day_label = d.strftime('%A %d %b')
+        if capacity < n_cells:
+            out.append(Diagnostic(
+                rule='color_variety',
+                rule_type=rule_type_value,
+                severity=DiagnosticSeverity.ERROR,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"{day_type.capitalize()} {day_label}: {n_cells} colour "
+                    f"slots but only {len(colours)} distinct colour(s) available "
+                    f"in their pools; with at most {max_same} of each colour, "
+                    f"only {capacity} can be filled. The day is infeasible."
+                ),
+                suggestion=(
+                    "Add items in more colours to these slots (or fewer theme "
+                    "restrictions on this day), reduce the counter's slot counts, "
+                    "or raise max_same_color_per_day."
+                ),
+                affected={
+                    'date': d.isoformat(),
+                    'day_type': day_type,
+                    'color_slots': n_cells,
+                    'colors_available': len(colours),
+                    'max_same_color': max_same,
+                },
+            ))
+        elif capacity == n_cells:
+            out.append(Diagnostic(
+                rule='color_variety',
+                rule_type=rule_type_value,
+                severity=DiagnosticSeverity.WARNING,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"{day_type.capitalize()} {day_label}: {n_cells} colour "
+                    f"slots and exactly {len(colours)} colour(s) × {max_same} = "
+                    f"{capacity} capacity — zero slack. A cooldown or theme drop "
+                    f"of any colour will make this day infeasible."
+                ),
+                suggestion=(
+                    "Add more colour variety to these slots to leave headroom."
+                ),
+                affected={
+                    'date': d.isoformat(),
+                    'day_type': day_type,
+                    'color_slots': n_cells,
+                    'colors_available': len(colours),
+                    'max_same_color': max_same,
+                },
+            ))
     return out

@@ -193,6 +193,11 @@ client config + history + pool state, returning structured findings
 
 `summary.would_succeed` is `false` iff any diagnostic carries `severity=error`.
 
+Besides the per-rule checks, two synthetic passes run: `pool_size` (a slot's
+pool is smaller than the count needed) and `color_variety` (a day has more
+colour-bearing slots than `colours_available × max_same_color_per_day` can
+fill — a provable colour infeasibility, `rule_type="color_variety"`, ERROR).
+
 ### /plan pre-flight gate (HTTP 422)
 
 When `/api/v1/plan` runs and pre-flight finds at least one `error`:
