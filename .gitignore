@@ -1,7 +1,21 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .env
 .streamlit/secrets.toml
+
+# Tool caches (local only — regenerated on every run).
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenvs.
+.venv/
+venv/
+
+# OS / editor cruft.
+.DS_Store
+*.swp
 
 # Coverage artefacts from `pytest --cov` (CI runs it; local runs produce
 # these files in whatever directory you run from).
