@@ -419,12 +419,17 @@ def _require_known_client(client_name):
         raise ValueError(f"Unknown client: {client_name}")
 
 
-def _weekdays_from(start_date, num_days):
-    """Return up to num_days weekday dates (skip Sat/Sun) starting from start_date."""
+def _weekdays_from(start_date, num_days, serve_weekends=False):
+    """Return ``num_days`` service dates starting from ``start_date``.
+
+    By default Sat/Sun are skipped (weekday-only kitchens). When
+    ``serve_weekends`` is True every calendar day counts, so the plan can
+    cover Saturday and Sunday (e.g. a 6-day plan from Monday = Mon–Sat).
+    """
     dates = []
     d = start_date
     while len(dates) < num_days:
-        if d.weekday() < 5:  # Mon-Fri
+        if serve_weekends or d.weekday() < 5:  # Mon-Fri, or all days
             dates.append(d)
         d += dt.timedelta(days=1)
     return dates
@@ -529,7 +534,9 @@ def _prepare_solver_inputs(
         client_cfg = _get_client_loader().get_client(client_name)
     df, pools = _get_menu_data()
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
-    weekday_dates = _weekdays_from(start_date, num_days)
+    weekday_dates = _weekdays_from(
+        start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
+    )
     rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
     window_days = _effective_history_window(rules)
     banned, rb_ban, recent_sigs = _build_history_context(
@@ -974,10 +981,11 @@ def saved_plan():
             dt.date.fromisoformat(start_date_str)
             if start_date_str else today_in_app_tz()
         )
-        weekday_dates = _weekdays_from(start_date, num_days)
-
         loader = _get_client_loader()
         client_cfg = loader.get_client(client_name)
+        weekday_dates = _weekdays_from(
+            start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
+        )
 
         from src.db import get_supabase
         sb = get_supabase()
@@ -1050,6 +1058,7 @@ def get_client_config(client_name):
             'success': True,
             'name': client_name,
             'city': loader.get_client_city(client_name),
+            'serve_weekends': loader.get_client_serve_weekends(client_name),
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1143,10 +1152,13 @@ def update_client_config(client_name):
                 theme_map=data.get('theme_map'),
             )
 
-        # City is a plain client attribute (not per-counter); update it when
-        # the caller includes it.
+        # City / weekend-service are plain client attributes (not per-counter);
+        # update them when the caller includes them.
         if 'city' in data:
             loader.set_client_city(client_name, data.get('city'))
+        if 'serve_weekends' in data:
+            loader.set_client_serve_weekends(
+                client_name, bool(data.get('serve_weekends')))
 
         response = jsonify({
             'success': True,
@@ -1185,6 +1197,7 @@ def create_client():
 
         loader = _get_client_loader()
         city = data.get('city')
+        serve_weekends = bool(data.get('serve_weekends', False))
         counters = data.get('counters')
         if counters:
             loader.create_client(
@@ -1192,10 +1205,12 @@ def create_client():
                 counter_mode=data.get('counter_mode', 'single'),
                 counters=counters,
                 city=city,
+                serve_weekends=serve_weekends,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
-            loader.create_client(name, active_slots, city=city)
+            loader.create_client(name, active_slots, city=city,
+                                 serve_weekends=serve_weekends)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:

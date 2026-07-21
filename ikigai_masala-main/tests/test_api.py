@@ -789,6 +789,41 @@ class TestClientCity:
         assert after['city'] == 'NCR'
 
 
+class TestServeWeekendsApi:
+    def test_weekdays_from_skips_weekend_by_default(self):
+        import datetime as dt
+        from api.app import _weekdays_from
+        mon = dt.date(2026, 3, 23)
+        days = _weekdays_from(mon, 5)
+        assert [d.strftime('%a') for d in days] == ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+
+    def test_weekdays_from_includes_weekend_when_enabled(self):
+        import datetime as dt
+        from api.app import _weekdays_from
+        mon = dt.date(2026, 3, 23)
+        days = _weekdays_from(mon, 7, serve_weekends=True)
+        labels = [d.strftime('%a') for d in days]
+        assert labels == ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+    def test_config_roundtrips_serve_weekends(self, client, auth_headers, fake_supabase):
+        client.post('/api/v1/client', json={
+            'name': 'WeCo', 'active_slots': ['rice', 'dal'], 'serve_weekends': True,
+        }, headers=auth_headers)
+        cfg = client.get('/api/v1/client-config/WeCo', headers=auth_headers).get_json()
+        assert cfg['serve_weekends'] is True
+
+    def test_put_updates_serve_weekends(self, client, auth_headers, fake_supabase):
+        cfg = client.get('/api/v1/client-config/Rippling',
+                         headers=auth_headers).get_json()
+        assert cfg['serve_weekends'] is False
+        client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'serve_weekends': True,
+        }, headers=auth_headers)
+        after = client.get('/api/v1/client-config/Rippling',
+                           headers=auth_headers).get_json()
+        assert after['serve_weekends'] is True
+
+
 class TestNonvegFlag:
     def test_plan_items_carry_is_nonveg(
         self, client, auth_headers, fake_supabase,

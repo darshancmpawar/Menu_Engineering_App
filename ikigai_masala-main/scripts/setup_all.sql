@@ -28,11 +28,12 @@
 --    `city` is an optional client location (Bangalore / Pune / Chennai /
 --    Hyderabad / NCR); NULL means unset.
 CREATE TABLE IF NOT EXISTS clients (
-    name        TEXT PRIMARY KEY,
-    version     INT  NOT NULL DEFAULT 1,
-    counters    JSONB NOT NULL DEFAULT '[]'::jsonb,
-    city        TEXT,
-    created_at  TIMESTAMPTZ DEFAULT now()
+    name           TEXT PRIMARY KEY,
+    version        INT  NOT NULL DEFAULT 1,
+    counters       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    city           TEXT,
+    serve_weekends BOOLEAN NOT NULL DEFAULT false,
+    created_at     TIMESTAMPTZ DEFAULT now()
 );
 
 -- 2. App-level settings (core_min_one_slots, constant_slots, fallback, etc.)
@@ -64,9 +65,10 @@ CREATE TABLE IF NOT EXISTS week_signatures (
 -- -----------------------------------------------------------------------------
 -- MIGRATE existing databases into clients.counters
 -- -----------------------------------------------------------------------------
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS version  INT   NOT NULL DEFAULT 1;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters JSONB NOT NULL DEFAULT '[]'::jsonb;
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS city     TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS version        INT   NOT NULL DEFAULT 1;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters       JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS city           TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends BOOLEAN NOT NULL DEFAULT false;
 
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.

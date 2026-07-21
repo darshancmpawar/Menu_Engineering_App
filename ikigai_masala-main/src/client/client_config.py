@@ -133,6 +133,9 @@ class ClientConfig:
     active_slots: List[str] = field(default_factory=list)
     slot_counts: Dict[str, int] = field(default_factory=dict)
     theme_map: Dict[str, str] = field(default_factory=dict)
+    # Client-level (not per-counter): when True the planner also covers
+    # Saturday/Sunday instead of skipping them.
+    serve_weekends: bool = False
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -434,19 +437,25 @@ class ClientConfigLoader:
         """Return a ClientConfig sourced from the primary counter
         (``counters[0]``). Output shape is unchanged, so the solver is
         unaffected."""
-        return self._config_from_counter(name, self._counters_list(name)[0])
+        cfg = self._config_from_counter(name, self._counters_list(name)[0])
+        cfg.serve_weekends = self.get_client_serve_weekends(name)
+        return cfg
 
     def get_client_configs(self, name: str):
         """Return ``[(counter_name, ClientConfig), …]`` — one per counter.
 
         Single-cuisine clients yield a one-element list; multi-cuisine clients
         yield one config per counter, each with that counter's categories /
-        frequency / day-themes for an independent solve.
+        frequency / day-themes for an independent solve. The client-level
+        ``serve_weekends`` flag is stamped onto every counter's config.
         """
-        return [
-            (c['name'], self._config_from_counter(name, c))
-            for c in self._counters_list(name)
-        ]
+        serve_weekends = self.get_client_serve_weekends(name)
+        out = []
+        for c in self._counters_list(name):
+            cfg = self._config_from_counter(name, c)
+            cfg.serve_weekends = serve_weekends
+            out.append((c['name'], cfg))
+        return out
 
     def get_counters_for_client(self, name: str) -> List[Dict]:
         """Return the ordered, normalised list of counter configs (>=1)."""
@@ -487,6 +496,46 @@ class ClientConfigLoader:
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
         return normalize_city(row.data.get('city'))
+
+    def get_client_serve_weekends(self, name: str) -> bool:
+        """Return whether the client is served on weekends (Sat/Sun).
+
+        Degrades to ``False`` when the ``clients.serve_weekends`` column is
+        missing (pre-migration database)."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('serve_weekends')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return False
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return bool(row.data.get('serve_weekends'))
+
+    def set_client_serve_weekends(self, name: str, value: bool) -> None:
+        """Update a client's weekend-service flag."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'serve_weekends': bool(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.serve_weekends column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save weekend setting: the clients.serve_weekends "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
 
     # ---- mutation methods --------------------------------------------------
 
@@ -529,6 +578,7 @@ class ClientConfigLoader:
         counter_mode: str = 'single',
         counters: List[Dict] | None = None,
         city: str | None = None,
+        serve_weekends: bool = False,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -537,21 +587,27 @@ class ClientConfigLoader:
           * counter-aware: ``create_client(name, counter_mode='multi',
             counters=[...])``
 
-        ``city`` is an optional client location from ``AVAILABLE_CITIES``.
+        ``city`` is an optional client location from ``AVAILABLE_CITIES``;
+        ``serve_weekends`` flags a kitchen that also runs Sat/Sun.
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
-        row = {'name': name, 'counters': norm, 'city': normalize_city(city)}
+        row = {
+            'name': name, 'counters': norm,
+            'city': normalize_city(city), 'serve_weekends': bool(serve_weekends),
+        }
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
-            # Degrade gracefully on a database that predates the clients.city
-            # column: create the client without it rather than hard-failing.
+            # Degrade gracefully on a database that predates the optional
+            # clients.city / clients.serve_weekends columns: create the client
+            # without them rather than hard-failing.
             if _is_missing_relation(exc):
                 logger.error(
-                    "clients.city column missing on create for %r — %s",
+                    "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
                 row.pop('city', None)
+                row.pop('serve_weekends', None)
                 self._sb.table('clients').insert(row).execute()
             else:
                 raise

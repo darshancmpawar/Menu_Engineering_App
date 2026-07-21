@@ -153,6 +153,16 @@ def render_customisation_editor(api: MenuApiClient):
             help="Location this client is served from.",
         ) if city_options else None
 
+        # Weekend-service toggle — when on, generated plans also cover Sat/Sun.
+        loaded_serve_weekends = bool((config or {}).get('serve_weekends', False))
+        serve_weekends = st.toggle(
+            "Serve on weekends (Sat / Sun)",
+            value=loaded_serve_weekends,
+            key=f"editor_weekends_{'new' if is_create_mode else selected_client}",
+            help="If on, menu generation includes Saturday/Sunday instead of "
+                 "skipping them.",
+        )
+
     # --- Resolve the config + counters we start from ---
     if not is_create_mode:
         loaded_mode = config.get('counter_mode', 'single')
@@ -261,6 +271,7 @@ def render_customisation_editor(api: MenuApiClient):
         dirty = (
             counter_mode != loaded_mode
             or selected_city != loaded_city
+            or serve_weekends != loaded_serve_weekends
             or not _counters_equal(result_counters, loaded_counters)
         )
         if dirty:
@@ -300,7 +311,7 @@ def render_customisation_editor(api: MenuApiClient):
                 try:
                     api.create_client(
                         name, counter_mode=counter_mode, counters=result_counters,
-                        city=selected_city,
+                        city=selected_city, serve_weekends=serve_weekends,
                     )
                     st.cache_data.clear()
                     st.session_state['editor_success_msg'] = (
@@ -344,6 +355,7 @@ def render_customisation_editor(api: MenuApiClient):
                     'counter_mode': counter_mode,
                     'counters': result_counters,
                     'city': selected_city,
+                    'serve_weekends': serve_weekends,
                 }
                 try:
                     api.update_client_config(selected_client, payload)

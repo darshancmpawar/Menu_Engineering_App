@@ -262,6 +262,34 @@ class TestCity:
         with pytest.raises(ValueError, match="Unknown client"):
             ld.get_client_city('Ghost')
 
+
+class TestServeWeekends:
+    def test_create_and_read_serve_weekends(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('WeCo', ['rice', 'dal'], serve_weekends=True)
+        assert ld.get_client_serve_weekends('WeCo') is True
+        assert ld.get_client('WeCo').serve_weekends is True
+
+    def test_default_serve_weekends_false(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('WeCo', ['rice', 'dal'])
+        assert ld.get_client_serve_weekends('WeCo') is False
+        assert ld.get_client('WeCo').serve_weekends is False
+
+    def test_set_serve_weekends(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('WeCo', ['rice', 'dal'])
+        ld.set_client_serve_weekends('WeCo', True)
+        assert ld.get_client_serve_weekends('WeCo') is True
+
+    def test_get_client_configs_stamps_serve_weekends(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('WeCo', counter_mode='multi', counters=[
+            _counter('A', ['rice']), _counter('B', ['dal']),
+        ], serve_weekends=True)
+        cfgs = ld.get_client_configs('WeCo')
+        assert all(cfg.serve_weekends is True for _n, cfg in cfgs)
+
     def test_list_clients_with_city(self):
         ld, _ = _make_loader({'clients': [], 'app_settings': []})
         ld.create_client('Zeta', ['rice'], city='NCR')
