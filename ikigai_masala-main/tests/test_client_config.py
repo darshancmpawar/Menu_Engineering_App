@@ -290,6 +290,34 @@ class TestServeWeekends:
         cfgs = ld.get_client_configs('WeCo')
         assert all(cfg.serve_weekends is True for _n, cfg in cfgs)
 
+
+class TestItemCooldown:
+    def test_create_and_read_cooldown(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('CoolCo', ['rice', 'dal'], item_cooldown_days=7)
+        assert ld.get_client_item_cooldown_days('CoolCo') == 7
+
+    def test_default_cooldown_is_none(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('CoolCo', ['rice', 'dal'])
+        assert ld.get_client_item_cooldown_days('CoolCo') is None
+
+    def test_set_and_clamp_cooldown(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('CoolCo', ['rice', 'dal'])
+        ld.set_client_item_cooldown_days('CoolCo', 99)   # clamps to 60
+        assert ld.get_client_item_cooldown_days('CoolCo') == 60
+        ld.set_client_item_cooldown_days('CoolCo', -5)   # clamps to 0
+        assert ld.get_client_item_cooldown_days('CoolCo') == 0
+
+    def test_normalize_item_cooldown_days(self):
+        from src.client.client_config import normalize_item_cooldown_days
+        assert normalize_item_cooldown_days(14) == 14
+        assert normalize_item_cooldown_days('21') == 21
+        assert normalize_item_cooldown_days(None) is None
+        assert normalize_item_cooldown_days('') is None
+        assert normalize_item_cooldown_days('abc') is None
+
     def test_list_clients_with_city(self):
         ld, _ = _make_loader({'clients': [], 'app_settings': []})
         ld.create_client('Zeta', ['rice'], city='NCR')

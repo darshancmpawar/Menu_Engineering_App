@@ -46,10 +46,10 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 | POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`; each item carries `is_nonveg`) |
 | POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`; items carry `is_nonveg`) |
 | POST | `/api/v1/save` | persist plan → history (single `week_plan`, or multi `counters: [{name, week_plan}]` → nested `menu_history`) |
-| GET  | `/api/v1/editor-metadata` | slot/theme/**city** metadata for editor (`available_cities`, `default_off_slots`) |
-| GET  | `/api/v1/client-config/<name>` | fetch client config (incl. `city`, `serve_weekends`) |
-| PUT  | `/api/v1/client-config/<name>` | update client config (accepts `city`, `serve_weekends`) |
-| POST | `/api/v1/client` | create client (accepts `city`, `serve_weekends`) |
+| GET  | `/api/v1/editor-metadata` | slot/theme/**city** metadata for editor (`available_cities`, `default_off_slots`, `default_item_cooldown_days`) |
+| GET  | `/api/v1/client-config/<name>` | fetch client config (incl. `city`, `serve_weekends`, `item_cooldown_days`) |
+| PUT  | `/api/v1/client-config/<name>` | update client config (accepts `city`, `serve_weekends`, `item_cooldown_days`) |
+| POST | `/api/v1/client` | create client (accepts `city`, `serve_weekends`, `item_cooldown_days`) |
 | DELETE | `/api/v1/client/<name>` | delete client |
 | POST | `/api/v1/validate-pools` | dry-run pool build |
 | GET  | `/api/v1/health` | health check |
@@ -114,7 +114,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `theme_filter.py` | `ThemeFilter` |
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
-- `client_config.py` → `ClientConfig` (dataclass, incl. `serve_weekends`), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`. City: `AVAILABLE_CITIES` + `normalize_city`; a client's `city` is a plain `clients.city` column (not per-counter). `serve_weekends` is a plain `clients.serve_weekends` bool (Sat/Sun coverage). Both read/written via `get_client_city`/`set_client_city`/`get_client_serve_weekends`/`set_client_serve_weekends`/`create_client(...)`. `AVAILABLE_THEMES` includes `continental` + the weekly-alternating `chinese_continental`.
+- `client_config.py` → `ClientConfig` (dataclass, incl. `serve_weekends`), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`. City: `AVAILABLE_CITIES` + `normalize_city`; a client's `city` is a plain `clients.city` column (not per-counter). `serve_weekends` is a plain `clients.serve_weekends` bool (Sat/Sun coverage). `item_cooldown_days` (`clients.item_cooldown_days`, nullable; None = `DEFAULT_ITEM_COOLDOWN_DAYS`=20) overrides the item-cooldown window per client. All read/written via `get_client_city`/`set_client_city`/`get_client_serve_weekends`/`set_client_serve_weekends`/`get_client_item_cooldown_days`/`set_client_item_cooldown_days`/`create_client(...)`. `AVAILABLE_THEMES` includes `continental` + the weekly-alternating `chinese_continental`.
 - No in-memory cache; every read hits Supabase. Supabase tables (consolidated to 4): `clients`, `app_settings`, `menu_history`, `week_signatures`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
 - **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. `get_client_configs` yields one `ClientConfig` per counter — the API solves each independently (client-orchestrated: the planner calls `/plan` once per counter with `counter_index`), and the planner renders one table per counter (tabs) with per-counter regenerate/clear + a shared save/download. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
@@ -230,6 +230,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 4. **Dynamic worker allocation** in `api/concurrency.py`: 1 active solve → 9 workers; 2 active → 5 each. Tuned for ~1 GB RAM.
 5. **Theme dispatch**: global weekday→theme map, per-client overridable via each counter's `theme_map` in `clients.counters`. Themes: mix/chinese/biryani/south/north/**continental** + **`chinese_continental`** (meta-theme resolved per ISO-week parity in `weekday_type_for_config` → even=chinese, odd=continental). Solver honors it via `theme_*` rules.
 10. **Weekend service**: `clients.serve_weekends` — when set, `_weekdays_from` stops skipping Sat/Sun so plans cover them.
+12. **Per-client item cooldown**: `clients.item_cooldown_days` (None=default 20). `api._apply_item_cooldown_override` rebuilds a fresh `item_cooldown` rule (never mutates the cached shared list) and the value is passed to `banned_items_by_date`; `_effective_history_window` widens the history query to match.
 11. **Optional/combo categories**: `curd_rice` (pool from `is_curd_rice` flag) and combos `dal_rasam`/`sambar_rasam` are base slots in `DEFAULT_OFF_SLOTS` (selectable, off by default). Combos split one slot across the week by course_type (majority/minority via `combo_minority_count`, applied per-day in `MenuSolver._build_cells` via `_combo_day_variant`). Optional slots are skipped by the mandatory-pool validation.
 6. **History split**: `menu_history` is one JSON document per client-day (`menu={slot:item}`), exploded to item-level in memory for cooldowns; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.

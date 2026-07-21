@@ -55,6 +55,7 @@ from src.client.client_config import (  # noqa: F401 — surfaced in editor-meta
     DEFAULT_THEME_MAP,
     AVAILABLE_THEMES,
     AVAILABLE_CITIES,
+    DEFAULT_ITEM_COOLDOWN_DAYS,
     MAX_COUNTERS,
 )
 from src.history import HistoryManager
@@ -261,6 +262,28 @@ def _rules_and_skip_for_client(client_name, dates):
     return rules, skip_cells
 
 
+def _apply_item_cooldown_override(rules, cooldown_days):
+    """Return *rules* with the item_cooldown rule rebuilt to use
+    ``cooldown_days``. A fresh instance is created so the process-wide cached
+    generic-rule list is never mutated (which would leak one client's cooldown
+    to every other client). ``None`` leaves the rules untouched.
+    """
+    if cooldown_days is None:
+        return rules
+    out = []
+    for r in rules:
+        rt = getattr(getattr(r, 'rule_type', None), 'value', None)
+        if rt == 'item_cooldown':
+            out.append(type(r)({
+                'name': getattr(r, 'name', 'item_cooldown'),
+                'type': 'item_cooldown',
+                'cooldown_days': int(cooldown_days),
+            }))
+        else:
+            out.append(r)
+    return out
+
+
 # Floor lookback. Must cover every history-consuming rule's cooldown.
 # With the default rules (week-signature 30d, item cooldown 20d,
 # rice-bread gap 10d), 45d gives 15d of slack. For per-client overrides
@@ -302,6 +325,7 @@ def _effective_history_window(rules) -> int:
 
 def _build_history_context(
     df, client_name, start_date, weekday_dates, window_days=None,
+    cooldown_days=None,
 ):
     """Shared helper to build history-based solver inputs from Supabase.
 
@@ -350,8 +374,10 @@ def _build_history_context(
     # who seeds the manager from an unfiltered DataFrame.
     hm = hm.filter_by_client(client_name)
 
+    _cooldown_kw = {} if cooldown_days is None else {'cooldown_days': int(cooldown_days)}
     banned = hm.banned_items_by_date(weekday_dates, const_slots=CONST_SLOTS,
-                                      repeatable_items=REPEATABLE_ITEM_BASES)
+                                      repeatable_items=REPEATABLE_ITEM_BASES,
+                                      **_cooldown_kw)
     ricebread_items = set(
         df.loc[df.get('is_rice_bread', 0) == 1, 'item'].tolist()
     ) if 'is_rice_bread' in df.columns else set()
@@ -538,9 +564,14 @@ def _prepare_solver_inputs(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
     )
     rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
+    # Per-client item-cooldown override (None = shipped default). Rebuild the
+    # rule so the history window + diagnostics reflect the client's value.
+    cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)
+    rules = _apply_item_cooldown_override(rules, cooldown_days)
     window_days = _effective_history_window(rules)
     banned, rb_ban, recent_sigs = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
+        cooldown_days=cooldown_days,
     )
     cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
 
@@ -1031,6 +1062,7 @@ def editor_metadata():
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
             'available_cities': list(AVAILABLE_CITIES),
+            'default_item_cooldown_days': DEFAULT_ITEM_COOLDOWN_DAYS,
             'clients': _request_client_names(),
             'max_counters': MAX_COUNTERS,
         })
@@ -1059,6 +1091,7 @@ def get_client_config(client_name):
             'name': client_name,
             'city': loader.get_client_city(client_name),
             'serve_weekends': loader.get_client_serve_weekends(client_name),
+            'item_cooldown_days': loader.get_client_item_cooldown_days(client_name),
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1159,6 +1192,9 @@ def update_client_config(client_name):
         if 'serve_weekends' in data:
             loader.set_client_serve_weekends(
                 client_name, bool(data.get('serve_weekends')))
+        if 'item_cooldown_days' in data:
+            loader.set_client_item_cooldown_days(
+                client_name, data.get('item_cooldown_days'))
 
         response = jsonify({
             'success': True,
@@ -1198,6 +1234,7 @@ def create_client():
         loader = _get_client_loader()
         city = data.get('city')
         serve_weekends = bool(data.get('serve_weekends', False))
+        item_cooldown_days = data.get('item_cooldown_days')
         counters = data.get('counters')
         if counters:
             loader.create_client(
@@ -1206,11 +1243,13 @@ def create_client():
                 counters=counters,
                 city=city,
                 serve_weekends=serve_weekends,
+                item_cooldown_days=item_cooldown_days,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
             loader.create_client(name, active_slots, city=city,
-                                 serve_weekends=serve_weekends)
+                                 serve_weekends=serve_weekends,
+                                 item_cooldown_days=item_cooldown_days)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:

@@ -824,6 +824,47 @@ class TestServeWeekendsApi:
         assert after['serve_weekends'] is True
 
 
+class TestItemCooldownConfig:
+    def test_metadata_exposes_default_cooldown(self, client, auth_headers, fake_supabase):
+        from src.client.client_config import DEFAULT_ITEM_COOLDOWN_DAYS
+        data = client.get('/api/v1/editor-metadata', headers=auth_headers).get_json()
+        assert data['default_item_cooldown_days'] == DEFAULT_ITEM_COOLDOWN_DAYS
+
+    def test_config_roundtrips_cooldown(self, client, auth_headers, fake_supabase):
+        client.post('/api/v1/client', json={
+            'name': 'CoolCo', 'active_slots': ['rice', 'dal'],
+            'item_cooldown_days': 14,
+        }, headers=auth_headers)
+        cfg = client.get('/api/v1/client-config/CoolCo', headers=auth_headers).get_json()
+        assert cfg['item_cooldown_days'] == 14
+
+    def test_put_updates_cooldown(self, client, auth_headers, fake_supabase):
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert cfg['item_cooldown_days'] is None  # default
+        client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'item_cooldown_days': 30,
+        }, headers=auth_headers)
+        after = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert after['item_cooldown_days'] == 30
+
+    def test_override_rebuilds_rule_without_mutating_shared(self, fake_supabase):
+        import api.app as api_app
+        generic = api_app._get_menu_rules()
+        ic = [r for r in generic
+              if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
+        original = ic.cooldown_days
+        new_rules = api_app._apply_item_cooldown_override(generic, 7)
+        new_ic = [r for r in new_rules
+                  if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
+        assert new_ic.cooldown_days == 7
+        assert ic.cooldown_days == original  # shared instance untouched
+
+    def test_override_none_is_noop(self, fake_supabase):
+        import api.app as api_app
+        generic = api_app._get_menu_rules()
+        assert api_app._apply_item_cooldown_override(generic, None) is generic
+
+
 class TestNonvegFlag:
     def test_plan_items_carry_is_nonveg(
         self, client, auth_headers, fake_supabase,

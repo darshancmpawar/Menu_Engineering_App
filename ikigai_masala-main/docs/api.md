@@ -20,10 +20,10 @@ accept or supply it to correlate traces across logs.
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`) |
-| GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `counters` (returns `ETag: "<version>"`) |
-| PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `counters` (requires `version` body field or `If-Match` header) |
-| POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `counters`) |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`) |
+| GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `item_cooldown_days`, `counters` (returns `ETag: "<version>"`) |
+| PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `item_cooldown_days` / `counters` (requires `version` body field or `If-Match` header) |
+| POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `counters`) |
 | DELETE | `/client/<name>` | Delete a client |
 
 ---
@@ -301,7 +301,7 @@ Per-client overrides live in `data/configs/client_rules.json`.
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
 | `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north) |
-| `item_cooldown` | pre-filter | Ban items used within N days |
+| `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
 | `ricebread_gap` | pre-filter | Enforce N-day gap between rice-breads |
 | `nonveg_biryani_weekly` | pre-filter | ≤1 nonveg biryani per week |
 | `nonveg_dry_preference` | pre-filter | Prefer dry nonveg on certain days |
@@ -334,7 +334,7 @@ document in `clients.counters`, not spread across normalized tables.
 
 | Table | Columns | Purpose |
 |---|---|---|
-| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `version` = optimistic-concurrency counter. |
+| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
 | `app_settings` | `key (pk)`, `value (jsonb)` | Misc tunables |
 | `menu_history` | `client_name`, `service_date`, `menu (jsonb)`, `created_at`; PK `(client_name, service_date)` | One row per day; `menu = {slot: item_base}` (single) or `{counter: {slot: item_base}}` (multi) |
 | `week_signatures` | `client_name`, `week_start`, `week_signature` | Week-level hash for week-signature cooldown |

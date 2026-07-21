@@ -98,6 +98,24 @@ AVAILABLE_THEMES: List[str] = [
 # the ``clients`` row (not per-counter). ``None``/empty means "unset".
 AVAILABLE_CITIES: List[str] = ['Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'NCR']
 
+# Default item-cooldown window (days): an item served within this many days
+# before a date is banned from that date. Mirrors the shipped
+# ``item_cooldown_20d`` rule / ``banned_items_by_date`` default. Per-client
+# overridable via the ``clients.item_cooldown_days`` column (None = default).
+DEFAULT_ITEM_COOLDOWN_DAYS: int = 20
+_MAX_ITEM_COOLDOWN_DAYS: int = 60
+
+
+def normalize_item_cooldown_days(value) -> Optional[int]:
+    """Coerce a cooldown-days input to an int in [0, 60], or None if unset."""
+    if value is None or value == '':
+        return None
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(_MAX_ITEM_COOLDOWN_DAYS, v))
+
 
 def normalize_city(value: Optional[str]) -> Optional[str]:
     """Return a canonical city from ``AVAILABLE_CITIES`` or ``None``.
@@ -537,6 +555,45 @@ class ClientConfigLoader:
                 ) from exc
             raise
 
+    def get_client_item_cooldown_days(self, name: str) -> Optional[int]:
+        """Return the client's item-cooldown override in days, or ``None`` when
+        unset (use ``DEFAULT_ITEM_COOLDOWN_DAYS``) / pre-migration."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('item_cooldown_days')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return normalize_item_cooldown_days(row.data.get('item_cooldown_days'))
+
+    def set_client_item_cooldown_days(self, name: str, value) -> None:
+        """Update a client's item-cooldown window (days); None clears it."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'item_cooldown_days': normalize_item_cooldown_days(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.item_cooldown_days column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save cooldown setting: the "
+                    "clients.item_cooldown_days column is missing. "
+                    + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     # ---- mutation methods --------------------------------------------------
 
     @staticmethod
@@ -579,6 +636,7 @@ class ClientConfigLoader:
         counters: List[Dict] | None = None,
         city: str | None = None,
         serve_weekends: bool = False,
+        item_cooldown_days=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -588,12 +646,15 @@ class ClientConfigLoader:
             counters=[...])``
 
         ``city`` is an optional client location from ``AVAILABLE_CITIES``;
-        ``serve_weekends`` flags a kitchen that also runs Sat/Sun.
+        ``serve_weekends`` flags a kitchen that also runs Sat/Sun;
+        ``item_cooldown_days`` overrides the default cooldown window (None =
+        default).
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
         row = {
             'name': name, 'counters': norm,
             'city': normalize_city(city), 'serve_weekends': bool(serve_weekends),
+            'item_cooldown_days': normalize_item_cooldown_days(item_cooldown_days),
         }
         try:
             self._sb.table('clients').insert(row).execute()
@@ -608,6 +669,7 @@ class ClientConfigLoader:
                 )
                 row.pop('city', None)
                 row.pop('serve_weekends', None)
+                row.pop('item_cooldown_days', None)
                 self._sb.table('clients').insert(row).execute()
             else:
                 raise

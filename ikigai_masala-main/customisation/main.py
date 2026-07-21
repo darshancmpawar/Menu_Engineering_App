@@ -100,6 +100,7 @@ def render_customisation_editor(api: MenuApiClient):
     default_off_slots = metadata.get('default_off_slots', [])
     default_theme_map = metadata.get('default_theme_map', {})
     available_cities = metadata.get('available_cities', [])
+    default_cooldown = int(metadata.get('default_item_cooldown_days', 20) or 20)
     max_counters = int(metadata.get('max_counters', 6) or 6)
 
     # ============================================================
@@ -162,6 +163,20 @@ def render_customisation_editor(api: MenuApiClient):
             help="If on, menu generation includes Saturday/Sunday instead of "
                  "skipping them.",
         )
+
+        # Item-cooldown window — how many days before a dish can repeat.
+        _loaded_cooldown = (config or {}).get('item_cooldown_days')
+        loaded_cooldown = (
+            int(_loaded_cooldown) if _loaded_cooldown is not None
+            else default_cooldown
+        )
+        item_cooldown_days = int(st.number_input(
+            "Item cooldown (days)",
+            min_value=0, max_value=60, value=loaded_cooldown, step=1,
+            key=f"editor_cooldown_{'new' if is_create_mode else selected_client}",
+            help="A dish served within this many days is not repeated. "
+                 f"Default {default_cooldown}.",
+        ))
 
     # --- Resolve the config + counters we start from ---
     if not is_create_mode:
@@ -272,6 +287,7 @@ def render_customisation_editor(api: MenuApiClient):
             counter_mode != loaded_mode
             or selected_city != loaded_city
             or serve_weekends != loaded_serve_weekends
+            or item_cooldown_days != loaded_cooldown
             or not _counters_equal(result_counters, loaded_counters)
         )
         if dirty:
@@ -312,6 +328,7 @@ def render_customisation_editor(api: MenuApiClient):
                     api.create_client(
                         name, counter_mode=counter_mode, counters=result_counters,
                         city=selected_city, serve_weekends=serve_weekends,
+                        item_cooldown_days=item_cooldown_days,
                     )
                     st.cache_data.clear()
                     st.session_state['editor_success_msg'] = (
@@ -356,6 +373,7 @@ def render_customisation_editor(api: MenuApiClient):
                     'counters': result_counters,
                     'city': selected_city,
                     'serve_weekends': serve_weekends,
+                    'item_cooldown_days': item_cooldown_days,
                 }
                 try:
                     api.update_client_config(selected_client, payload)
