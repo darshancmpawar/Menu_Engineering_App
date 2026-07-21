@@ -18,9 +18,7 @@ os.chdir(_APP_DIR)
 
 import datetime as dt
 import html
-import io
 import logging
-import re
 import threading
 import time
 
@@ -31,11 +29,17 @@ from ui.formatters import (
     display_label_for_slot_id,
     flatten_api_solution,
     format_item_for_ui,
-    format_item_html,
     nonveg_slots_from_solution,
     slot_sort_key,
     THEME_TAG_COLORS,
     THEME_ICONS,
+)
+from ui.planner_view import (
+    flatten_result,
+    menu_table_html,
+    download_filename,
+    plan_xlsx,
+    XLSX_MIME,
 )
 from ui.styles import STYLES
 from ui.branding import favicon as _favicon, logo_img_tag
@@ -412,152 +416,7 @@ with _hdr_col2:
         st.session_state.view = "editor"
         st.rerun()
 
-# ---------------------------------------------------------------------------
-# Planner render helpers (shared by the single- and multi-counter paths)
-# ---------------------------------------------------------------------------
-def _flatten_result(result: dict) -> dict:
-    """Turn a /plan or /saved-plan response into a plan "block"."""
-    solution = result.get("solution", {})
-    flat, day_types = flatten_api_solution(solution)
-    return {
-        "plan": flat,
-        "plan_dates": sorted(flat.keys()),
-        "day_types": day_types,
-        "nonveg": nonveg_slots_from_solution(solution),
-        "pool_warnings": result.get("pool_warnings", []),
-        "source": "solver",
-        "error": None,
-    }
-
-
-def _date_label(d_str: str) -> str:
-    try:
-        return dt.date.fromisoformat(d_str).strftime("%a %d %b")
-    except ValueError:
-        return d_str
-
-
-def _menu_table_html(plan: dict, plan_dates: list, day_types: dict,
-                     nonveg: dict | None = None) -> str:
-    nonveg = nonveg or {}
-    header_html = '<tr><th>Category</th>'
-    for d_str in plan_dates:
-        try:
-            d_lbl = dt.date.fromisoformat(d_str).strftime("%a %d %b")
-        except ValueError:
-            d_lbl = d_str
-        day_type = day_types.get(d_str, "")
-        bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
-        icon = THEME_ICONS.get(day_type, "")
-        label = day_type.replace("_", " ").title() if day_type else ""
-        header_html += (
-            f'<th><span class="day-label">{d_lbl}</span>'
-            f'<span class="theme-tag" style="background:{bg};color:{fg};">'
-            f'{icon} {label}</span></th>')
-    header_html += '</tr>'
-    all_slots = set()
-    for d_str in plan_dates:
-        all_slots.update(plan.get(d_str, {}).keys())
-    sorted_slots = sorted(all_slots, key=slot_sort_key)
-    body_html = ''
-    for slot_id in sorted_slots:
-        body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
-        for d_str in plan_dates:
-            item = plan.get(d_str, {}).get(slot_id, "")
-            is_nv = slot_id in nonveg.get(d_str, ())
-            body_html += f'<td>{format_item_html(item, is_nonveg=is_nv)}</td>'
-        body_html += '</tr>'
-    return (
-        f'<div class="menu-table-wrap"><table class="menu-table">'
-        f'<thead>{header_html}</thead><tbody>{body_html}</tbody></table></div>'
-    )
-
-
-def _sanitize_sheet_title(name: str, used: set) -> str:
-    """Excel sheet titles: <=31 chars, none of ``[]:*?/\\``, and unique."""
-    title = re.sub(r'[\[\]:*?/\\]', ' ', str(name or "Counter")).strip()[:31] or "Counter"
-    base, n = title, 2
-    while title.lower() in used:
-        suffix = f" ({n})"
-        title = base[:31 - len(suffix)] + suffix
-        n += 1
-    used.add(title.lower())
-    return title
-
-
-def _download_filename(blocks: list, client_name: str) -> str:
-    """``menu_<client>_<date-range>.xlsx`` — dates span every non-empty block."""
-    safe_client = re.sub(r'[^A-Za-z0-9]+', '_', client_name or "client").strip('_') or "client"
-    dates = sorted({d for b in blocks if b.get("plan") for d in b.get("plan_dates", [])})
-    if not dates:
-        return f"menu_{safe_client}.xlsx"
-    span = dates[0] if dates[0] == dates[-1] else f"{dates[0]}_to_{dates[-1]}"
-    return f"menu_{safe_client}_{span}.xlsx"
-
-
-def _plan_xlsx(blocks: list, client_name: str) -> bytes:
-    """Formatted workbook — one sheet per counter, with bold bordered headers
-    and non-veg dishes in red. Works for single (one sheet) and multi."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-
-    thin = Side(style="thin", color="131313")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    header_font = Font(bold=True, color="131313")
-    header_fill = PatternFill("solid", fgColor="FEBF34")
-    title_font = Font(bold=True, size=13, color="131313")
-    nonveg_font = Font(color="C40D1B", bold=True)
-    wrap = Alignment(vertical="top", wrap_text=True)
-
-    wb = Workbook()
-    wb.remove(wb.active)
-    used_titles: set = set()
-    real = [b for b in blocks if b.get("plan")]
-
-    for b in real:
-        dates = b["plan_dates"]
-        nonveg = b.get("nonveg") or {}
-        ws = wb.create_sheet(_sanitize_sheet_title(b["name"], used_titles))
-
-        # Title row (counter name).
-        ws.cell(row=1, column=1, value=b["name"]).font = title_font
-
-        # Header row.
-        headers = ["Category"] + [_date_label(d) for d in dates]
-        for col, text in enumerate(headers, start=1):
-            c = ws.cell(row=2, column=col, value=text)
-            c.font, c.fill, c.border = header_font, header_fill, border
-            c.alignment = wrap
-
-        # Body rows.
-        slots = sorted(
-            {s for d in dates for s in b["plan"].get(d, {})},
-            key=slot_sort_key,
-        )
-        for r, slot_id in enumerate(slots, start=3):
-            cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(slot_id))
-            cat.font, cat.border, cat.alignment = header_font, border, wrap
-            for col, d in enumerate(dates, start=2):
-                item = format_item_for_ui(b["plan"].get(d, {}).get(slot_id, ""))
-                cell = ws.cell(row=r, column=col, value=item)
-                cell.border, cell.alignment = border, wrap
-                if slot_id in nonveg.get(d, ()):
-                    cell.font = nonveg_font
-
-        # Column widths: Category a bit wider, dates comfortable.
-        ws.column_dimensions["A"].width = 18
-        for col in range(2, len(dates) + 2):
-            ws.column_dimensions[ws.cell(row=2, column=col).column_letter].width = 22
-
-    if not real:  # nothing generated yet — hand back an empty but valid file
-        wb.create_sheet("Menu")
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
-_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+# Planner render/export helpers live in ui/planner_view.py.
 
 
 def _pool_warnings_expander(block: dict) -> None:
@@ -732,7 +591,7 @@ if generate_clicked:
 
             if saved.get("exists"):
                 with st.spinner(f"Loading saved plan for {selected_client}..."):
-                    blk = _flatten_result(saved)
+                    blk = flatten_result(saved)
                     blk["name"] = counter_names[0]
                     blk["source"] = "history"
                     st.session_state.plan_blocks = [blk]
@@ -745,7 +604,7 @@ if generate_clicked:
                             client_name=selected_client,
                             start_date=start_date.isoformat(), num_days=num_days,
                             time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
-                        blk = _flatten_result(result)
+                        blk = flatten_result(result)
                         blk["name"] = counter_names[0]
                         st.session_state.plan_blocks = [blk]
                         st.session_state.plan_source = "solver"
@@ -779,7 +638,7 @@ if generate_clicked:
                             client_name=selected_client,
                             start_date=start_date.isoformat(), num_days=num_days,
                             time_limit_seconds=per_limit, counter_index=i)
-                        blk = _flatten_result(result)
+                        blk = flatten_result(result)
                         blk["name"] = cname
                     except RuleDiagnosticsBlockedError as e:
                         blk = {"name": cname, "plan": {}, "plan_dates": [],
@@ -867,9 +726,9 @@ if _blocks and any(b.get("plan") for b in _blocks):
         with sc2:
             st.download_button(
                 "Download Excel",
-                data=_plan_xlsx(_blocks, st.session_state.client_name),
-                file_name=_download_filename(_blocks, st.session_state.client_name),
-                mime=_XLSX_MIME, key="multi_dl_btn", use_container_width=True)
+                data=plan_xlsx(_blocks, st.session_state.client_name),
+                file_name=download_filename(_blocks, st.session_state.client_name),
+                mime=XLSX_MIME, key="multi_dl_btn", use_container_width=True)
         with sc3:
             if st.button("Clear All", key="multi_clear_btn",
                          use_container_width=True):
@@ -886,7 +745,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
                     continue
                 _pool_warnings_expander(b)
                 st.markdown(
-                    _menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
+                    menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
                                      b.get("nonveg")),
                     unsafe_allow_html=True)
                 st.markdown("")
@@ -902,7 +761,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
         b = _blocks[0]
         _pool_warnings_expander(b)
         st.markdown(
-            _menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
+            menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
                              b.get("nonveg")),
             unsafe_allow_html=True)
         st.markdown("")
@@ -921,9 +780,9 @@ if _blocks and any(b.get("plan") for b in _blocks):
         with c2:
             st.download_button(
                 "Download Excel",
-                data=_plan_xlsx(_blocks, st.session_state.client_name),
-                file_name=_download_filename(_blocks, st.session_state.client_name),
-                mime=_XLSX_MIME, key="planner_download_xlsx_btn",
+                data=plan_xlsx(_blocks, st.session_state.client_name),
+                file_name=download_filename(_blocks, st.session_state.client_name),
+                mime=XLSX_MIME, key="planner_download_xlsx_btn",
                 use_container_width=True)
         with c3:
             if st.button("Clear", key="planner_clear_btn",
