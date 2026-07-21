@@ -57,6 +57,66 @@ def test_solver_produces_single_day_plan(cleaned_menu, pools):
         assert day_map[slot], f"empty item for slot: {slot}"
 
 
+def test_small_counter_generates_despite_color_min(cleaned_menu, pools):
+    """A counter with fewer colour-slots than min_distinct_colors_per_day
+    (e.g. a Chinese station of just rice + veg_gravy) must still generate —
+    the colour-variety minimum is clamped to the number of colour slots
+    rather than making the day INFEASIBLE. Regression for the multi-counter
+    'Chinese counter produces no menu' bug."""
+    slots = ['rice', 'veg_gravy']
+    theme_map = {d: 'chinese' for d in
+                 ('monday', 'tuesday', 'wednesday', 'thursday', 'friday')}
+    cfg = SolverConfig(
+        days=5,
+        start_date=dt.date(2026, 3, 23),
+        time_limit_sec=30,
+        active_base_slots=slots,
+        slot_counts={s: 1 for s in slots},
+        theme_map=theme_map,
+        const_slots=[],
+    )
+    # default min_distinct_colors_per_day is 4 > 2 available colour slots.
+    assert cfg.min_distinct_colors_per_day == 4
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=[])
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+    for d in dates:
+        assert plan[d].get('rice') and plan[d].get('veg_gravy')
+
+
+def test_time_budget_is_a_total_not_per_attempt(pools, monkeypatch):
+    """time_limit_sec is a TOTAL wall-clock budget. With a 60s request the
+    multi-restart loop must not run 8 × 20s = 160s of solving; it stops once
+    the budget is spent. Uses a fake clock so no real time passes."""
+    import src.solver.menu_solver as ms
+
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(ms.time, "monotonic", lambda: clock["t"])
+
+    attempts = []
+
+    def _fake_solve(self, dates, cells, **kw):
+        # Each attempt "consumes" its allotted time, then fails so the loop
+        # keeps restarting until the deadline cuts it off.
+        attempts.append(self.cfg.time_limit_sec)
+        clock["t"] += self.cfg.time_limit_sec
+        raise RuntimeError("forced failure (time limit)")
+
+    monkeypatch.setattr(ms.MenuSolver, "_solve_cpsat", _fake_solve)
+    monkeypatch.setattr(ms.MenuSolver, "_build_cells", lambda self, *a, **k: [])
+
+    cfg = SolverConfig(days=1, start_date=dt.date(2026, 3, 23),
+                       time_limit_sec=60, active_base_slots=['rice'],
+                       slot_counts={'rice': 1})
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=[])
+    with pytest.raises(RuntimeError):
+        solver.solve()
+
+    # 60s budget, 20s floor per attempt → at most 3 attempts, total <= 60s.
+    assert sum(attempts) <= 60, f"burned {sum(attempts)}s > 60s budget: {attempts}"
+    assert len(attempts) <= 3, f"ran {len(attempts)} attempts (pre-fix would run 8)"
+
+
 def test_soft_rule_failures_are_captured_not_silent(cleaned_menu, pools):
     """A soft rule whose get_objective_terms() raises must surface in
     solver.rule_failures with the rule name + exception details, rather
