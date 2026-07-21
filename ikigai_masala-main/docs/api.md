@@ -20,10 +20,10 @@ accept or supply it to correlate traces across logs.
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`) |
-| GET    | `/client-config/<name>` | Read a client's config incl. `city` + `counters` (returns `ETag: "<version>"`) |
-| PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `counters` (requires `version` body field or `If-Match` header) |
-| POST   | `/client` | Create a client (accepts `city` and `counters`) |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`) |
+| GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `counters` (returns `ETag: "<version>"`) |
+| PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `counters` (requires `version` body field or `If-Match` header) |
+| POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `counters`) |
 | DELETE | `/client/<name>` | Delete a client |
 
 ---
@@ -334,7 +334,7 @@ document in `clients.counters`, not spread across normalized tables.
 
 | Table | Columns | Purpose |
 |---|---|---|
-| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `version` = optimistic-concurrency counter. |
+| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `version` = optimistic-concurrency counter. |
 | `app_settings` | `key (pk)`, `value (jsonb)` | Misc tunables |
 | `menu_history` | `client_name`, `service_date`, `menu (jsonb)`, `created_at`; PK `(client_name, service_date)` | One row per day; `menu = {slot: item_base}` (single) or `{counter: {slot: item_base}}` (multi) |
 | `week_signatures` | `client_name`, `week_start`, `week_signature` | Week-level hash for week-signature cooldown |
@@ -356,6 +356,27 @@ Rules operate on the expanded ids; `_base_slot()` strips the suffix when needed.
 | Friday | North Indian |
 
 Overridable per client (per counter) via the `theme_map` in `clients.counters`.
+Available themes: `mix`, `chinese`, `biryani`, `south`, `north`, `continental`
+(filtered off the `is_continental_*` flags), plus `chinese_continental` — a
+weekly-alternating meta-theme resolved by ISO-week parity (even → chinese, odd
+→ continental) before it reaches the pool filters.
+
+### Optional & combination categories
+
+Beyond the standard slots, three categories are **selectable but off by
+default** (`default_off_slots`):
+
+- `curd_rice` — a curd-rice station (pool built from the `is_curd_rice` flag).
+- `dal_rasam`, `sambar_rasam` — **combination categories**: one slot that
+  splits across the week by course_type. Over 5 days: `dal_rasam` = 3 dal + 2
+  rasam, `sambar_rasam` = 3 rasam + 2 sambar; longer weeks give the majority
+  variant proportionally more days.
+
+### Weekend service
+
+`clients.serve_weekends` (a plain bool, set in the editor). When true, plan
+date generation includes Saturday/Sunday instead of skipping them, so a 6-day
+plan from Monday covers Mon–Sat.
 
 ---
 

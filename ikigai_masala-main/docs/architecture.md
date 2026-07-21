@@ -62,6 +62,9 @@ graph TD
 - **Dynamic worker allocation:** `api/concurrency.py` caps concurrent solves (`MAX_RUNNING=2`) and tunes CP-SAT worker count to RAM (1 active → 9 workers, 2 active → 5 each).
 - **History as JSON-per-day:** `menu_history` is one JSONB row per `(client, service_date)` — the day's whole menu is `menu = {slot: item_base}`. Item-level cooldown readers explode it in memory. `week_signatures` is week-level (a deterministic `|`-delimited hash of a saved week) and drives week-signature cooldown.
 - **Non-veg tagging:** the API tags each solved item `is_nonveg` (derived from the ontology's `primary_protein` column, plus the `is_egg_dish` flag) so the UI and the Excel export render non-veg dishes red.
+- **Themes:** mix/chinese/biryani/south/north/continental plus `chinese_continental`, a weekly-alternating meta-theme resolved by ISO-week parity in `weekday_type_for_config` before it reaches the pool filters (deterministic, no stored state).
+- **Optional & combination categories:** `curd_rice` and the combos `dal_rasam`/`sambar_rasam` are selectable-but-off-by-default base slots (`DEFAULT_OFF_SLOTS`). A combo is one slot whose pool is the union of two component course_types; the solver restricts each day to the majority or minority variant (`combo_minority_count`, e.g. 3 dal + 2 rasam over 5 days).
+- **Weekend service:** the client-level `clients.serve_weekends` flag makes date generation include Sat/Sun instead of skipping them.
 - **Optimistic concurrency:** the `clients` table carries a `version` column. `GET /client-config` returns it as an ETag; `PUT` must send it back, mismatch returns 409 so two concurrent editors of the same client can't last-write-wins.
 
 ## Key flows
