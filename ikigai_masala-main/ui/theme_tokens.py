@@ -42,6 +42,7 @@ TINT_RED = "#FFE7E9"
 TINT_BLUE = "#EBF3FF"
 TINT_PURPLE = "#F3ECFF"
 TINT_YELLOW = "#FFF6E3"
+TINT_TEAL = "#E4F7F4"
 
 # Cuisine-theme badges, keyed by theme name → (background tint, foreground).
 PULSE_THEME_COLORS = {
@@ -50,6 +51,10 @@ PULSE_THEME_COLORS = {
     "biryani": (TINT_RED, "#C40D1B"),
     "south":   (TINT_BLUE, BLUE),
     "north":   (TINT_PURPLE, PURPLE),
+    "continental": (TINT_TEAL, "#0F8E80"),
+    # Weekly-alternating meta-theme (shown in the editor; resolves to
+    # chinese/continental at plan time).
+    "chinese_continental": (TINT_TEAL, "#0F8E80"),
 }
 
 # Item colour pills (menu table), keyed by the colour initial → (name, bg, fg).

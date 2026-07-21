@@ -301,6 +301,8 @@ class MenuApiClient:
         counter_mode: Optional[str] = None,
         counters: Optional[List[Dict[str, Any]]] = None,
         city: Optional[str] = None,
+        serve_weekends: Optional[bool] = None,
+        item_cooldown_days: Optional[int] = None,
     ) -> Dict[str, Any]:
         # Creating the same name twice is caught server-side (409 / "already
         # exists"), so a retry after a proxy 502 is self-correcting.
@@ -316,6 +318,10 @@ class MenuApiClient:
             payload["active_slots"] = active_slots or []
         if city is not None:
             payload["city"] = city
+        if serve_weekends is not None:
+            payload["serve_weekends"] = bool(serve_weekends)
+        if item_cooldown_days is not None:
+            payload["item_cooldown_days"] = int(item_cooldown_days)
 
         def _do():
             return self.session.post(

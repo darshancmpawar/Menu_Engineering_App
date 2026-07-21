@@ -135,3 +135,28 @@ def test_full_week_has_no_item_repeats_within_day(
         assert len(set(bases)) == len(bases), (
             f"day {d} has a duplicate item across slots: {items}"
         )
+
+
+@pytest.mark.slow
+def test_combination_category_splits_week(cleaned_menu, pools, production_rules):
+    """A dal/rasam combination slot must resolve to 3 dal + 2 rasam over a
+    5-day week (real solve, production rules)."""
+    from collections import Counter
+    slots = ['dal_rasam', 'rice', 'veg_gravy', 'veg_dry', 'starter', 'dessert']
+    cfg = SolverConfig(
+        days=5,
+        start_date=dt.date(2026, 3, 23),
+        time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots,
+        slot_counts={s: 1 for s in slots},
+        const_slots=[],
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    course_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['course_type']))
+    from src.solver._helpers import strip_color_suffix
+    variants = [course_by_item.get(strip_color_suffix(plan[d]['dal_rasam']))
+                for d in dates]
+    counts = Counter(variants)
+    assert counts.get('dal') == 3 and counts.get('rasam') == 2, counts

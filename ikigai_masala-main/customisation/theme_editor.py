@@ -19,6 +19,8 @@ _THEME_DISPLAY = {
     'biryani': 'Biryani',
     'south': 'South Indian',
     'north': 'North Indian',
+    'continental': 'Continental',
+    'chinese_continental': 'Chinese / Continental (alt. weekly)',
 }
 
 

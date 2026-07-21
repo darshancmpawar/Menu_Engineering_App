@@ -23,6 +23,7 @@ from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
+    COMBO_CATEGORIES, combo_minority_count,
 )
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
@@ -155,6 +156,18 @@ def _min_distinct_for_day(cfg: SolverConfig, day_type: str) -> int:
     if day_type == 'biryani':
         return cfg.min_distinct_colors_per_day_biryani
     return cfg.min_distinct_colors_per_day
+
+
+def _combo_day_variant(base_slot: str, di: int, n_days: int) -> str:
+    """Return the component course_type a combination slot uses on day *di*.
+
+    The minority variant fills the last ``combo_minority_count(n_days)`` days
+    of the horizon; the majority variant fills the rest. Deterministic by day
+    index, so the split is stable across regenerate.
+    """
+    majority, minority = COMBO_CATEGORIES[base_slot]
+    n_minority = combo_minority_count(n_days)
+    return minority if di >= (n_days - n_minority) else majority
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
@@ -415,6 +428,15 @@ class MenuSolver:
                 filter_ctx = {**base_filter_ctx, 'slot_num': None}
                 for rule in self.menu_rules:
                     pool2 = rule.pre_filter_pool(pool2, d, base, day_type, filter_ctx)
+
+                # Combination category: restrict this day's pool to the
+                # majority or minority component by course_type, so the combo
+                # slot splits across the week (e.g. dal 3 days, rasam 2 days).
+                if base in COMBO_CATEGORIES and len(pool2) > 0:
+                    variant = _combo_day_variant(base, di, len(dates))
+                    v = pool2[pool2['course_type'] == variant]
+                    if len(v) > 0:
+                        pool2 = v
 
                 base_pools[base] = pool2
 

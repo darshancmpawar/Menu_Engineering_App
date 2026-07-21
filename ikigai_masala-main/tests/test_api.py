@@ -789,6 +789,82 @@ class TestClientCity:
         assert after['city'] == 'NCR'
 
 
+class TestServeWeekendsApi:
+    def test_weekdays_from_skips_weekend_by_default(self):
+        import datetime as dt
+        from api.app import _weekdays_from
+        mon = dt.date(2026, 3, 23)
+        days = _weekdays_from(mon, 5)
+        assert [d.strftime('%a') for d in days] == ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+
+    def test_weekdays_from_includes_weekend_when_enabled(self):
+        import datetime as dt
+        from api.app import _weekdays_from
+        mon = dt.date(2026, 3, 23)
+        days = _weekdays_from(mon, 7, serve_weekends=True)
+        labels = [d.strftime('%a') for d in days]
+        assert labels == ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+    def test_config_roundtrips_serve_weekends(self, client, auth_headers, fake_supabase):
+        client.post('/api/v1/client', json={
+            'name': 'WeCo', 'active_slots': ['rice', 'dal'], 'serve_weekends': True,
+        }, headers=auth_headers)
+        cfg = client.get('/api/v1/client-config/WeCo', headers=auth_headers).get_json()
+        assert cfg['serve_weekends'] is True
+
+    def test_put_updates_serve_weekends(self, client, auth_headers, fake_supabase):
+        cfg = client.get('/api/v1/client-config/Rippling',
+                         headers=auth_headers).get_json()
+        assert cfg['serve_weekends'] is False
+        client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'serve_weekends': True,
+        }, headers=auth_headers)
+        after = client.get('/api/v1/client-config/Rippling',
+                           headers=auth_headers).get_json()
+        assert after['serve_weekends'] is True
+
+
+class TestItemCooldownConfig:
+    def test_metadata_exposes_default_cooldown(self, client, auth_headers, fake_supabase):
+        from src.client.client_config import DEFAULT_ITEM_COOLDOWN_DAYS
+        data = client.get('/api/v1/editor-metadata', headers=auth_headers).get_json()
+        assert data['default_item_cooldown_days'] == DEFAULT_ITEM_COOLDOWN_DAYS
+
+    def test_config_roundtrips_cooldown(self, client, auth_headers, fake_supabase):
+        client.post('/api/v1/client', json={
+            'name': 'CoolCo', 'active_slots': ['rice', 'dal'],
+            'item_cooldown_days': 14,
+        }, headers=auth_headers)
+        cfg = client.get('/api/v1/client-config/CoolCo', headers=auth_headers).get_json()
+        assert cfg['item_cooldown_days'] == 14
+
+    def test_put_updates_cooldown(self, client, auth_headers, fake_supabase):
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert cfg['item_cooldown_days'] is None  # default
+        client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'item_cooldown_days': 30,
+        }, headers=auth_headers)
+        after = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert after['item_cooldown_days'] == 30
+
+    def test_override_rebuilds_rule_without_mutating_shared(self, fake_supabase):
+        import api.app as api_app
+        generic = api_app._get_menu_rules()
+        ic = [r for r in generic
+              if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
+        original = ic.cooldown_days
+        new_rules = api_app._apply_item_cooldown_override(generic, 7)
+        new_ic = [r for r in new_rules
+                  if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
+        assert new_ic.cooldown_days == 7
+        assert ic.cooldown_days == original  # shared instance untouched
+
+    def test_override_none_is_noop(self, fake_supabase):
+        import api.app as api_app
+        generic = api_app._get_menu_rules()
+        assert api_app._apply_item_cooldown_override(generic, None) is generic
+
+
 class TestNonvegFlag:
     def test_plan_items_carry_is_nonveg(
         self, client, auth_headers, fake_supabase,

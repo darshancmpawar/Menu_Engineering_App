@@ -172,6 +172,16 @@ _BIRYANI_FLAG_MAP = {
     'nonveg_main': 'is_nonveg_biryani',
 }
 
+# Continental flag map — mirrors the Chinese map but keyed off the
+# ``is_continental_*`` columns in the ontology.
+_CONTINENTAL_FLAG_MAP = {
+    'rice': 'is_continental_carb',
+    'veg_gravy': 'is_continental_veg_gravy',
+    'nonveg_main': 'is_continental_chicken_gravy',
+    'starter': 'is_continental_starter',
+    'veg_dry': 'is_continental_veg_dry',
+}
+
 
 def _chinese_side_mask(pool: pd.DataFrame) -> pd.Series:
     """Detect Chinese-appropriate veg_dry items via text heuristics."""
@@ -206,8 +216,14 @@ class ThemeSlotFilterRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.THEME_SLOT_FILTER
+        # Always honour the canonical cuisine-exempt set (dal/rasam/curd_rice/
+        # combination slots, etc.) even if the JSON config lists a narrower
+        # set — the config can only ADD exemptions, never drop a canonical one.
         exempt = rule_config.get('exempt_slots')
-        self.exempt_slots: Set[str] = set(exempt) if exempt else set(EXEMPT_FROM_CUISINE)
+        self.exempt_slots: Set[str] = (
+            set(exempt) | set(EXEMPT_FROM_CUISINE) if exempt
+            else set(EXEMPT_FROM_CUISINE)
+        )
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
@@ -219,6 +235,8 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
         if day_type == 'chinese':
             return self._filter_chinese(pool, base_slot, cfg)
+        if day_type == 'continental':
+            return self._filter_by_flag_map(pool, base_slot, _CONTINENTAL_FLAG_MAP)
         if day_type == 'biryani':
             return self._filter_biryani(pool, base_slot, cfg)
         if day_type in ('south', 'north'):
@@ -240,6 +258,20 @@ class ThemeSlotFilterRule(BaseMenuRule):
                 return filtered
 
         # Exempt slots and slots without flags: return unfiltered
+        return pool
+
+    def _filter_by_flag_map(self, pool: pd.DataFrame, base_slot: str,
+                            flag_map: Dict[str, str]) -> pd.DataFrame:
+        """Narrow *pool* to items whose theme flag (from *flag_map*) is set.
+
+        Falls back to the unfiltered pool when the flag matches nothing so the
+        day stays feasible (same contract as the Chinese/biryani filters).
+        """
+        flag_col = flag_map.get(base_slot)
+        if flag_col and flag_col in pool.columns:
+            filtered = pool[pool[flag_col].map(_to_bool01) == 1]
+            if len(filtered) > 0:
+                return filtered
         return pool
 
     def _filter_biryani(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
@@ -311,7 +343,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
         for d in ctx.dates:
             day_type = ctx.day_types.get(d, '')
-            if day_type not in ('chinese', 'biryani', 'south', 'north'):
+            if day_type not in ('chinese', 'continental', 'biryani', 'south', 'north'):
                 continue
             day_label = d.strftime('%A %d %b')
 
@@ -400,6 +432,12 @@ class ThemeSlotFilterRule(BaseMenuRule):
                 return int((pool[flag_col].map(_to_bool01) == 1).sum())
             if base_slot == 'veg_dry':
                 return int(_chinese_side_mask(pool).sum())
+            return None
+
+        if day_type == 'continental':
+            flag_col = _CONTINENTAL_FLAG_MAP.get(base_slot)
+            if flag_col and flag_col in pool.columns:
+                return int((pool[flag_col].map(_to_bool01) == 1).sum())
             return None
 
         if day_type == 'biryani':

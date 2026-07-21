@@ -32,6 +32,7 @@ from typing import Dict, List, Optional, Set
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
+    DEFAULT_OFF_SLOTS,
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
@@ -87,11 +88,33 @@ DEFAULT_THEME_MAP: Dict[str, str] = {
     'friday': 'north',
 }
 
-AVAILABLE_THEMES: List[str] = ['mix', 'chinese', 'biryani', 'south', 'north']
+AVAILABLE_THEMES: List[str] = [
+    'mix', 'chinese', 'biryani', 'south', 'north', 'continental',
+    # Weekly-alternating meta-theme: even ISO week → chinese, odd → continental.
+    'chinese_continental',
+]
 
 # Cities a client can be located in. A client's ``city`` is a plain column on
 # the ``clients`` row (not per-counter). ``None``/empty means "unset".
 AVAILABLE_CITIES: List[str] = ['Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'NCR']
+
+# Default item-cooldown window (days): an item served within this many days
+# before a date is banned from that date. Mirrors the shipped
+# ``item_cooldown_20d`` rule / ``banned_items_by_date`` default. Per-client
+# overridable via the ``clients.item_cooldown_days`` column (None = default).
+DEFAULT_ITEM_COOLDOWN_DAYS: int = 20
+_MAX_ITEM_COOLDOWN_DAYS: int = 60
+
+
+def normalize_item_cooldown_days(value) -> Optional[int]:
+    """Coerce a cooldown-days input to an int in [0, 60], or None if unset."""
+    if value is None or value == '':
+        return None
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0, min(_MAX_ITEM_COOLDOWN_DAYS, v))
 
 
 def normalize_city(value: Optional[str]) -> Optional[str]:
@@ -128,6 +151,9 @@ class ClientConfig:
     active_slots: List[str] = field(default_factory=list)
     slot_counts: Dict[str, int] = field(default_factory=dict)
     theme_map: Dict[str, str] = field(default_factory=dict)
+    # Client-level (not per-counter): when True the planner also covers
+    # Saturday/Sunday instead of skipping them.
+    serve_weekends: bool = False
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -155,7 +181,11 @@ _MAX_SLOT_COUNT = 3
 # Hard cap on counters per client — keeps the editor UI and payloads sane.
 MAX_COUNTERS = 6
 
-_TOGGLEABLE_BASE_SLOTS: List[str] = [s for s in BASE_SLOTS if s not in CONST_SLOTS]
+# Categories a fresh client gets by default: every base slot except the
+# constants and the opt-in (default-off) stations like curd_rice.
+_TOGGLEABLE_BASE_SLOTS: List[str] = [
+    s for s in BASE_SLOTS if s not in CONST_SLOTS and s not in DEFAULT_OFF_SLOTS
+]
 
 
 def default_counter(index: int = 0, name: str = "") -> Dict:
@@ -425,19 +455,25 @@ class ClientConfigLoader:
         """Return a ClientConfig sourced from the primary counter
         (``counters[0]``). Output shape is unchanged, so the solver is
         unaffected."""
-        return self._config_from_counter(name, self._counters_list(name)[0])
+        cfg = self._config_from_counter(name, self._counters_list(name)[0])
+        cfg.serve_weekends = self.get_client_serve_weekends(name)
+        return cfg
 
     def get_client_configs(self, name: str):
         """Return ``[(counter_name, ClientConfig), …]`` — one per counter.
 
         Single-cuisine clients yield a one-element list; multi-cuisine clients
         yield one config per counter, each with that counter's categories /
-        frequency / day-themes for an independent solve.
+        frequency / day-themes for an independent solve. The client-level
+        ``serve_weekends`` flag is stamped onto every counter's config.
         """
-        return [
-            (c['name'], self._config_from_counter(name, c))
-            for c in self._counters_list(name)
-        ]
+        serve_weekends = self.get_client_serve_weekends(name)
+        out = []
+        for c in self._counters_list(name):
+            cfg = self._config_from_counter(name, c)
+            cfg.serve_weekends = serve_weekends
+            out.append((c['name'], cfg))
+        return out
 
     def get_counters_for_client(self, name: str) -> List[Dict]:
         """Return the ordered, normalised list of counter configs (>=1)."""
@@ -478,6 +514,85 @@ class ClientConfigLoader:
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
         return normalize_city(row.data.get('city'))
+
+    def get_client_serve_weekends(self, name: str) -> bool:
+        """Return whether the client is served on weekends (Sat/Sun).
+
+        Degrades to ``False`` when the ``clients.serve_weekends`` column is
+        missing (pre-migration database)."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('serve_weekends')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return False
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return bool(row.data.get('serve_weekends'))
+
+    def set_client_serve_weekends(self, name: str, value: bool) -> None:
+        """Update a client's weekend-service flag."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'serve_weekends': bool(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.serve_weekends column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save weekend setting: the clients.serve_weekends "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
+    def get_client_item_cooldown_days(self, name: str) -> Optional[int]:
+        """Return the client's item-cooldown override in days, or ``None`` when
+        unset (use ``DEFAULT_ITEM_COOLDOWN_DAYS``) / pre-migration."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('item_cooldown_days')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return normalize_item_cooldown_days(row.data.get('item_cooldown_days'))
+
+    def set_client_item_cooldown_days(self, name: str, value) -> None:
+        """Update a client's item-cooldown window (days); None clears it."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'item_cooldown_days': normalize_item_cooldown_days(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.item_cooldown_days column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save cooldown setting: the "
+                    "clients.item_cooldown_days column is missing. "
+                    + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
 
     # ---- mutation methods --------------------------------------------------
 
@@ -520,6 +635,8 @@ class ClientConfigLoader:
         counter_mode: str = 'single',
         counters: List[Dict] | None = None,
         city: str | None = None,
+        serve_weekends: bool = False,
+        item_cooldown_days=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -528,21 +645,31 @@ class ClientConfigLoader:
           * counter-aware: ``create_client(name, counter_mode='multi',
             counters=[...])``
 
-        ``city`` is an optional client location from ``AVAILABLE_CITIES``.
+        ``city`` is an optional client location from ``AVAILABLE_CITIES``;
+        ``serve_weekends`` flags a kitchen that also runs Sat/Sun;
+        ``item_cooldown_days`` overrides the default cooldown window (None =
+        default).
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
-        row = {'name': name, 'counters': norm, 'city': normalize_city(city)}
+        row = {
+            'name': name, 'counters': norm,
+            'city': normalize_city(city), 'serve_weekends': bool(serve_weekends),
+            'item_cooldown_days': normalize_item_cooldown_days(item_cooldown_days),
+        }
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
-            # Degrade gracefully on a database that predates the clients.city
-            # column: create the client without it rather than hard-failing.
+            # Degrade gracefully on a database that predates the optional
+            # clients.city / clients.serve_weekends columns: create the client
+            # without them rather than hard-failing.
             if _is_missing_relation(exc):
                 logger.error(
-                    "clients.city column missing on create for %r — %s",
+                    "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
                 row.pop('city', None)
+                row.pop('serve_weekends', None)
+                row.pop('item_cooldown_days', None)
                 self._sb.table('clients').insert(row).execute()
             else:
                 raise

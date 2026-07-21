@@ -56,9 +56,15 @@ graph TD
   1. `pre_filter_pool()` — cheap removals before CP-SAT vars exist.
   2. `apply()` + `get_objective_terms()` — hard constraints and soft bonuses / penalties on the model.
 - **Hard vs. soft severity:** rules declare `severity = HARD` (default) or `SOFT`. A hard rule that raises in `apply()` fails the solve instead of silently dropping the constraint; soft rules log + continue + surface in the response's `rule_warnings`.
+- **Config is one JSON document:** a client's whole cuisine setup lives in `clients.counters` (JSONB) — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the *primary* counter the solver plans from; extra entries are additional cuisine stations. Mode is derived (single ⇔ 1 counter, multi ⇔ 2+). A separate `clients.city` column holds an optional location. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column.
+- **Multi-cuisine planning is client-orchestrated:** the planner calls `POST /plan` once per counter with `counter_index`, then renders one table per counter (tabs) with per-counter regenerate/clear plus a shared save/download.
 - **No config cache:** `ClientConfigLoader` reads Supabase on every call so edits are live with no restart. Per-request memoization on Flask's `g` avoids the intra-request round trips.
 - **Dynamic worker allocation:** `api/concurrency.py` caps concurrent solves (`MAX_RUNNING=2`) and tunes CP-SAT worker count to RAM (1 active → 9 workers, 2 active → 5 each).
-- **History split:** `menu_history` is item-level (one row per `(date, slot, item)`), `week_signatures` is week-level (a deterministic `|`-delimited hash of a saved week). The former drives item cooldown; the latter drives week-signature cooldown.
+- **History as JSON-per-day:** `menu_history` is one JSONB row per `(client, service_date)` — the day's whole menu is `menu = {slot: item_base}`. Item-level cooldown readers explode it in memory. `week_signatures` is week-level (a deterministic `|`-delimited hash of a saved week) and drives week-signature cooldown.
+- **Non-veg tagging:** the API tags each solved item `is_nonveg` (derived from the ontology's `primary_protein` column, plus the `is_egg_dish` flag) so the UI and the Excel export render non-veg dishes red.
+- **Themes:** mix/chinese/biryani/south/north/continental plus `chinese_continental`, a weekly-alternating meta-theme resolved by ISO-week parity in `weekday_type_for_config` before it reaches the pool filters (deterministic, no stored state).
+- **Optional & combination categories:** `curd_rice` and the combos `dal_rasam`/`sambar_rasam` are selectable-but-off-by-default base slots (`DEFAULT_OFF_SLOTS`). A combo is one slot whose pool is the union of two component course_types; the solver restricts each day to the majority or minority variant (`combo_minority_count`, e.g. 3 dal + 2 rasam over 5 days).
+- **Weekend service:** the client-level `clients.serve_weekends` flag makes date generation include Sat/Sun instead of skipping them.
 - **Optimistic concurrency:** the `clients` table carries a `version` column. `GET /client-config` returns it as an ETag; `PUT` must send it back, mismatch returns 409 so two concurrent editors of the same client can't last-write-wins.
 
 ## Key flows
@@ -85,7 +91,7 @@ sequenceDiagram
 
 ### Save (overwrite semantics)
 
-Streamlit → `POST /api/v1/save` → `HistoryManager.save()` first **deletes** any existing rows for the same `(client_name, service_date)` (and `(client_name, week_start)` for `week_signatures`), then inserts the new rows. Re-saving a week therefore replaces the prior plan instead of accumulating. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic. UNIQUE indexes on `(client_name, service_date, slot, item_base)` and `(client_name, week_start, week_signature)` are the safety net against double-insert under a retried `/save`.
+Streamlit → `POST /api/v1/save` → `HistoryManager.save()` upserts one `menu_history` row per `(client_name, service_date)` — the day's whole menu as a `{slot: item_base}` JSON document (PK `(client_name, service_date)`) — and replaces the `week_signatures` row for `(client_name, week_start)`. Re-saving a week therefore overwrites the prior plan instead of accumulating. Color suffixes (`(R)`, `(Y)`, …) are stripped before persistence so cooldown matching is color-agnostic. A multi-cuisine save sends `counters: [{name, week_plan}]` and stores a nested `{counter: {slot: item}}` menu.
 
 ### Pre-flight rule diagnostics
 
@@ -110,17 +116,20 @@ Streamlit → `POST /api/v1/regenerate` → `MenuRegenerator` locks every cell n
 
 ## Schema migrations
 
-Two SQL files live under `scripts/`:
+The schema is four tables (`clients`, `app_settings`, `menu_history`,
+`week_signatures`). SQL under `scripts/`:
 
-- `create_tables.sql` defines configuration tables (`clients`,
-  `menu_categories`, `slot_count_overrides`, `theme_overrides`,
-  `app_settings`) and their RLS policies.
-- `create_history_tables.sql` defines `menu_history` and
-  `week_signatures` (with FK + UNIQUE INDEX safety nets) and their RLS
+- `setup_all.sql` — **the master, idempotent script.** Creates every table,
+  backfills `clients.counters` from an older normalized database, adds the
+  `clients.city` column, and reshapes an old per-dish `menu_history` into the
+  one-row-per-day JSON form. Run this once in the Supabase SQL editor.
+- `create_tables.sql` — component file: `clients` (config in `counters` JSONB
+  + `city` + optimistic-concurrency `version`) and `app_settings`, with RLS
+  policies.
+- `create_history_tables.sql` — component file: `menu_history` (PK
+  `(client_name, service_date)`, `menu` JSONB) and `week_signatures`, with RLS
   policies.
 
-Run order: `create_tables.sql` → `create_history_tables.sql`. Both are
-idempotent — re-running them is a no-op once the schema is in place. See
-`docs/REVIEW.md` for the history of the schema-duplication fix that
-consolidated the `menu_history` / `week_signatures` DDL into a single
-file.
+All are idempotent (`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`).
+`setup_all.sql` supersedes running the two component files separately; use the
+component files only for a brand-new database that needs no migration.

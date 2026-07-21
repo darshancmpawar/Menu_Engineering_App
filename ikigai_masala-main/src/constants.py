@@ -16,11 +16,37 @@ SLOT_SUFFIX_SEP = '__'
 
 BASE_SLOT_NAMES: List[str] = [
     'welcome_drink', 'soup', 'salad', 'starter', 'bread', 'rice',
-    'healthy_rice', 'dal', 'sambar', 'rasam', 'veg_gravy', 'veg_dry',
-    'nonveg_main', 'curd_side', 'dessert',
+    'healthy_rice', 'dal', 'sambar', 'rasam', 'dal_rasam', 'sambar_rasam',
+    'veg_gravy', 'veg_dry', 'nonveg_main', 'curd_side', 'curd_rice', 'dessert',
 ]
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+
+# Combination categories: ONE visible slot that alternates between two
+# component course_types across the week — the majority variant fills most
+# days, the minority the rest (see COMBO_MINORITY split). Keyed by the combo
+# slot → (majority_course_type, minority_course_type).
+COMBO_CATEGORIES: Dict[str, tuple] = {
+    'dal_rasam':    ('dal', 'rasam'),     # 3 dal + 2 rasam over 5 days
+    'sambar_rasam': ('rasam', 'sambar'),  # 3 rasam + 2 sambar over 5 days
+}
+
+# Categories that are selectable per client but OFF by default (a fresh client
+# does not get them until an admin adds them in the editor): the optional
+# curd-rice station and the combination categories.
+DEFAULT_OFF_SLOTS: Set[str] = {'curd_rice'} | set(COMBO_CATEGORIES)
+
+
+def combo_minority_count(n_days: int) -> int:
+    """Days the *minority* variant of a combination category gets over an
+    ``n_days`` horizon. Anchored to 2-of-5 (so 5 days → 3 majority + 2 minority)
+    and scaled for other lengths; the majority variant always gets at least as
+    many days as the minority.
+    """
+    if n_days < 2:
+        return 0
+    minority = max(1, round(n_days * 2 / 5))
+    return min(minority, n_days // 2)
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
@@ -30,7 +56,8 @@ CONSTANT_ITEMS: Dict[str, str] = {
 }
 
 EXEMPT_FROM_CUISINE: Set[str] = {
-    'welcome_drink', 'dal', 'sambar', 'rasam', 'starter', 'soup', 'salad', 'healthy_rice',
+    'welcome_drink', 'dal', 'sambar', 'rasam', 'dal_rasam', 'sambar_rasam',
+    'starter', 'soup', 'salad', 'healthy_rice', 'curd_rice',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
@@ -63,6 +90,9 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'veg_dry': 'Veg Dry',
     'nonveg_main': 'Nonveg Main',
     'curd_side': 'Curd Side',
+    'curd_rice': 'Curd Rice',
+    'dal_rasam': 'Dal / Rasam',
+    'sambar_rasam': 'Sambar / Rasam',
     'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'Chutney',

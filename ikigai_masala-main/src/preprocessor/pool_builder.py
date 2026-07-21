@@ -11,7 +11,7 @@ import pandas as pd
 
 from .column_mapper import _norm_str
 from src.constants import (
-    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES,
+    SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS, COMBO_CATEGORIES,
 )
 
 # course_type -> slot mapping for simple 1:1 cases
@@ -105,8 +105,33 @@ class PoolBuilder:
             ((df['course_type'] == 'sambar/rasam') & ~is_rasam_text)
         ].copy()
 
-        # Validate all base slots have items
+        # Curd-rice station: driven by the is_curd_rice flag rather than a
+        # course_type (curd-rice dishes live under curd_side / rice courses).
+        if 'is_curd_rice' in df.columns:
+            pools['curd_rice'] = df[
+                pd.to_numeric(df['is_curd_rice'], errors='coerce').fillna(0) == 1
+            ].copy()
+        else:
+            pools['curd_rice'] = df.iloc[0:0].copy()
+
+        # Combination categories: one slot whose pool is the union of two
+        # component pools. The solver picks the per-day variant by course_type.
+        for combo, (maj, minr) in COMBO_CATEGORIES.items():
+            parts = [pools.get(maj), pools.get(minr)]
+            parts = [p for p in parts if p is not None and len(p) > 0]
+            if parts:
+                pools[combo] = (
+                    pd.concat(parts).drop_duplicates(subset='item').copy()
+                )
+            else:
+                pools[combo] = df.iloc[0:0].copy()
+
+        # Validate mandatory base slots have items. Optional (default-off)
+        # stations like curd_rice may legitimately be empty in a minimal
+        # ontology — they only matter when a client explicitly selects them.
         for slot in BASE_SLOT_NAMES:
+            if slot in DEFAULT_OFF_SLOTS:
+                continue
             if slot not in pools or len(pools[slot]) == 0:
                 raise ValueError(f"Slot '{slot}' has 0 items after mapping.")
 

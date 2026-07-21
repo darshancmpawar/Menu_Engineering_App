@@ -20,8 +20,8 @@ docker compose up --build
 
 Open `http://localhost:8501`, pick a client, generate a plan.
 
-> First-time setup: run the two schema files (`scripts/*.sql`) once in
-> the Supabase SQL editor — see [docs/setup.md](docs/setup.md).
+> First-time setup: run `scripts/setup_all.sql` once in the Supabase SQL
+> editor (the master idempotent schema) — see [docs/setup.md](docs/setup.md).
 
 ## Quick start (local Python)
 
@@ -30,7 +30,7 @@ cd ikigai_masala-main
 pip install -r requirements-dev.txt
 
 # one-time in the Supabase SQL editor:
-#   scripts/create_tables.sql, create_history_tables.sql
+#   scripts/setup_all.sql   (master schema + migrations, idempotent)
 
 cat > .streamlit/secrets.toml <<EOF
 SUPABASE_URL = "https://<your-project>.supabase.co"

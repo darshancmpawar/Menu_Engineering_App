@@ -14,16 +14,16 @@ accept or supply it to correlate traces across logs.
 |---|---|---|
 | GET    | `/health` | Liveness + readiness — see [health response](#health-response) |
 | GET    | `/metrics` | In-process counter snapshot |
-| GET    | `/clients` | List client names |
-| POST   | `/plan` | Generate a plan |
-| POST   | `/regenerate` | Regenerate selected cells |
-| POST   | `/save` | Persist plan to history (overwrites prior rows for the same `(client, dates)`) |
+| GET    | `/clients` | List clients (`clients` = names; `clients_detail` = `[{name, city}]` for the city filter) |
+| POST   | `/plan` | Generate a plan (optional `counter_index` picks the counter; response carries `counter_mode` / `counter_count` / `counter_index` / `counter_name`) |
+| POST   | `/regenerate` | Regenerate selected cells (optional `counter_index`) |
+| POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme metadata for the editor UI |
-| GET    | `/client-config/<name>` | Read a client's config (returns `ETag: "<version>"`) |
-| PUT    | `/client-config/<name>` | Update a client's config (requires `version` body field or `If-Match` header) |
-| POST   | `/client` | Create a client |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`) |
+| GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `item_cooldown_days`, `counters` (returns `ETag: "<version>"`) |
+| PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `item_cooldown_days` / `counters` (requires `version` body field or `If-Match` header) |
+| POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `counters`) |
 | DELETE | `/client/<name>` | Delete a client |
 
 ---
@@ -81,11 +81,16 @@ Counter names follow Prometheus conventions so a future swap to
       "theme": "Mix of South + North",
       "day_type": "mix",
       "items": {
-        "welcome_drink": { "display_name": "Welcome Drink", "item": "masala_chaas(Y)", "item_base": "masala_chaas" },
-        "rice":          { "display_name": "Flavor Rice",   "item": "jeera_rice(W)",   "item_base": "jeera_rice" }
+        "welcome_drink": { "display_name": "Welcome Drink",  "item": "masala_chaas(Y)", "item_base": "masala_chaas", "is_nonveg": false },
+        "rice":          { "display_name": "Flavoured Rice",  "item": "jeera_rice(W)",   "item_base": "jeera_rice",   "is_nonveg": false },
+        "nonveg_main":   { "display_name": "Nonveg Main",     "item": "chicken_65(R)",   "item_base": "chicken_65",   "is_nonveg": true }
       }
     }
   },
+  "counter_mode": "single",
+  "counter_count": 1,
+  "counter_index": 0,
+  "counter_name": "Counter 1",
   "pool_warnings": [
     "Chinese Tuesday 01 Apr: only 4 veg dry items available, need 3"
   ],
@@ -96,9 +101,14 @@ Counter names follow Prometheus conventions so a future swap to
 }
 ```
 
-`rule_warnings` only appears when one or more soft rules failed during the
-winning solve attempt. Each entry carries `attempt_seed` so the failure can
-be reproduced.
+- `is_nonveg` on each item is derived from the ontology (`primary_protein`
+  plus the `is_egg_dish` flag); the UI and Excel export colour those dishes red.
+- The `counter_*` fields describe which cuisine counter this plan is for. For a
+  single-cuisine client `counter_mode` is `"single"` and `counter_count` is 1;
+  a multi-cuisine client is solved one counter at a time (`counter_index`).
+- `rule_warnings` only appears when one or more soft rules failed during the
+  winning solve attempt. Each entry carries `attempt_seed` so the failure can
+  be reproduced.
 
 ---
 
@@ -122,8 +132,8 @@ back, deterministically. Never invokes the solver.
       "theme": "Mix of South + North",
       "day_type": "mix",
       "items": {
-        "rice": { "display_name": "Flavor Rice",
-                  "item": "jeera_rice(Y)", "item_base": "jeera_rice" }
+        "rice": { "display_name": "Flavoured Rice",
+                  "item": "jeera_rice(Y)", "item_base": "jeera_rice", "is_nonveg": false }
       }
     }
   }
@@ -219,12 +229,16 @@ surface is fully subsumed by `/diagnose`.
 ## Save semantics
 
 `POST /api/v1/save` writes **overwrite** to `menu_history` and
-`week_signatures`: any rows previously stored for the same
-`(client_name, service_date)` (and `(client_name, week_start)` for
-signatures) are deleted before the new rows are inserted. Re-saving the
-same week therefore replaces the prior plan instead of accumulating.
-This is what makes the Generate → load-from-history flow deterministic:
-the latest save is always the canonical answer.
+`week_signatures`: the `menu_history` row for each `(client_name,
+service_date)` (one JSONB document per day) and the `week_signatures` row for
+`(client_name, week_start)` are replaced. Re-saving the same week therefore
+overwrites the prior plan instead of accumulating. This is what makes the
+Generate → load-from-history flow deterministic: the latest save is always the
+canonical answer.
+
+A single-cuisine save sends `week_plan` (a `{date: {slot: item}}` map); a
+multi-cuisine save sends `counters: [{name, week_plan}]` and the day's `menu`
+column stores a nested `{counter: {slot: item}}` document.
 
 The single-shot retry policy in `MenuApiClient.save()` is unchanged —
 even though server-side `/save` is now idempotent on retry, a popped
@@ -236,14 +250,18 @@ just bubbling the error and letting the user retry explicitly.
 ## Client-config concurrency
 
 ```
-GET  /api/v1/client-config/<name>      -> {version: 3, ...}   ETag: "3"
-PUT  /api/v1/client-config/<name>      body {"version": 3, "theme_map": {...}}
+GET  /api/v1/client-config/<name>      -> {version: 3, city: "Pune", counters: [...], ...}   ETag: "3"
+PUT  /api/v1/client-config/<name>      body {"version": 3, "counter_mode": "single", "counters": [...], "city": "Pune"}
   → 200 {version: 4, ...}   ETag: "4"
   → 409 {"current_version": 5, "error": "modified by another request..."}
 ```
 
 Either include `"version": N` in the body (preferred by the Streamlit UI)
 or send `If-Match: "N"` as a header — standard HTTP conditional-update idiom.
+The body may carry the full `counters` list (source of truth for the cuisine
+setup) and/or a `city`; a legacy per-field shape
+(`active_base_slots` / `slot_counts` / `theme_map`) is also accepted and
+applied to the primary counter.
 
 ---
 
@@ -283,7 +301,7 @@ Per-client overrides live in `data/configs/client_rules.json`.
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
 | `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north) |
-| `item_cooldown` | pre-filter | Ban items used within N days |
+| `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
 | `ricebread_gap` | pre-filter | Enforce N-day gap between rice-breads |
 | `nonveg_biryani_weekly` | pre-filter | ≤1 nonveg biryani per week |
 | `nonveg_dry_preference` | pre-filter | Prefer dry nonveg on certain days |
@@ -311,21 +329,21 @@ that failed and skipped — the solver never sees them.
 
 ### Supabase tables
 
+The schema is **four tables** — a client's whole cuisine config is one JSON
+document in `clients.counters`, not spread across normalized tables.
+
 | Table | Columns | Purpose |
 |---|---|---|
-| `clients` | `name (pk)`, `menu_category`, `version`, `created_at` | Client registry (version = optimistic-concurrency counter) |
-| `menu_categories` | `name (pk)`, `slots (text[])` | Base-slot templates |
-| `slot_count_overrides` | `client_name`, `slot`, `count` | e.g. `veg_dry = 2` |
-| `theme_overrides` | `client_name`, `day`, `theme` | Per-day theme override |
-| `app_settings` | `key`, `value` | Misc tunables |
-| `menu_history` | `service_date`, `slot`, `item_base`, `client_name` | Item-level history |
-| `week_signatures` | `week_start`, `week_signature`, `client_name` | Week-level hash |
+| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
+| `app_settings` | `key (pk)`, `value (jsonb)` | Misc tunables |
+| `menu_history` | `client_name`, `service_date`, `menu (jsonb)`, `created_at`; PK `(client_name, service_date)` | One row per day; `menu = {slot: item_base}` (single) or `{counter: {slot: item_base}}` (multi) |
+| `week_signatures` | `client_name`, `week_start`, `week_signature` | Week-level hash for week-signature cooldown |
 
 ### Slot expansion
 
 Base slot names (e.g. `veg_dry`) get expanded to indexed slot ids (`veg_dry__1`,
-`veg_dry__2`) based on `slot_count_overrides`. Rules operate on the expanded
-ids; `_base_slot()` strips the suffix when needed.
+`veg_dry__2`) based on the per-counter `slot_counts` in `clients.counters`.
+Rules operate on the expanded ids; `_base_slot()` strips the suffix when needed.
 
 ### Default theme schedule
 
@@ -337,7 +355,28 @@ ids; `_base_slot()` strips the suffix when needed.
 | Thursday | South Indian |
 | Friday | North Indian |
 
-Overridable per client via `theme_overrides`.
+Overridable per client (per counter) via the `theme_map` in `clients.counters`.
+Available themes: `mix`, `chinese`, `biryani`, `south`, `north`, `continental`
+(filtered off the `is_continental_*` flags), plus `chinese_continental` — a
+weekly-alternating meta-theme resolved by ISO-week parity (even → chinese, odd
+→ continental) before it reaches the pool filters.
+
+### Optional & combination categories
+
+Beyond the standard slots, three categories are **selectable but off by
+default** (`default_off_slots`):
+
+- `curd_rice` — a curd-rice station (pool built from the `is_curd_rice` flag).
+- `dal_rasam`, `sambar_rasam` — **combination categories**: one slot that
+  splits across the week by course_type. Over 5 days: `dal_rasam` = 3 dal + 2
+  rasam, `sambar_rasam` = 3 rasam + 2 sambar; longer weeks give the majority
+  variant proportionally more days.
+
+### Weekend service
+
+`clients.serve_weekends` (a plain bool, set in the editor). When true, plan
+date generation includes Saturday/Sunday instead of skipping them, so a 6-day
+plan from Monday covers Mon–Sat.
 
 ---
 
@@ -345,21 +384,20 @@ Overridable per client via `theme_overrides`.
 
 ### UI theme badges
 
-| Theme | Badge background |
-|---|---|
-| Mix | `#22543d` |
-| Chinese | `#7c2d12` |
-| Biryani | `#7f1d1d` |
-| South | `#1e3a5f` |
-| North | `#4c1d95` |
+Cuisine-theme badges use the Pulse light-theme tints defined in
+`ui/theme_tokens.py` (`PULSE_THEME_COLORS`), keyed by theme → (background tint,
+foreground): `mix`, `chinese`, `biryani`, `south`, `north`. Editing the palette
+in that one file re-colours both the planner and the customisation editor.
 
 ### Color suffixes
 
 Items carry a single-letter color code from the ontology: `R`, `G`, `B`, `Y`,
-`W`, `O`, `K`.
+`W`, `O`, `K`. Slot display labels come from `DISPLAY_SLOT_NAME`
+(`rice` → "Flavoured Rice", `bread` → "Indian Bread", etc.).
 
-### CSV download
+### Excel download
 
-The **Download CSV** button exports a plain-text CSV, one slot per row, one
-weekday per column. Color suffixes are stripped; slot names are display-
-formatted (`veg_dry` → `Veg Dry`).
+The **Download Excel** button exports an `.xlsx` workbook — one sheet per
+cuisine counter, each with a bold, filled, bordered header row, full black cell
+borders, and non-veg dishes in red. Color suffixes are stripped and slot names
+are display-formatted. The file is named `menu_<client>_<date-range>.xlsx`.

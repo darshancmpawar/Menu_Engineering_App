@@ -10,7 +10,7 @@ this file has the full story.
 
 - Python 3.10+
 - A Supabase project (URL + service-role key)
-- The two schema scripts applied once (see [Supabase schema](#3-supabase-schema))
+- The schema applied once (see [Supabase schema](#3-supabase-schema))
 - Secrets: `SUPABASE_URL`, `SUPABASE_KEY`
 
 ---
@@ -27,11 +27,26 @@ pip install -r requirements-dev.txt   # runtime + pytest + ruff + bandit
 
 ## 3. Supabase schema
 
-In the Supabase SQL editor, run each of these once. Re-running is idempotent
-(all `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`):
+The whole schema is **four tables**: `clients`, `app_settings`, `menu_history`,
+`week_signatures`. A client's entire cuisine config is one JSON document in
+`clients.counters` (plus a `city` column); menu history is one JSON row per
+`(client, service_date)`.
+
+In the Supabase SQL editor, run the master script once. It's idempotent
+(`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`) and also migrates an
+older normalized database (folds the legacy `menu_categories` /
+`slot_count_overrides` / `theme_overrides` tables into `clients.counters` and
+reshapes the old per-dish `menu_history`):
 
 ```
-scripts/create_tables.sql          clients, menu_categories, slot_count_overrides, theme_overrides, app_settings
+scripts/setup_all.sql   master schema + migrations (supersedes the two files below)
+```
+
+For a brand-new database you can instead run the two component files
+(same result, no migration steps):
+
+```
+scripts/create_tables.sql          clients, app_settings
 scripts/create_history_tables.sql  menu_history, week_signatures
 ```
 
