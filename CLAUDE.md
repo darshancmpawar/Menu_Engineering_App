@@ -19,7 +19,8 @@ ikigai_masala-main/          active project (Indian menu planner)
 ├── scripts/                 Supabase seeders + SQL schema
 ├── tests/                   pytest suite
 ├── pytest.ini, requirements.txt
-└── ARCHITECTURE.md, QUICK_START.md, USAGE_GUIDE.md, OUTPUT_FORMAT.md
+├── README.md                overview + quick start
+└── docs/                    setup.md, architecture.md, api.md, operations.md
 ```
 
 ---
@@ -227,7 +228,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 2. **Two-phase rules**: pre-filter eliminates items before the model is built (fast), then `apply()` adds CP-SAT constraints. When writing a new rule, decide which phase fits.
 3. **No config cache**: `ClientConfigLoader` reads Supabase on every call — live edits, no restart. Don't add caching without thinking through invalidation.
 4. **Dynamic worker allocation** in `api/concurrency.py`: 1 active solve → 9 workers; 2 active → 5 each. Tuned for ~1 GB RAM.
-5. **Theme dispatch**: global weekday→theme map, per-client overridable via `theme_overrides` table. Solver honors it via `theme_*` rules.
+5. **Theme dispatch**: global weekday→theme map, per-client overridable via each counter's `theme_map` in `clients.counters`. Solver honors it via `theme_*` rules.
 6. **History split**: `menu_history` is one JSON document per client-day (`menu={slot:item}`), exploded to item-level in memory for cooldowns; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.

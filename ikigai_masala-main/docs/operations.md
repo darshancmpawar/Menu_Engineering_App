@@ -48,7 +48,7 @@ A fourth job — `slow-tests` — runs only on push to `main` and manual
 The `pytest` CI job enforces `--cov-fail-under=82`. Configuration lives in
 `.coveragerc`: measured surface is `api/`, `src/`, and `ui/`, and the
 Streamlit-UI modules that can't be unit-tested (`ui/styles.py`,
-`customisation/*`, `app.py`) are omitted. Current baseline ≈ 83.8%.
+`customisation/*`, `app.py`) are omitted. Current baseline ≈ 83.9%.
 
 Local runs stay plain `pytest` (no coverage) for fast iteration. Measure
 coverage locally the same way CI does:
@@ -100,11 +100,11 @@ freshness:
   `backend_url` — the underlying `requests.Session` (and its connection
   pool) survives across Streamlit reruns instead of being torn down on
   every widget interaction.
-- `list_clients()` is cached with `@st.cache_data` for 60 seconds so
-  the sidebar's client picker doesn't hit the API on every rerun. The
-  customisation editor's create / delete handlers call
-  `st.cache_data.clear()` so a new or removed client shows up
-  immediately rather than 60s later.
+- the client list (`list_clients_with_city()`, which also feeds the
+  sidebar's city filter) is cached with `@st.cache_data` for 60 seconds
+  so the picker doesn't hit the API on every rerun. The customisation
+  editor's create / delete handlers call `st.cache_data.clear()` so a new
+  or removed client shows up immediately rather than 60s later.
 
 If a stale picker ever shows up in production despite this, the cause
 is almost always a mutation that bypassed `customisation/main.py` —
@@ -125,7 +125,7 @@ add a `st.cache_data.clear()` call there or just wait 60s.
 | 503 `Server at capacity` under load | `solver_gate` queue full; this is the intended backpressure | Retry after a few seconds; clients with the built-in retry (`MenuApiClient`) handle this automatically |
 | 504 `Request timed out waiting in queue` | Request waited > `QUEUE_TIMEOUT` (default 300s) | Retry; if it persists the solver is stuck — restart the process |
 | 409 on `PUT /client-config` | Another editor changed the same client between your GET and PUT | Refresh the editor (the Streamlit UI does this on save failure) and re-apply |
-| `Failed to load config for X: Internal server error` in the customisation editor | Logs say `clients.version column missing — falling back to version=1` | Re-run `scripts/create_tables.sql` in the Supabase SQL editor — the Phase 2 #14 migration adds `clients.version`. The editor stays usable in fallback mode, but optimistic-concurrency on PUT is disabled until the column exists. |
+| `Failed to load config for X: Internal server error` in the customisation editor | Logs say `clients.version column missing — falling back to version=1` (or a `clients.counters` / `clients.city` column-missing warning) | Re-run `scripts/setup_all.sql` in the Supabase SQL editor — it adds the `version`, `counters`, and `city` columns. The editor stays usable in fallback mode, but optimistic-concurrency on PUT (and saved cities) are disabled until the columns exist. |
 | Any `Internal server error` toast in the UI | Generic catch-all wrapped a real exception | Read the response body — every 500 carries a `request_id`. Grep the access log (`logger="api.app", msg="http_request"`) for that id; the matching ERROR line a few rows earlier is the real exception with a traceback. |
 | `Widening history lookback from 45 to N days` in logs | A per-client rule's `cooldown_days` > 30 triggered the dynamic widening | Informational. Keeps the Supabase window ≥ the longest rule cooldown. |
 
