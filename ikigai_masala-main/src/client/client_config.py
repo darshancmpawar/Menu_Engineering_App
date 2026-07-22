@@ -33,6 +33,8 @@ from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
     DEFAULT_OFF_SLOTS,
+    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
+    DISPLAY_SLOT_NAME,
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
@@ -604,11 +606,26 @@ class ClientConfigLoader:
         if len(counters) > MAX_COUNTERS:
             raise ValueError(f"At most {MAX_COUNTERS} counters are allowed.")
         for i, c in enumerate(counters):
-            if not c.get('categories'):
+            cats = c.get('categories') or []
+            if not cats:
                 raise ValueError(
                     f"Counter {i + 1} ('{c.get('name', '')}') needs at least "
                     "one food category."
                 )
+            # Mutually exclusive slot groups (e.g. plain curd vs curd/raita —
+            # both are the yogurt side, a counter serves only one).
+            cats_set = set(cats)
+            for group in MUTUALLY_EXCLUSIVE_SLOT_GROUPS:
+                clash = group & cats_set
+                if len(clash) > 1:
+                    labels = ' and '.join(
+                        DISPLAY_SLOT_NAME.get(s, s) for s in sorted(clash)
+                    )
+                    raise ValueError(
+                        f"Counter {i + 1} ('{c.get('name', '')}') selects "
+                        f"{labels}, but these are mutually exclusive — pick "
+                        "only one."
+                    )
 
     def _counters_from_inputs(
         self,

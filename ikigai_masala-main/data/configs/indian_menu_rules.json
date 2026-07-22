@@ -52,6 +52,12 @@
       "type": "welcome_drink_color"
     },
     {
+      "name": "buttermilk_twice_weekly",
+      "type": "welcome_drink_buttermilk",
+      "count": 2,
+      "non_consecutive": true
+    },
+    {
       "name": "no_repeat_weeks",
       "type": "week_signature_cooldown",
       "cooldown_days": 30

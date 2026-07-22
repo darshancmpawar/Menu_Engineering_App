@@ -24,7 +24,7 @@ from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
-    COMBO_CATEGORIES, combo_minority_count,
+    COMBO_CATEGORIES, combo_minority_count, REPEATABLE_SLOTS,
 )
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
@@ -674,7 +674,11 @@ class MenuSolver:
                 x_vars.append(var)
                 cand_rows.append(row)
 
-                item_to_vars.setdefault(item_base, []).append(var)
+                # Repeatable slots (e.g. the plain-curd station) are exempt
+                # from the unique-items constraint: don't track their vars so
+                # the same item may appear on every day.
+                if base not in REPEATABLE_SLOTS:
+                    item_to_vars.setdefault(item_base, []).append(var)
 
                 # Premium tracking
                 if self.cfg.premium_flag_col and int(row.get(self.cfg.premium_flag_col, 0)) == 1:

@@ -304,6 +304,7 @@ Per-client overrides live in `data/configs/client_rules.json`.
 | `curd_side` | hard | Fill the curd-side slot |
 | `premium` | hard | Per-horizon min / max for premium items |
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
+| `welcome_drink_buttermilk` | hard | Buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
 | `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north) |
 | `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
@@ -371,6 +372,10 @@ weekly-alternating meta-theme resolved by ISO-week parity (even → chinese, odd
 Beyond the standard slots, several categories are **selectable but off by
 default** (`default_off_slots`):
 
+- `curd` — a plain-curd station (pool built from the `is_plain_curd` flag).
+  Repeatable: exempt from unique-items and cooldown, so the same plain curd may
+  recur every day. Mutually exclusive with `curd_side` (Curd / Raita) — a
+  counter serves one yogurt side or the other, never both.
 - `curd_rice` — a curd-rice station (pool built from the `is_curd_rice` flag).
 - `dal_rasam`, `sambar_rasam`, `dal_sambar` — **combination categories**: one
   slot that splits across the week by course_type. Over 5 days: `dal_rasam` = 3

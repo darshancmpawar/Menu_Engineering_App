@@ -160,3 +160,46 @@ def test_combination_category_splits_week(cleaned_menu, pools, production_rules)
                 for d in dates]
     counts = Counter(variants)
     assert counts.get('dal') == 3 and counts.get('rasam') == 2, counts
+
+
+@pytest.mark.slow
+def test_dal_sambar_combo_splits_week(cleaned_menu, pools, production_rules):
+    """A dal/sambar combination slot resolves to 3 dal + 2 sambar over a
+    5-day week (dal is the majority variant)."""
+    from collections import Counter
+    slots = ['dal_sambar', 'rice', 'veg_gravy', 'veg_dry', 'starter', 'dessert']
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts={s: 1 for s in slots}, const_slots=[],
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    course_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['course_type']))
+    from src.solver._helpers import strip_color_suffix
+    variants = [course_by_item.get(strip_color_suffix(plan[d]['dal_sambar']))
+                for d in dates]
+    counts = Counter(variants)
+    assert counts.get('dal') == 3 and counts.get('sambar') == 2, counts
+
+
+@pytest.mark.slow
+def test_buttermilk_exactly_twice_non_consecutive(
+    cleaned_menu, pools, production_rules,
+):
+    """The welcome-drink slot is buttermilk on exactly 2 non-consecutive days
+    of a 5-day week (solver picks which)."""
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    from src.solver._helpers import strip_color_suffix
+    bm = dict(zip(cleaned_menu['item'], cleaned_menu['is_buttermilk']))
+    flags = [int(bm.get(strip_color_suffix(plan[d]['welcome_drink']), 0)) for d in dates]
+    positions = [i for i, f in enumerate(flags) if f]
+    assert len(positions) == 2, f"expected 2 buttermilk days, got {positions}"
+    assert all(b - a > 1 for a, b in zip(positions, positions[1:])), (
+        f"buttermilk days must not be consecutive: {positions}"
+    )
