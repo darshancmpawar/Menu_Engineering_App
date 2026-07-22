@@ -92,7 +92,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `welcome_drink_color_menu_rule.py` | hard | welcome drink color |
 | `welcome_drink_buttermilk_rule.py` | hard | buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day_menu_rule.py` | soft | prefer theme-matched items per day |
-| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE` |
+| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE`. **Cuisine exclusivity**: chinese/continental dishes appear ONLY on their own theme day, and only for cuisine-main slots (`_CUISINE_MAIN_SLOTS` = rice/veg_gravy/veg_dry/starter/nonveg_main); universal slots keep incidental tags. On a continental day the continental veg is the **gravy** — `veg_dry` is never continental (stays a normal Indian dish), so a continental day = continental rice/starter/nonveg/gravy + one Indian veg_dry |
 | `theme_fallback_penalty_rule.py` | soft | penalty when theme cannot be met |
 | `theme_starter_preference_rule.py` | soft | bonus for theme-matching starters |
 | `item_cooldown_menu_rule.py` | pre-filter | ban recently used items |
@@ -100,7 +100,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `ricebread_gap_menu_rule.py` | pre-filter | enforce N-day gap |
 | `nonveg_biryani_weekly_rule.py` | pre-filter | ≤1 nonveg biryani/week |
 | `nonveg_dry_preference_rule.py` | pre-filter | prefer dry nonveg certain days |
-| `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient`) |
+| `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient` **and** `primary_protein` — e.g. a mushroom ban catches both fields) |
 | `item_frequency_rule.py` | CP-SAT | per-client weekly frequency cap via selector (flag/sub_category/item/key_ingredient) |
 | `slot_day_restriction_rule.py` | skip-cells | per-client: skip a slot on certain weekdays (e.g. no nonveg_main on Tue/Thu) |
 
@@ -112,7 +112,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `excel_reader.py` | `ExcelReader.read` |
 | `column_mapper.py` | `ColumnMapper.apply` (alias detection, derived `key_eff`) |
 | `data_cleanser.py` | `DataCleanser.clean` |
-| `pool_builder.py` | `PoolBuilder.build_pools`, `_base_slot`, `_expand_slots_in_order` (expands `veg_dry` → `veg_dry__1, veg_dry__2`) |
+| `pool_builder.py` | `PoolBuilder.build_pools`, `_base_slot`, `_expand_slots_in_order` (expands `veg_dry` → `veg_dry__1, veg_dry__2`), `_nonveg_mask` (build_pools drops non-veg items from every slot except `nonveg_main`) |
 | `theme_filter.py` | `ThemeFilter` |
 | `client_pool_filter.py` | `parse_client_pools`, `get_active_pools`, `item_is_eligible`, `filter_eligible`, `available_pool_tokens` — F5 client-based item-pool eligibility (pure) |
 
@@ -128,7 +128,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - Tables: `menu_history` — **one JSONB row per (client, service_date)**, `menu = {slot: item_base}` (PK on `(client_name, service_date)`); cooldown readers `explode_history_rows()` it into per-item rows in memory. `week_signatures` — weekly hash for week-level cooldowns.
 
 ### 4.6 `src/` top-level
-- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DEFAULT_OFF_SLOTS` (selectable-but-off-by-default: `curd_rice` + combos), `COMBO_CATEGORIES` + `combo_minority_count` (dal_rasam/sambar_rasam/dal_sambar day-split), `DISPLAY_SLOT_NAME` (rice→"Flavoured Rice", bread→"Indian Bread", curd_rice→"Curd Rice", dal_rasam→"Dal / Rasam"). Every combo key must also be in `EXEMPT_FROM_CUISINE` (its minority component is often a different cuisine that would otherwise be theme-filtered off on off-theme days).
+- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DEFAULT_OFF_SLOTS` (selectable-but-off-by-default: `curd`/`curd_rice` + combos), `COMBO_CATEGORIES` + `combo_minority_count` (dal_rasam/sambar_rasam/dal_sambar day-split), `DISPLAY_SLOT_NAME`, `DISPLAY_SLOT_ORDER` (single canonical order for the config editor + rendered menu — `slot_sort_key` and `slot_editor` both rank by it; welcome_drink→…→dessert→other veg→**nonveg_main last**, white_rice interleaved after rice), `NONVEG_PROTEINS`/`NONVEG_SLOT` (non-veg dishes may appear only in `nonveg_main`). Every combo key must also be in `EXEMPT_FROM_CUISINE` (its minority component is often a different cuisine that would otherwise be theme-filtered off on off-theme days).
 - `db.py` — `get_supabase()` (thread-safe singleton).
 
 ---

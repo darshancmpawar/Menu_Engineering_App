@@ -23,7 +23,9 @@ from src.constants import BASE_SLOT_NAMES
 from ..preprocessor.column_mapper import _norm_str
 
 
-_SELECTOR_KEYS = frozenset({'flag', 'sub_category', 'item', 'key_ingredient'})
+_SELECTOR_KEYS = frozenset({
+    'flag', 'sub_category', 'item', 'key_ingredient', 'primary_protein',
+})
 
 
 class ItemFrequencyRule(BaseMenuRule):
@@ -40,7 +42,9 @@ class ItemFrequencyRule(BaseMenuRule):
         }
 
     Selector must contain exactly one key from:
-    ``flag``, ``sub_category``, ``item``, ``key_ingredient``.
+    ``flag``, ``sub_category``, ``item``, ``key_ingredient``, ``primary_protein``
+    (the last lets a client cap a protein — paneer / egg / chicken / soy — by
+    its ``primary_protein`` value).
     """
 
     def __init__(self, rule_config: Dict[str, Any]):
@@ -107,6 +111,7 @@ class ItemFrequencyRule(BaseMenuRule):
             'sub_category': 'sub_category',
             'item': 'item',
             'key_ingredient': 'key_ingredient',
+            'primary_protein': 'primary_protein',
         }
         col = col_map.get(self.sel_kind, '')
         return _norm_str(str(row.get(col, ''))) == self.sel_value
@@ -224,6 +229,7 @@ class ItemFrequencyRule(BaseMenuRule):
             'sub_category': 'sub_category',
             'item': 'item',
             'key_ingredient': 'key_ingredient',
+            'primary_protein': 'primary_protein',
         }
         col = col_map.get(self.sel_kind, '')
         if not col or col not in pool.columns:

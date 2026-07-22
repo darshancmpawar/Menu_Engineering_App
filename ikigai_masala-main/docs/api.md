@@ -322,7 +322,7 @@ Stored per client in `data/configs/client_rules.json`, loaded fresh on every req
 
 | Rule | Kind | Role |
 |---|---|---|
-| `ingredient_ban` | pre-filter | Case-insensitive ban by `key_ingredient` |
+| `ingredient_ban` | pre-filter | Case-insensitive ban by `key_ingredient` **and** `primary_protein` (either field matching the banned token drops the item) |
 | `item_frequency` | hard | Weekly frequency cap by flag / sub-category / item / ingredient |
 | `slot_day_restriction` | skip-cells | Skip a slot on specific weekdays (e.g. no nonveg on Tue/Thu) |
 

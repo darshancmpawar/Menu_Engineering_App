@@ -6,7 +6,7 @@ import html
 import re
 from typing import Any, Dict, Set, Tuple
 
-from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES
+from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES, DISPLAY_SLOT_ORDER  # noqa: F401
 from ui.theme_tokens import ITEM_COLOR_MAP, PULSE_THEME_COLORS
 
 
@@ -126,9 +126,13 @@ def flatten_api_solution(
 
 
 def slot_sort_key(slot_id: str) -> int:
-    """Return sort index for display ordering."""
+    """Return sort index for display ordering (menu table + Excel export).
+
+    Ranks by the canonical DISPLAY_SLOT_ORDER so constant slots (e.g. white
+    rice) interleave with base slots and non-veg sorts last.
+    """
     base = slot_id.split("__")[0] if "__" in slot_id else slot_id
     try:
-        return BASE_SLOT_NAMES.index(base)
+        return DISPLAY_SLOT_ORDER.index(base)
     except ValueError:
         return 999
