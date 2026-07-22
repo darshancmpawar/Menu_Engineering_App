@@ -174,12 +174,14 @@ _BIRYANI_FLAG_MAP = {
 
 # Continental flag map — mirrors the Chinese map but keyed off the
 # ``is_continental_*`` columns in the ontology.
+# Note: veg_dry is intentionally absent — on a continental day the continental
+# veg is served as the GRAVY, and the veg_dry slot stays a normal (Indian)
+# dish. So veg_dry is never narrowed to continental.
 _CONTINENTAL_FLAG_MAP = {
     'rice': 'is_continental_carb',
     'veg_gravy': 'is_continental_veg_gravy',
     'nonveg_main': 'is_continental_chicken_gravy',
     'starter': 'is_continental_starter',
-    'veg_dry': 'is_continental_veg_dry',
 }
 
 
@@ -187,8 +189,10 @@ _CONTINENTAL_FLAG_MAP = {
 # exclusivity confines those cuisines to their own theme day ONLY for these
 # slots; universal slots (soup, salad, welcome_drink, dal, …) keep their
 # incidentally-tagged continental items on any day so their variety isn't
-# gutted (e.g. most salads are tagged continental).
-_CUISINE_MAIN_SLOTS = set(_CHINESE_FLAG_MAP) | set(_CONTINENTAL_FLAG_MAP)
+# gutted (e.g. most salads are tagged continental). Listed explicitly (not
+# derived from the flag maps) so veg_dry stays covered even though it is
+# deliberately excluded from _CONTINENTAL_FLAG_MAP.
+_CUISINE_MAIN_SLOTS = {'rice', 'veg_gravy', 'veg_dry', 'starter', 'nonveg_main'}
 
 
 def _chinese_side_mask(pool: pd.DataFrame) -> pd.Series:
@@ -272,9 +276,14 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return pool
         cf = pool['cuisine_family'].astype(str).str.strip().str.lower()
         drop = pd.Series(False, index=pool.index)
+        # Chinese dishes only on chinese days.
         if day_type != 'chinese':
             drop = drop | (cf == 'chinese')
-        if day_type != 'continental':
+        # Continental dishes only on continental days — AND never in veg_dry:
+        # on a continental day the continental veg is the gravy, and the veg_dry
+        # slot stays a normal (Indian) dish. So one continental veg + one
+        # normal veg, with continental defaulting to the gravy.
+        if day_type != 'continental' or base_slot == 'veg_dry':
             drop = drop | (cf == 'continental')
         kept = pool[~drop]
         return kept if len(kept) > 0 else pool

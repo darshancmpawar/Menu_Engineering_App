@@ -92,7 +92,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `welcome_drink_color_menu_rule.py` | hard | welcome drink color |
 | `welcome_drink_buttermilk_rule.py` | hard | buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day_menu_rule.py` | soft | prefer theme-matched items per day |
-| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE`. **Cuisine exclusivity**: chinese/continental dishes appear ONLY on their own theme day, and only for cuisine-main slots (`_CUISINE_MAIN_SLOTS` = rice/veg_gravy/veg_dry/starter/nonveg_main); universal slots keep incidental tags |
+| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE`. **Cuisine exclusivity**: chinese/continental dishes appear ONLY on their own theme day, and only for cuisine-main slots (`_CUISINE_MAIN_SLOTS` = rice/veg_gravy/veg_dry/starter/nonveg_main); universal slots keep incidental tags. On a continental day the continental veg is the **gravy** — `veg_dry` is never continental (stays a normal Indian dish), so a continental day = continental rice/starter/nonveg/gravy + one Indian veg_dry |
 | `theme_fallback_penalty_rule.py` | soft | penalty when theme cannot be met |
 | `theme_starter_preference_rule.py` | soft | bonus for theme-matching starters |
 | `item_cooldown_menu_rule.py` | pre-filter | ban recently used items |

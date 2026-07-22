@@ -47,6 +47,16 @@ class TestCuisineExclusivity:
         assert 'penne_arrabiata' in set(out['item'])
         assert 'gobi_manchurian' not in set(out['item'])   # chinese still dropped
 
+    def test_veg_dry_never_continental_even_on_continental_day(self):
+        # #4b: on a continental day the continental veg is the GRAVY; veg_dry
+        # stays a normal (Indian) dish, so continental is dropped from veg_dry
+        # even on the continental day.
+        out = self._rule()._exclude_offtheme_cuisines(self._pool(), 'veg_dry', 'continental')
+        items = set(out['item'])
+        assert 'penne_arrabiata' not in items          # continental dropped
+        assert 'gobi_manchurian' not in items          # chinese dropped
+        assert 'paneer_tikka_masala' in items          # Indian stays
+
     def test_universal_slot_not_restricted(self):
         # salad is not a cuisine-main slot -> continental salads stay any day
         out = self._rule()._exclude_offtheme_cuisines(self._pool(), 'salad', 'south')
