@@ -57,6 +57,7 @@ class TestPoolBuilder:
         sambar_items = set(pools['sambar']['item'])
         assert set(pools['dal_rasam']['item']) == dal_items | rasam_items
         assert set(pools['sambar_rasam']['item']) == rasam_items | sambar_items
+        assert set(pools['dal_sambar']['item']) == dal_items | sambar_items
 
     def test_sambar_rasam_split(self):
         df = _make_ontology_df()

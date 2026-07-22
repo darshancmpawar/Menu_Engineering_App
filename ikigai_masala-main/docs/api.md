@@ -368,14 +368,16 @@ weekly-alternating meta-theme resolved by ISO-week parity (even → chinese, odd
 
 ### Optional & combination categories
 
-Beyond the standard slots, three categories are **selectable but off by
+Beyond the standard slots, several categories are **selectable but off by
 default** (`default_off_slots`):
 
 - `curd_rice` — a curd-rice station (pool built from the `is_curd_rice` flag).
-- `dal_rasam`, `sambar_rasam` — **combination categories**: one slot that
-  splits across the week by course_type. Over 5 days: `dal_rasam` = 3 dal + 2
-  rasam, `sambar_rasam` = 3 rasam + 2 sambar; longer weeks give the majority
-  variant proportionally more days.
+- `dal_rasam`, `sambar_rasam`, `dal_sambar` — **combination categories**: one
+  slot that splits across the week by course_type. Over 5 days: `dal_rasam` = 3
+  dal + 2 rasam, `sambar_rasam` = 3 rasam + 2 sambar, `dal_sambar` = 3 dal + 2
+  sambar (dal majority); longer weeks give the majority variant proportionally
+  more days. Each combo is exempt from cuisine/theme filtering
+  (`EXEMPT_FROM_CUISINE`) so its minority component survives on off-theme days.
 
 ### Weekend service
 
