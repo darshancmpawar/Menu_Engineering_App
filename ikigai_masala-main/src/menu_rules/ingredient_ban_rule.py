@@ -45,13 +45,25 @@ class IngredientBanRule(BaseMenuRule):
             and len(self.banned) > 0
         )
 
+    # Fields checked for a banned token. An ingredient can be either the
+    # dish's key ingredient OR its primary protein (e.g. mushroom lives in
+    # both key_ingredient and primary_protein), so a ban must match either.
+    _BAN_FIELDS = ('key_ingredient', 'primary_protein')
+
+    def _ban_mask(self, pool: pd.DataFrame) -> pd.Series:
+        mask = pd.Series(False, index=pool.index)
+        for col in self._BAN_FIELDS:
+            if col in pool.columns:
+                vals = pool[col].astype(str).str.strip().str.lower()
+                mask = mask | vals.isin(self.banned)
+        return mask
+
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
                         filter_context: Dict[str, Any]) -> pd.DataFrame:
-        if len(pool) == 0 or 'key_ingredient' not in pool.columns or not self.banned:
+        if len(pool) == 0 or not self.banned:
             return pool
-        ki = pool['key_ingredient'].astype(str).str.strip().str.lower()
-        return pool[~ki.isin(self.banned)]
+        return pool[~self._ban_mask(pool)]
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -75,10 +87,9 @@ class IngredientBanRule(BaseMenuRule):
             pool = ctx.pools.get(base)
             if pool is None or len(pool) == 0:
                 continue
-            if 'key_ingredient' not in pool.columns:
+            if not any(c in pool.columns for c in self._BAN_FIELDS):
                 continue
-            ki = pool['key_ingredient'].astype(str).str.strip().str.lower()
-            mask = ki.isin(self.banned)
+            mask = self._ban_mask(pool)
             ban_count = int(mask.sum())
             if ban_count == 0:
                 continue

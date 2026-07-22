@@ -92,7 +92,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `welcome_drink_color_menu_rule.py` | hard | welcome drink color |
 | `welcome_drink_buttermilk_rule.py` | hard | buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day_menu_rule.py` | soft | prefer theme-matched items per day |
-| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE` |
+| `theme_slot_filter_rule.py` | pre-filter | drop non-theme items on theme-heavy days (chinese/**continental**/biryani/south/north); config `exempt_slots` unioned with `EXEMPT_FROM_CUISINE`. **Cuisine exclusivity**: chinese/continental dishes appear ONLY on their own theme day, and only for cuisine-main slots (`_CUISINE_MAIN_SLOTS` = rice/veg_gravy/veg_dry/starter/nonveg_main); universal slots keep incidental tags |
 | `theme_fallback_penalty_rule.py` | soft | penalty when theme cannot be met |
 | `theme_starter_preference_rule.py` | soft | bonus for theme-matching starters |
 | `item_cooldown_menu_rule.py` | pre-filter | ban recently used items |
@@ -100,7 +100,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `ricebread_gap_menu_rule.py` | pre-filter | enforce N-day gap |
 | `nonveg_biryani_weekly_rule.py` | pre-filter | ≤1 nonveg biryani/week |
 | `nonveg_dry_preference_rule.py` | pre-filter | prefer dry nonveg certain days |
-| `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient`) |
+| `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient` **and** `primary_protein` — e.g. a mushroom ban catches both fields) |
 | `item_frequency_rule.py` | CP-SAT | per-client weekly frequency cap via selector (flag/sub_category/item/key_ingredient) |
 | `slot_day_restriction_rule.py` | skip-cells | per-client: skip a slot on certain weekdays (e.g. no nonveg_main on Tue/Thu) |
 

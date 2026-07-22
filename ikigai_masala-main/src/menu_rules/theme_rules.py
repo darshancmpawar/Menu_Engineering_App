@@ -183,6 +183,14 @@ _CONTINENTAL_FLAG_MAP = {
 }
 
 
+# Slots where a Chinese / Continental item is a "main" menu dish. Cuisine
+# exclusivity confines those cuisines to their own theme day ONLY for these
+# slots; universal slots (soup, salad, welcome_drink, dal, …) keep their
+# incidentally-tagged continental items on any day so their variety isn't
+# gutted (e.g. most salads are tagged continental).
+_CUISINE_MAIN_SLOTS = set(_CHINESE_FLAG_MAP) | set(_CONTINENTAL_FLAG_MAP)
+
+
 def _chinese_side_mask(pool: pd.DataFrame) -> pd.Series:
     """Detect Chinese-appropriate veg_dry items via text heuristics."""
     text = (pool['item'].astype(str) + ' ' +
@@ -231,6 +239,12 @@ class ThemeSlotFilterRule(BaseMenuRule):
         if len(pool) == 0:
             return pool
 
+        # Cuisine exclusivity: Chinese / Continental main dishes appear ONLY on
+        # their own theme day. Applied before the day-specific narrowing.
+        pool = self._exclude_offtheme_cuisines(pool, base_slot, day_type)
+        if len(pool) == 0:
+            return pool
+
         cfg = filter_context.get('cfg')
 
         if day_type == 'chinese':
@@ -243,6 +257,27 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return self._filter_cuisine(pool, base_slot, day_type, cfg)
         # 'mix', 'holiday', 'normal' — no theme filtering
         return pool
+
+    def _exclude_offtheme_cuisines(self, pool: pd.DataFrame, base_slot: str,
+                                   day_type: str) -> pd.DataFrame:
+        """Drop Chinese / Continental dishes on days that aren't their theme,
+        for cuisine-main slots only. `chinese_continental` is already resolved
+        to `chinese` or `continental` by the time day_type reaches here, so an
+        odd-week continental day keeps continental and drops chinese, etc.
+
+        Falls back to the unfiltered pool if the exclusion would empty the slot,
+        so a thin client pool can't be forced INFEASIBLE by this rule.
+        """
+        if base_slot not in _CUISINE_MAIN_SLOTS or 'cuisine_family' not in pool.columns:
+            return pool
+        cf = pool['cuisine_family'].astype(str).str.strip().str.lower()
+        drop = pd.Series(False, index=pool.index)
+        if day_type != 'chinese':
+            drop = drop | (cf == 'chinese')
+        if day_type != 'continental':
+            drop = drop | (cf == 'continental')
+        kept = pool[~drop]
+        return kept if len(kept) > 0 else pool
 
     def _filter_chinese(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)
