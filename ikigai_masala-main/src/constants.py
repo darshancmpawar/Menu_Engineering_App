@@ -16,7 +16,8 @@ SLOT_SUFFIX_SEP = '__'
 
 BASE_SLOT_NAMES: List[str] = [
     'welcome_drink', 'soup', 'salad', 'starter', 'bread', 'rice',
-    'healthy_rice', 'dal', 'sambar', 'rasam', 'dal_rasam', 'sambar_rasam',
+    'healthy_rice', 'dal', 'sambar', 'rasam',
+    'dal_rasam', 'sambar_rasam', 'dal_sambar',
     'veg_gravy', 'veg_dry', 'nonveg_main', 'curd_side', 'curd_rice', 'dessert',
 ]
 
@@ -29,6 +30,7 @@ CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
 COMBO_CATEGORIES: Dict[str, tuple] = {
     'dal_rasam':    ('dal', 'rasam'),     # 3 dal + 2 rasam over 5 days
     'sambar_rasam': ('rasam', 'sambar'),  # 3 rasam + 2 sambar over 5 days
+    'dal_sambar':   ('dal', 'sambar'),    # 3 dal + 2 sambar over 5 days (dal majority)
 }
 
 # Categories that are selectable per client but OFF by default (a fresh client
@@ -56,7 +58,8 @@ CONSTANT_ITEMS: Dict[str, str] = {
 }
 
 EXEMPT_FROM_CUISINE: Set[str] = {
-    'welcome_drink', 'dal', 'sambar', 'rasam', 'dal_rasam', 'sambar_rasam',
+    'welcome_drink', 'dal', 'sambar', 'rasam',
+    'dal_rasam', 'sambar_rasam', 'dal_sambar',
     'starter', 'soup', 'salad', 'healthy_rice', 'curd_rice',
 }
 
@@ -93,6 +96,7 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'curd_rice': 'Curd Rice',
     'dal_rasam': 'Dal / Rasam',
     'sambar_rasam': 'Sambar / Rasam',
+    'dal_sambar': 'Dal / Sambar',
     'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'Chutney',

@@ -25,6 +25,36 @@ class TestComboSplit:
         got = [_combo_day_variant('sambar_rasam', di, 5) for di in range(5)]
         assert got == ['rasam', 'rasam', 'rasam', 'sambar', 'sambar']
 
+    def test_dal_sambar_variant_by_day(self):
+        # dal is the majority: dal on days 0-2, sambar on days 3-4.
+        got = [_combo_day_variant('dal_sambar', di, 5) for di in range(5)]
+        assert got == ['dal', 'dal', 'dal', 'sambar', 'sambar']
+
+
+class TestComboRegistration:
+    """Guards that every combination category is fully wired up. A combo that
+    is registered in COMBO_CATEGORIES but missing from any of these sets fails
+    silently at solve time (e.g. its minority pool empties on off-theme days
+    and the split collapses to all-majority)."""
+
+    def test_every_combo_is_cuisine_exempt(self):
+        # A combo's minority component is often a different cuisine (South
+        # sambar/rasam in a North week). It must be exempt from theme/cuisine
+        # filtering or the minority pool empties on off-theme days.
+        from src.constants import COMBO_CATEGORIES, EXEMPT_FROM_CUISINE
+        for combo in COMBO_CATEGORIES:
+            assert combo in EXEMPT_FROM_CUISINE, f"{combo} not cuisine-exempt"
+
+    def test_every_combo_registered_as_slot(self):
+        from src.constants import (
+            COMBO_CATEGORIES, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS,
+            DISPLAY_SLOT_NAME,
+        )
+        for combo in COMBO_CATEGORIES:
+            assert combo in BASE_SLOT_NAMES, f"{combo} missing from BASE_SLOT_NAMES"
+            assert combo in DEFAULT_OFF_SLOTS, f"{combo} missing from DEFAULT_OFF_SLOTS"
+            assert combo in DISPLAY_SLOT_NAME, f"{combo} missing display label"
+
 
 class _Stub:
     __slots__ = ("d_idx", "base_slot")
