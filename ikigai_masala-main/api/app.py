@@ -47,6 +47,9 @@ configure_logging()
 validate_required_env()
 from src.preprocessor import ExcelReader, DataCleanser
 from src.preprocessor.pool_builder import PoolBuilder, _base_slot
+from src.preprocessor.client_pool_filter import (
+    get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
+)
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
 )
@@ -198,6 +201,38 @@ def _get_menu_data():
                 _df = cleanser.clean()
                 _pools = PoolBuilder.build_pools(_df)
     return _df, _pools
+
+
+# Per-client eligible-pool cache (F5). Keyed by the frozenset of active pool
+# tokens (common ∪ the client's source_pools). The full ontology is filtered
+# once per distinct pool combination and reused across requests.
+_filtered_cache: Dict[frozenset, tuple] = {}
+
+
+def _menu_data_for_client(client_name):
+    """Return (df, pools) for a client, applying F5 client-pool filtering.
+
+    * ``source_pools is None`` (column missing / pre-migration) → full ontology,
+      i.e. behaviour is unchanged until the migration is applied.
+    * otherwise → items eligible for ``common ∪ source_pools`` only, with the
+      per-slot pools rebuilt from that subset. ``common`` is always included so
+      every mandatory slot stays populated (build_pools never empties).
+    """
+    df, pools = _get_menu_data()
+    source_pools = _get_client_loader().get_client_source_pools(client_name)
+    if source_pools is None:
+        return df, pools
+    active = get_active_pools(source_pools)
+    key = frozenset(active)
+    cached = _filtered_cache.get(key)
+    if cached is None:
+        with _init_lock:
+            cached = _filtered_cache.get(key)
+            if cached is None:
+                fdf = filter_eligible(df, active)
+                cached = (fdf, PoolBuilder.build_pools(fdf))
+                _filtered_cache[key] = cached
+    return cached
 
 
 # Proteins that mark a dish non-vegetarian. Driven off the ontology's
@@ -558,7 +593,7 @@ def _prepare_solver_inputs(
 
     if client_cfg is None:
         client_cfg = _get_client_loader().get_client(client_name)
-    df, pools = _get_menu_data()
+    df, pools = _menu_data_for_client(client_name)
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
@@ -1062,12 +1097,55 @@ def editor_metadata():
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
             'available_cities': list(AVAILABLE_CITIES),
+            'available_client_pools': sorted(available_pool_tokens(_get_menu_data()[0])),
             'default_item_cooldown_days': DEFAULT_ITEM_COOLDOWN_DAYS,
             'clients': _request_client_names(),
             'max_counters': MAX_COUNTERS,
         })
     except Exception as e:
         logger.error("Failed to load editor metadata: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
+@app.route('/api/v1/pool-preview', methods=['POST'])
+def pool_preview():
+    """Preview the eligible item pool for a set of source pools (F5 config UI).
+
+    Body: ``{"source_pools": ["infineon", ...]}``. ``common`` is always
+    included. Returns the distinct eligible item count and a category-wise
+    (course_type) breakdown so the editor can show live counts as the admin
+    toggles pools.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        sp = data.get('source_pools') or []
+        if not isinstance(sp, list):
+            return jsonify(
+                {'success': False, 'error': 'source_pools must be a list'}), 400
+        df, _ = _get_menu_data()
+        available = available_pool_tokens(df)
+        requested = {normalize_name(t) for t in sp if normalize_name(t)}
+        requested.discard('common')
+        unknown = requested - available
+        if unknown:
+            return jsonify({
+                'success': False,
+                'error': f'Unknown client pool(s): {sorted(unknown)}',
+            }), 400
+        active = get_active_pools(requested)
+        eligible = filter_eligible(df, active)
+        by_cat = (
+            eligible['course_type'].astype(str).str.lower()
+            .value_counts().to_dict()
+        )
+        return jsonify({
+            'success': True,
+            'active_pools': sorted(active),
+            'eligible_item_count': int(len(eligible)),
+            'category_counts': {k: int(v) for k, v in by_cat.items()},
+        })
+    except Exception as e:
+        logger.error("pool-preview failed: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 
@@ -1092,6 +1170,7 @@ def get_client_config(client_name):
             'city': loader.get_client_city(client_name),
             'serve_weekends': loader.get_client_serve_weekends(client_name),
             'item_cooldown_days': loader.get_client_item_cooldown_days(client_name),
+            'source_pools': loader.get_client_source_pools(client_name),
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1195,6 +1274,20 @@ def update_client_config(client_name):
         if 'item_cooldown_days' in data:
             loader.set_client_item_cooldown_days(
                 client_name, data.get('item_cooldown_days'))
+        if 'source_pools' in data:
+            sp = data.get('source_pools') or []
+            if not isinstance(sp, list):
+                raise ValueError("source_pools must be a list of pool tokens")
+            available = available_pool_tokens(_get_menu_data()[0])
+            requested = {normalize_name(t) for t in sp if normalize_name(t)}
+            requested.discard('common')
+            unknown = requested - available
+            if unknown:
+                raise ValueError(
+                    f"Unknown client pool(s): {sorted(unknown)}. "
+                    f"Valid pools: {sorted(available)}"
+                )
+            loader.set_client_source_pools(client_name, sorted(requested))
 
         response = jsonify({
             'success': True,
@@ -1250,6 +1343,19 @@ def create_client():
             loader.create_client(name, active_slots, city=city,
                                  serve_weekends=serve_weekends,
                                  item_cooldown_days=item_cooldown_days)
+
+        # F5: optional client item-pool config (validated against the ontology).
+        if 'source_pools' in data:
+            sp = data.get('source_pools') or []
+            if not isinstance(sp, list):
+                raise ValueError("source_pools must be a list of pool tokens")
+            available = available_pool_tokens(_get_menu_data()[0])
+            requested = {normalize_name(t) for t in sp if normalize_name(t)}
+            requested.discard('common')
+            unknown = requested - available
+            if unknown:
+                raise ValueError(f"Unknown client pool(s): {sorted(unknown)}")
+            loader.set_client_source_pools(name, sorted(requested))
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:

@@ -18,7 +18,8 @@ BASE_SLOT_NAMES: List[str] = [
     'welcome_drink', 'soup', 'salad', 'starter', 'bread', 'rice',
     'healthy_rice', 'dal', 'sambar', 'rasam',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
-    'veg_gravy', 'veg_dry', 'nonveg_main', 'curd_side', 'curd_rice', 'dessert',
+    'veg_gravy', 'veg_dry', 'nonveg_main',
+    'curd', 'curd_side', 'curd_rice', 'dessert',
 ]
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
@@ -35,8 +36,19 @@ COMBO_CATEGORIES: Dict[str, tuple] = {
 
 # Categories that are selectable per client but OFF by default (a fresh client
 # does not get them until an admin adds them in the editor): the optional
-# curd-rice station and the combination categories.
-DEFAULT_OFF_SLOTS: Set[str] = {'curd_rice'} | set(COMBO_CATEGORIES)
+# plain-curd station, the curd-rice station, and the combination categories.
+DEFAULT_OFF_SLOTS: Set[str] = {'curd', 'curd_rice'} | set(COMBO_CATEGORIES)
+
+# Slots whose items may repeat freely across the horizon (exempt from the
+# unique-items constraint and the item-cooldown pre-filter). ``curd`` is a
+# plain-curd station: the same plain curd is a daily staple, so it must not be
+# starved by cooldown or forced to vary day-to-day by unique_items.
+REPEATABLE_SLOTS: Set[str] = {'curd'}
+
+# The two yogurt-side categories are mutually exclusive on a single counter:
+# a counter serves EITHER plain curd OR the curd/raita side, never both. The
+# curd-rice station is independent and may be combined with either.
+MUTUALLY_EXCLUSIVE_SLOT_GROUPS: List[frozenset] = [frozenset({'curd', 'curd_side'})]
 
 
 def combo_minority_count(n_days: int) -> int:
@@ -92,7 +104,8 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'veg_gravy': 'Veg Gravy',
     'veg_dry': 'Veg Dry',
     'nonveg_main': 'Nonveg Main',
-    'curd_side': 'Curd Side',
+    'curd': 'Curd',
+    'curd_side': 'Curd / Raita',
     'curd_rice': 'Curd Rice',
     'dal_rasam': 'Dal / Rasam',
     'sambar_rasam': 'Sambar / Rasam',

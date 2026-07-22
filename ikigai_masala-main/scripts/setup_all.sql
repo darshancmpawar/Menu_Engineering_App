@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS clients (
     city               TEXT,
     serve_weekends     BOOLEAN NOT NULL DEFAULT false,
     item_cooldown_days INT,
+    source_pools       JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -71,6 +72,7 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS counters           JSONB NOT NULL D
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS city               TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends     BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS item_cooldown_days INT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_pools       JSONB;
 
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.

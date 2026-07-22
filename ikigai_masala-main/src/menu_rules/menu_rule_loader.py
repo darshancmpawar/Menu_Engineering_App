@@ -38,6 +38,7 @@ from .nonveg_rules import (
 from .ingredient_ban_rule import IngredientBanRule
 from .item_frequency_rule import ItemFrequencyRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
+from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
 
 def _log_invalid_rule(
@@ -78,6 +79,7 @@ class MenuRuleLoader:
         'curd_side': CurdSideMenuRule,
         'premium': PremiumMenuRule,
         'welcome_drink_color': WelcomeDrinkColorMenuRule,
+        'welcome_drink_buttermilk': WelcomeDrinkButtermilkRule,
         'week_signature_cooldown': WeekSignatureCooldownMenuRule,
         'theme_starter_preference': ThemeStarterPreferenceRule,
         'theme_fallback_penalty': ThemeFallbackPenaltyRule,

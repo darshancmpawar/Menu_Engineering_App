@@ -105,6 +105,16 @@ class PoolBuilder:
             ((df['course_type'] == 'sambar/rasam') & ~is_rasam_text)
         ].copy()
 
+        # Plain-curd station: driven by the is_plain_curd flag (plain-curd
+        # dishes live under the curd_side course_type but are a distinct,
+        # curd-only category selectable per client).
+        if 'is_plain_curd' in df.columns:
+            pools['curd'] = df[
+                pd.to_numeric(df['is_plain_curd'], errors='coerce').fillna(0) == 1
+            ].copy()
+        else:
+            pools['curd'] = df.iloc[0:0].copy()
+
         # Curd-rice station: driven by the is_curd_rice flag rather than a
         # course_type (curd-rice dishes live under curd_side / rice courses).
         if 'is_curd_rice' in df.columns:

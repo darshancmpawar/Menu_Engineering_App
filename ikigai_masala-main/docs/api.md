@@ -20,7 +20,8 @@ accept or supply it to correlate traces across logs.
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`) |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`, `available_client_pools`) |
+| POST   | `/pool-preview` | F5: eligible distinct item count + category-wise counts for a set of `source_pools` (`common` always included) |
 | GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `item_cooldown_days`, `counters` (returns `ETag: "<version>"`) |
 | PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `item_cooldown_days` / `counters` (requires `version` body field or `If-Match` header) |
 | POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `counters`) |
@@ -304,6 +305,7 @@ Per-client overrides live in `data/configs/client_rules.json`.
 | `curd_side` | hard | Fill the curd-side slot |
 | `premium` | hard | Per-horizon min / max for premium items |
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
+| `welcome_drink_buttermilk` | hard | Buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
 | `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north) |
 | `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
@@ -339,7 +341,7 @@ document in `clients.counters`, not spread across normalized tables.
 
 | Table | Columns | Purpose |
 |---|---|---|
-| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
+| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `source_pools (jsonb, null)`, `version`, `created_at` | Client registry. `source_pools` = F5 client item-pool tokens (common implicit; null → full ontology fallback, [] → common-only). `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
 | `app_settings` | `key (pk)`, `value (jsonb)` | Misc tunables |
 | `menu_history` | `client_name`, `service_date`, `menu (jsonb)`, `created_at`; PK `(client_name, service_date)` | One row per day; `menu = {slot: item_base}` (single) or `{counter: {slot: item_base}}` (multi) |
 | `week_signatures` | `client_name`, `week_start`, `week_signature` | Week-level hash for week-signature cooldown |
@@ -371,6 +373,10 @@ weekly-alternating meta-theme resolved by ISO-week parity (even → chinese, odd
 Beyond the standard slots, several categories are **selectable but off by
 default** (`default_off_slots`):
 
+- `curd` — a plain-curd station (pool built from the `is_plain_curd` flag).
+  Repeatable: exempt from unique-items and cooldown, so the same plain curd may
+  recur every day. Mutually exclusive with `curd_side` (Curd / Raita) — a
+  counter serves one yogurt side or the other, never both.
 - `curd_rice` — a curd-rice station (pool built from the `is_curd_rice` flag).
 - `dal_rasam`, `sambar_rasam`, `dal_sambar` — **combination categories**: one
   slot that splits across the week by course_type. Over 5 days: `dal_rasam` = 3

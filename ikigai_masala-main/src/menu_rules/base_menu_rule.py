@@ -44,6 +44,7 @@ class MenuRuleType(Enum):
     CURD_SIDE = "curd_side"
     PREMIUM = "premium"
     WELCOME_DRINK_COLOR = "welcome_drink_color"
+    WELCOME_DRINK_BUTTERMILK = "welcome_drink_buttermilk"
     # Cooldown / pre-filter rules
     ITEM_COOLDOWN = "item_cooldown"
     RICEBREAD_GAP = "ricebread_gap"

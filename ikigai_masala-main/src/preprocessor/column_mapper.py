@@ -63,6 +63,7 @@ OPTIONAL_FLAG_ALIASES: Dict[str, List[str]] = {
     'is_nonveg_biryani': ['is_nonveg_biryani'],
     'is_mixedveg_biryani': ['is_mixedveg_biryani'],
     'is_raita': ['is_raita'],
+    'is_buttermilk': ['is_buttermilk'],
     'is_premium_veg': ['is_premium_veg'],
     'is_deep_fried_starter': ['is_deep_fried_starter'],
     'is_nonveg_dry': ['is_nonveg_dry', 'is_non_veg_dry', 'nonveg_dry', 'non_veg_dry'],

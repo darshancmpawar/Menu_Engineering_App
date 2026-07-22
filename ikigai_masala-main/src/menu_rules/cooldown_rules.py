@@ -23,7 +23,7 @@ from ortools.sat.python import cp_model
 
 from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
-from src.constants import BASE_SLOT_NAMES
+from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS
 from .base_menu_rule import (
     BaseMenuRule,
     Diagnostic,
@@ -65,6 +65,10 @@ class ItemCooldownMenuRule(BaseMenuRule):
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
                         filter_context: Dict[str, Any]) -> pd.DataFrame:
+        # Repeatable slots (e.g. the plain-curd station) are never cooled down —
+        # the same staple is meant to recur, so history bans don't apply.
+        if base_slot in REPEATABLE_SLOTS:
+            return pool
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
         if banned and len(pool) > 0:
@@ -109,6 +113,8 @@ class ItemCooldownMenuRule(BaseMenuRule):
             for base in base_slots:
                 if (d, base) in ctx.skip_cells:
                     continue
+                if base in REPEATABLE_SLOTS:
+                    continue  # exempt from cooldown, so no cooldown diagnostic
                 if base not in ctx.pools:
                     continue
                 pool = ctx.pools[base]

@@ -33,9 +33,14 @@ from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
     DEFAULT_OFF_SLOTS,
+    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
+    DISPLAY_SLOT_NAME,
 )
 from src.db import get_supabase
 from src.preprocessor.pool_builder import _expand_slots_in_order
+from src.preprocessor.client_pool_filter import (
+    normalize_name as _normalize_pool_name, COMMON_POOL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +520,36 @@ class ClientConfigLoader:
             raise ValueError(f"Unknown client: {name}")
         return normalize_city(row.data.get('city'))
 
+    def get_client_source_pools(self, name: str):
+        """Return the client's configured extra item pools (F5).
+
+          * ``list`` — configured pool tokens (``common`` is always implied and
+            is never stored here).
+          * ``[]``   — column exists but this client has none configured, so
+            its eligible pool is common-only.
+          * ``None`` — the ``clients.source_pools`` column is missing
+            (pre-migration). Callers fall back to the full ontology so an
+            un-migrated database keeps working unchanged.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('source_pools')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        val = row.data.get('source_pools')
+        if val is None:
+            return []
+        return [_normalize_pool_name(t) for t in val if _normalize_pool_name(t)]
+
     def get_client_serve_weekends(self, name: str) -> bool:
         """Return whether the client is served on weekends (Sat/Sun).
 
@@ -604,11 +639,26 @@ class ClientConfigLoader:
         if len(counters) > MAX_COUNTERS:
             raise ValueError(f"At most {MAX_COUNTERS} counters are allowed.")
         for i, c in enumerate(counters):
-            if not c.get('categories'):
+            cats = c.get('categories') or []
+            if not cats:
                 raise ValueError(
                     f"Counter {i + 1} ('{c.get('name', '')}') needs at least "
                     "one food category."
                 )
+            # Mutually exclusive slot groups (e.g. plain curd vs curd/raita —
+            # both are the yogurt side, a counter serves only one).
+            cats_set = set(cats)
+            for group in MUTUALLY_EXCLUSIVE_SLOT_GROUPS:
+                clash = group & cats_set
+                if len(clash) > 1:
+                    labels = ' and '.join(
+                        DISPLAY_SLOT_NAME.get(s, s) for s in sorted(clash)
+                    )
+                    raise ValueError(
+                        f"Counter {i + 1} ('{c.get('name', '')}') selects "
+                        f"{labels}, but these are mutually exclusive — pick "
+                        "only one."
+                    )
 
     def _counters_from_inputs(
         self,
@@ -690,6 +740,30 @@ class ClientConfigLoader:
                 raise ValueError(
                     "Cannot save city: the clients.city column is missing. "
                     + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
+    def set_client_source_pools(self, name: str, pools) -> None:
+        """Persist a client's extra item pools (F5). Tokens are normalized and
+        deduped; ``common`` is implicit and never stored."""
+        self._require_client_exists(name)
+        norm = sorted({
+            t for t in (_normalize_pool_name(p) for p in (pools or []))
+            if t and t != COMMON_POOL
+        })
+        try:
+            self._sb.table('clients').update({
+                'source_pools': norm,
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.source_pools column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save source pools: the clients.source_pools column "
+                    "is missing. " + _MIGRATION_HINT_COUNTERS
                 ) from exc
             raise
 
