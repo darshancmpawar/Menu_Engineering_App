@@ -112,7 +112,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `excel_reader.py` | `ExcelReader.read` |
 | `column_mapper.py` | `ColumnMapper.apply` (alias detection, derived `key_eff`) |
 | `data_cleanser.py` | `DataCleanser.clean` |
-| `pool_builder.py` | `PoolBuilder.build_pools`, `_base_slot`, `_expand_slots_in_order` (expands `veg_dry` → `veg_dry__1, veg_dry__2`) |
+| `pool_builder.py` | `PoolBuilder.build_pools`, `_base_slot`, `_expand_slots_in_order` (expands `veg_dry` → `veg_dry__1, veg_dry__2`), `_nonveg_mask` (build_pools drops non-veg items from every slot except `nonveg_main`) |
 | `theme_filter.py` | `ThemeFilter` |
 | `client_pool_filter.py` | `parse_client_pools`, `get_active_pools`, `item_is_eligible`, `filter_eligible`, `available_pool_tokens` — F5 client-based item-pool eligibility (pure) |
 
@@ -128,7 +128,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 - Tables: `menu_history` — **one JSONB row per (client, service_date)**, `menu = {slot: item_base}` (PK on `(client_name, service_date)`); cooldown readers `explode_history_rows()` it into per-item rows in memory. `week_signatures` — weekly hash for week-level cooldowns.
 
 ### 4.6 `src/` top-level
-- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DEFAULT_OFF_SLOTS` (selectable-but-off-by-default: `curd_rice` + combos), `COMBO_CATEGORIES` + `combo_minority_count` (dal_rasam/sambar_rasam/dal_sambar day-split), `DISPLAY_SLOT_NAME` (rice→"Flavoured Rice", bread→"Indian Bread", curd_rice→"Curd Rice", dal_rasam→"Dal / Rasam"). Every combo key must also be in `EXEMPT_FROM_CUISINE` (its minority component is often a different cuisine that would otherwise be theme-filtered off on off-theme days).
+- `constants.py` — `BASE_SLOT_NAMES`, `CONST_SLOTS`, `DEFAULT_OFF_SLOTS` (selectable-but-off-by-default: `curd`/`curd_rice` + combos), `COMBO_CATEGORIES` + `combo_minority_count` (dal_rasam/sambar_rasam/dal_sambar day-split), `DISPLAY_SLOT_NAME`, `DISPLAY_SLOT_ORDER` (single canonical order for the config editor + rendered menu — `slot_sort_key` and `slot_editor` both rank by it; welcome_drink→…→dessert→other veg→**nonveg_main last**, white_rice interleaved after rice), `NONVEG_PROTEINS`/`NONVEG_SLOT` (non-veg dishes may appear only in `nonveg_main`). Every combo key must also be in `EXEMPT_FROM_CUISINE` (its minority component is often a different cuisine that would otherwise be theme-filtered off on off-theme days).
 - `db.py` — `get_supabase()` (thread-safe singleton).
 
 ---

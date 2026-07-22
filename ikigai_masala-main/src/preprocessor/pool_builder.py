@@ -12,7 +12,22 @@ import pandas as pd
 from .column_mapper import _norm_str
 from src.constants import (
     SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS, COMBO_CATEGORIES,
+    NONVEG_PROTEINS, NONVEG_SLOT,
 )
+
+
+def _nonveg_mask(frame: pd.DataFrame) -> pd.Series:
+    """Boolean mask of non-vegetarian rows: ``primary_protein`` is a non-veg
+    protein, or the ``is_egg_dish`` flag is set."""
+    if 'primary_protein' in frame.columns:
+        pp = frame['primary_protein'].map(_norm_str)
+    else:
+        pp = pd.Series('', index=frame.index)
+    if 'is_egg_dish' in frame.columns:
+        egg = pd.to_numeric(frame['is_egg_dish'], errors='coerce').fillna(0) == 1
+    else:
+        egg = pd.Series(False, index=frame.index)
+    return pp.isin(NONVEG_PROTEINS) | egg
 
 # course_type -> slot mapping for simple 1:1 cases
 _SIMPLE_MAPPING: Dict[str, Set[str]] = {
@@ -135,6 +150,15 @@ class PoolBuilder:
                 )
             else:
                 pools[combo] = df.iloc[0:0].copy()
+
+        # Non-veg items may appear ONLY in the nonveg_main slot. Drop them from
+        # every other slot so a veg slot (starter, rice, veg_gravy, …) can never
+        # serve a non-veg dish, even if the ontology mis-files one (e.g. an egg
+        # fried rice under course_type=rice).
+        for slot, pool in pools.items():
+            if slot == NONVEG_SLOT or len(pool) == 0:
+                continue
+            pools[slot] = pool[~_nonveg_mask(pool)].copy()
 
         # Validate mandatory base slots have items. Optional (default-off)
         # stations like curd_rice may legitimately be empty in a minimal

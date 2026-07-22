@@ -52,6 +52,7 @@ from src.preprocessor.client_pool_filter import (
 )
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
+    NONVEG_PROTEINS,
 )
 from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
@@ -235,13 +236,10 @@ def _menu_data_for_client(client_name):
     return cached
 
 
-# Proteins that mark a dish non-vegetarian. Driven off the ontology's
-# ``primary_protein`` column so the UI / export can colour these dishes red.
-_NONVEG_PROTEINS = frozenset({
-    'chicken', 'egg', 'mutton', 'lamb', 'goat', 'fish', 'prawn', 'prawns',
-    'shrimp', 'crab', 'keema', 'kheema', 'meat', 'seafood', 'beef', 'pork',
-    'duck', 'turkey',
-})
+# Proteins that mark a dish non-vegetarian. Single source of truth lives in
+# src.constants so the UI's red-dish tagging and the pool builder's
+# "non-veg only in nonveg_main" exclusion can never disagree.
+_NONVEG_PROTEINS = frozenset(NONVEG_PROTEINS)
 _nonveg_items = None
 
 

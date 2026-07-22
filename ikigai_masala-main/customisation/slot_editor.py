@@ -11,6 +11,7 @@ import streamlit as st
 from typing import List
 
 from ui.formatters import display_label_for_slot_id
+from src.constants import DISPLAY_SLOT_ORDER
 
 
 def render_slot_editor(
@@ -30,9 +31,14 @@ def render_slot_editor(
         unsafe_allow_html=True,
     )
 
-    # Base categories first, then the selectable constants.
-    base = [s for s in all_base_slots if s not in const_slots]
-    options = base + list(const_slots)
+    # Order every category (base + selectable constants) by the canonical
+    # DISPLAY_SLOT_ORDER so the config list matches the rendered menu order.
+    options = sorted(
+        set(list(all_base_slots) + list(const_slots)),
+        key=lambda s: (
+            DISPLAY_SLOT_ORDER.index(s) if s in DISPLAY_SLOT_ORDER else 999
+        ),
+    )
     active_set = set(current_active)
 
     selected = st.multiselect(

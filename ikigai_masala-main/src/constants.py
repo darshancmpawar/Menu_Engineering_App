@@ -15,14 +15,31 @@ from typing import Dict, List, Set
 SLOT_SUFFIX_SEP = '__'
 
 BASE_SLOT_NAMES: List[str] = [
-    'welcome_drink', 'soup', 'salad', 'starter', 'bread', 'rice',
-    'healthy_rice', 'dal', 'sambar', 'rasam',
+    'welcome_drink', 'soup', 'salad', 'bread', 'rice',
+    'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
+    # other veg categories (shown after the mains)
+    'healthy_rice', 'curd', 'curd_side', 'curd_rice',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
-    'veg_gravy', 'veg_dry', 'nonveg_main',
-    'curd', 'curd_side', 'curd_rice', 'dessert',
+    # non-veg last
+    'nonveg_main',
 ]
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+
+# Canonical order for BOTH the config editor and the rendered menu (table +
+# Excel). Interleaves base and constant slots: welcome drink → soup → salad →
+# breads/rices → veg dry → veg gravy → starter → dal/sambar/rasam → dessert →
+# other veg categories → non-veg last. `slot_sort_key` and the slot editor both
+# rank by this list, so config order and display order always match.
+DISPLAY_SLOT_ORDER: List[str] = [
+    'welcome_drink', 'soup', 'salad', 'bread', 'rice', 'white_rice',
+    'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
+    # other veg categories
+    'healthy_rice', 'curd', 'curd_side', 'curd_rice',
+    'dal_rasam', 'sambar_rasam', 'dal_sambar', 'papad', 'pickle', 'chutney',
+    # non-veg last
+    'nonveg_main',
+]
 
 # Combination categories: ONE visible slot that alternates between two
 # component course_types across the week — the majority variant fills most
@@ -76,6 +93,19 @@ EXEMPT_FROM_CUISINE: Set[str] = {
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
+
+# Proteins that mark a dish non-vegetarian (matched against the ontology's
+# ``primary_protein`` column, plus the ``is_egg_dish`` flag). Single source of
+# truth shared by the UI's red-dish tagging AND the pool builder's rule that
+# non-veg items may appear only in the nonveg_main slot.
+NONVEG_PROTEINS: Set[str] = {
+    'chicken', 'egg', 'mutton', 'lamb', 'goat', 'fish', 'prawn', 'prawns',
+    'shrimp', 'crab', 'keema', 'kheema', 'meat', 'seafood', 'beef', 'pork',
+    'duck', 'turkey',
+}
+
+# The only slot a non-veg dish may be served in.
+NONVEG_SLOT: str = 'nonveg_main'
 
 PULAO_SUBCATS: Set[str] = {
     'south_veg_pulao', 'north_simple_veg_pulao', 'north_rich_pulao',

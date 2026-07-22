@@ -49,6 +49,25 @@ class TestPoolBuilder:
         expected = set(df.loc[df['is_curd_rice'] == 1, 'item'])
         assert expected and set(pools['curd_rice']['item']) == expected
 
+    def test_nonveg_items_excluded_from_veg_slots(self):
+        # Non-veg items may appear ONLY in nonveg_main; a veg slot must never
+        # serve a chicken/egg dish even if the ontology mis-files one.
+        df = _make_ontology_df()
+        extra = pd.DataFrame([
+            {'item': 'chicken_starter_x', 'course_type': 'starter',
+             'cuisine_family': 'north', 'item_color': 'red', 'primary_protein': 'chicken'},
+            {'item': 'egg_rice_x', 'course_type': 'rice',
+             'cuisine_family': 'north', 'item_color': 'yellow', 'is_egg_dish': 1},
+            {'item': 'chicken_main_x', 'course_type': 'nonveg_main',
+             'cuisine_family': 'north', 'item_color': 'red', 'primary_protein': 'chicken'},
+        ])
+        df = pd.concat([df, extra], ignore_index=True)
+        pools = PoolBuilder.build_pools(df)
+        assert 'chicken_starter_x' not in set(pools['starter']['item'])
+        assert 'egg_rice_x' not in set(pools['rice']['item'])
+        # ...but the non-veg slot keeps its non-veg item.
+        assert 'chicken_main_x' in set(pools['nonveg_main']['item'])
+
     def test_combo_pools_union_components(self):
         df = _make_ontology_df()
         pools = PoolBuilder.build_pools(df)
