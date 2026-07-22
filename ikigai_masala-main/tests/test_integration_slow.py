@@ -183,12 +183,12 @@ def test_dal_sambar_combo_splits_week(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
-def test_common_only_pool_feasible_with_zero_buttermilk(
+def test_common_only_pool_feasible_and_gets_buttermilk(
     cleaned_menu, production_rules,
 ):
-    """A common-only eligible pool has no buttermilk items, yet the plan must
-    still be FEASIBLE — the buttermilk rule caps its target to what the pool
-    can supply (0) instead of forcing an impossible `sum == 2`."""
+    """A common-only eligible pool (unconfigured client under the always-on
+    pool model) must be FEASIBLE and — because buttermilk items are now part
+    of the common pool — still get its 2 buttermilk days."""
     from src.preprocessor.pool_builder import PoolBuilder
     from src.preprocessor.client_pool_filter import get_active_pools, filter_eligible
     common = filter_eligible(cleaned_menu, get_active_pools([]))
@@ -204,6 +204,29 @@ def test_common_only_pool_feasible_with_zero_buttermilk(
         for slot in _ACTIVE_SLOTS:
             assert plan[d].get(slot), f"day {d} missing slot {slot!r}"
     assert not solver.rule_failures, solver.rule_failures
+    from src.solver._helpers import strip_color_suffix
+    bm = dict(zip(cleaned_menu['item'], cleaned_menu['is_buttermilk']))
+    n_bm = sum(int(bm.get(strip_color_suffix(plan[d]['welcome_drink']), 0)) for d in dates)
+    assert n_bm == 2, f"common-only should still get 2 buttermilk, got {n_bm}"
+
+
+@pytest.mark.slow
+def test_buttermilk_rule_degrades_when_pool_has_none(
+    cleaned_menu, production_rules,
+):
+    """Belt-and-suspenders: if the active pool somehow contains no buttermilk
+    items, the buttermilk rule must relax to 0 rather than force an
+    INFEASIBLE `sum == 2`."""
+    from src.preprocessor.pool_builder import PoolBuilder
+    no_bm = cleaned_menu[cleaned_menu['is_buttermilk'] != 1].copy()
+    pools = PoolBuilder.build_pools(no_bm)
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5  # feasible despite zero buttermilk candidates
 
 
 @pytest.mark.slow
