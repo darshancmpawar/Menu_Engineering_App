@@ -20,7 +20,8 @@ accept or supply it to correlate traces across logs.
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`) |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`, `available_client_pools`) |
+| POST   | `/pool-preview` | F5: eligible distinct item count + category-wise counts for a set of `source_pools` (`common` always included) |
 | GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `item_cooldown_days`, `counters` (returns `ETag: "<version>"`) |
 | PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `item_cooldown_days` / `counters` (requires `version` body field or `If-Match` header) |
 | POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `counters`) |
@@ -340,7 +341,7 @@ document in `clients.counters`, not spread across normalized tables.
 
 | Table | Columns | Purpose |
 |---|---|---|
-| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `version`, `created_at` | Client registry. `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
+| `clients` | `name (pk)`, `counters (jsonb)`, `city`, `serve_weekends (bool)`, `item_cooldown_days (int, null)`, `source_pools (jsonb, null)`, `version`, `created_at` | Client registry. `source_pools` = F5 client item-pool tokens (common implicit; null → full ontology fallback, [] → common-only). `counters` = ordered list `[{name, categories, slot_counts, theme_map}]` (index 0 = primary). `city` = optional location. `serve_weekends` = also plan Sat/Sun. `item_cooldown_days` = per-client cooldown override (null = default 20). `version` = optimistic-concurrency counter. |
 | `app_settings` | `key (pk)`, `value (jsonb)` | Misc tunables |
 | `menu_history` | `client_name`, `service_date`, `menu (jsonb)`, `created_at`; PK `(client_name, service_date)` | One row per day; `menu = {slot: item_base}` (single) or `{counter: {slot: item_base}}` (multi) |
 | `week_signatures` | `client_name`, `week_start`, `week_signature` | Week-level hash for week-signature cooldown |

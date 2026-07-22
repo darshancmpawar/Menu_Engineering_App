@@ -50,8 +50,9 @@ class WelcomeDrinkButtermilkRule(BaseMenuRule):
 
         # One "is this day's welcome drink buttermilk?" bool per day that has a
         # welcome-drink cell. link_any forces it to 0 when the day has no
-        # buttermilk candidate at all.
-        bm_by_day: List = []  # (day_index, bool_var)
+        # buttermilk candidate at all. Track whether each day actually has a
+        # buttermilk candidate so we never demand more than the pool can supply.
+        bm_by_day: List = []  # (day_index, bool_var, has_candidate)
         for di, _ in enumerate(dates):
             wd_cells = find_cells(cells, di, self.base_slot)
             if not wd_cells:
@@ -64,24 +65,34 @@ class WelcomeDrinkButtermilkRule(BaseMenuRule):
             ]
             b = model.NewBoolVar(f'buttermilk_day_{di}')
             link_any(model, lits, b)
-            bm_by_day.append((di, b))
+            bm_by_day.append((di, b, bool(lits)))
 
         if not bm_by_day:
             return
 
-        n = len(bm_by_day)
-        # Cap the target to what the horizon can actually host so a short week
-        # (or a weekend-only plan) relaxes gracefully instead of going
-        # INFEASIBLE. With non-consecutive placement, at most ceil(n/2) days
-        # can carry buttermilk.
-        target = min(self.count, (n + 1) // 2 if self.non_consecutive else n)
-        if target <= 0:
-            return
+        # Max buttermilk days actually placeable: only days that have a
+        # buttermilk candidate count, and (when non_consecutive) no two may be
+        # adjacent. Capping the target here keeps the model FEASIBLE when the
+        # active pool has few or zero buttermilk items — e.g. a common-only
+        # client, since buttermilk lives in client pools, not the common set.
+        avail_days = [di for di, _, has in bm_by_day if has]
+        if self.non_consecutive:
+            max_place, last = 0, -10
+            for di in avail_days:  # bm_by_day is in ascending day order
+                if di - last >= 2:
+                    max_place += 1
+                    last = di
+        else:
+            max_place = len(avail_days)
 
-        bvars = [b for _, b in bm_by_day]
+        target = min(self.count, max_place)
+        if target <= 0:
+            return  # no (or no non-adjacent) buttermilk days available — skip
+
+        bvars = [b for _, b, _ in bm_by_day]
         model.Add(sum(bvars) == target)
 
         if self.non_consecutive:
-            for (di_a, ba), (di_b, bb) in zip(bm_by_day, bm_by_day[1:]):
-                if di_b == di_a + 1:  # genuinely adjacent calendar days
+            for (da, ba, _), (db, bb, _) in zip(bm_by_day, bm_by_day[1:]):
+                if db == da + 1:  # genuinely adjacent calendar days
                     model.Add(ba + bb <= 1)

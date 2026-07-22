@@ -183,6 +183,30 @@ def test_dal_sambar_combo_splits_week(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_common_only_pool_feasible_with_zero_buttermilk(
+    cleaned_menu, production_rules,
+):
+    """A common-only eligible pool has no buttermilk items, yet the plan must
+    still be FEASIBLE — the buttermilk rule caps its target to what the pool
+    can supply (0) instead of forcing an impossible `sum == 2`."""
+    from src.preprocessor.pool_builder import PoolBuilder
+    from src.preprocessor.client_pool_filter import get_active_pools, filter_eligible
+    common = filter_eligible(cleaned_menu, get_active_pools([]))
+    common_pools = PoolBuilder.build_pools(common)
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=common_pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+    for d in dates:
+        for slot in _ACTIVE_SLOTS:
+            assert plan[d].get(slot), f"day {d} missing slot {slot!r}"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_buttermilk_exactly_twice_non_consecutive(
     cleaned_menu, pools, production_rules,
 ):

@@ -293,6 +293,17 @@ class MenuApiClient:
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Save failed")
 
+    def pool_preview(self, source_pools: List[str]) -> Dict[str, Any]:
+        """Preview the eligible item pool (count + category breakdown) for a
+        set of source pools (F5 config UI). ``common`` is always included."""
+        def _do():
+            return self.session.post(
+                f"{self.base_url}/api/v1/pool-preview",
+                json={"source_pools": list(source_pools or [])}, timeout=10,
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        return _parse_response(resp, "Pool preview failed")
+
     def create_client(
         self,
         name: str,
@@ -303,6 +314,7 @@ class MenuApiClient:
         city: Optional[str] = None,
         serve_weekends: Optional[bool] = None,
         item_cooldown_days: Optional[int] = None,
+        source_pools: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         # Creating the same name twice is caught server-side (409 / "already
         # exists"), so a retry after a proxy 502 is self-correcting.
@@ -322,6 +334,8 @@ class MenuApiClient:
             payload["serve_weekends"] = bool(serve_weekends)
         if item_cooldown_days is not None:
             payload["item_cooldown_days"] = int(item_cooldown_days)
+        if source_pools is not None:
+            payload["source_pools"] = list(source_pools)
 
         def _do():
             return self.session.post(
