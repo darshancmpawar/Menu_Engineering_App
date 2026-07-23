@@ -230,6 +230,37 @@ def test_buttermilk_rule_degrades_when_pool_has_none(
 
 
 @pytest.mark.slow
+def test_selector_frequency_batch(cleaned_menu, pools, production_rules):
+    """The Phase-1 selector_frequency rules hold on a real solve:
+    liquid desserts = exactly 2 non-consecutive, and the weekly max caps
+    (mixed-veg-gravy, black dal, pappu dal) are not exceeded."""
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    def flag_map(col):
+        return dict(zip(cleaned_menu['item'],
+                        pd.to_numeric(cleaned_menu[col], errors='coerce').fillna(0).astype(int)))
+
+    ld = flag_map('is_liquid_dessert')
+    liquid_days = [i for i, d in enumerate(dates)
+                   if ld.get(strip_color_suffix(plan[d]['dessert']), 0) == 1]
+    assert len(liquid_days) == 2, f"expected 2 liquid desserts, got {liquid_days}"
+    assert all(b - a > 1 for a, b in zip(liquid_days, liquid_days[1:])), liquid_days
+
+    for col, slot in [('is_mixedveg_gravy', 'veg_gravy'),
+                      ('is_black_dal', 'dal'), ('is_pappu_dal', 'dal')]:
+        fm = flag_map(col)
+        c = sum(fm.get(strip_color_suffix(plan[d][slot]), 0) for d in dates if slot in plan[d])
+        assert c <= 1, f"{col} appeared {c} times (max 1)"
+
+
+@pytest.mark.slow
 def test_buttermilk_exactly_twice_non_consecutive(
     cleaned_menu, pools, production_rules,
 ):

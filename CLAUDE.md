@@ -101,7 +101,8 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `nonveg_biryani_weekly_rule.py` | pre-filter | ≤1 nonveg biryani/week |
 | `nonveg_dry_preference_rule.py` | pre-filter | prefer dry nonveg certain days |
 | `ingredient_ban_rule.py` | pre-filter | per-client banned ingredients (case-insensitive exact match on `key_ingredient` **and** `primary_protein` — e.g. a mushroom ban catches both fields) |
-| `item_frequency_rule.py` | CP-SAT | per-client weekly frequency cap via selector (flag/sub_category/item/key_ingredient) |
+| `item_frequency_rule.py` | CP-SAT | per-client weekly frequency cap via selector (flag/sub_category/item/key_ingredient/primary_protein) |
+| `selector_frequency_rule.py` | CP-SAT | **generic Phase-1 rule type**: selector-driven horizon count (max/min/exact days, day-level) + `non_consecutive` + `daily_max` (per-day occurrence cap). Selector = flag/sub_category/item/key_ingredient/primary_protein/course_type/cuisine_family. min/exact auto-capped to placeable (availability + non-consecutive aware) so it never forces INFEASIBLE. Config-driven in `indian_menu_rules.json` (the Bangalore-wide default ruleset) |
 | `slot_day_restriction_rule.py` | skip-cells | per-client: skip a slot on certain weekdays (e.g. no nonveg_main on Tue/Thu) |
 
 ### 4.3 `src/preprocessor/` — data pipeline
