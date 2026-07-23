@@ -60,3 +60,19 @@ class TestRowMatches:
         rt = SelectorFrequencyRule({'name': 'x', 'selector': {'course_type': 'dessert'}, 'max': 1})
         assert rt._row_matches(pd.Series({'course_type': 'Dessert'}))
         assert not rt._row_matches(pd.Series({'course_type': 'rice'}))
+
+    def test_any_flag_is_or(self):
+        r = SelectorFrequencyRule({
+            'name': 'x', 'selector': {'any_flag': ['is_a', 'is_b']}, 'max': 1})
+        assert r.validate_config() and r.sel_kind == 'any_flag'
+        assert r._row_matches(pd.Series({'is_a': 1, 'is_b': 0}))
+        assert r._row_matches(pd.Series({'is_a': 0, 'is_b': 1}))
+        assert not r._row_matches(pd.Series({'is_a': 0, 'is_b': 0}))
+
+    def test_exclude_subtracts(self):
+        r = SelectorFrequencyRule({
+            'name': 'x', 'selector': {'flag': 'is_legume'},
+            'exclude': {'flag': 'is_salad'}, 'daily_max': 1})
+        assert r._row_matches(pd.Series({'is_legume': 1, 'is_salad': 0}))
+        assert not r._row_matches(pd.Series({'is_legume': 1, 'is_salad': 1}))  # excluded
+        assert not r._row_matches(pd.Series({'is_legume': 0, 'is_salad': 0}))

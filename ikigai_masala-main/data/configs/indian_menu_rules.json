@@ -116,6 +116,74 @@
       "base_slot": "dessert",
       "exact": 2,
       "non_consecutive": true
+    },
+    {
+      "name": "potato_veg_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": { "key_ingredient": "potato" },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "name": "potato_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": { "key_ingredient": "potato" },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "name": "lentil_daily_max_3",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_lentil_based" },
+      "daily_max": 3
+    },
+    {
+      "name": "leafy_daily_max_1",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_leafy_based_dish" },
+      "daily_max": 1
+    },
+    {
+      "name": "whole_legume_daily_max_1",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_whole_legume_based" },
+      "exclude": { "flag": "is_legume_salad" },
+      "daily_max": 1
+    },
+    {
+      "name": "special_sambar_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_special_sambar" },
+      "base_slot": "sambar",
+      "max": 1
+    },
+    {
+      "name": "maida_bread_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_maida_bread" },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "name": "multigrain_bread_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_multigrain_bread" },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "name": "continental_rice_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_continental_rice" },
+      "base_slot": "rice",
+      "max": 1
+    },
+    {
+      "name": "mixedveg_pulao_biryani_weekly",
+      "type": "selector_frequency",
+      "selector": { "any_flag": ["is_mixedveg_pulao", "is_mixedveg_biryani"] },
+      "base_slot": "rice",
+      "max": 1
     }
   ]
 }

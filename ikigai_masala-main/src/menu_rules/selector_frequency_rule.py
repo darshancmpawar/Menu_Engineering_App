@@ -55,15 +55,13 @@ class SelectorFrequencyRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.SELECTOR_FREQUENCY
-        sel = rule_config.get('selector', {}) or {}
-        present = [k for k in _SELECTOR_KEYS if k in sel]
-        if len(present) == 1:
-            self.sel_kind = present[0]
-            raw = sel[self.sel_kind]
-            self.sel_value = raw if self.sel_kind == 'flag' else _norm_str(str(raw))
-        else:
-            self.sel_kind = ''
-            self.sel_value = ''
+        # Matcher = ('flag', col) | ('any_flag', [cols]) | (text_kind, value).
+        # An optional `exclude` selector subtracts its matches (e.g. count
+        # whole-legume dishes but exclude legume salads).
+        self._inc = self._parse_matcher(rule_config.get('selector'))
+        self._exc = self._parse_matcher(rule_config.get('exclude'))
+        self.sel_kind = self._inc[0] if self._inc else ''
+        self.sel_value = self._inc[1] if self._inc else ''
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         self.max: Optional[int] = self._int_or_none(rule_config, 'max')
         self.min: Optional[int] = self._int_or_none(rule_config, 'min')
@@ -74,6 +72,34 @@ class SelectorFrequencyRule(BaseMenuRule):
     @staticmethod
     def _int_or_none(cfg, key):
         return int(cfg[key]) if key in cfg and cfg[key] is not None else None
+
+    @staticmethod
+    def _parse_matcher(sel):
+        """Parse a selector dict into a matcher tuple, or None."""
+        if not sel:
+            return None
+        if 'any_flag' in sel:
+            flags = sel['any_flag']
+            flags = list(flags) if isinstance(flags, (list, tuple)) else [flags]
+            return ('any_flag', [str(f) for f in flags])
+        present = [k for k in _SELECTOR_KEYS if k in sel]
+        if len(present) == 1:
+            k = present[0]
+            raw = sel[k]
+            return (k, raw if k == 'flag' else _norm_str(str(raw)))
+        return None
+
+    @staticmethod
+    def _matches(row, matcher) -> bool:
+        if matcher is None:
+            return False
+        kind, val = matcher
+        if kind == 'flag':
+            return int(row.get(val, 0) or 0) == 1
+        if kind == 'any_flag':
+            return any(int(row.get(f, 0) or 0) == 1 for f in val)
+        col = _TEXT_COLS.get(kind, '')
+        return _norm_str(str(row.get(col, ''))) == val
 
     def validate_config(self) -> bool:
         return not self.validation_errors()
@@ -95,10 +121,7 @@ class SelectorFrequencyRule(BaseMenuRule):
         return errs
 
     def _row_matches(self, row) -> bool:
-        if self.sel_kind == 'flag':
-            return int(row.get(self.sel_value, 0) or 0) == 1
-        col = _TEXT_COLS.get(self.sel_kind, '')
-        return _norm_str(str(row.get(col, ''))) == self.sel_value
+        return self._matches(row, self._inc) and not self._matches(row, self._exc)
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
