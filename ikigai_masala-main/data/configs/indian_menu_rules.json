@@ -184,6 +184,89 @@
       "selector": { "any_flag": ["is_mixedveg_pulao", "is_mixedveg_biryani"] },
       "base_slot": "rice",
       "max": 1
+    },
+    {
+      "name": "icecream_custard_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_custard_or_icecream" },
+      "base_slot": "dessert",
+      "max": 1
+    },
+    {
+      "name": "sugar_syrup_nonconsecutive",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_sugar_syrup_heavy_dessert" },
+      "base_slot": "dessert",
+      "non_consecutive": true
+    },
+    {
+      "name": "lassi_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_lassi" },
+      "base_slot": "welcome_drink",
+      "max": 1
+    },
+    {
+      "name": "milkshake_heavy_milk_weekly",
+      "type": "selector_frequency",
+      "selector": { "any_flag": ["is_milkshake", "is_heavy_milk_drink"] },
+      "base_slot": "welcome_drink",
+      "max": 1
+    },
+    {
+      "name": "soda_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_soda_drink" },
+      "base_slot": "welcome_drink",
+      "max": 1
+    },
+    {
+      "name": "oil_based_bread_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_oil_based_bread" },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "name": "leafy_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_leafy_based_dish" },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "name": "black_chana_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_black_chana_gravy" },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "name": "kabuli_chana_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_kabuli_chana_gravy" },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "name": "rajma_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_rajma_gravy" },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "name": "kadhi_dal_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_kadhi_dal" },
+      "max": 1
+    },
+    {
+      "name": "deep_fried_nonveg_weekly",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_deep_fried_nonveg_dry" },
+      "base_slot": "nonveg_main",
+      "max": 1
     }
   ]
 }

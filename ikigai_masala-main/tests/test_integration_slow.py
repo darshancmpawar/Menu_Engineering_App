@@ -253,11 +253,55 @@ def test_selector_frequency_batch(cleaned_menu, pools, production_rules):
     assert len(liquid_days) == 2, f"expected 2 liquid desserts, got {liquid_days}"
     assert all(b - a > 1 for a, b in zip(liquid_days, liquid_days[1:])), liquid_days
 
+    # Batch-1/2 + batch-3 weekly max caps (scoped to a base slot).
     for col, slot in [('is_mixedveg_gravy', 'veg_gravy'),
-                      ('is_black_dal', 'dal'), ('is_pappu_dal', 'dal')]:
+                      ('is_black_dal', 'dal'), ('is_pappu_dal', 'dal'),
+                      ('is_custard_or_icecream', 'dessert'),
+                      ('is_lassi', 'welcome_drink'),
+                      ('is_soda_drink', 'welcome_drink'),
+                      ('is_oil_based_bread', 'bread'),
+                      ('is_leafy_based_dish', 'veg_dry'),
+                      ('is_black_chana_gravy', 'veg_gravy'),
+                      ('is_kabuli_chana_gravy', 'veg_gravy'),
+                      ('is_rajma_gravy', 'veg_gravy')]:
         fm = flag_map(col)
         c = sum(fm.get(strip_color_suffix(plan[d][slot]), 0) for d in dates if slot in plan[d])
         assert c <= 1, f"{col} appeared {c} times (max 1)"
+
+    # Sugar-syrup desserts (batch-3, non_consecutive-only rule) must not land
+    # on adjacent days.
+    ss = flag_map('is_sugar_syrup_heavy_dessert')
+    ss_days = [i for i, d in enumerate(dates)
+               if ss.get(strip_color_suffix(plan[d]['dessert']), 0) == 1]
+    assert all(b - a > 1 for a, b in zip(ss_days, ss_days[1:])), (
+        f"sugar-syrup desserts on consecutive days: {ss_days}"
+    )
+
+
+@pytest.mark.slow
+def test_deep_fried_nonveg_weekly_cap(cleaned_menu, pools, production_rules):
+    """With the non-veg main slot active, the batch-3 deep-fried-nonveg weekly
+    cap holds and the week still solves cleanly."""
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    slots = _ACTIVE_SLOTS + ['nonveg_main']
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts={s: 1 for s in slots},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    assert len(dates) == 5
+    for d in dates:
+        assert plan[d].get('nonveg_main'), f"day {d} missing nonveg_main"
+
+    dfn = dict(zip(cleaned_menu['item'],
+                   pd.to_numeric(cleaned_menu['is_deep_fried_nonveg_dry'],
+                                 errors='coerce').fillna(0).astype(int)))
+    c = sum(dfn.get(strip_color_suffix(plan[d]['nonveg_main']), 0) for d in dates)
+    assert c <= 1, f"deep-fried non-veg appeared {c} times (max 1)"
+    assert not solver.rule_failures, solver.rule_failures
 
 
 @pytest.mark.slow

@@ -51,6 +51,17 @@ class TestConfig:
         ]:
             assert SelectorFrequencyRule(cfg).validate_config()
 
+    def test_non_consecutive_alone_is_valid(self):
+        # A pure adjacency ban with no count (e.g. sugar-syrup sweets not on
+        # consecutive days) is a complete rule on its own.
+        r = SelectorFrequencyRule({
+            'name': 'x', 'selector': {'flag': 'is_sugar_syrup_heavy_dessert'},
+            'non_consecutive': True})
+        assert r.validate_config()
+        assert r.non_consecutive and r.max is None and r.min is None
+        # ...but nothing at all (no count, no non_consecutive) is still invalid.
+        assert not SelectorFrequencyRule({'name': 'x', 'selector': {'flag': 'f'}}).validate_config()
+
 
 class TestRowMatches:
     def test_flag_and_text(self):
