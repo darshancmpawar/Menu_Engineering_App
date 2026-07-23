@@ -9,7 +9,7 @@ class TestMenuRuleLoader:
     def test_load_from_json_file(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
         rules = loader.load_from_file()
-        assert len(rules) == 15
+        assert len(rules) == 30
 
     def test_all_rules_are_base_menu_rule(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')

@@ -37,6 +37,7 @@ from .nonveg_rules import (
 )
 from .ingredient_ban_rule import IngredientBanRule
 from .item_frequency_rule import ItemFrequencyRule
+from .selector_frequency_rule import SelectorFrequencyRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
@@ -90,6 +91,7 @@ class MenuRuleLoader:
         'nonveg_biryani_weekly': NonvegBiryaniWeeklyRule,
         'ingredient_ban': IngredientBanRule,
         'item_frequency': ItemFrequencyRule,
+        'selector_frequency': SelectorFrequencyRule,
         'slot_day_restriction': SlotDayRestrictionRule,
     }
 
