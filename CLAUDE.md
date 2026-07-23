@@ -152,7 +152,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 
 | Path | Purpose |
 |---|---|
-| `ikigai_masala-main/data/raw/menu_items.xlsx` | master ontology (~530 items; cols: item, course_type, sub_category, cuisine_family, item_color, key_ingredient, is_premium_veg, is_chinese_*, is_*_biryani, …) |
+| `ikigai_masala-main/data/raw/menu_items.xlsx` | master **rule-ready** ontology (4,321 items; item_id key; cols incl. course_type, sub_category, cuisine_family, item_color, key_ingredient, primary_protein, is_premium_veg/_veg_dry, is_chinese_*/is_continental_*/is_*_biryani, is_liquid_dessert, welcome-drink subtypes (is_lassi/is_milkshake/is_soda_drink/is_cooler_drink/… + drink_rule_group), is_lentil_based/is_whole_legume_based/is_legume_salad, is_pulao, is_grill, is_dosa(_family), is_oil_based_bread, is_black_chana_gravy/is_kabuli_chana_gravy, plus quality signals classification_confidence/is_rule_ready/rule_data_note). Most CP-SAT rulebook classifications now present; not all wired to rules yet (see phased plan) |
 | `ikigai_masala-main/data/configs/indian_menu_rules.json` | rule config consumed by `MenuRuleLoader` |
 | `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
