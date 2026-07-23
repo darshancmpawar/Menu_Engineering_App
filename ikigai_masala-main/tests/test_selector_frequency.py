@@ -5,7 +5,6 @@ real data in the slow integration suite.
 """
 
 import pandas as pd
-import pytest
 
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
