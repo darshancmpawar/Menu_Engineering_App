@@ -289,6 +289,56 @@
       "base_slot": "sambar",
       "group_by": "key_ingredient",
       "max_per_group": 1
+    },
+    {
+      "name": "premiums_different_days",
+      "type": "soft_preference",
+      "mode": "different_day",
+      "weight": 500000,
+      "selector_a": { "flag": "is_premium_gravy" },
+      "base_slot_a": "veg_gravy",
+      "selector_b": { "flag": "is_premium_veg_dry" },
+      "base_slot_b": "veg_dry"
+    },
+    {
+      "name": "veg_gravy_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "weight": 200000,
+      "base_slot": "veg_gravy",
+      "group_by": "key_ingredient"
+    },
+    {
+      "name": "avoid_consecutive_north_nonveg",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "weight": 80000,
+      "base_slot": "nonveg_main",
+      "selector": { "cuisine_family": "north_indian" }
+    },
+    {
+      "name": "avoid_consecutive_south_nonveg",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "weight": 80000,
+      "base_slot": "nonveg_main",
+      "selector": { "cuisine_family": "south_indian" }
+    },
+    {
+      "name": "avoid_consecutive_north_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "weight": 80000,
+      "base_slot": "rice",
+      "selector": { "cuisine_family": "north_indian" }
+    },
+    {
+      "name": "avoid_consecutive_south_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "weight": 80000,
+      "base_slot": "rice",
+      "selector": { "cuisine_family": "south_indian" }
     }
   ]
 }
