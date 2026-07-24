@@ -41,11 +41,18 @@
       ]
     },
     {
-      "name": "premium_limits",
-      "type": "premium",
-      "max_per_day": 1,
-      "min_per_horizon": 1,
-      "max_per_horizon": 2
+      "name": "premium_veg_gravy_exactly_one",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_premium_gravy" },
+      "base_slot": "veg_gravy",
+      "exact": 1
+    },
+    {
+      "name": "premium_veg_dry_exactly_one",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_premium_veg_dry" },
+      "base_slot": "veg_dry",
+      "exact": 1
     },
     {
       "name": "welcome_drink_no_repeat_color",

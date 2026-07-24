@@ -279,6 +279,31 @@ def test_selector_frequency_batch(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_premium_exactly_one_per_slot(cleaned_menu, pools, production_rules):
+    """Rulebook 43-44: each week has exactly one Premium Veg Gravy and exactly
+    one Premium Veg Dry (replacing the retired broad premium cap)."""
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    def flag_map(col):
+        return dict(zip(cleaned_menu['item'],
+                        pd.to_numeric(cleaned_menu[col], errors='coerce').fillna(0).astype(int)))
+
+    for col, slot in [('is_premium_gravy', 'veg_gravy'),
+                      ('is_premium_veg_dry', 'veg_dry')]:
+        fm = flag_map(col)
+        c = sum(fm.get(strip_color_suffix(plan[d][slot]), 0) for d in dates if slot in plan[d])
+        assert c == 1, f"{col} appeared {c} times in {slot} (want exactly 1)"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_deep_fried_nonveg_weekly_cap(cleaned_menu, pools, production_rules):
     """With the non-veg main slot active, the batch-3 deep-fried-nonveg weekly
     cap holds and the week still solves cleanly."""

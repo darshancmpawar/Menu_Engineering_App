@@ -9,7 +9,7 @@ class TestMenuRuleLoader:
     def test_load_from_json_file(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
         rules = loader.load_from_file()
-        assert len(rules) == 42
+        assert len(rules) == 43
 
     def test_all_rules_are_base_menu_rule(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
@@ -52,8 +52,15 @@ class TestMenuRuleLoader:
     def test_get_rules_by_type(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
         loader.load_from_file()
-        premiums = loader.get_rules_by_type('premium')
-        assert len(premiums) == 1
+        # The broad `premium` rule (per-day + weekly cap) was retired per the
+        # Bangalore rulebook (§5, rules 45-46) in favour of two slot-specific
+        # exactly-one selector_frequency rules.
+        assert len(loader.get_rules_by_type('premium')) == 0
+        premium_exact = [r for r in loader.get_rules_by_type('selector_frequency')
+                         if r.name in ('premium_veg_gravy_exactly_one',
+                                       'premium_veg_dry_exactly_one')]
+        assert len(premium_exact) == 2
+        assert all(r.exact == 1 for r in premium_exact)
 
     def test_get_enabled_rules_returns_all(self):
         loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
