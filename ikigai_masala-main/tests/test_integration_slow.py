@@ -312,6 +312,37 @@ def test_dal_colour_non_consecutive_and_sambar_key_ingredient(
 
 
 @pytest.mark.slow
+def test_daily_colour_semantics(cleaned_menu, pools, production_rules):
+    """Rulebook 88-91 on a real solve: across the colour-counted slots each
+    day has >=4 distinct colours, every colour appears at most 3 times, and at
+    most one colour reaches 3 (all others <=2)."""
+    from collections import Counter
+    from src.solver._helpers import strip_color_suffix
+    from src.preprocessor.column_mapper import _norm_color
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    colour_of = {strip_color_suffix(i): _norm_color(c)
+                 for i, c in zip(cleaned_menu['item'], cleaned_menu['item_color'])}
+    counted = [s for s in cfg.color_slots if s in _ACTIVE_SLOTS]
+    assert counted, "expected some colour-counted slots active"
+
+    for d in dates:
+        cols = [colour_of.get(strip_color_suffix(plan[d][s])) for s in counted if s in plan[d]]
+        cols = [c for c in cols if c and c != 'unknown']
+        counts = Counter(cols)
+        assert len(counts) >= 4, f"{d}: only {len(counts)} distinct colours ({counts})"
+        assert max(counts.values()) <= 3, f"{d}: a colour exceeds 3 ({counts})"
+        at_three = [c for c, n in counts.items() if n >= 3]
+        assert len(at_three) <= 1, f"{d}: more than one colour reaches 3 ({counts})"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_premium_exactly_one_per_slot(cleaned_menu, pools, production_rules):
     """Rulebook 43-44: each week has exactly one Premium Veg Gravy and exactly
     one Premium Veg Dry (replacing the retired broad premium cap)."""

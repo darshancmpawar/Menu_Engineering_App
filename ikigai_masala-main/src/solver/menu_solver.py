@@ -78,7 +78,9 @@ class SolverConfig:
     min_distinct_colors_per_day: int = 4
     min_distinct_colors_per_day_chinese: int = 4
     min_distinct_colors_per_day_biryani: int = 4
-    max_same_color_per_day: int = 2
+    max_same_color_per_day: int = 2      # rulebook 90: soft cap for every colour
+    max_same_color_reach: int = 3        # rulebook 89: one colour may reach this
+    max_colors_at_reach: int = 1         # rulebook 91: how many colours may exceed the soft cap
     ignore_rice_gravy_color_diff_on_chinese_day: bool = True
     # Premium item constraints
     premium_flag_col: Optional[str] = None
@@ -756,10 +758,27 @@ class MenuSolver:
             day_type = day_types[di]
             min_dist = min(_min_distinct_for_day(cfg, day_type), n_color_slots)
 
+            # Per-colour occurrence caps (rulebook 89-91): every colour may
+            # appear at most `soft_cap` times (rule 90), EXCEPT up to
+            # `max_colors_at_reach` colour(s) may go as high as `reach`
+            # (rules 89 + 91). Falls back to a uniform cap when reach <=
+            # soft_cap or no colour is allowed to exceed it.
+            soft_cap = cfg.max_same_color_per_day
+            reach = max(soft_cap, cfg.max_same_color_reach)
+            reach_bools = []
             for col in known_colors:
                 lits = day_color_vars.get((di, col), [])
-                if lits:
-                    model.Add(sum(lits) <= cfg.max_same_color_per_day)
+                if not lits:
+                    continue
+                if reach > soft_cap and cfg.max_colors_at_reach > 0:
+                    b = model.NewBoolVar(f'color_reach_{di}_{col}')
+                    # b == 0 -> sum <= soft_cap ; b == 1 -> sum <= reach
+                    model.Add(sum(lits) <= soft_cap + (reach - soft_cap) * b)
+                    reach_bools.append(b)
+                else:
+                    model.Add(sum(lits) <= soft_cap)
+            if reach_bools:
+                model.Add(sum(reach_bools) <= cfg.max_colors_at_reach)
 
             y_vars = []
             for col in known_colors:
