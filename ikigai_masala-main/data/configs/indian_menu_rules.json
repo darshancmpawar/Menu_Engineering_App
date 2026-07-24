@@ -259,6 +259,7 @@
       "name": "kadhi_dal_weekly",
       "type": "selector_frequency",
       "selector": { "flag": "is_kadhi_dal" },
+      "base_slot": "veg_gravy",
       "max": 1
     },
     {
