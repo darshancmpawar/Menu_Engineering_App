@@ -19,6 +19,10 @@ Config::
         "daily_max": null    # per-day: at most N matching items in one day
     }
 
+At least one of ``max``/``min``/``exact``/``daily_max``/``non_consecutive``
+must be set. ``non_consecutive`` may stand alone (e.g. "sugar-syrup sweets
+cannot appear on consecutive days" — no count, just an adjacency ban).
+
 Selector keys: ``flag`` (column name), ``sub_category``, ``item``,
 ``key_ingredient``, ``primary_protein``, ``course_type``, ``cuisine_family``.
 
@@ -108,8 +112,9 @@ class SelectorFrequencyRule(BaseMenuRule):
         errs: List[str] = []
         if not self.sel_kind:
             errs.append("selector must contain exactly one of " + ", ".join(sorted(_SELECTOR_KEYS)))
-        if all(v is None for v in (self.max, self.min, self.exact, self.daily_max)):
-            errs.append("at least one of max / min / exact / daily_max is required")
+        if all(v is None for v in (self.max, self.min, self.exact, self.daily_max)) \
+                and not self.non_consecutive:
+            errs.append("at least one of max / min / exact / daily_max / non_consecutive is required")
         if self.exact is not None and (self.max is not None or self.min is not None):
             errs.append("exact cannot be combined with max/min")
         for k in ('max', 'min', 'exact', 'daily_max'):
