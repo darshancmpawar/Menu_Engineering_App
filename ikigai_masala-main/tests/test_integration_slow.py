@@ -279,6 +279,39 @@ def test_selector_frequency_batch(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_dal_colour_non_consecutive_and_sambar_key_ingredient(
+    cleaned_menu, pools, production_rules,
+):
+    """Rulebook 79 + 82 (attribute_grouping): no two consecutive dal-service
+    days share a dal colour, and no sambar key ingredient repeats in the week.
+    Uses a dal+sambar slot layout so both rules bind."""
+    from src.solver._helpers import strip_color_suffix
+    slots = ['welcome_drink', 'rice', 'dal', 'sambar', 'veg_gravy', 'veg_dry',
+             'bread', 'starter', 'dessert']
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts={s: 1 for s in slots},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+
+    color_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['item_color']))
+    key_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['key_ingredient']))
+
+    dal_colours = [color_by_item.get(strip_color_suffix(plan[d]['dal'])) for d in dates]
+    for a, b in zip(dal_colours, dal_colours[1:]):
+        assert not (a and a == b), f"consecutive dal colour repeat: {dal_colours}"
+
+    sambar_keys = [key_by_item.get(strip_color_suffix(plan[d]['sambar'])) for d in dates]
+    present = [k for k in sambar_keys if k]
+    assert len(present) == len(set(present)), (
+        f"sambar key ingredient repeated in the week: {sambar_keys}"
+    )
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_premium_exactly_one_per_slot(cleaned_menu, pools, production_rules):
     """Rulebook 43-44: each week has exactly one Premium Veg Gravy and exactly
     one Premium Veg Dry (replacing the retired broad premium cap)."""

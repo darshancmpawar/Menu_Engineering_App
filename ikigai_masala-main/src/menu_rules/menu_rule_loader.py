@@ -38,6 +38,7 @@ from .nonveg_rules import (
 from .ingredient_ban_rule import IngredientBanRule
 from .item_frequency_rule import ItemFrequencyRule
 from .selector_frequency_rule import SelectorFrequencyRule
+from .attribute_grouping_rule import AttributeGroupingRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
@@ -92,6 +93,7 @@ class MenuRuleLoader:
         'ingredient_ban': IngredientBanRule,
         'item_frequency': ItemFrequencyRule,
         'selector_frequency': SelectorFrequencyRule,
+        'attribute_grouping': AttributeGroupingRule,
         'slot_day_restriction': SlotDayRestrictionRule,
     }
 

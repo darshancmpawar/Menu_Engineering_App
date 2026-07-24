@@ -275,6 +275,20 @@
       "selector": { "flag": "is_deep_fried_nonveg_dry" },
       "base_slot": "nonveg_main",
       "max": 1
+    },
+    {
+      "name": "dal_colour_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dal",
+      "group_by": "item_color",
+      "non_consecutive": true
+    },
+    {
+      "name": "sambar_key_ingredient_weekly",
+      "type": "attribute_grouping",
+      "base_slot": "sambar",
+      "group_by": "key_ingredient",
+      "max_per_group": 1
     }
   ]
 }
