@@ -35,6 +35,10 @@ MAX_TIME_LIMIT_SECONDS = 600
 MIN_NUM_DAYS = 1
 MAX_NUM_DAYS = 30
 
+# Max number of ranked alternate menus a single /plan request may ask for
+# (in addition to the primary). Bounds solver work per request.
+MAX_ALTERNATES = 4
+
 API_HOST = os.getenv('API_HOST', '127.0.0.1')
 API_PORT = int(os.getenv('API_PORT', '5000'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'

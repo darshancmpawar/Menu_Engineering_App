@@ -315,6 +315,33 @@ class TestPlanEndpoint:
         assert 'summary' in data
         assert data['summary']['would_succeed'] is True
 
+    def test_plan_returns_ranked_alternates(self, client, auth_headers, fake_supabase):
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling',
+            'start_date': '2026-03-23',
+            'num_days': 1,
+            'time_limit_seconds': 30,
+            'alternates': 2,
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'solution' in data                       # primary (best) menu
+        assert 'alternates' in data
+        assert isinstance(data['alternates'], list)
+        assert 1 <= len(data['alternates']) <= 2        # ranked, distinct from primary
+        for alt in data['alternates']:
+            assert len(alt) == 1                        # one day, fully formatted
+
+    def test_plan_no_alternates_key_when_not_requested(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit_seconds': 30,
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        assert 'alternates' not in resp.get_json()
+
     def test_plan_reports_single_counter_metadata(
         self, client, auth_headers, fake_supabase,
     ):

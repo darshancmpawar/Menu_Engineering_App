@@ -29,7 +29,7 @@ from api.config import (
     DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
-    validate_required_env, today_in_app_tz,
+    MAX_ALTERNATES, validate_required_env, today_in_app_tz,
 )
 from api.logging_config import (
     configure_logging,
@@ -756,16 +756,28 @@ def plan_menu():
             skip_cells=inputs.skip_cells,
         )
 
-        week_plan, plan_dates = solver.solve()
+        # Optional ranked alternates: closest-to-ideal distinct menus, not
+        # random diversification. Clamped so a caller can't ask the solver to
+        # enumerate an unbounded number of near-optimal menus.
+        n_alt = max(0, min(int(data.get('alternates', 0) or 0), MAX_ALTERNATES))
+        nonveg_items = _get_nonveg_items()
 
-        formatter = SolutionFormatter(
-            week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
-            nonveg_items=_get_nonveg_items(),
-        )
+        def _format(plan):
+            return SolutionFormatter(
+                plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+                nonveg_items=nonveg_items,
+            ).to_dict()
+
+        if n_alt > 0:
+            plans, plan_dates = solver.solve(n_alternates=n_alt)
+        else:
+            week_plan, plan_dates = solver.solve()
+            plans = [week_plan]
+
         response = {
             'success': True,
             'message': f'Menu plan generated for {inputs.client_name}',
-            'solution': formatter.to_dict(),
+            'solution': _format(plans[0]),
             'rule_diagnostics': diag_dicts,
             'summary': summary,
             'counter_mode': 'multi' if counter_count > 1 else 'single',
@@ -773,6 +785,9 @@ def plan_menu():
             'counter_index': counter_index,
             'counter_name': counter_name,
         }
+        if len(plans) > 1:
+            # Ranked best-first; the primary is already in `solution`.
+            response['alternates'] = [_format(p) for p in plans[1:]]
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
         if solver.rule_failures:

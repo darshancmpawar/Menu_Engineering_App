@@ -297,12 +297,18 @@ class MenuSolver:
         if entry not in self.rule_failures:
             self.rule_failures.append(entry)
 
-    def solve(self, locked=None, forbidden=None, similarity=None) -> Tuple[Dict, List[dt.date]]:
+    def solve(self, locked=None, forbidden=None, similarity=None,
+              n_alternates=0) -> Tuple[Any, List[dt.date]]:
         """
         Solve the menu plan with multi-restart strategy.
 
         Returns:
-            (week_plan, dates) where week_plan maps date -> {slot_id: item_string}
+            ``(week_plan, dates)`` where ``week_plan`` maps
+            ``date -> {slot_id: item_string}``.
+
+            When ``n_alternates > 0`` the first element is instead a *list* of
+            up to ``n_alternates + 1`` such plans ranked best-first (the primary
+            plan followed by the closest-to-ideal distinct alternatives).
         """
         self.rule_failures = []
         self._current_attempt_seed = None
@@ -356,6 +362,17 @@ class MenuSolver:
                         cells = self._build_cells(
                             dates, expanded_slots, cap_default, cap_by_slot, rng
                         )
+                        if n_alternates > 0:
+                            chosen_list = self._solve_cpsat_ranked(
+                                dates, cells, n_alternates, deadline,
+                                locked=locked, similarity=similarity,
+                                forbidden=forbidden,
+                            )
+                            plans = [
+                                self._rows_to_week_plan(c, dates, expanded_slots)
+                                for c in chosen_list
+                            ]
+                            return plans, dates
                         chosen_rows = self._solve_cpsat(
                             dates, cells, locked=locked, similarity=similarity,
                             forbidden=forbidden,
@@ -513,10 +530,14 @@ class MenuSolver:
 
     # ----- CP-SAT model -----
 
-    def _solve_cpsat(
+    def _assemble_model(
         self, dates: List[dt.date], cells: List[_Cell],
         locked=None, similarity=None, forbidden=None,
-    ) -> Dict:
+    ) -> cp_model.CpModel:
+        """Build the full CP-SAT model (decision vars + colour constraints +
+        every rule's constraints + the tiered objective) for these cells.
+        Populates ``cell.x_vars``/``cell.cand_rows`` as a side effect so the
+        caller can read the solution back."""
         rng = random.Random(self.cfg.seed)
         model = cp_model.CpModel()
         day_types = [_weekday_type_cfg(d, self.cfg.theme_map) for d in dates]
@@ -543,9 +564,51 @@ class MenuSolver:
                                     day_gravy_color_vars)
 
         self._apply_rules_and_objective(model, cells, rng, similarity, context)
+        return model
 
+    def _solve_cpsat(
+        self, dates: List[dt.date], cells: List[_Cell],
+        locked=None, similarity=None, forbidden=None,
+    ) -> Dict:
+        model = self._assemble_model(dates, cells, locked, similarity, forbidden)
         solver = self._configure_and_solve(model)
         return self._extract_solution_rows(solver, cells, dates)
+
+    def _solve_cpsat_ranked(
+        self, dates: List[dt.date], cells: List[_Cell], n_alternates: int,
+        deadline: float, locked=None, similarity=None, forbidden=None,
+    ) -> List[Dict]:
+        """Return up to ``n_alternates + 1`` distinct menus ranked best-first.
+
+        Solves the model, then repeatedly forbids the exact assignment just
+        found (a no-good cut) and re-maximizes the *same* tiered objective, so
+        each next menu is the closest-to-ideal one that differs from all
+        previous — deliberately not random diversification. Stops early if no
+        more distinct menus exist or the wall-clock deadline is hit."""
+        model = self._assemble_model(dates, cells, locked, similarity, forbidden)
+        per_solve = self.cfg.time_limit_sec
+        out: List[Dict] = []
+        for k in range(n_alternates + 1):
+            remaining = deadline - time.monotonic()
+            if out and remaining <= 1.0:
+                break
+            self.cfg.time_limit_sec = max(1, int(min(per_solve, max(1.0, remaining))))
+            try:
+                solver = self._configure_and_solve(model)
+            except RuntimeError:
+                if out:
+                    break   # no further distinct menu (or out of time) — return what we have
+                raise       # not even the primary solved → let the restart loop react
+            out.append(self._extract_solution_rows(solver, cells, dates))
+            if k == n_alternates:
+                break
+            # No-good cut: at least one cell must differ from this menu.
+            picked = []
+            for cell in cells:
+                j = next(idx for idx, v in enumerate(cell.x_vars) if solver.Value(v) == 1)
+                picked.append(cell.x_vars[j])
+            model.Add(sum(picked) <= len(picked) - 1)
+        return out
 
     def _build_context(
         self, cells, dates, day_types,

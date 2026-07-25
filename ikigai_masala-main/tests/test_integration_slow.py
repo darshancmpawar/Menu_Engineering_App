@@ -343,6 +343,31 @@ def test_daily_colour_semantics(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_ranked_alternates_are_distinct_and_valid(cleaned_menu, pools, production_rules):
+    """n_alternates>0 returns several full valid menus ranked best-first; each
+    fills every slot, they differ from one another, and none records a rule
+    failure (they are near-optimal, not random)."""
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plans, dates = solver.solve(n_alternates=2)
+
+    assert isinstance(plans, list) and len(plans) >= 2, "expected >=2 ranked menus"
+    for plan in plans:
+        assert len(plan) == 5
+        for d in dates:
+            for slot in _ACTIVE_SLOTS:
+                assert plan[d].get(slot), f"menu missing {slot} on {d}"
+    # Every returned menu is distinct from the others.
+    sigs = [tuple(sorted((str(d), s, plan[d][s]) for d in dates for s in plan[d]))
+            for plan in plans]
+    assert len(set(sigs)) == len(sigs), "ranked alternates must be distinct menus"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_premium_exactly_one_per_slot(cleaned_menu, pools, production_rules):
     """Rulebook 43-44: each week has exactly one Premium Veg Gravy and exactly
     one Premium Veg Dry (replacing the retired broad premium cap)."""
