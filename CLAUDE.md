@@ -43,7 +43,7 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 | Method | Route | Purpose |
 |---|---|---|
 | GET  | `/api/v1/clients` | list clients (`clients` = names; `clients_detail` = `[{name, city}]` for the sidebar city filter) |
-| POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`; each item carries `is_nonveg`) |
+| POST | `/api/v1/plan` | generate full menu (optional `counter_index` picks which counter to solve; optional `alternates` 0..`MAX_ALTERNATES`=4 → ranked near-optimal distinct menus in an `alternates` list, primary stays in `solution`; response carries `counter_mode`/`counter_count`/`counter_index`/`counter_name`; each item carries `is_nonveg`) |
 | POST | `/api/v1/regenerate` | regenerate selected cells (optional `counter_index`; items carry `is_nonveg`) |
 | POST | `/api/v1/save` | persist plan → history (single `week_plan`, or multi `counters: [{name, week_plan}]` → nested `menu_history`) |
 | GET  | `/api/v1/editor-metadata` | slot/theme/**city** metadata for editor (`available_cities`, `default_off_slots`, `default_item_cooldown_days`, `available_client_pools`) |
@@ -52,7 +52,9 @@ Secrets: `SUPABASE_URL`, `SUPABASE_KEY` in env or `.streamlit/secrets.toml`.
 | PUT  | `/api/v1/client-config/<name>` | update client config (accepts `city`, `serve_weekends`, `item_cooldown_days`, `source_pools`) |
 | POST | `/api/v1/client` | create client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `source_pools`) |
 | DELETE | `/api/v1/client/<name>` | delete client |
-| POST | `/api/v1/validate-pools` | dry-run pool build |
+| POST | `/api/v1/diagnose` | dry-run pre-flight: run every rule's `diagnose()` + built-in pool/colour diagnostics; returns structured `rule_diagnostics` + `summary` (the same pass `/plan` runs as its 422 gate) |
+| GET  | `/api/v1/saved-plan` | fetch a previously saved plan from history |
+| GET  | `/api/v1/metrics` | Prometheus-style metrics scrape |
 | GET  | `/api/v1/health` | health check |
 
 Helpers:
