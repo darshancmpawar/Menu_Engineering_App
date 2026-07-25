@@ -38,12 +38,12 @@ from ortools.sat.python import cp_model
 
 from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 from .selector_frequency_rule import SelectorFrequencyRule
+from ..constants import OBJECTIVE_TIER_WEIGHTS
 from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
 
 _MODES = frozenset({'different_day', 'avoid_consecutive', 'avoid_attribute_repeat'})
-_DEFAULT_WEIGHT = 300000
 
 
 class SoftPreferenceRule(BaseMenuRule):
@@ -53,7 +53,11 @@ class SoftPreferenceRule(BaseMenuRule):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.SOFT_PREFERENCE
         self.mode: str = str(rule_config.get('mode') or '')
-        self.weight: int = int(rule_config.get('weight', _DEFAULT_WEIGHT))
+        # `priority` (high/medium/low) selects a weight tier so soft rules are
+        # applied lexicographically; an explicit `weight` overrides it.
+        self.priority: str = str(rule_config.get('priority', 'medium')).lower()
+        _tier = OBJECTIVE_TIER_WEIGHTS.get(self.priority, OBJECTIVE_TIER_WEIGHTS['medium'])
+        self.weight: int = int(rule_config.get('weight', _tier))
         # avoid_consecutive
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         self._sel = SelectorFrequencyRule._parse_matcher(rule_config.get('selector'))
@@ -76,6 +80,8 @@ class SoftPreferenceRule(BaseMenuRule):
         errs: List[str] = []
         if self.mode not in _MODES:
             errs.append("mode must be one of " + ", ".join(sorted(_MODES)))
+        if self.priority not in OBJECTIVE_TIER_WEIGHTS:
+            errs.append("priority must be one of " + ", ".join(OBJECTIVE_TIER_WEIGHTS))
         if self.weight < 0:
             errs.append(f"weight must be >= 0 (got {self.weight})")
         if self.mode == 'different_day' and not (self._sel_a and self._sel_b):

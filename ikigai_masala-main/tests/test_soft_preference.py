@@ -85,6 +85,22 @@ class TestConfig:
             'name': 'x', 'mode': 'avoid_consecutive', 'selector': {'flag': 'f'},
             'weight': -1}).validate_config()
 
+    def test_bad_priority_rejected(self):
+        assert not SoftPreferenceRule({
+            'name': 'x', 'mode': 'avoid_consecutive', 'selector': {'flag': 'f'},
+            'priority': 'urgent'}).validate_config()
+
+    def test_priority_maps_to_tier_weight(self):
+        from src.constants import OBJECTIVE_TIER_WEIGHTS
+        for pri in ('high', 'medium', 'low'):
+            r = SoftPreferenceRule({'name': 'x', 'mode': 'avoid_consecutive',
+                                    'selector': {'flag': 'f'}, 'priority': pri})
+            assert r.weight == OBJECTIVE_TIER_WEIGHTS[pri]
+        # explicit weight overrides the tier
+        r = SoftPreferenceRule({'name': 'x', 'mode': 'avoid_consecutive',
+                                'selector': {'flag': 'f'}, 'priority': 'high', 'weight': 5})
+        assert r.weight == 5
+
     def test_apply_is_noop(self):
         # objective-only rule: apply must be safe and do nothing
         SoftPreferenceRule({'name': 'x', 'mode': 'avoid_consecutive',
@@ -126,6 +142,31 @@ class TestBehaviour:
         solver, status = _maximize(model, terms)
         assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
         assert solver.Value(r1.x_vars[1]) == 1   # day1 picks south to break the run
+
+    def test_high_priority_wins_over_medium(self):
+        # 3 days of rice; day1 is the only free choice. Picking north on day1
+        # makes north consecutive (violates the HIGH rule); picking south makes
+        # south consecutive (violates the MEDIUM rule). Lexicographic tiers must
+        # make the solver sacrifice the medium rule to protect the high one.
+        model = cp_model.CpModel()
+        r0 = _cell(model, 0, 'rice', [{'cuisine_family': 'north_indian'}])
+        r1 = _cell(model, 1, 'rice',
+                   [{'cuisine_family': 'north_indian'}, {'cuisine_family': 'south_indian'}])
+        r2 = _cell(model, 2, 'rice', [{'cuisine_family': 'south_indian'}])
+        cells = [r0, r1, r2]
+        high = SoftPreferenceRule({
+            'name': 'hi', 'mode': 'avoid_consecutive', 'priority': 'high',
+            'base_slot': 'rice', 'selector': {'cuisine_family': 'north_indian'}})
+        med = SoftPreferenceRule({
+            'name': 'md', 'mode': 'avoid_consecutive', 'priority': 'medium',
+            'base_slot': 'rice', 'selector': {'cuisine_family': 'south_indian'}})
+        ctx = _ctx(cells, 3)
+        terms = high.get_objective_terms(model, ctx) + med.get_objective_terms(model, ctx)
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        # day1 goes south: the high (north) rule is protected at the medium
+        # rule's expense.
+        assert solver.Value(r1.x_vars[1]) == 1
 
     def test_avoid_attribute_repeat_varies_key_ingredient(self):
         model = cp_model.CpModel()
