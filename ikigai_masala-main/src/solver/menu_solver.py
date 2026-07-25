@@ -53,7 +53,6 @@ DEFAULT_SEED_RESTART_STEP = 17
 
 # Penalty/bonus weights
 REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
-REGEN_CAP_MULTIPLIER = 1.5  # candidate cap multiplier for regeneration
 
 
 @dataclass
@@ -82,25 +81,23 @@ class SolverConfig:
     max_same_color_reach: int = 3        # rulebook 89: one colour may reach this
     max_colors_at_reach: int = 1         # rulebook 91: how many colours may exceed the soft cap
     ignore_rice_gravy_color_diff_on_chinese_day: bool = True
-    # Premium item constraints
+    # Premium flag column — set when the retained PremiumMenuRule is configured;
+    # feeds day_premium_vars. (The old min/max-per-horizon knobs were removed
+    # with the broad premium rule; the default ruleset uses selector_frequency
+    # exact-1 rules instead.)
     premium_flag_col: Optional[str] = None
-    premium_min_per_horizon: int = 1
-    premium_max_per_horizon: int = 2
-    premium_max_per_day: int = 1
     # Rice exclusions — see src.constants.RICE_EXCLUDE_ITEMS.
     rice_exclude_items: Set[str] = field(default_factory=lambda: set(RICE_EXCLUDE_ITEMS))
     # Cuisine theme settings
     cuisine_col: str = 'cuisine_family'
     cuisine_south_value: str = 'south_indian'
     cuisine_north_value: str = 'north_indian'
-    # Flag column names for theme filtering
-    f_chinese_rice: Optional[str] = 'is_chinese_fried_rice'
+    # Flag column names read by the nonveg theme rules. (The chinese-rice /
+    # chinese-veg-gravy / chinese-starter / veg-biryani / raita flag knobs were
+    # never read — the theme code uses the literal column names directly — so
+    # they were removed.)
     f_chinese_nonveg: Optional[str] = 'is_chinese_chicken_gravy'
-    f_chinese_veg_gravy: Optional[str] = 'is_chinese_veg_gravy'
-    f_chinese_starter: Optional[str] = 'is_chinese_starter'
     f_nonveg_biryani: Optional[str] = 'is_nonveg_biryani'
-    f_veg_biryani: Optional[str] = 'is_mixedveg_biryani'
-    f_raita: Optional[str] = 'is_raita'
     # Theme preferences
     prefer_theme_starter: bool = True
     # Solver strategy
@@ -246,9 +243,6 @@ class MenuSolver:
     picks exactly one candidate per cell subject to hard constraints.
     """
 
-    # Used by regenerator.py to derive regen caps
-    CAP_BY_SLOT_BASE: Dict[str, int] = dict(DEFAULT_CAP_BY_SLOT)
-
     def __init__(
         self,
         pools: Dict[str, pd.DataFrame],
@@ -321,6 +315,15 @@ class MenuSolver:
             base_slots, self.cfg.slot_counts or {s: 1 for s in base_slots}
         )
 
+        # The pre-filtered pool cache (item cooldown / theme filters / rice-bread
+        # gap / combo split — the expensive DataFrame masking) is seed- and
+        # cap-independent, so build it ONCE here rather than re-running it inside
+        # every restart attempt. Only per-attempt sampling depends on rng/cap.
+        base_slots_dedup = list(dict.fromkeys(_base_slot(s) for s in expanded_slots))
+        pool_cache = self._build_day_base_pool_cache(
+            dates, base_slots_dedup, expanded_slots
+        )
+
         cap_multipliers = self.cfg.cap_multipliers
         restarts_per_mult = self.cfg.restarts_per_multiplier
         base_seed = int(self.cfg.seed)
@@ -360,7 +363,8 @@ class MenuSolver:
 
                     try:
                         cells = self._build_cells(
-                            dates, expanded_slots, cap_default, cap_by_slot, rng
+                            dates, expanded_slots, pool_cache,
+                            cap_default, cap_by_slot, rng,
                         )
                         if n_alternates > 0:
                             chosen_list = self._solve_cpsat_ranked(
@@ -399,14 +403,13 @@ class MenuSolver:
     # ----- Cell building -----
 
     def _build_cells(
-        self, dates: List[dt.date], expanded_slots: List[str],
+        self, dates: List[dt.date], expanded_slots: List[str], cache: Dict,
         cap_default: int, cap_by_slot: Dict[str, int], rng: random.Random,
     ) -> List[_Cell]:
+        # ``cache`` (the seed/cap-independent pre-filtered pools) is built once
+        # in solve() and reused across restart attempts; only the per-attempt
+        # sampling below depends on rng/cap.
         cells: List[_Cell] = []
-        base_slots = list(dict.fromkeys(_base_slot(s) for s in expanded_slots))
-
-        # Pre-build per (day_idx, base_slot) pool cache
-        cache = self._build_day_base_pool_cache(dates, base_slots, expanded_slots)
 
         for di, d in enumerate(dates):
             for slot_id in expanded_slots:

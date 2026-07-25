@@ -494,10 +494,6 @@ class ClientConfigLoader:
         """Return 'single' or 'multi', derived from the counter count."""
         return self.get_counter_setup(name)[0]
 
-    def get_active_base_slots(self, name: str) -> List[str]:
-        """Return the primary counter's food categories (non-constant)."""
-        return list(self._counters_list(name)[0]['categories'])
-
     def get_client_city(self, name: str) -> Optional[str]:
         """Return the client's city (or ``None`` if unset / pre-migration).
 

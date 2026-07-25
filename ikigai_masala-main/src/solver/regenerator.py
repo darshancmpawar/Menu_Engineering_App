@@ -14,26 +14,9 @@ import pandas as pd
 
 from ._helpers import strip_color_suffix as _strip_color_suffix
 from .menu_solver import MenuSolver, SolverConfig, REGEN_SIMILARITY_PENALTY
-from ..preprocessor.column_mapper import _norm_str, _norm_color
+from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
-
-
-def similarity_score(cand: pd.Series, orig: pd.Series) -> int:
-    """Compute similarity between a candidate and the original item."""
-    score = 0
-    if _norm_str(cand.get('sub_category', '')) == _norm_str(orig.get('sub_category', '')):
-        score += 30
-    if _norm_str(cand.get('key_ingredient', '')) == _norm_str(orig.get('key_ingredient', '')):
-        score += 20
-    if _norm_str(cand.get('cuisine_family', '')) == _norm_str(orig.get('cuisine_family', '')):
-        score += 20
-    if _norm_color(cand.get('item_color', 'unknown')) == _norm_color(orig.get('item_color', 'unknown')):
-        score += 10
-    cand_words = set(_norm_str(cand.get('item', '')).split('_'))
-    orig_words = set(_norm_str(orig.get('item', '')).split('_'))
-    score += 2 * len(cand_words & orig_words)
-    return int(score)
 
 
 class MenuRegenerator:

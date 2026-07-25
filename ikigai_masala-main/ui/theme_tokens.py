@@ -22,18 +22,15 @@ RED = "#FA1024"
 PAGE_BG = "#F5F5F5"         # page canvas
 CARD_BG = "#FFFFFF"         # cards / panels
 ALT_ROW = "#F9F9F9"         # alternating table rows
-DISABLED_BG = "#E5E5E5"
 
 # --- Text ---
 TEXT_PRIMARY = "#131313"
 TEXT_SECONDARY = "#414141"
 TEXT_TERTIARY = "#777777"
 TEXT_DISABLED = "#AEAEAE"
-WHITE = "#FFFFFF"
 
 # --- Lines ---
 BORDER = "#E5E5E5"
-BORDER_SUBTLE = "#EDEDED"
 
 # Soft status/theme tints (low-emphasis badge style: tinted bg + darker text).
 TINT_GREEN = "#E5FFF1"

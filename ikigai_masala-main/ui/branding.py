@@ -19,7 +19,6 @@ _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 DEFAULT_ICON_URL = (
     "https://em-content.zobj.net/source/apple/391/curry-rice_1f35b.png"
 )
-DEFAULT_ICON_EMOJI = "\U0001F35B"  # 🍛
 
 
 def logo_path(raster_only: bool = False) -> Optional[str]:
