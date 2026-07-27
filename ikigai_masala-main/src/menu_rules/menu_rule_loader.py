@@ -4,10 +4,20 @@ Menu rule loader from JSON configuration.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Per-client rules file. Resolved relative to the repo (data/configs) so that
+# importing ``src.menu_rules`` never depends on the ``api`` package — the
+# ``CLIENT_RULES_CONFIG_PATH`` env var still overrides it. Kept module-level so
+# tests can monkeypatch this name.
+CLIENT_RULES_CONFIG_PATH = os.getenv(
+    'CLIENT_RULES_CONFIG_PATH',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'client_rules.json'),
+)
 
 from .base_menu_rule import BaseMenuRule
 from .cuisine_menu_rule import CuisineMenuRule
@@ -23,7 +33,6 @@ from .theme_rules import (
 )
 from .color_rules import (
     ColorPairingMenuRule,
-    ColorVarietyMenuRule,
     WelcomeDrinkColorMenuRule,
 )
 from .cooldown_rules import (
@@ -75,7 +84,6 @@ class MenuRuleLoader:
     RULE_CLASSES = {
         'cuisine': CuisineMenuRule,
         'color_pairing': ColorPairingMenuRule,
-        'color_variety': ColorVarietyMenuRule,
         'unique_items': UniqueItemsMenuRule,
         'theme_day': ThemeDayMenuRule,
         'coupling': CouplingMenuRule,
@@ -141,8 +149,6 @@ class MenuRuleLoader:
         Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call.  If the file is
         missing or the client has no entry, returns *generic_rules* unchanged.
         """
-        from api.config import CLIENT_RULES_CONFIG_PATH
-
         path = Path(CLIENT_RULES_CONFIG_PATH)
         if not path.exists():
             return list(generic_rules)

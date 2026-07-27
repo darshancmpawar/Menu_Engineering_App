@@ -96,7 +96,8 @@ class TestLoadForClient:
 
     def test_missing_file_returns_generic(self, monkeypatch):
         monkeypatch.setattr(
-            'api.config.CLIENT_RULES_CONFIG_PATH', '/nonexistent/nope.json')
+            'src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH',
+            '/nonexistent/nope.json')
         loader = MenuRuleLoader()
         generic = [object()]  # dummy rule
         result = loader.load_for_client('Tekion', generic)
@@ -129,7 +130,7 @@ class TestLoadForClient:
             ]
         }))
         from unittest.mock import patch
-        with patch('api.config.CLIENT_RULES_CONFIG_PATH', str(bad_file)):
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(bad_file)):
             loader = MenuRuleLoader()
             result = loader.load_for_client('TestClient', [])
         assert len(result) == 1

@@ -24,10 +24,9 @@ MENU_RULES_CONFIG_PATH = os.getenv(
     str(BASE_DIR / 'data/configs/indian_menu_rules.json')
 )
 
-CLIENT_RULES_CONFIG_PATH = os.getenv(
-    'CLIENT_RULES_CONFIG_PATH',
-    str(BASE_DIR / 'data/configs/client_rules.json')
-)
+# CLIENT_RULES_CONFIG_PATH now lives in src.menu_rules.menu_rule_loader so the
+# loader has no import dependency on the api package (it still honours the
+# CLIENT_RULES_CONFIG_PATH env var).
 
 MIN_TIME_LIMIT_SECONDS = 10
 MAX_TIME_LIMIT_SECONDS = 600

@@ -27,6 +27,21 @@ OBJECTIVE_TIER_WEIGHTS: Dict[str, int] = {
 }
 
 # ---------------------------------------------------------------------------
+# Default weekday → cuisine-theme mapping (Mon..Fri)
+# ---------------------------------------------------------------------------
+# Single source of truth shared by the solver's global fallback
+# (``_helpers.weekday_type``) and each client's default ``theme_map``
+# (``client_config.DEFAULT_THEME_MAP``). Weekends / other days fall back to
+# holiday / normal in ``weekday_type``.
+DEFAULT_WEEKDAY_THEMES: Dict[str, str] = {
+    'monday': 'mix',
+    'tuesday': 'chinese',
+    'wednesday': 'biryani',
+    'thursday': 'south',
+    'friday': 'north',
+}
+
+# ---------------------------------------------------------------------------
 # Slot names
 # ---------------------------------------------------------------------------
 

@@ -46,13 +46,12 @@ configure_logging()
 # happens in production long after the process looked healthy.
 validate_required_env()
 from src.preprocessor import ExcelReader, DataCleanser
-from src.preprocessor.pool_builder import PoolBuilder, _base_slot
+from src.preprocessor.pool_builder import PoolBuilder, _base_slot, _nonveg_mask
 from src.preprocessor.client_pool_filter import (
     get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
 )
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
-    NONVEG_PROTEINS,
 )
 from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
@@ -236,10 +235,6 @@ def _menu_data_for_client(client_name):
     return cached
 
 
-# Proteins that mark a dish non-vegetarian. Single source of truth lives in
-# src.constants so the UI's red-dish tagging and the pool builder's
-# "non-veg only in nonveg_main" exclusion can never disagree.
-_NONVEG_PROTEINS = frozenset(NONVEG_PROTEINS)
 _nonveg_items = None
 
 
@@ -254,19 +249,13 @@ def _get_nonveg_items():
     """
     global _nonveg_items
     if _nonveg_items is None:
-        import pandas as pd
-
         df, _ = _get_menu_data()
         if 'item' not in df.columns:
             _nonveg_items = set()
             return _nonveg_items
-        mask = pd.Series(False, index=df.index)
-        if 'primary_protein' in df.columns:
-            proteins = df['primary_protein'].astype(str).str.strip().str.lower()
-            mask = mask | proteins.isin(_NONVEG_PROTEINS)
-        if 'is_egg_dish' in df.columns:
-            egg = pd.to_numeric(df['is_egg_dish'], errors='coerce').fillna(0) == 1
-            mask = mask | egg
+        # Same predicate the pool builder uses to drop non-veg items from
+        # veg slots — one source of truth for "is this dish non-veg".
+        mask = _nonveg_mask(df)
         _nonveg_items = {
             str(name).strip().lower() for name in df.loc[mask, 'item']
         }
