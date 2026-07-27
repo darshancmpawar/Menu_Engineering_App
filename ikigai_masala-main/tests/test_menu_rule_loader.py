@@ -9,7 +9,7 @@ class TestMenuRuleLoader:
     def test_load_from_json_file(self):
         loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
-        assert len(rules) == 51
+        assert len(rules) == 52
 
     def test_all_rules_are_base_menu_rule(self):
         loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
@@ -179,19 +179,19 @@ class TestCityRules:
 
     def test_bangalore_loads_full_ruleset(self):
         rules = MenuRuleLoader().load_for_city('Bangalore')
-        assert len(rules) == 51
+        assert len(rules) == 52
         assert all(r.validate_config() for r in rules)
 
     def test_city_name_is_case_insensitive(self):
-        assert len(MenuRuleLoader().load_for_city('bangalore')) == 51
+        assert len(MenuRuleLoader().load_for_city('bangalore')) == 52
 
     def test_other_city_inherits_bangalore(self):
         # Pune's file extends bangalore with no overrides yet → same ruleset.
-        assert len(MenuRuleLoader().load_for_city('Pune')) == 51
+        assert len(MenuRuleLoader().load_for_city('Pune')) == 52
 
     def test_unknown_or_blank_city_falls_back_to_default(self):
-        assert len(MenuRuleLoader().load_for_city('Atlantis')) == 51
-        assert len(MenuRuleLoader().load_for_city(None)) == 51
+        assert len(MenuRuleLoader().load_for_city('Atlantis')) == 52
+        assert len(MenuRuleLoader().load_for_city(None)) == 52
 
     def test_extends_override_and_disable(self, tmp_path):
         import json

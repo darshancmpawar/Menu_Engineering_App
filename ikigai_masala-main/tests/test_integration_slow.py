@@ -419,6 +419,70 @@ def test_deep_fried_nonveg_weekly_cap(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_two_nonveg_two_vegdry_daily_composition(
+    cleaned_menu, pools, production_rules,
+):
+    """A 2-nonveg / 2-veg_dry counter solves feasibly and each day's nonveg
+    pair is composed by the day's theme (rulebook: 2 nonveg mains):
+      biryani day -> a nonveg biryani + a chicken gravy
+      chinese day -> a chinese nonveg  + a north/south chicken gravy
+      other days  -> a nonveg dry      + a north/south chicken gravy
+    and the veg_dry pair is one north-Indian + one south-Indian on the mix day.
+    """
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    slots = ['welcome_drink', 'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+             'starter', 'dessert', 'nonveg_main']
+    counts = {s: 1 for s in slots}
+    counts['nonveg_main'] = 2
+    counts['veg_dry'] = 2
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts=counts,
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+
+    def flag_map(col):
+        return dict(zip(cleaned_menu['item'],
+                        pd.to_numeric(cleaned_menu[col], errors='coerce').fillna(0).astype(int)))
+
+    cuisine = dict(zip(cleaned_menu['item'],
+                       cleaned_menu['cuisine_family'].astype(str).str.lower()))
+    is_dry = flag_map('is_nonveg_dry')
+    is_biryani = flag_map('is_nonveg_biryani')
+    is_north = flag_map('is_north_chicken_gravy')
+    is_south = flag_map('is_south_chicken_gravy')
+
+    # Default theme_map: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
+    themes = ['mix', 'chinese', 'biryani', 'south', 'north']
+    for di, d in enumerate(dates):
+        nv = [strip_color_suffix(v) for k, v in plan[d].items()
+              if k.startswith('nonveg_main')]
+        assert len(nv) == 2, f"{d}: expected 2 nonveg mains, got {nv}"
+        n_gravy = sum(1 for x in nv if is_north.get(x, 0) or is_south.get(x, 0))
+        if themes[di] == 'biryani':
+            assert any(is_biryani.get(x, 0) for x in nv), f"{d}: no biryani in {nv}"
+            assert n_gravy >= 1, f"{d}: no chicken gravy beside biryani in {nv}"
+        elif themes[di] == 'chinese':
+            assert any(cuisine.get(x) == 'chinese' for x in nv), f"{d}: no chinese nonveg in {nv}"
+            assert n_gravy >= 1, f"{d}: no gravy beside chinese nonveg in {nv}"
+        else:  # chicken day
+            assert any(is_dry.get(x, 0) for x in nv), f"{d}: no dry nonveg in {nv}"
+            assert n_gravy >= 1, f"{d}: no north/south gravy in {nv}"
+
+    # veg_dry pair on the mix day (Mon, no theme narrowing) = one north + one south.
+    vd = [strip_color_suffix(v) for k, v in plan[dates[0]].items()
+          if k.startswith('veg_dry')]
+    assert len(vd) == 2, vd
+    vd_cuisines = sorted(cuisine.get(x) for x in vd)
+    assert 'north_indian' in vd_cuisines and 'south_indian' in vd_cuisines, vd_cuisines
+
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_buttermilk_exactly_twice_non_consecutive(
     cleaned_menu, pools, production_rules,
 ):

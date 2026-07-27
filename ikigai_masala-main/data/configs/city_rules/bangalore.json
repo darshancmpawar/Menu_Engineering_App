@@ -80,10 +80,6 @@
       "penalty": 1000000000000000
     },
     {
-      "name": "prefer_nonveg_dry_slot2",
-      "type": "nonveg_dry_preference"
-    },
-    {
       "name": "nonveg_biryani_once_per_week",
       "type": "nonveg_biryani_weekly",
       "max_per_week": 1
@@ -339,6 +335,36 @@
       "priority": "medium",
       "base_slot": "rice",
       "selector": { "cuisine_family": "south_indian" }
+    },
+    {
+      "name": "nonveg_main_daily_pair",
+      "type": "slot_composition",
+      "base_slot": "nonveg_main",
+      "requires_slot_count": 2,
+      "components": [
+        { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
+        { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+      ],
+      "components_by_theme": {
+        "chinese": [
+          { "selector": { "cuisine_family": "chinese" }, "count": 1 },
+          { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+        ],
+        "biryani": [
+          { "selector": { "flag": "is_nonveg_biryani" }, "count": 1 },
+          { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+        ]
+      }
+    },
+    {
+      "name": "veg_dry_north_south_pair",
+      "type": "slot_composition",
+      "base_slot": "veg_dry",
+      "requires_slot_count": 2,
+      "components": [
+        { "selector": { "cuisine_family": "north_indian" }, "count": 1 },
+        { "selector": { "cuisine_family": "south_indian" }, "count": 1 }
+      ]
     }
   ]
 }

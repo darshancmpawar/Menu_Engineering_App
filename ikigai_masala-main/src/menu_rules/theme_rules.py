@@ -194,6 +194,31 @@ _CONTINENTAL_FLAG_MAP = {
 # deliberately excluded from _CONTINENTAL_FLAG_MAP.
 _CUISINE_MAIN_SLOTS = {'rice', 'veg_gravy', 'veg_dry', 'starter', 'nonveg_main'}
 
+# North/South chicken gravies are the "always-allowed" nonveg gravy on a
+# two-nonveg counter: the slot_composition rule pairs one themed nonveg (biryani
+# / chinese / dry) with one of these. On chinese / biryani / cuisine days the
+# theme filter would otherwise strip them from nonveg_main, so we union them
+# back in — but ONLY when the counter actually serves two nonveg mains.
+_NONVEG_REGIONAL_GRAVY_FLAGS = ('is_north_chicken_gravy', 'is_south_chicken_gravy')
+
+
+def _has_multi_nonveg(cfg) -> bool:
+    """True when the counter serves 2+ ``nonveg_main`` dishes (so the day's
+    nonveg pair needs a themed dish + a regional gravy)."""
+    counts = getattr(cfg, 'slot_counts', None) or {}
+    try:
+        return int(counts.get('nonveg_main', 1) or 1) >= 2
+    except (TypeError, ValueError):
+        return False
+
+
+def _nonveg_regional_gravy_mask(pool: pd.DataFrame) -> pd.Series:
+    mask = pd.Series(False, index=pool.index)
+    for col in _NONVEG_REGIONAL_GRAVY_FLAGS:
+        if col in pool.columns:
+            mask = mask | (pool[col].map(_to_bool01) == 1)
+    return mask
+
 
 def _chinese_side_mask(pool: pd.DataFrame) -> pd.Series:
     """Detect Chinese-appropriate veg_dry items via text heuristics."""
@@ -288,12 +313,25 @@ class ThemeSlotFilterRule(BaseMenuRule):
         kept = pool[~drop]
         return kept if len(kept) > 0 else pool
 
+    def _augment_nonveg_pair(self, pool: pd.DataFrame, base_slot: str,
+                             filtered: pd.DataFrame, cfg) -> pd.DataFrame:
+        """On a two-nonveg counter, keep the day's themed ``nonveg_main`` dishes
+        PLUS the always-allowed north/south chicken gravies, so the
+        ``slot_composition`` rule can place one themed dish + one regional gravy.
+        A single-nonveg counter is returned unchanged."""
+        if base_slot != 'nonveg_main' or not _has_multi_nonveg(cfg):
+            return filtered
+        reg = pool[_nonveg_regional_gravy_mask(pool)]
+        if len(reg) == 0:
+            return filtered
+        return pool.loc[filtered.index.union(reg.index)]
+
     def _filter_chinese(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)
         if flag_col and flag_col in pool.columns:
             filtered = pool[pool[flag_col].map(_to_bool01) == 1]
             if len(filtered) > 0:
-                return filtered
+                return self._augment_nonveg_pair(pool, base_slot, filtered, cfg)
 
         if base_slot == 'veg_dry':
             mask = _chinese_side_mask(pool)
@@ -323,7 +361,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
         if flag_col and flag_col in pool.columns:
             filtered = pool[pool[flag_col].map(_to_bool01) == 1]
             if len(filtered) > 0:
-                return filtered
+                return self._augment_nonveg_pair(pool, base_slot, filtered, cfg)
         return pool
 
     def _filter_cuisine(self, pool: pd.DataFrame, base_slot: str,
@@ -353,7 +391,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
         if cuisine_col in pool.columns:
             filtered = pool[pool[cuisine_col].map(_norm_str) == target]
             if len(filtered) > 0:
-                return filtered
+                return self._augment_nonveg_pair(pool, base_slot, filtered, cfg)
 
         return pool
 

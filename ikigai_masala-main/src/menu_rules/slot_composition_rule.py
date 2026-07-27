@@ -1,0 +1,162 @@
+"""Generic per-day slot-composition rule (Phase-3 rule-type framework).
+
+Constrains *how a slot family is composed on a single day* — e.g. "of the two
+``nonveg_main`` dishes today, one is a dry and one is a north/south chicken
+gravy" — and lets that composition switch on the day's theme (biryani day → one
+biryani + one gravy; chinese day → one chinese nonveg + one gravy; every other
+theme → one dry + one gravy).
+
+This is the piece the other rule types don't cover: ``selector_frequency`` counts
+matches across the *horizon* and ``attribute_grouping`` constrains values *within
+a slot's candidates*, but neither pins the per-day mix of two co-located slots.
+
+Config::
+
+    {
+        "type": "slot_composition",
+        "name": "nonveg_main_daily_pair",
+        "base_slot": "nonveg_main",
+        "requires_slot_count": 2,          # only active when the day has exactly
+                                           # this many expanded slots (self-gate;
+                                           # omit = apply to whatever exists)
+        "components": [                    # default mix (used when no theme match)
+            {"selector": {"flag": "is_nonveg_dry"}, "count": 1},
+            {"selector": {"any_flag": ["is_north_chicken_gravy",
+                                       "is_south_chicken_gravy"]}, "count": 1}
+        ],
+        "components_by_theme": {           # optional per-theme overrides
+            "chinese": [ ... ],
+            "biryani": [ ... ]
+        }
+    }
+
+Each *component* is ``{selector, count}`` using the same selector grammar as
+``selector_frequency`` (flag / any_flag / sub_category / item / key_ingredient /
+primary_protein / course_type / cuisine_family). For a given day the rule adds,
+per component, ``sum(matching candidate vars) >= count``.
+
+The ``>=`` (not ``==``) is deliberate: when the components exactly partition the
+slots (e.g. two slots, two ``count: 1`` components) each lower bound is forced to
+equality anyway — "≥1 dry AND ≥1 gravy" across two cells *is* exactly one of
+each — but if one component's pool is empty its bound simply drops, and the
+surviving component never becomes unsatisfiable by being pinned to an impossible
+exact count. So it reads as an exact composition when the pool is rich and
+relaxes to best-effort when it isn't.
+
+**Auto-relax**: ``count`` is also capped to how many matching candidates the
+day's pool actually holds, so a thin/absent pool relaxes the component instead of
+forcing an INFEASIBLE model (same contract as ``selector_frequency``).
+"""
+
+import logging
+from typing import Dict, Any, List, Optional, Tuple
+
+from ortools.sat.python import cp_model
+
+from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .selector_frequency_rule import SelectorFrequencyRule
+
+logger = logging.getLogger(__name__)
+
+# A parsed component: (matcher tuple, required count).
+_Component = Tuple[Any, int]
+
+
+class SlotCompositionRule(BaseMenuRule):
+    def __init__(self, rule_config: Dict[str, Any]):
+        super().__init__(rule_config)
+        self.rule_type = MenuRuleType.SLOT_COMPOSITION
+        self.base_slot: Optional[str] = rule_config.get('base_slot')
+        rsc = rule_config.get('requires_slot_count')
+        self.requires_slot_count: Optional[int] = int(rsc) if rsc is not None else None
+        self.components: List[_Component] = self._parse_components(
+            rule_config.get('components'))
+        self.components_by_theme: Dict[str, List[_Component]] = {
+            str(theme): self._parse_components(comps)
+            for theme, comps in (rule_config.get('components_by_theme') or {}).items()
+        }
+
+    @staticmethod
+    def _parse_components(raw) -> List[_Component]:
+        """Parse a list of ``{selector, count}`` dicts into matcher tuples.
+
+        Components whose selector doesn't parse are dropped (surfaced by
+        :py:meth:`validation_errors`)."""
+        out: List[_Component] = []
+        for comp in (raw or []):
+            if not isinstance(comp, dict):
+                continue
+            matcher = SelectorFrequencyRule._parse_matcher(comp.get('selector'))
+            count = comp.get('count', 1)
+            try:
+                count = int(count)
+            except (TypeError, ValueError):
+                count = None
+            if matcher is not None and count is not None and count >= 1:
+                out.append((matcher, count))
+        return out
+
+    def _all_component_lists(self) -> List[List[_Component]]:
+        return [self.components] + list(self.components_by_theme.values())
+
+    def validate_config(self) -> bool:
+        return not self.validation_errors()
+
+    def validation_errors(self) -> List[str]:
+        errs: List[str] = []
+        if not self.base_slot:
+            errs.append("base_slot is required")
+        lists = self._all_component_lists()
+        if not any(lists):
+            errs.append("at least one component (in 'components' or "
+                        "'components_by_theme') with a valid selector and count >= 1")
+        # Every raw component that survived parsing already has count >= 1; a
+        # configured component that produced nothing means a bad selector/count.
+        raw_total = len(self.config.get('components') or [])
+        raw_total += sum(len(v or []) for v in (self.config.get('components_by_theme') or {}).values())
+        parsed_total = sum(len(lst) for lst in lists)
+        if raw_total and parsed_total < raw_total:
+            errs.append("every component needs a valid selector and integer count >= 1")
+        if self.requires_slot_count is not None and self.requires_slot_count < 1:
+            errs.append(f"requires_slot_count must be >= 1 (got {self.requires_slot_count})")
+        return errs
+
+    def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
+              menu_data: Any, context: Dict[str, Any]) -> None:
+        cells = context.get('cells', [])
+        dates = context.get('dates', [])
+        day_types = context.get('day_types', [])
+        if not cells or not self.base_slot:
+            return
+
+        for di in range(len(dates)):
+            day_cells = [
+                c for c in cells
+                if c.d_idx == di and c.base_slot == self.base_slot
+            ]
+            if not day_cells:
+                continue
+            # Self-gate: only compose when the counter has the expected number
+            # of this slot on this day (leaves single-slot counters untouched).
+            if self.requires_slot_count is not None \
+                    and len(day_cells) != self.requires_slot_count:
+                continue
+
+            theme = day_types[di] if di < len(day_types) else ''
+            comps = self.components_by_theme.get(theme, self.components)
+            if not comps:
+                continue
+
+            for matcher, count in comps:
+                lits = [
+                    v for c in day_cells
+                    for v, r in zip(c.x_vars, c.cand_rows)
+                    if SelectorFrequencyRule._matches(r, matcher)
+                ]
+                required = min(count, len(lits))
+                if required != count:
+                    logger.info(
+                        "%s: day %d component %s capped %d -> %d (pool limit)",
+                        self.name, di, matcher, count, required)
+                if required > 0:
+                    model.Add(sum(lits) >= required)

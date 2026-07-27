@@ -59,6 +59,7 @@ from .item_frequency_rule import ItemFrequencyRule
 from .selector_frequency_rule import SelectorFrequencyRule
 from .attribute_grouping_rule import AttributeGroupingRule
 from .soft_preference_rule import SoftPreferenceRule
+from .slot_composition_rule import SlotCompositionRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
@@ -114,6 +115,7 @@ class MenuRuleLoader:
         'selector_frequency': SelectorFrequencyRule,
         'attribute_grouping': AttributeGroupingRule,
         'soft_preference': SoftPreferenceRule,
+        'slot_composition': SlotCompositionRule,
         'slot_day_restriction': SlotDayRestrictionRule,
     }
 
