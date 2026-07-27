@@ -26,7 +26,7 @@ from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
-    DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
+    DEFAULT_EXCEL_PATH,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     MAX_ALTERNATES, validate_required_env, today_in_app_tz,
@@ -178,7 +178,7 @@ _init_lock = threading.Lock()
 _client_loader = None
 _pools = None
 _df = None
-_menu_rules = None
+_menu_rules_by_city = {}
 
 
 def _get_client_loader():
@@ -262,19 +262,25 @@ def _get_nonveg_items():
     return _nonveg_items
 
 
-def _get_menu_rules():
-    global _menu_rules
-    if _menu_rules is None:
+def _get_menu_rules_for_city(city):
+    """Cached base ruleset for a city (resolves the city_rules/<city>.json file
+    and its ``extends`` chain; falls back to the default city). Cached per
+    normalized city so clients in the same city share one read-only ruleset."""
+    key = (city or '').strip().lower() or None
+    cached = _menu_rules_by_city.get(key)
+    if cached is None:
         with _init_lock:
-            if _menu_rules is None:
-                loader = MenuRuleLoader(MENU_RULES_CONFIG_PATH)
-                _menu_rules = loader.load_from_file()
-    return _menu_rules
+            cached = _menu_rules_by_city.get(key)
+            if cached is None:
+                cached = MenuRuleLoader().load_for_city(city)
+                _menu_rules_by_city[key] = cached
+    return cached
 
 
-def _rules_and_skip_for_client(client_name, dates):
-    """Return (rules, skip_cells) for a client, merging generic + per-client."""
-    generic = _get_menu_rules()
+def _rules_and_skip_for_client(client_name, dates, city=None):
+    """Return (rules, skip_cells) for a client, merging the city ruleset +
+    per-client rules."""
+    generic = _get_menu_rules_for_city(city)
     loader = MenuRuleLoader()
     rules = loader.load_for_client(client_name, generic)
     skip_cells = set()
@@ -585,7 +591,8 @@ def _prepare_solver_inputs(
     weekday_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
     )
-    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
+    city = _get_client_loader().get_client_city(client_name)
+    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates, city=city)
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
     cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)

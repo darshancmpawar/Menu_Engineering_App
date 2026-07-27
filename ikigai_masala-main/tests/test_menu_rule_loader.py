@@ -7,25 +7,25 @@ from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleType
 
 class TestMenuRuleLoader:
     def test_load_from_json_file(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
         assert len(rules) == 51
 
     def test_all_rules_are_base_menu_rule(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
         for rule in rules:
             assert isinstance(rule, BaseMenuRule)
 
     def test_all_rules_have_rule_type(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
         for rule in rules:
             assert rule.rule_type is not None
             assert isinstance(rule.rule_type, MenuRuleType)
 
     def test_all_rules_validate(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
         for rule in rules:
             assert rule.validate_config() is True
@@ -50,7 +50,7 @@ class TestMenuRuleLoader:
         assert len(rules) == 0
 
     def test_get_rules_by_type(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         loader.load_from_file()
         # The broad `premium` rule (per-day + weekly cap) was retired per the
         # Bangalore rulebook (§5, rules 45-46) in favour of two slot-specific
@@ -63,7 +63,7 @@ class TestMenuRuleLoader:
         assert all(r.exact == 1 for r in premium_exact)
 
     def test_get_enabled_rules_returns_all(self):
-        loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
+        loader = MenuRuleLoader('data/configs/city_rules/bangalore.json')
         rules = loader.load_from_file()
         enabled = loader.get_enabled_rules()
         assert len(enabled) == len(rules)
@@ -172,3 +172,59 @@ class TestInvalidConfigLogging:
         joined = "\n".join(rec.message for rec in caplog.records)
         assert "bad_premium" in joined
         assert "min_per_horizon" in joined
+
+
+class TestCityRules:
+    """Per-city rule files: resolution, extends/override/disable, fallback."""
+
+    def test_bangalore_loads_full_ruleset(self):
+        rules = MenuRuleLoader().load_for_city('Bangalore')
+        assert len(rules) == 51
+        assert all(r.validate_config() for r in rules)
+
+    def test_city_name_is_case_insensitive(self):
+        assert len(MenuRuleLoader().load_for_city('bangalore')) == 51
+
+    def test_other_city_inherits_bangalore(self):
+        # Pune's file extends bangalore with no overrides yet → same ruleset.
+        assert len(MenuRuleLoader().load_for_city('Pune')) == 51
+
+    def test_unknown_or_blank_city_falls_back_to_default(self):
+        assert len(MenuRuleLoader().load_for_city('Atlantis')) == 51
+        assert len(MenuRuleLoader().load_for_city(None)) == 51
+
+    def test_extends_override_and_disable(self, tmp_path):
+        import json
+        (tmp_path / 'bangalore.json').write_text(json.dumps({'rules': [
+            {'name': 'a', 'type': 'coupling'},
+            {'name': 'b', 'type': 'unique_items'},
+        ]}))
+        (tmp_path / 'pune.json').write_text(json.dumps({
+            'extends': 'bangalore', 'disable': ['b'],
+            'rules': [{'name': 'c', 'type': 'curd_side'}],
+        }))
+        rules = MenuRuleLoader().load_for_city('pune', cities_dir=str(tmp_path))
+        names = [r.name for r in rules]
+        assert names == ['a', 'c']  # b disabled, c appended, bangalore order kept
+
+    def test_child_overrides_parent_by_name(self, tmp_path):
+        import json
+        (tmp_path / 'bangalore.json').write_text(json.dumps({'rules': [
+            {'name': 'cap', 'type': 'selector_frequency',
+             'selector': {'flag': 'is_pulao'}, 'max': 1},
+        ]}))
+        (tmp_path / 'pune.json').write_text(json.dumps({
+            'extends': 'bangalore',
+            'rules': [{'name': 'cap', 'type': 'selector_frequency',
+                       'selector': {'flag': 'is_pulao'}, 'max': 3}],
+        }))
+        rules = MenuRuleLoader().load_for_city('pune', cities_dir=str(tmp_path))
+        assert len(rules) == 1 and rules[0].max == 3  # child's max wins
+
+    def test_circular_extends_raises(self, tmp_path):
+        import json
+        import pytest as _pytest
+        (tmp_path / 'a.json').write_text(json.dumps({'extends': 'b', 'rules': []}))
+        (tmp_path / 'b.json').write_text(json.dumps({'extends': 'a', 'rules': []}))
+        with _pytest.raises(ValueError, match='circular'):
+            MenuRuleLoader().load_for_city('a', cities_dir=str(tmp_path))

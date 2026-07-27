@@ -876,7 +876,7 @@ class TestItemCooldownConfig:
 
     def test_override_rebuilds_rule_without_mutating_shared(self, fake_supabase):
         import api.app as api_app
-        generic = api_app._get_menu_rules()
+        generic = api_app._get_menu_rules_for_city('Bangalore')
         ic = [r for r in generic
               if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
         original = ic.cooldown_days
@@ -888,7 +888,7 @@ class TestItemCooldownConfig:
 
     def test_override_none_is_noop(self, fake_supabase):
         import api.app as api_app
-        generic = api_app._get_menu_rules()
+        generic = api_app._get_menu_rules_for_city('Bangalore')
         assert api_app._apply_item_cooldown_override(generic, None) is generic
 
 

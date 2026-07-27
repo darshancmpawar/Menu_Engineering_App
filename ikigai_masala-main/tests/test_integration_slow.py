@@ -8,7 +8,7 @@ the host. PR CI skips it by default; the nightly / manual workflow
 runs it.
 
 What it proves that the unit tests don't:
-  * The real rule config in ``data/configs/indian_menu_rules.json``
+  * The real rule config in ``data/configs/city_rules/bangalore.json``
     loads without warnings.
   * Those rules, together, produce a feasible plan on the bundled
     ontology — no silent pool exhaustion, no INFEASIBLE from conflicting
@@ -46,9 +46,9 @@ def pools(cleaned_menu):
 
 @pytest.fixture(scope="module")
 def production_rules():
-    """Load the shipped rules config — the same file the API serves from."""
-    loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
-    rules = loader.load_from_file()
+    """Load the shipped Bangalore ruleset — the same the API serves for a
+    Bangalore client."""
+    rules = MenuRuleLoader().load_for_city('Bangalore')
     assert rules, "expected shipped rules to load cleanly"
     return rules
 

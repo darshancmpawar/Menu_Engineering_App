@@ -19,6 +19,16 @@ CLIENT_RULES_CONFIG_PATH = os.getenv(
     str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'client_rules.json'),
 )
 
+# Directory holding one rules file per city (``<city>.json``). A city file may
+# ``"extends"`` another city (by bare name) to inherit its rules and override
+# by rule ``name``; ``DEFAULT_CITY`` is the reference ruleset and the fallback
+# for any city without its own file.
+CITY_RULES_DIR = os.getenv(
+    'CITY_RULES_DIR',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'city_rules'),
+)
+DEFAULT_CITY = 'bangalore'
+
 from .base_menu_rule import BaseMenuRule
 from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
@@ -116,9 +126,57 @@ class MenuRuleLoader:
             self.config_path = Path(config_path)
         if not self.config_path or not self.config_path.exists():
             raise FileNotFoundError(f"Menu rule config file not found: {self.config_path}")
-        with open(self.config_path, 'r') as f:
-            config_data = json.load(f)
-        return self.load_from_dict(config_data)
+        # Resolve any ``extends`` chain into a single merged rule list, then
+        # deserialize once.
+        merged = self._resolve_rule_dicts(self.config_path, seen=set())
+        return self.load_from_dict({'rules': merged})
+
+    def load_for_city(self, city: Optional[str], cities_dir: str = None) -> List[BaseMenuRule]:
+        """Load the ruleset for *city* from ``CITY_RULES_DIR`` (``<city>.json``),
+        resolving ``extends``. Falls back to ``DEFAULT_CITY`` when the city is
+        unknown/blank or has no file of its own."""
+        base = Path(cities_dir or CITY_RULES_DIR)
+        norm = (city or '').strip().lower()
+        path = base / f"{norm}.json"
+        if not norm or not path.exists():
+            path = base / f"{DEFAULT_CITY}.json"
+        return self.load_from_file(str(path))
+
+    def _resolve_rule_dicts(self, path: Path, seen: set) -> List[Dict[str, Any]]:
+        """Return the merged list of rule *dicts* for a city file, applying its
+        ``extends`` parent first, then this file's overrides/additions."""
+        path = Path(path)
+        key = str(path.resolve())
+        if key in seen:
+            raise ValueError(f"circular 'extends' involving {path.name}")
+        seen.add(key)
+        with open(path, 'r') as f:
+            blob = json.load(f)
+        parent: List[Dict[str, Any]] = []
+        ext = blob.get('extends')
+        if ext:
+            parent = self._resolve_rule_dicts(path.parent / f"{ext}.json", seen)
+        child = list(blob.get('rules', blob.get('constraints', [])))
+        return self._merge_rule_dicts(parent, child, blob.get('disable', []))
+
+    @staticmethod
+    def _merge_rule_dicts(parent, child, disable) -> List[Dict[str, Any]]:
+        """Merge *child* rule dicts over *parent*: same ``name`` overrides,
+        new names append (parent order preserved), names in *disable* drop.
+        Nameless rules are always appended (never override)."""
+        disable = set(disable or [])
+        by_name: Dict[str, Any] = {}
+        order: List[str] = []
+        anon: List[Dict[str, Any]] = []
+        for r in list(parent) + list(child):
+            n = r.get('name')
+            if not n:
+                anon.append(r)
+                continue
+            if n not in by_name:
+                order.append(n)
+            by_name[n] = r
+        return [by_name[n] for n in order if n not in disable] + anon
 
     def load_from_dict(self, config_data: Dict[str, Any]) -> List[BaseMenuRule]:
         self.rules = []
