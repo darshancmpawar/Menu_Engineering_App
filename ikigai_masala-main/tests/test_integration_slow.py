@@ -8,7 +8,7 @@ the host. PR CI skips it by default; the nightly / manual workflow
 runs it.
 
 What it proves that the unit tests don't:
-  * The real rule config in ``data/configs/indian_menu_rules.json``
+  * The real rule config in ``data/configs/city_rules/bangalore.json``
     loads without warnings.
   * Those rules, together, produce a feasible plan on the bundled
     ontology — no silent pool exhaustion, no INFEASIBLE from conflicting
@@ -46,9 +46,9 @@ def pools(cleaned_menu):
 
 @pytest.fixture(scope="module")
 def production_rules():
-    """Load the shipped rules config — the same file the API serves from."""
-    loader = MenuRuleLoader('data/configs/indian_menu_rules.json')
-    rules = loader.load_from_file()
+    """Load the shipped Bangalore ruleset — the same the API serves for a
+    Bangalore client."""
+    rules = MenuRuleLoader().load_for_city('Bangalore')
     assert rules, "expected shipped rules to load cleanly"
     return rules
 
@@ -279,6 +279,120 @@ def test_selector_frequency_batch(cleaned_menu, pools, production_rules):
 
 
 @pytest.mark.slow
+def test_dal_colour_non_consecutive_and_sambar_key_ingredient(
+    cleaned_menu, pools, production_rules,
+):
+    """Rulebook 79 + 82 (attribute_grouping): no two consecutive dal-service
+    days share a dal colour, and no sambar key ingredient repeats in the week.
+    Uses a dal+sambar slot layout so both rules bind."""
+    from src.solver._helpers import strip_color_suffix
+    slots = ['welcome_drink', 'rice', 'dal', 'sambar', 'veg_gravy', 'veg_dry',
+             'bread', 'starter', 'dessert']
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts={s: 1 for s in slots},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+
+    color_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['item_color']))
+    key_by_item = dict(zip(cleaned_menu['item'], cleaned_menu['key_ingredient']))
+
+    dal_colours = [color_by_item.get(strip_color_suffix(plan[d]['dal'])) for d in dates]
+    for a, b in zip(dal_colours, dal_colours[1:]):
+        assert not (a and a == b), f"consecutive dal colour repeat: {dal_colours}"
+
+    sambar_keys = [key_by_item.get(strip_color_suffix(plan[d]['sambar'])) for d in dates]
+    present = [k for k in sambar_keys if k]
+    assert len(present) == len(set(present)), (
+        f"sambar key ingredient repeated in the week: {sambar_keys}"
+    )
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
+def test_daily_colour_semantics(cleaned_menu, pools, production_rules):
+    """Rulebook 88-91 on a real solve: across the colour-counted slots each
+    day has >=4 distinct colours, every colour appears at most 3 times, and at
+    most one colour reaches 3 (all others <=2)."""
+    from collections import Counter
+    from src.solver._helpers import strip_color_suffix
+    from src.preprocessor.column_mapper import _norm_color
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    colour_of = {strip_color_suffix(i): _norm_color(c)
+                 for i, c in zip(cleaned_menu['item'], cleaned_menu['item_color'])}
+    counted = [s for s in cfg.color_slots if s in _ACTIVE_SLOTS]
+    assert counted, "expected some colour-counted slots active"
+
+    for d in dates:
+        cols = [colour_of.get(strip_color_suffix(plan[d][s])) for s in counted if s in plan[d]]
+        cols = [c for c in cols if c and c != 'unknown']
+        counts = Counter(cols)
+        assert len(counts) >= 4, f"{d}: only {len(counts)} distinct colours ({counts})"
+        assert max(counts.values()) <= 3, f"{d}: a colour exceeds 3 ({counts})"
+        at_three = [c for c, n in counts.items() if n >= 3]
+        assert len(at_three) <= 1, f"{d}: more than one colour reaches 3 ({counts})"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
+def test_ranked_alternates_are_distinct_and_valid(cleaned_menu, pools, production_rules):
+    """n_alternates>0 returns several full valid menus ranked best-first; each
+    fills every slot, they differ from one another, and none records a rule
+    failure (they are near-optimal, not random)."""
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plans, dates = solver.solve(n_alternates=2)
+
+    assert isinstance(plans, list) and len(plans) >= 2, "expected >=2 ranked menus"
+    for plan in plans:
+        assert len(plan) == 5
+        for d in dates:
+            for slot in _ACTIVE_SLOTS:
+                assert plan[d].get(slot), f"menu missing {slot} on {d}"
+    # Every returned menu is distinct from the others.
+    sigs = [tuple(sorted((str(d), s, plan[d][s]) for d in dates for s in plan[d]))
+            for plan in plans]
+    assert len(set(sigs)) == len(sigs), "ranked alternates must be distinct menus"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
+def test_premium_exactly_one_per_slot(cleaned_menu, pools, production_rules):
+    """Rulebook 43-44: each week has exactly one Premium Veg Gravy and exactly
+    one Premium Veg Dry (replacing the retired broad premium cap)."""
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=_ACTIVE_SLOTS, slot_counts={s: 1 for s in _ACTIVE_SLOTS},
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+
+    def flag_map(col):
+        return dict(zip(cleaned_menu['item'],
+                        pd.to_numeric(cleaned_menu[col], errors='coerce').fillna(0).astype(int)))
+
+    for col, slot in [('is_premium_gravy', 'veg_gravy'),
+                      ('is_premium_veg_dry', 'veg_dry')]:
+        fm = flag_map(col)
+        c = sum(fm.get(strip_color_suffix(plan[d][slot]), 0) for d in dates if slot in plan[d])
+        assert c == 1, f"{col} appeared {c} times in {slot} (want exactly 1)"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
 def test_deep_fried_nonveg_weekly_cap(cleaned_menu, pools, production_rules):
     """With the non-veg main slot active, the batch-3 deep-fried-nonveg weekly
     cap holds and the week still solves cleanly."""
@@ -301,6 +415,70 @@ def test_deep_fried_nonveg_weekly_cap(cleaned_menu, pools, production_rules):
                                  errors='coerce').fillna(0).astype(int)))
     c = sum(dfn.get(strip_color_suffix(plan[d]['nonveg_main']), 0) for d in dates)
     assert c <= 1, f"deep-fried non-veg appeared {c} times (max 1)"
+    assert not solver.rule_failures, solver.rule_failures
+
+
+@pytest.mark.slow
+def test_two_nonveg_two_vegdry_daily_composition(
+    cleaned_menu, pools, production_rules,
+):
+    """A 2-nonveg / 2-veg_dry counter solves feasibly and each day's nonveg
+    pair is composed by the day's theme (rulebook: 2 nonveg mains):
+      biryani day -> a nonveg biryani + a chicken gravy
+      chinese day -> a chinese nonveg  + a north/south chicken gravy
+      other days  -> a nonveg dry      + a north/south chicken gravy
+    and the veg_dry pair is one north-Indian + one south-Indian on the mix day.
+    """
+    import pandas as pd
+    from src.solver._helpers import strip_color_suffix
+    slots = ['welcome_drink', 'rice', 'dal', 'veg_gravy', 'veg_dry', 'bread',
+             'starter', 'dessert', 'nonveg_main']
+    counts = {s: 1 for s in slots}
+    counts['nonveg_main'] = 2
+    counts['veg_dry'] = 2
+    cfg = SolverConfig(
+        days=5, start_date=dt.date(2026, 3, 23), time_limit_sec=_TIME_LIMIT_SEC,
+        active_base_slots=slots, slot_counts=counts,
+    )
+    solver = MenuSolver(pools=pools, solver_config=cfg, menu_rules=production_rules)
+    plan, dates = solver.solve()
+    assert len(dates) == 5
+
+    def flag_map(col):
+        return dict(zip(cleaned_menu['item'],
+                        pd.to_numeric(cleaned_menu[col], errors='coerce').fillna(0).astype(int)))
+
+    cuisine = dict(zip(cleaned_menu['item'],
+                       cleaned_menu['cuisine_family'].astype(str).str.lower()))
+    is_dry = flag_map('is_nonveg_dry')
+    is_biryani = flag_map('is_nonveg_biryani')
+    is_north = flag_map('is_north_chicken_gravy')
+    is_south = flag_map('is_south_chicken_gravy')
+
+    # Default theme_map: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
+    themes = ['mix', 'chinese', 'biryani', 'south', 'north']
+    for di, d in enumerate(dates):
+        nv = [strip_color_suffix(v) for k, v in plan[d].items()
+              if k.startswith('nonveg_main')]
+        assert len(nv) == 2, f"{d}: expected 2 nonveg mains, got {nv}"
+        n_gravy = sum(1 for x in nv if is_north.get(x, 0) or is_south.get(x, 0))
+        if themes[di] == 'biryani':
+            assert any(is_biryani.get(x, 0) for x in nv), f"{d}: no biryani in {nv}"
+            assert n_gravy >= 1, f"{d}: no chicken gravy beside biryani in {nv}"
+        elif themes[di] == 'chinese':
+            assert any(cuisine.get(x) == 'chinese' for x in nv), f"{d}: no chinese nonveg in {nv}"
+            assert n_gravy >= 1, f"{d}: no gravy beside chinese nonveg in {nv}"
+        else:  # chicken day
+            assert any(is_dry.get(x, 0) for x in nv), f"{d}: no dry nonveg in {nv}"
+            assert n_gravy >= 1, f"{d}: no north/south gravy in {nv}"
+
+    # veg_dry pair on the mix day (Mon, no theme narrowing) = one north + one south.
+    vd = [strip_color_suffix(v) for k, v in plan[dates[0]].items()
+          if k.startswith('veg_dry')]
+    assert len(vd) == 2, vd
+    vd_cuisines = sorted(cuisine.get(x) for x in vd)
+    assert 'north_indian' in vd_cuisines and 'south_indian' in vd_cuisines, vd_cuisines
+
     assert not solver.rule_failures, solver.rule_failures
 
 

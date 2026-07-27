@@ -8,14 +8,14 @@ import datetime as dt
 import re
 from typing import Dict, Optional
 
+from src.constants import DEFAULT_WEEKDAY_THEMES
+
 
 def weekday_type(d: dt.date) -> str:
     """Return the theme type for a given date's weekday."""
     wd = d.strftime('%A').lower()
-    return {
-        'monday': 'mix', 'tuesday': 'chinese', 'wednesday': 'biryani',
-        'thursday': 'south', 'friday': 'north',
-    }.get(wd, 'holiday' if wd in ('saturday', 'sunday') else 'normal')
+    return DEFAULT_WEEKDAY_THEMES.get(
+        wd, 'holiday' if wd in ('saturday', 'sunday') else 'normal')
 
 
 def resolve_alternating_theme(theme: str, d: dt.date) -> str:

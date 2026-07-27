@@ -1,8 +1,17 @@
 """
-Coupling menu rule: bread-rice-starter-vegdry deep-fried coupling.
+Coupling menu rule: the deep-fried rice / bread / veg-dry family (rulebook
+34-42).
 
-rice-bread bread <=> liquid rice <=> deep-fried starter <=> deep-fried veg_dry.
-Max 1 rice-bread day per week, max 1 deep-fried veg_dry day per week.
+  * Liquid rice ⇒ a deep-fried Veg Dry or Starter must be present, scoped to
+    whichever of those slots is active (34-36).
+  * Deep-fried Veg Dry ⇒ rice-bread AND liquid rice (37).
+  * Rice-bread ⇒ liquid rice (38).
+  * A dosa-type bread with an active Non-Veg Main ⇒ the non-veg is a
+    South-Indian chicken gravy (41, guarded on availability).
+  * Weekly: rice-bread on ≤1 day (62), deep-fried Veg Dry on ≤1 day (39).
+
+Rulebook §5 retires the old "rice-bread always needs a deep-fried Starter"
+coupling, so that link is intentionally absent.
 """
 
 from typing import Dict, Any, List
@@ -43,75 +52,79 @@ class CouplingMenuRule(BaseMenuRule):
         bread_rb_day: List = []
         vegdry_df_day: List = []
 
+        def _detect(cell_list, pred, name):
+            """OR bool over items in `cell_list` matching `pred`; forced 0 when
+            the slot is inactive (empty cell_list)."""
+            y = model.NewBoolVar(name)
+            lits = [
+                v for c in (cell_list or [])
+                for v, r in zip(c.x_vars, c.cand_rows) if pred(r)
+            ]
+            link_any(model, lits, y)  # link_any([], y) sets y == 0
+            return y, lits
+
         for di in range(len(dates)):
-            bread_cells = find_cells(cells, di, 'bread')
             rice_cells = find_cells(cells, di, 'rice')
+            if not rice_cells:
+                continue  # no rice slot → the whole coupling family is moot
+            bread_cells = find_cells(cells, di, 'bread')
             starter_cells = find_cells(cells, di, 'starter')
             vegdry_cells = find_cells(cells, di, 'veg_dry')
+            nonveg_cells = find_cells(cells, di, 'nonveg_main')
 
-            if not bread_cells or not rice_cells or not starter_cells or not vegdry_cells:
-                continue
-
-            # Rice-bread detection
-            bread_rb_lits = [
-                v for c in bread_cells
-                for v, r in zip(c.x_vars, c.cand_rows)
-                if int(r.get('is_rice_bread', 0)) == 1
-            ]
-            bread_rb = model.NewBoolVar(f'bread_ricebread_{di}')
-            link_any(model, bread_rb_lits, bread_rb)
+            rice_liq, rice_liq_lits = _detect(
+                rice_cells, lambda r: int(r.get('is_liquid_rice', 0) or 0) == 1,
+                f'rice_liquid_{di}')
+            bread_rb, _ = _detect(
+                bread_cells, lambda r: int(r.get('is_rice_bread', 0) or 0) == 1,
+                f'bread_ricebread_{di}')
+            starter_df, _ = _detect(
+                starter_cells, lambda r: int(r.get('is_deep_fried_starter', 0) or 0) == 1,
+                f'starter_deepfried_{di}')
+            vegdry_any, _ = _detect(
+                vegdry_cells, lambda r: int(r.get('is_deep_fried_veg_dry', 0) or 0) == 1,
+                f'vegdry_any_deepfried_{di}')
             bread_rb_day.append(bread_rb)
-
-            # Liquid rice detection
-            rice_liq_lits = [
-                v for c in rice_cells
-                for v, r in zip(c.x_vars, c.cand_rows)
-                if int(r.get('is_liquid_rice', 0)) == 1
-            ]
-            rice_liq = model.NewBoolVar(f'rice_liquid_{di}')
-            link_any(model, rice_liq_lits, rice_liq)
-
-            # Deep-fried starter detection — reads the column populated by
-            # ColumnMapper.apply() rather than re-running the heuristic.
-            starter_df_lits = [
-                v for c in starter_cells
-                for v, r in zip(c.x_vars, c.cand_rows)
-                if int(r.get('is_deep_fried_starter', 0)) == 1
-            ]
-            starter_df = model.NewBoolVar(f'starter_deepfried_{di}')
-            link_any(model, starter_df_lits, starter_df)
-
-            # Deep-fried veg_dry detection
-            vegdry_df_vars = []
-            for idx, vc in enumerate(vegdry_cells, start=1):
-                df_lits = [
-                    v for v, r in zip(vc.x_vars, vc.cand_rows)
-                    if int(r.get('is_deep_fried_veg_dry', 0)) == 1
-                ]
-                vdf = model.NewBoolVar(f'vegdry_deepfried_{di}_{idx}')
-                link_any(model, df_lits, vdf)
-                vegdry_df_vars.append(vdf)
-            vegdry_any = model.NewBoolVar(f'vegdry_any_deepfried_{di}')
-            if vegdry_df_vars:
-                model.AddMaxEquality(vegdry_any, vegdry_df_vars)
-            else:
-                model.Add(vegdry_any == 0)
             vegdry_df_day.append(vegdry_any)
 
-            # Coupling constraints
-            model.Add(bread_rb <= rice_liq)
-            model.Add(bread_rb <= starter_df)
-            # Prefer coupling deep-fried starters with rice-bread only when the
-            # paired rice/bread pattern is actually available in this day's pools.
-            # This keeps the legacy coupling behavior in normal cases while
-            # avoiding hard infeasibility when themed filters leave no liquid-rice
-            # or rice-bread candidates.
-            if bread_rb_lits and rice_liq_lits:
-                model.Add(starter_df <= bread_rb)
+            # Rules 34-36: liquid rice requires at least one deep-fried item
+            # among the *active* Veg Dry / Starter slots. If both are inactive
+            # this forces rice_liq == 0 (rule 36); if only one is active that
+            # one must carry it (rule 35).
+            model.Add(vegdry_any + starter_df >= rice_liq)
+            # Rule 37: deep-fried Veg Dry ⇒ rice-bread AND liquid rice.
             model.Add(vegdry_any <= rice_liq)
             model.Add(vegdry_any <= bread_rb)
+            # Rule 38: rice-bread ⇒ liquid rice.
+            model.Add(bread_rb <= rice_liq)
+            # (Rulebook §5 retires the old rice-bread ⇔ deep-fried-starter
+            # coupling, so it is intentionally not added here.)
 
-        # Weekly limits
+            # Rule 41: a dosa-type bread with an active Non-Veg Main forces the
+            # non-veg to a South-Indian chicken gravy. Guarded on availability
+            # (only when the day actually has an SI-chicken candidate) so it can
+            # never make the model INFEASIBLE — a missing candidate is a data
+            # gap for the diagnostics to surface, not a hard failure.
+            if bread_cells and nonveg_cells:
+                dosa_lits = [
+                    v for c in bread_cells
+                    for v, r in zip(c.x_vars, c.cand_rows)
+                    if int(r.get('is_dosa', 0) or 0) == 1
+                    or int(r.get('is_dosa_family', 0) or 0) == 1
+                ]
+                nv = [
+                    (v, int(r.get('is_south_chicken_gravy', 0) or 0) == 1)
+                    for c in nonveg_cells for v, r in zip(c.x_vars, c.cand_rows)
+                ]
+                if dosa_lits and any(is_si for _, is_si in nv):
+                    dosa_bread = model.NewBoolVar(f'bread_dosa_{di}')
+                    link_any(model, dosa_lits, dosa_bread)
+                    for v, is_si in nv:
+                        if not is_si:
+                            model.Add(v + dosa_bread <= 1)
+
+        # Weekly limits: rice-bread on <= 1 day (rule 62), deep-fried Veg Dry
+        # on <= 1 day (rule 39).
         if bread_rb_day:
             model.Add(sum(bread_rb_day) <= 1)
         if vegdry_df_day:
@@ -132,7 +145,6 @@ class CouplingMenuRule(BaseMenuRule):
         diags: List[Diagnostic] = []
         bread = ctx.pools.get('bread')
         rice = ctx.pools.get('rice')
-        starter = ctx.pools.get('starter')
 
         def _flag_count(pool, col):
             if pool is None or col not in pool.columns:
@@ -141,7 +153,6 @@ class CouplingMenuRule(BaseMenuRule):
 
         rb = _flag_count(bread, 'is_rice_bread')
         liquid = _flag_count(rice, 'is_liquid_rice')
-        fried_starter = _flag_count(starter, 'is_deep_fried_starter')
 
         if rb and liquid == 0:
             diags.append(Diagnostic(
@@ -163,30 +174,6 @@ class CouplingMenuRule(BaseMenuRule):
                 affected={
                     'is_rice_bread_count': rb,
                     'is_liquid_rice_count': liquid,
-                },
-            ))
-
-        if rb and fried_starter == 0 and starter is not None:
-            diags.append(Diagnostic(
-                rule=self.name, rule_type=self.rule_type.value,
-                severity=DiagnosticSeverity.WARNING,
-                phase=DiagnosticPhase.APPLY,
-                message=(
-                    f"Bread pool has {rb} rice-bread item"
-                    f"{'s' if rb != 1 else ''} but starter pool has 0 "
-                    f"deep-fried starters. The coupling constraint "
-                    f"forbids picking rice-bread without a deep-fried "
-                    f"starter, so those rice-breads will never be "
-                    f"selected."
-                ),
-                suggestion=(
-                    "Add at least one deep-fried starter "
-                    "(is_deep_fried_starter=1) to the starter pool, or "
-                    "remove the rice-bread items."
-                ),
-                affected={
-                    'is_rice_bread_count': rb,
-                    'is_deep_fried_starter_count': fried_starter,
                 },
             ))
         return diags

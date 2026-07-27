@@ -59,6 +59,9 @@ class MenuRuleType(Enum):
     INGREDIENT_BAN = "ingredient_ban"
     ITEM_FREQUENCY = "item_frequency"
     SELECTOR_FREQUENCY = "selector_frequency"
+    ATTRIBUTE_GROUPING = "attribute_grouping"
+    SOFT_PREFERENCE = "soft_preference"
+    SLOT_COMPOSITION = "slot_composition"
     SLOT_DAY_RESTRICTION = "slot_day_restriction"
     # Synthetic — produced by pool_size_diagnostics(), not by a real
     # rule class. Folds the pre-flight pool-size warnings into the

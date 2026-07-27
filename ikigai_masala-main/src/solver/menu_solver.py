@@ -53,7 +53,6 @@ DEFAULT_SEED_RESTART_STEP = 17
 
 # Penalty/bonus weights
 REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
-REGEN_CAP_MULTIPLIER = 1.5  # candidate cap multiplier for regeneration
 
 
 @dataclass
@@ -78,27 +77,27 @@ class SolverConfig:
     min_distinct_colors_per_day: int = 4
     min_distinct_colors_per_day_chinese: int = 4
     min_distinct_colors_per_day_biryani: int = 4
-    max_same_color_per_day: int = 2
+    max_same_color_per_day: int = 2      # rulebook 90: soft cap for every colour
+    max_same_color_reach: int = 3        # rulebook 89: one colour may reach this
+    max_colors_at_reach: int = 1         # rulebook 91: how many colours may exceed the soft cap
     ignore_rice_gravy_color_diff_on_chinese_day: bool = True
-    # Premium item constraints
+    # Premium flag column — set when the retained PremiumMenuRule is configured;
+    # feeds day_premium_vars. (The old min/max-per-horizon knobs were removed
+    # with the broad premium rule; the default ruleset uses selector_frequency
+    # exact-1 rules instead.)
     premium_flag_col: Optional[str] = None
-    premium_min_per_horizon: int = 1
-    premium_max_per_horizon: int = 2
-    premium_max_per_day: int = 1
     # Rice exclusions — see src.constants.RICE_EXCLUDE_ITEMS.
     rice_exclude_items: Set[str] = field(default_factory=lambda: set(RICE_EXCLUDE_ITEMS))
     # Cuisine theme settings
     cuisine_col: str = 'cuisine_family'
     cuisine_south_value: str = 'south_indian'
     cuisine_north_value: str = 'north_indian'
-    # Flag column names for theme filtering
-    f_chinese_rice: Optional[str] = 'is_chinese_fried_rice'
+    # Flag column names read by the nonveg theme rules. (The chinese-rice /
+    # chinese-veg-gravy / chinese-starter / veg-biryani / raita flag knobs were
+    # never read — the theme code uses the literal column names directly — so
+    # they were removed.)
     f_chinese_nonveg: Optional[str] = 'is_chinese_chicken_gravy'
-    f_chinese_veg_gravy: Optional[str] = 'is_chinese_veg_gravy'
-    f_chinese_starter: Optional[str] = 'is_chinese_starter'
     f_nonveg_biryani: Optional[str] = 'is_nonveg_biryani'
-    f_veg_biryani: Optional[str] = 'is_mixedveg_biryani'
-    f_raita: Optional[str] = 'is_raita'
     # Theme preferences
     prefer_theme_starter: bool = True
     # Solver strategy
@@ -244,9 +243,6 @@ class MenuSolver:
     picks exactly one candidate per cell subject to hard constraints.
     """
 
-    # Used by regenerator.py to derive regen caps
-    CAP_BY_SLOT_BASE: Dict[str, int] = dict(DEFAULT_CAP_BY_SLOT)
-
     def __init__(
         self,
         pools: Dict[str, pd.DataFrame],
@@ -295,12 +291,18 @@ class MenuSolver:
         if entry not in self.rule_failures:
             self.rule_failures.append(entry)
 
-    def solve(self, locked=None, forbidden=None, similarity=None) -> Tuple[Dict, List[dt.date]]:
+    def solve(self, locked=None, forbidden=None, similarity=None,
+              n_alternates=0) -> Tuple[Any, List[dt.date]]:
         """
         Solve the menu plan with multi-restart strategy.
 
         Returns:
-            (week_plan, dates) where week_plan maps date -> {slot_id: item_string}
+            ``(week_plan, dates)`` where ``week_plan`` maps
+            ``date -> {slot_id: item_string}``.
+
+            When ``n_alternates > 0`` the first element is instead a *list* of
+            up to ``n_alternates + 1`` such plans ranked best-first (the primary
+            plan followed by the closest-to-ideal distinct alternatives).
         """
         self.rule_failures = []
         self._current_attempt_seed = None
@@ -311,6 +313,15 @@ class MenuSolver:
         base_slots = self.cfg.active_base_slots or BASE_SLOT_NAMES
         expanded_slots = _expand_slots_in_order(
             base_slots, self.cfg.slot_counts or {s: 1 for s in base_slots}
+        )
+
+        # The pre-filtered pool cache (item cooldown / theme filters / rice-bread
+        # gap / combo split — the expensive DataFrame masking) is seed- and
+        # cap-independent, so build it ONCE here rather than re-running it inside
+        # every restart attempt. Only per-attempt sampling depends on rng/cap.
+        base_slots_dedup = list(dict.fromkeys(_base_slot(s) for s in expanded_slots))
+        pool_cache = self._build_day_base_pool_cache(
+            dates, base_slots_dedup, expanded_slots
         )
 
         cap_multipliers = self.cfg.cap_multipliers
@@ -352,8 +363,20 @@ class MenuSolver:
 
                     try:
                         cells = self._build_cells(
-                            dates, expanded_slots, cap_default, cap_by_slot, rng
+                            dates, expanded_slots, pool_cache,
+                            cap_default, cap_by_slot, rng,
                         )
+                        if n_alternates > 0:
+                            chosen_list = self._solve_cpsat_ranked(
+                                dates, cells, n_alternates, deadline,
+                                locked=locked, similarity=similarity,
+                                forbidden=forbidden,
+                            )
+                            plans = [
+                                self._rows_to_week_plan(c, dates, expanded_slots)
+                                for c in chosen_list
+                            ]
+                            return plans, dates
                         chosen_rows = self._solve_cpsat(
                             dates, cells, locked=locked, similarity=similarity,
                             forbidden=forbidden,
@@ -380,14 +403,13 @@ class MenuSolver:
     # ----- Cell building -----
 
     def _build_cells(
-        self, dates: List[dt.date], expanded_slots: List[str],
+        self, dates: List[dt.date], expanded_slots: List[str], cache: Dict,
         cap_default: int, cap_by_slot: Dict[str, int], rng: random.Random,
     ) -> List[_Cell]:
+        # ``cache`` (the seed/cap-independent pre-filtered pools) is built once
+        # in solve() and reused across restart attempts; only the per-attempt
+        # sampling below depends on rng/cap.
         cells: List[_Cell] = []
-        base_slots = list(dict.fromkeys(_base_slot(s) for s in expanded_slots))
-
-        # Pre-build per (day_idx, base_slot) pool cache
-        cache = self._build_day_base_pool_cache(dates, base_slots, expanded_slots)
 
         for di, d in enumerate(dates):
             for slot_id in expanded_slots:
@@ -511,10 +533,14 @@ class MenuSolver:
 
     # ----- CP-SAT model -----
 
-    def _solve_cpsat(
+    def _assemble_model(
         self, dates: List[dt.date], cells: List[_Cell],
         locked=None, similarity=None, forbidden=None,
-    ) -> Dict:
+    ) -> cp_model.CpModel:
+        """Build the full CP-SAT model (decision vars + colour constraints +
+        every rule's constraints + the tiered objective) for these cells.
+        Populates ``cell.x_vars``/``cell.cand_rows`` as a side effect so the
+        caller can read the solution back."""
         rng = random.Random(self.cfg.seed)
         model = cp_model.CpModel()
         day_types = [_weekday_type_cfg(d, self.cfg.theme_map) for d in dates]
@@ -541,9 +567,51 @@ class MenuSolver:
                                     day_gravy_color_vars)
 
         self._apply_rules_and_objective(model, cells, rng, similarity, context)
+        return model
 
+    def _solve_cpsat(
+        self, dates: List[dt.date], cells: List[_Cell],
+        locked=None, similarity=None, forbidden=None,
+    ) -> Dict:
+        model = self._assemble_model(dates, cells, locked, similarity, forbidden)
         solver = self._configure_and_solve(model)
         return self._extract_solution_rows(solver, cells, dates)
+
+    def _solve_cpsat_ranked(
+        self, dates: List[dt.date], cells: List[_Cell], n_alternates: int,
+        deadline: float, locked=None, similarity=None, forbidden=None,
+    ) -> List[Dict]:
+        """Return up to ``n_alternates + 1`` distinct menus ranked best-first.
+
+        Solves the model, then repeatedly forbids the exact assignment just
+        found (a no-good cut) and re-maximizes the *same* tiered objective, so
+        each next menu is the closest-to-ideal one that differs from all
+        previous — deliberately not random diversification. Stops early if no
+        more distinct menus exist or the wall-clock deadline is hit."""
+        model = self._assemble_model(dates, cells, locked, similarity, forbidden)
+        per_solve = self.cfg.time_limit_sec
+        out: List[Dict] = []
+        for k in range(n_alternates + 1):
+            remaining = deadline - time.monotonic()
+            if out and remaining <= 1.0:
+                break
+            self.cfg.time_limit_sec = max(1, int(min(per_solve, max(1.0, remaining))))
+            try:
+                solver = self._configure_and_solve(model)
+            except RuntimeError:
+                if out:
+                    break   # no further distinct menu (or out of time) — return what we have
+                raise       # not even the primary solved → let the restart loop react
+            out.append(self._extract_solution_rows(solver, cells, dates))
+            if k == n_alternates:
+                break
+            # No-good cut: at least one cell must differ from this menu.
+            picked = []
+            for cell in cells:
+                j = next(idx for idx, v in enumerate(cell.x_vars) if solver.Value(v) == 1)
+                picked.append(cell.x_vars[j])
+            model.Add(sum(picked) <= len(picked) - 1)
+        return out
 
     def _build_context(
         self, cells, dates, day_types,
@@ -756,10 +824,27 @@ class MenuSolver:
             day_type = day_types[di]
             min_dist = min(_min_distinct_for_day(cfg, day_type), n_color_slots)
 
+            # Per-colour occurrence caps (rulebook 89-91): every colour may
+            # appear at most `soft_cap` times (rule 90), EXCEPT up to
+            # `max_colors_at_reach` colour(s) may go as high as `reach`
+            # (rules 89 + 91). Falls back to a uniform cap when reach <=
+            # soft_cap or no colour is allowed to exceed it.
+            soft_cap = cfg.max_same_color_per_day
+            reach = max(soft_cap, cfg.max_same_color_reach)
+            reach_bools = []
             for col in known_colors:
                 lits = day_color_vars.get((di, col), [])
-                if lits:
-                    model.Add(sum(lits) <= cfg.max_same_color_per_day)
+                if not lits:
+                    continue
+                if reach > soft_cap and cfg.max_colors_at_reach > 0:
+                    b = model.NewBoolVar(f'color_reach_{di}_{col}')
+                    # b == 0 -> sum <= soft_cap ; b == 1 -> sum <= reach
+                    model.Add(sum(lits) <= soft_cap + (reach - soft_cap) * b)
+                    reach_bools.append(b)
+                else:
+                    model.Add(sum(lits) <= soft_cap)
+            if reach_bools:
+                model.Add(sum(reach_bools) <= cfg.max_colors_at_reach)
 
             y_vars = []
             for col in known_colors:

@@ -41,11 +41,18 @@
       ]
     },
     {
-      "name": "premium_limits",
-      "type": "premium",
-      "max_per_day": 1,
-      "min_per_horizon": 1,
-      "max_per_horizon": 2
+      "name": "premium_veg_gravy_exactly_one",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_premium_gravy" },
+      "base_slot": "veg_gravy",
+      "exact": 1
+    },
+    {
+      "name": "premium_veg_dry_exactly_one",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_premium_veg_dry" },
+      "base_slot": "veg_dry",
+      "exact": 1
     },
     {
       "name": "welcome_drink_no_repeat_color",
@@ -65,16 +72,12 @@
     {
       "name": "prefer_theme_starters",
       "type": "theme_starter_preference",
-      "bonus_weight": 1000000
+      "bonus_weight": 1000000000000000
     },
     {
       "name": "penalize_non_theme_fallback",
       "type": "theme_fallback_penalty",
-      "penalty": 2000000
-    },
-    {
-      "name": "prefer_nonveg_dry_slot2",
-      "type": "nonveg_dry_preference"
+      "penalty": 1000000000000000
     },
     {
       "name": "nonveg_biryani_once_per_week",
@@ -259,6 +262,7 @@
       "name": "kadhi_dal_weekly",
       "type": "selector_frequency",
       "selector": { "flag": "is_kadhi_dal" },
+      "base_slot": "veg_gravy",
       "max": 1
     },
     {
@@ -267,6 +271,100 @@
       "selector": { "flag": "is_deep_fried_nonveg_dry" },
       "base_slot": "nonveg_main",
       "max": 1
+    },
+    {
+      "name": "dal_colour_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dal",
+      "group_by": "item_color",
+      "non_consecutive": true
+    },
+    {
+      "name": "sambar_key_ingredient_weekly",
+      "type": "attribute_grouping",
+      "base_slot": "sambar",
+      "group_by": "key_ingredient",
+      "max_per_group": 1
+    },
+    {
+      "name": "premiums_different_days",
+      "type": "soft_preference",
+      "mode": "different_day",
+      "priority": "high",
+      "selector_a": { "flag": "is_premium_gravy" },
+      "base_slot_a": "veg_gravy",
+      "selector_b": { "flag": "is_premium_veg_dry" },
+      "base_slot_b": "veg_dry"
+    },
+    {
+      "name": "veg_gravy_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "priority": "high",
+      "base_slot": "veg_gravy",
+      "group_by": "key_ingredient"
+    },
+    {
+      "name": "avoid_consecutive_north_nonveg",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "nonveg_main",
+      "selector": { "cuisine_family": "north_indian" }
+    },
+    {
+      "name": "avoid_consecutive_south_nonveg",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "nonveg_main",
+      "selector": { "cuisine_family": "south_indian" }
+    },
+    {
+      "name": "avoid_consecutive_north_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "rice",
+      "selector": { "cuisine_family": "north_indian" }
+    },
+    {
+      "name": "avoid_consecutive_south_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "rice",
+      "selector": { "cuisine_family": "south_indian" }
+    },
+    {
+      "name": "nonveg_main_daily_pair",
+      "type": "slot_composition",
+      "base_slot": "nonveg_main",
+      "requires_slot_count": 2,
+      "components": [
+        { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
+        { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+      ],
+      "components_by_theme": {
+        "chinese": [
+          { "selector": { "cuisine_family": "chinese" }, "count": 1 },
+          { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+        ],
+        "biryani": [
+          { "selector": { "flag": "is_nonveg_biryani" }, "count": 1 },
+          { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
+        ]
+      }
+    },
+    {
+      "name": "veg_dry_north_south_pair",
+      "type": "slot_composition",
+      "base_slot": "veg_dry",
+      "requires_slot_count": 2,
+      "components": [
+        { "selector": { "cuisine_family": "north_indian" }, "count": 1 },
+        { "selector": { "cuisine_family": "south_indian" }, "count": 1 }
+      ]
     }
   ]
 }

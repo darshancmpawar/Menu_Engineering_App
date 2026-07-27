@@ -32,7 +32,6 @@ from .theme_rules import (
 )
 from .color_rules import (
     ColorPairingMenuRule,
-    ColorVarietyMenuRule,
     WelcomeDrinkColorMenuRule,
 )
 from .cooldown_rules import (
@@ -64,7 +63,7 @@ __all__ = [
     'ThemeDayMenuRule', 'ThemeSlotFilterRule',
     'ThemeStarterPreferenceRule', 'ThemeFallbackPenaltyRule',
     # color
-    'ColorPairingMenuRule', 'ColorVarietyMenuRule', 'WelcomeDrinkColorMenuRule',
+    'ColorPairingMenuRule', 'WelcomeDrinkColorMenuRule',
     # cooldown
     'ItemCooldownMenuRule', 'RiceBreadGapMenuRule',
     'WeekSignatureCooldownMenuRule',

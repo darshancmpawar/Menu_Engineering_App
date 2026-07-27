@@ -1,0 +1,5 @@
+{
+  "description": "pune menu rules — inherits the Bangalore ruleset until pune-specific rules are defined.",
+  "extends": "bangalore",
+  "rules": []
+}

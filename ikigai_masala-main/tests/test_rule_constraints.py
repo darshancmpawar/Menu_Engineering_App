@@ -508,3 +508,131 @@ class TestThemeStarterPreferenceObjective:
             'link_any_fn': _link_any, 'cfg': cfg,
         })
         assert terms == []
+
+
+# ---------------------------------------------------------------------------
+# CouplingMenuRule — deep-fried rice/bread/veg-dry family (rulebook 34-42)
+# ---------------------------------------------------------------------------
+
+class TestCouplingConstraints:
+    """Directly exercises the coupling logic with forced scenarios a normal
+    solve would rarely pick (liquid rice, rice-bread, deep-fried, dosa)."""
+
+    def _cell(self, model, di, base_slot, items):
+        """Build a cell whose slot picks exactly one of `items` (list of flag
+        dicts). Returns the cell and its x_vars."""
+        rows = [pd.Series({'item': f'{base_slot}_{i}', **it})
+                for i, it in enumerate(items)]
+        xs = [model.NewBoolVar(f'x_{di}_{base_slot}_{i}') for i in range(len(items))]
+        model.Add(sum(xs) == 1)
+        return _FakeCell(di, dt.date(2026, 3, 23), f'{base_slot}__1', base_slot, rows, xs)
+
+    def _ctx(self, cells, n_days=1):
+        return {
+            'cells': cells,
+            'dates': [dt.date(2026, 3, 23) + dt.timedelta(days=i) for i in range(n_days)],
+            'find_cells_fn': _find_cells,
+            'link_any_fn': _link_any,
+        }
+
+    def _rule(self):
+        return CouplingMenuRule({"name": "coupling", "type": "coupling"})
+
+    def test_liquid_rice_without_deepfried_is_infeasible(self):
+        # Rule 36: liquid rice forced but neither veg_dry nor starter can be
+        # deep-fried → infeasible.
+        model = cp_model.CpModel()
+        cells = [
+            self._cell(model, 0, 'rice', [{'is_liquid_rice': 1}]),
+            self._cell(model, 0, 'veg_dry', [{'is_deep_fried_veg_dry': 0}]),
+            self._cell(model, 0, 'starter', [{'is_deep_fried_starter': 0}]),
+            self._cell(model, 0, 'bread', [{'is_rice_bread': 0}]),
+        ]
+        self._rule().apply(model, {}, None, self._ctx(cells))
+        _, status = _solve(model)
+        assert status == cp_model.INFEASIBLE
+
+    def test_liquid_rice_satisfied_by_deepfried_starter(self):
+        # Rule 34/35: liquid rice is fine if the active starter goes deep-fried.
+        model = cp_model.CpModel()
+        rice = self._cell(model, 0, 'rice', [{'is_liquid_rice': 1}])
+        starter = self._cell(model, 0, 'starter',
+                             [{'is_deep_fried_starter': 1}, {'is_deep_fried_starter': 0}])
+        cells = [rice, starter]
+        self._rule().apply(model, {}, None, self._ctx(cells))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(starter.x_vars[0]) == 1  # deep-fried starter chosen
+
+    def test_deepfried_vegdry_forces_ricebread_and_liquid(self):
+        # Rule 37: forced deep-fried veg_dry ⇒ rice-bread + liquid rice chosen.
+        model = cp_model.CpModel()
+        rice = self._cell(model, 0, 'rice',
+                          [{'is_liquid_rice': 1}, {'is_liquid_rice': 0}])
+        bread = self._cell(model, 0, 'bread',
+                           [{'is_rice_bread': 1}, {'is_rice_bread': 0}])
+        vd = self._cell(model, 0, 'veg_dry', [{'is_deep_fried_veg_dry': 1}])
+        starter = self._cell(model, 0, 'starter', [{'is_deep_fried_starter': 0}])
+        self._rule().apply(model, {}, None, self._ctx([rice, bread, vd, starter]))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(rice.x_vars[0]) == 1   # liquid rice
+        assert solver.Value(bread.x_vars[0]) == 1   # rice-bread
+
+    def test_deepfried_vegdry_without_ricebread_infeasible(self):
+        # Rule 37: forced deep-fried veg_dry but no rice-bread available → infeasible.
+        model = cp_model.CpModel()
+        cells = [
+            self._cell(model, 0, 'rice', [{'is_liquid_rice': 1}]),
+            self._cell(model, 0, 'bread', [{'is_rice_bread': 0}]),
+            self._cell(model, 0, 'veg_dry', [{'is_deep_fried_veg_dry': 1}]),
+        ]
+        self._rule().apply(model, {}, None, self._ctx(cells))
+        _, status = _solve(model)
+        assert status == cp_model.INFEASIBLE
+
+    def test_ricebread_without_liquid_rice_infeasible(self):
+        # Rule 38: forced rice-bread but rice pool has no liquid rice → infeasible.
+        model = cp_model.CpModel()
+        cells = [
+            self._cell(model, 0, 'rice', [{'is_liquid_rice': 0}]),
+            self._cell(model, 0, 'bread', [{'is_rice_bread': 1}]),
+        ]
+        self._rule().apply(model, {}, None, self._ctx(cells))
+        _, status = _solve(model)
+        assert status == cp_model.INFEASIBLE
+
+    def test_dosa_bread_forces_si_chicken_nonveg(self):
+        # Rule 41: dosa bread + active non-veg ⇒ non-veg must be SI chicken gravy.
+        model = cp_model.CpModel()
+        rice = self._cell(model, 0, 'rice', [{'is_liquid_rice': 0}])
+        bread = self._cell(model, 0, 'bread', [{'is_dosa': 1}])
+        nonveg = self._cell(model, 0, 'nonveg_main',
+                            [{'is_south_chicken_gravy': 1}, {'is_south_chicken_gravy': 0}])
+        self._rule().apply(model, {}, None, self._ctx([rice, bread, nonveg]))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(nonveg.x_vars[0]) == 1  # SI chicken forced
+
+    def test_dosa_rule_guarded_when_no_si_chicken(self):
+        # Rule 41 guard: no SI-chicken candidate ⇒ rule not applied, so a dosa
+        # day with a non-SI non-veg is still feasible (never INFEASIBLE).
+        model = cp_model.CpModel()
+        rice = self._cell(model, 0, 'rice', [{'is_liquid_rice': 0}])
+        bread = self._cell(model, 0, 'bread', [{'is_dosa': 1}])
+        nonveg = self._cell(model, 0, 'nonveg_main', [{'is_south_chicken_gravy': 0}])
+        self._rule().apply(model, {}, None, self._ctx([rice, bread, nonveg]))
+        _, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    def test_weekly_ricebread_cap(self):
+        # Rule 62: rice-bread forced on two days → exceeds the max-1 cap.
+        model = cp_model.CpModel()
+        cells = []
+        for di in range(2):
+            cells.append(self._cell(model, di, 'rice', [{'is_liquid_rice': 1}]))
+            cells.append(self._cell(model, di, 'bread', [{'is_rice_bread': 1}]))
+            cells.append(self._cell(model, di, 'starter', [{'is_deep_fried_starter': 1}]))
+        self._rule().apply(model, {}, None, self._ctx(cells, n_days=2))
+        _, status = _solve(model)
+        assert status == cp_model.INFEASIBLE

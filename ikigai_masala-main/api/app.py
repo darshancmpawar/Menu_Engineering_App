@@ -26,10 +26,10 @@ from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
-    DEFAULT_EXCEL_PATH, MENU_RULES_CONFIG_PATH,
+    DEFAULT_EXCEL_PATH,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
-    validate_required_env, today_in_app_tz,
+    MAX_ALTERNATES, validate_required_env, today_in_app_tz,
 )
 from api.logging_config import (
     configure_logging,
@@ -46,13 +46,12 @@ configure_logging()
 # happens in production long after the process looked healthy.
 validate_required_env()
 from src.preprocessor import ExcelReader, DataCleanser
-from src.preprocessor.pool_builder import PoolBuilder, _base_slot
+from src.preprocessor.pool_builder import PoolBuilder, _base_slot, _nonveg_mask
 from src.preprocessor.client_pool_filter import (
     get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
 )
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
-    NONVEG_PROTEINS,
 )
 from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
@@ -179,7 +178,7 @@ _init_lock = threading.Lock()
 _client_loader = None
 _pools = None
 _df = None
-_menu_rules = None
+_menu_rules_by_city = {}
 
 
 def _get_client_loader():
@@ -236,10 +235,6 @@ def _menu_data_for_client(client_name):
     return cached
 
 
-# Proteins that mark a dish non-vegetarian. Single source of truth lives in
-# src.constants so the UI's red-dish tagging and the pool builder's
-# "non-veg only in nonveg_main" exclusion can never disagree.
-_NONVEG_PROTEINS = frozenset(NONVEG_PROTEINS)
 _nonveg_items = None
 
 
@@ -254,38 +249,38 @@ def _get_nonveg_items():
     """
     global _nonveg_items
     if _nonveg_items is None:
-        import pandas as pd
-
         df, _ = _get_menu_data()
         if 'item' not in df.columns:
             _nonveg_items = set()
             return _nonveg_items
-        mask = pd.Series(False, index=df.index)
-        if 'primary_protein' in df.columns:
-            proteins = df['primary_protein'].astype(str).str.strip().str.lower()
-            mask = mask | proteins.isin(_NONVEG_PROTEINS)
-        if 'is_egg_dish' in df.columns:
-            egg = pd.to_numeric(df['is_egg_dish'], errors='coerce').fillna(0) == 1
-            mask = mask | egg
+        # Same predicate the pool builder uses to drop non-veg items from
+        # veg slots — one source of truth for "is this dish non-veg".
+        mask = _nonveg_mask(df)
         _nonveg_items = {
             str(name).strip().lower() for name in df.loc[mask, 'item']
         }
     return _nonveg_items
 
 
-def _get_menu_rules():
-    global _menu_rules
-    if _menu_rules is None:
+def _get_menu_rules_for_city(city):
+    """Cached base ruleset for a city (resolves the city_rules/<city>.json file
+    and its ``extends`` chain; falls back to the default city). Cached per
+    normalized city so clients in the same city share one read-only ruleset."""
+    key = (city or '').strip().lower() or None
+    cached = _menu_rules_by_city.get(key)
+    if cached is None:
         with _init_lock:
-            if _menu_rules is None:
-                loader = MenuRuleLoader(MENU_RULES_CONFIG_PATH)
-                _menu_rules = loader.load_from_file()
-    return _menu_rules
+            cached = _menu_rules_by_city.get(key)
+            if cached is None:
+                cached = MenuRuleLoader().load_for_city(city)
+                _menu_rules_by_city[key] = cached
+    return cached
 
 
-def _rules_and_skip_for_client(client_name, dates):
-    """Return (rules, skip_cells) for a client, merging generic + per-client."""
-    generic = _get_menu_rules()
+def _rules_and_skip_for_client(client_name, dates, city=None):
+    """Return (rules, skip_cells) for a client, merging the city ruleset +
+    per-client rules."""
+    generic = _get_menu_rules_for_city(city)
     loader = MenuRuleLoader()
     rules = loader.load_for_client(client_name, generic)
     skip_cells = set()
@@ -596,7 +591,8 @@ def _prepare_solver_inputs(
     weekday_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
     )
-    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates)
+    city = _get_client_loader().get_client_city(client_name)
+    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates, city=city)
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
     cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)
@@ -756,16 +752,28 @@ def plan_menu():
             skip_cells=inputs.skip_cells,
         )
 
-        week_plan, plan_dates = solver.solve()
+        # Optional ranked alternates: closest-to-ideal distinct menus, not
+        # random diversification. Clamped so a caller can't ask the solver to
+        # enumerate an unbounded number of near-optimal menus.
+        n_alt = max(0, min(int(data.get('alternates', 0) or 0), MAX_ALTERNATES))
+        nonveg_items = _get_nonveg_items()
 
-        formatter = SolutionFormatter(
-            week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
-            nonveg_items=_get_nonveg_items(),
-        )
+        def _format(plan):
+            return SolutionFormatter(
+                plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+                nonveg_items=nonveg_items,
+            ).to_dict()
+
+        if n_alt > 0:
+            plans, plan_dates = solver.solve(n_alternates=n_alt)
+        else:
+            week_plan, plan_dates = solver.solve()
+            plans = [week_plan]
+
         response = {
             'success': True,
             'message': f'Menu plan generated for {inputs.client_name}',
-            'solution': formatter.to_dict(),
+            'solution': _format(plans[0]),
             'rule_diagnostics': diag_dicts,
             'summary': summary,
             'counter_mode': 'multi' if counter_count > 1 else 'single',
@@ -773,6 +781,9 @@ def plan_menu():
             'counter_index': counter_index,
             'counter_name': counter_name,
         }
+        if len(plans) > 1:
+            # Ranked best-first; the primary is already in `solution`.
+            response['alternates'] = [_format(p) for p in plans[1:]]
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
         if solver.rule_failures:

@@ -19,21 +19,27 @@ DEFAULT_EXCEL_PATH = os.getenv(
     str(BASE_DIR / 'data/raw/menu_items.xlsx')
 )
 
+# Base/reference ruleset (Bangalore). City-aware loading lives in
+# src.menu_rules.menu_rule_loader (load_for_city + CITY_RULES_DIR); this
+# constant is kept as the single-file default for any non-city caller.
 MENU_RULES_CONFIG_PATH = os.getenv(
     'MENU_RULES_CONFIG_PATH',
-    str(BASE_DIR / 'data/configs/indian_menu_rules.json')
+    str(BASE_DIR / 'data/configs/city_rules/bangalore.json')
 )
 
-CLIENT_RULES_CONFIG_PATH = os.getenv(
-    'CLIENT_RULES_CONFIG_PATH',
-    str(BASE_DIR / 'data/configs/client_rules.json')
-)
+# CLIENT_RULES_CONFIG_PATH now lives in src.menu_rules.menu_rule_loader so the
+# loader has no import dependency on the api package (it still honours the
+# CLIENT_RULES_CONFIG_PATH env var).
 
 MIN_TIME_LIMIT_SECONDS = 10
 MAX_TIME_LIMIT_SECONDS = 600
 
 MIN_NUM_DAYS = 1
 MAX_NUM_DAYS = 30
+
+# Max number of ranked alternate menus a single /plan request may ask for
+# (in addition to the primary). Bounds solver work per request.
+MAX_ALTERNATES = 4
 
 API_HOST = os.getenv('API_HOST', '127.0.0.1')
 API_PORT = int(os.getenv('API_PORT', '5000'))

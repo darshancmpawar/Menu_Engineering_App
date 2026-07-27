@@ -21,7 +21,6 @@ from src.menu_rules.theme_rules import (
 )
 from src.menu_rules.color_rules import (
     ColorPairingMenuRule,
-    ColorVarietyMenuRule,
     WelcomeDrinkColorMenuRule,
 )
 from src.menu_rules.cooldown_rules import (
@@ -273,24 +272,6 @@ class TestColorPairingMenuRule:
         rule = ColorPairingMenuRule({"name": "color_pair", "type": "color_pairing",
                                       "course_type_a": "rice", "course_type_b": "veg_gravy"})
         assert rule.rule_type == MenuRuleType.COLOR_PAIRING
-
-
-# --- ColorVarietyMenuRule ---
-
-class TestColorVarietyMenuRule:
-    def test_validate(self):
-        rule = ColorVarietyMenuRule({"name": "color_var", "type": "color_variety",
-                                      "min_distinct_colors": {"lunch": 3}})
-        assert rule.validate_config()
-
-    def test_validate_fails_without_mapping(self):
-        rule = ColorVarietyMenuRule({"name": "color_var", "type": "color_variety"})
-        assert rule.validate_config() is False
-
-    def test_rule_type(self):
-        rule = ColorVarietyMenuRule({"name": "color_var", "type": "color_variety",
-                                      "min_distinct_colors": {"lunch": 3}})
-        assert rule.rule_type == MenuRuleType.COLOR_VARIETY
 
 
 # --- CuisineMenuRule ---

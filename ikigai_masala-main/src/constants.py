@@ -9,6 +9,39 @@ preprocessor import chain.
 from typing import Dict, List, Set
 
 # ---------------------------------------------------------------------------
+# Objective priority tiers (weighted-lexicographic)
+# ---------------------------------------------------------------------------
+# Hard rules are CP-SAT constraints, so a returned plan already satisfies all
+# of them. Soft rules only shape the objective; to apply them *by priority*
+# (rulebook §7 — never sacrifice a higher-priority soft rule to satisfy a
+# lower one) each tier's weight is ~1000x the next. With realistic per-tier
+# violation counts (tens, not thousands) a single higher-tier unit outweighs
+# the entire pile of every lower tier, so one weighted solve behaves
+# lexicographically without the cost of staged re-solves. The random
+# tie-breaker (0..~1e3 per cell) sits below LOW.
+OBJECTIVE_TIER_WEIGHTS: Dict[str, int] = {
+    'theme': 10 ** 15,   # cuisine consistency — the top soft objective
+    'high': 10 ** 12,    # rulebook high-priority soft rules
+    'medium': 10 ** 9,   # rulebook medium-priority soft rules
+    'low': 10 ** 6,      # rulebook low-priority soft rules
+}
+
+# ---------------------------------------------------------------------------
+# Default weekday → cuisine-theme mapping (Mon..Fri)
+# ---------------------------------------------------------------------------
+# Single source of truth shared by the solver's global fallback
+# (``_helpers.weekday_type``) and each client's default ``theme_map``
+# (``client_config.DEFAULT_THEME_MAP``). Weekends / other days fall back to
+# holiday / normal in ``weekday_type``.
+DEFAULT_WEEKDAY_THEMES: Dict[str, str] = {
+    'monday': 'mix',
+    'tuesday': 'chinese',
+    'wednesday': 'biryani',
+    'thursday': 'south',
+    'friday': 'north',
+}
+
+# ---------------------------------------------------------------------------
 # Slot names
 # ---------------------------------------------------------------------------
 

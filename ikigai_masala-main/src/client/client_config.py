@@ -33,6 +33,7 @@ from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     CONST_SLOTS,
     DEFAULT_OFF_SLOTS,
+    DEFAULT_WEEKDAY_THEMES,
     MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
     DISPLAY_SLOT_NAME,
 )
@@ -85,13 +86,9 @@ def _is_missing_relation(exc: BaseException) -> bool:
     )
 
 
-DEFAULT_THEME_MAP: Dict[str, str] = {
-    'monday': 'mix',
-    'tuesday': 'chinese',
-    'wednesday': 'biryani',
-    'thursday': 'south',
-    'friday': 'north',
-}
+# Per-client default day themes — the same Mon..Fri mapping the solver falls
+# back to; kept as a dict copy so callers can mutate their own theme_map.
+DEFAULT_THEME_MAP: Dict[str, str] = dict(DEFAULT_WEEKDAY_THEMES)
 
 AVAILABLE_THEMES: List[str] = [
     'mix', 'chinese', 'biryani', 'south', 'north', 'continental',
@@ -493,10 +490,6 @@ class ClientConfigLoader:
     def get_counter_mode(self, name: str) -> str:
         """Return 'single' or 'multi', derived from the counter count."""
         return self.get_counter_setup(name)[0]
-
-    def get_active_base_slots(self, name: str) -> List[str]:
-        """Return the primary counter's food categories (non-constant)."""
-        return list(self._counters_list(name)[0]['categories'])
 
     def get_client_city(self, name: str) -> Optional[str]:
         """Return the client's city (or ``None`` if unset / pre-migration).

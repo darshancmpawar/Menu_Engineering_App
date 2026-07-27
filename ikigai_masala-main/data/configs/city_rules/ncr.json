@@ -1,0 +1,5 @@
+{
+  "description": "ncr menu rules — inherits the Bangalore ruleset until ncr-specific rules are defined.",
+  "extends": "bangalore",
+  "rules": []
+}
