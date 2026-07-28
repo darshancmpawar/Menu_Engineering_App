@@ -156,6 +156,9 @@ class ClientConfig:
     # Client-level (not per-counter): when True the planner also covers
     # Saturday/Sunday instead of skipping them.
     serve_weekends: bool = False
+    # Client-level: restrict generation to these weekdays only (lowercase full
+    # names, e.g. ['wednesday','thursday','friday']). None => all weekdays.
+    working_days: Optional[List[str]] = None
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -459,6 +462,7 @@ class ClientConfigLoader:
         unaffected."""
         cfg = self._config_from_counter(name, self._counters_list(name)[0])
         cfg.serve_weekends = self.get_client_serve_weekends(name)
+        cfg.working_days = self.get_client_working_days(name)
         return cfg
 
     def get_client_configs(self, name: str):
@@ -470,10 +474,12 @@ class ClientConfigLoader:
         ``serve_weekends`` flag is stamped onto every counter's config.
         """
         serve_weekends = self.get_client_serve_weekends(name)
+        working_days = self.get_client_working_days(name)
         out = []
         for c in self._counters_list(name):
             cfg = self._config_from_counter(name, c)
             cfg.serve_weekends = serve_weekends
+            cfg.working_days = working_days
             out.append((c['name'], cfg))
         return out
 
@@ -579,6 +585,56 @@ class ClientConfigLoader:
                 )
                 raise ValueError(
                     "Cannot save weekend setting: the clients.serve_weekends "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
+    def get_client_working_days(self, name: str) -> Optional[List[str]]:
+        """Return the restricted set of working weekdays for a client, or None.
+
+        Degrades to ``None`` (all weekdays) when the ``clients.working_days``
+        column is missing (pre-migration database) or unset."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('working_days')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        raw = row.data.get('working_days')
+        if not raw:
+            return None
+        return [str(d).strip().lower() for d in raw]
+
+    def set_client_working_days(
+        self, name: str, value: Optional[List[str]],
+    ) -> None:
+        """Update a client's working-days restriction (None / [] = all days)."""
+        self._require_client_exists(name)
+        normalized = None
+        if value:
+            normalized = [str(d).strip().lower() for d in value if str(d).strip()]
+            if not normalized:
+                normalized = None
+        try:
+            self._sb.table('clients').update({
+                'working_days': normalized,
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.working_days column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save working days: the clients.working_days "
                     "column is missing. " + _MIGRATION_HINT_COUNTERS
                 ) from exc
             raise

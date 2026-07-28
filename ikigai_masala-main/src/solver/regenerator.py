@@ -12,7 +12,10 @@ from typing import Dict, List, Set, Tuple
 
 import pandas as pd
 
-from ._helpers import strip_color_suffix as _strip_color_suffix
+from ._helpers import (
+    strip_color_suffix as _strip_color_suffix,
+    cell_is_skipped as _cell_is_skipped,
+)
 from .menu_solver import MenuSolver, SolverConfig, REGEN_SIMILARITY_PENALTY
 from ..preprocessor.column_mapper import _norm_str
 
@@ -72,7 +75,7 @@ class MenuRegenerator:
             return base_plan, dates
 
         from src.constants import BASE_SLOT_NAMES
-        from ..preprocessor.pool_builder import _expand_slots_in_order, _base_slot
+        from ..preprocessor.pool_builder import _expand_slots_in_order
         expanded_slots = _expand_slots_in_order(
             BASE_SLOT_NAMES, self.cfg.slot_counts or {s: 1 for s in BASE_SLOT_NAMES}
         )
@@ -81,7 +84,7 @@ class MenuRegenerator:
         locked = {}
         for d in dates:
             for slot_id in expanded_slots:
-                if (d, _base_slot(slot_id)) in self.skip_cells:
+                if _cell_is_skipped(self.skip_cells, d, slot_id):
                     continue
                 if slot_id not in replace_mask.get(d, set()):
                     val = base_plan.get(d, {}).get(slot_id, '')
@@ -91,7 +94,7 @@ class MenuRegenerator:
         forbidden = {}
         for d, slots in replace_mask.items():
             for slot_id in slots:
-                if (d, _base_slot(slot_id)) in self.skip_cells:
+                if _cell_is_skipped(self.skip_cells, d, slot_id):
                     continue
                 old_item = _norm_str(_strip_color_suffix(base_plan.get(d, {}).get(slot_id, '')))
                 if old_item:

@@ -201,34 +201,76 @@ class MenuRuleLoader:
             raise ValueError(f"Unknown rule type: {rule_type}")
         return self.RULE_CLASSES[rule_type](rule_config)
 
-    def load_for_client(
-        self, client_name: str, generic_rules: List[BaseMenuRule],
-    ) -> List[BaseMenuRule]:
-        """Return *generic_rules* plus any per-client rules for *client_name*.
+    @staticmethod
+    def _parse_client_block(client_block: Any) -> Dict[str, Any]:
+        """Normalise a per-client ``client_rules.json`` value.
 
-        Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call.  If the file is
-        missing or the client has no entry, returns *generic_rules* unchanged.
+        Accepts the legacy list form ``[rule, …]`` or the object form::
+
+            {"disable": [...], "rules": [...], "constant_items": {...}}
         """
+        if isinstance(client_block, list):
+            return {'disable': [], 'rules': list(client_block), 'constant_items': {}}
+        if isinstance(client_block, dict):
+            rules = client_block.get('rules', client_block.get('constraints', []))
+            return {
+                'disable': list(client_block.get('disable') or []),
+                'rules': list(rules or []),
+                'constant_items': dict(client_block.get('constant_items') or {}),
+            }
+        return {'disable': [], 'rules': [], 'constant_items': {}}
+
+    @classmethod
+    def _read_client_blob(cls) -> Dict[str, Any]:
         path = Path(CLIENT_RULES_CONFIG_PATH)
         if not path.exists():
-            return list(generic_rules)
+            return {}
         try:
             with open(path, 'r') as f:
                 blob = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to read client_rules.json: %s", exc)
-            return list(generic_rules)
+            return {}
+        return blob if isinstance(blob, dict) else {}
 
-        client_block = blob.get(client_name)
+    def get_client_constant_items(self, client_name: str) -> Dict[str, Any]:
+        """Return ``constant_items`` for *client_name* (empty dict if unset)."""
+        block = self._read_client_blob().get(client_name)
+        if not block:
+            return {}
+        return self._parse_client_block(block)['constant_items']
+
+    def load_for_client(
+        self, client_name: str, generic_rules: List[BaseMenuRule],
+    ) -> List[BaseMenuRule]:
+        """Merge city/generic rules with per-client overrides for *client_name*.
+
+        Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call. Client entries may
+        be a legacy rule list or ``{disable, rules, constant_items}``. Merge
+        semantics match city ``extends``: same ``name`` overrides, ``disable``
+        drops by name. Missing file / unknown client → *generic_rules* unchanged.
+        """
+        client_block = self._read_client_blob().get(client_name)
         if not client_block:
             return list(generic_rules)
 
-        extra: List[BaseMenuRule] = []
-        for rule_cfg in client_block:
+        parsed = self._parse_client_block(client_block)
+        parent_dicts = [
+            dict(getattr(r, 'config', {}) or {})
+            for r in generic_rules
+            if getattr(r, 'config', None) is not None
+        ]
+        # Preserve rules that somehow lack a config dict (tests may pass stubs).
+        stubs = [r for r in generic_rules if getattr(r, 'config', None) is None]
+        merged_dicts = self._merge_rule_dicts(
+            parent_dicts, parsed['rules'], parsed['disable'],
+        )
+        merged: List[BaseMenuRule] = list(stubs)
+        for rule_cfg in merged_dicts:
             try:
                 rule = self._create_rule(rule_cfg)
                 if rule and rule.validate_config():
-                    extra.append(rule)
+                    merged.append(rule)
                 else:
                     _log_invalid_rule(
                         rule, rule_cfg,
@@ -238,10 +280,13 @@ class MenuRuleLoader:
                 logger.warning(
                     "Error creating per-client rule for %s: %s",
                     client_name, exc)
+        n_extra = len(parsed['rules'])
+        n_disabled = len(parsed['disable'])
         logger.info(
-            "Loaded %d extra rule(s) for client '%s'",
-            len(extra), client_name)
-        return list(generic_rules) + extra
+            "Merged client '%s': %d override/add rule(s), %d disabled → %d total",
+            client_name, n_extra, n_disabled, len(merged),
+        )
+        return merged
 
     def get_rules_by_type(self, rule_type: str) -> List[BaseMenuRule]:
         return [r for r in self.rules if r.rule_type.value == rule_type]

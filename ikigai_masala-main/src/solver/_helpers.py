@@ -6,9 +6,32 @@ These helpers are used by menu_solver, solution_formatter, and regenerator.
 
 import datetime as dt
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Set, Tuple
 
 from src.constants import DEFAULT_WEEKDAY_THEMES
+from ..preprocessor.pool_builder import _base_slot
+
+
+def cell_is_skipped(
+    skip_cells: Set[Tuple[dt.date, str]], d: dt.date, slot_id: str,
+) -> bool:
+    """Return True if the ``(date, slot_id)`` cell must not be solved.
+
+    ``skip_cells`` deliberately holds two kinds of entry in one set:
+
+    * ``(date, base_slot)`` — every expansion of the base slot is skipped.
+      This is what ``slot_day_restriction`` emits, and what a client constant
+      that replaces a whole slot family emits.
+    * ``(date, slot_id)`` — only that one expansion is skipped, so a client
+      constant can pin ``nonveg_main__2`` while ``nonveg_main__1`` is still
+      solved normally.
+
+    A base slot with only one expansion *is* its own slot id, so for count-1
+    slots the two checks collapse and can never disagree.
+    """
+    if (d, slot_id) in skip_cells:
+        return True
+    return (d, _base_slot(slot_id)) in skip_cells
 
 
 def weekday_type(d: dt.date) -> str:

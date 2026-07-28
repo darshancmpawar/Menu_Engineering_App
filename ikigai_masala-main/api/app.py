@@ -52,6 +52,7 @@ from src.preprocessor.client_pool_filter import (
 )
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
+    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
 )
 from src.client import ClientConfigLoader
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
@@ -277,17 +278,146 @@ def _get_menu_rules_for_city(city):
     return cached
 
 
-def _rules_and_skip_for_client(client_name, dates, city=None):
-    """Return (rules, skip_cells) for a client, merging the city ruleset +
-    per-client rules."""
+def _exclusive_siblings(base_slot: str) -> Set[str]:
+    """Base slots that cannot coexist with *base_slot* on one counter.
+
+    ``curd`` and ``curd_side`` are the two yogurt-side categories: a counter
+    serves one or the other, never both (see MUTUALLY_EXCLUSIVE_SLOT_GROUPS).
+    """
+    out: Set[str] = set()
+    for group in MUTUALLY_EXCLUSIVE_SLOT_GROUPS:
+        if base_slot in group:
+            out |= set(group) - {base_slot}
+    return out
+
+
+def _resolve_constant_items(client_name, constant_items, client_cfg):
+    """Resolve a client's raw ``constant_items`` block against ONE counter.
+
+    Returns ``(resolved, whole_slot_bases)``. *resolved* maps a real slot id
+    to its raw spec (daily string or weekday map); *whole_slot_bases* are base
+    slots the overlay replaces outright, which the caller drops from the model
+    rather than solving a cell whose value is immediately overwritten.
+
+    Three things happen here, each a silent wrong-menu bug when skipped:
+
+    * A slot this counter does not serve is dropped — ``constant_items`` is
+      client-scoped but a client may have several counters, and a two-slot
+      Chinese station should not grow a salad row. The exception is a slot
+      whose mutually-exclusive sibling *is* served: ``curd``/``curd_side`` are
+      one logical yogurt slot and pinning "curd Mon, raita Wed" across the
+      pair is the entire point of the weekday-map form.
+    * A key outside the slot registry is dropped with a warning instead of
+      being stamped as an ad-hoc slot that has no display label and no rank
+      in DISPLAY_SLOT_ORDER.
+    * A bare base name on a multi-expansion slot resolves to the LAST
+      expansion, so ``nonveg_main`` at count 2 keeps one solved dish and pins
+      the other instead of losing both.
+    """
+    resolved: Dict[str, Any] = {}
+    whole_slot_bases: Set[str] = set()
+    if not constant_items:
+        return resolved, whole_slot_bases
+
+    known_slots = set(BASE_SLOT_NAMES) | set(CONST_SLOTS)
+    active_slots = getattr(client_cfg, 'active_slots', None)
+
+    if not active_slots:
+        # No counter to resolve against (utility / direct callers). Keep the
+        # registry check but leave keys untouched — dropping every constant
+        # because a caller omitted client_cfg would be a silent data loss.
+        for key, spec in constant_items.items():
+            base = _base_slot(key)
+            if base not in known_slots:
+                logger.warning(
+                    "Ignoring constant_items[%r]: %r is not a known slot.",
+                    key, base,
+                )
+                continue
+            resolved[key] = spec
+            if isinstance(spec, str):
+                whole_slot_bases.add(base)
+        return resolved, whole_slot_bases
+
+    served: Dict[str, List[str]] = {}
+    for slot_id in active_slots:
+        served.setdefault(_base_slot(slot_id), []).append(slot_id)
+
+    for key, spec in constant_items.items():
+        base = _base_slot(key)
+        if base not in known_slots:
+            logger.warning(
+                "Ignoring constant_items[%r] for %s: %r is not a known slot. "
+                "Valid slots are BASE_SLOT_NAMES + CONST_SLOTS.",
+                key, client_name, base,
+            )
+            continue
+
+        expansions = served.get(base, [])
+        if not expansions:
+            # No cell of its own. Legitimate only when a mutually-exclusive
+            # sibling is served (the curd / curd_side pair); otherwise this
+            # constant belongs to a different counter.
+            if not (_exclusive_siblings(base) & set(served)):
+                logger.debug(
+                    "Dropping constant_items[%r] for %s: counter %r does not "
+                    "serve %r.", key, client_name,
+                    getattr(client_cfg, 'name', '?'), base,
+                )
+                continue
+            resolved[base] = spec
+            continue
+
+        if key in expansions:
+            target = key
+        else:
+            target = expansions[-1]
+            if key != base:
+                logger.warning(
+                    "constant_items[%r] for %s: this counter has %d "
+                    "expansion(s) of %r, pinning %r instead.",
+                    key, client_name, len(expansions), base, target,
+                )
+        resolved[target] = spec
+        # A daily string on a single-expansion slot replaces the slot for the
+        # whole horizon, so there is nothing left worth solving.
+        if len(expansions) == 1 and isinstance(spec, str):
+            whole_slot_bases.add(base)
+
+    return resolved, whole_slot_bases
+
+
+def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
+    """Return ``(rules, skip_cells, constant_items, whole_slot_bases)``.
+
+    Merges the city ruleset with per-client overrides (by name + disable) and
+    resolves ``constant_items`` against *client_cfg* — the counter being
+    planned. A pinned cell is skipped so it is not solved and then thrown
+    away, and so is every cell of any mutually-exclusive sibling slot on that
+    day: without that, a counter serving ``curd_side`` still solves a raita on
+    the days a ``curd`` constant is stamped and the menu shows two yogurt rows.
+    """
     generic = _get_menu_rules_for_city(city)
     loader = MenuRuleLoader()
     rules = loader.load_for_client(client_name, generic)
+    constant_items, whole_slot_bases = _resolve_constant_items(
+        client_name, loader.get_client_constant_items(client_name), client_cfg,
+    )
     skip_cells = set()
     for rule in rules:
         if hasattr(rule, 'compute_skip_cells'):
             skip_cells |= rule.compute_skip_cells(dates)
-    return rules, skip_cells
+    from src.solver.menu_solver import _resolve_client_constant
+    for slot_id, spec in constant_items.items():
+        siblings = _exclusive_siblings(_base_slot(slot_id))
+        for d in dates:
+            if _resolve_client_constant(spec, d.strftime('%A').lower()) is None:
+                continue
+            skip_cells.add((d, slot_id))
+            # Sibling entries are base-level on purpose: every expansion of
+            # the excluded slot goes away for that day.
+            skip_cells.update((d, sib) for sib in siblings)
+    return rules, skip_cells, constant_items, whole_slot_bases
 
 
 def _apply_item_cooldown_override(rules, cooldown_days):
@@ -489,6 +619,18 @@ def _weekdays_from(start_date, num_days, serve_weekends=False):
     return dates
 
 
+def _filter_dates_by_working_days(dates, working_days):
+    """Keep only dates whose weekday is in *working_days* (None = unchanged)."""
+    if not working_days:
+        return list(dates)
+    from src.solver.menu_solver import _WEEKDAY_ALIASES
+    allowed = {
+        _WEEKDAY_ALIASES.get(str(d).strip().lower(), str(d).strip().lower())
+        for d in working_days
+    }
+    return [d for d in dates if d.strftime('%A').lower() in allowed]
+
+
 def _client_base_slots(client_cfg):
     """Return unique base slot names the client uses (excluding constants).
 
@@ -507,9 +649,21 @@ def _client_base_slots(client_cfg):
     return result
 
 
-def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates):
-    """Shared helper to build SolverConfig."""
+def _build_solver_config(
+    df, client_cfg, start_date, num_days, time_limit, weekday_dates,
+    constant_items=None, whole_slot_bases=None,
+):
+    """Shared helper to build SolverConfig.
+
+    *constant_items* keys are already-resolved slot ids (see
+    ``_resolve_constant_items``); *whole_slot_bases* are the base slots the
+    overlay replaces for the entire horizon, dropped from the model because
+    solving them would burn items against unique_items / colour variety and
+    then discard the result.
+    """
     active_base = _client_base_slots(client_cfg)
+    if whole_slot_bases:
+        active_base = [s for s in active_base if s not in whole_slot_bases]
     # Constant items are per-client selectable now (not forced on everyone):
     # only append the ones this client actually selected.
     const_selected = [s for s in client_cfg.active_slots if s in CONST_SLOTS]
@@ -520,6 +674,8 @@ def _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekd
         slot_counts=client_cfg.slot_counts,
         active_base_slots=active_base or None,
         const_slots=const_selected,
+        client_constant_items=dict(constant_items or {}),
+        working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
         premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
         theme_map=client_cfg.theme_map or None,
@@ -591,8 +747,14 @@ def _prepare_solver_inputs(
     weekday_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
     )
+    # Restrict to the client's working weekdays (e.g. Quince = Wed/Thu/Fri).
+    weekday_dates = _filter_dates_by_working_days(
+        weekday_dates, getattr(client_cfg, 'working_days', None),
+    )
     city = _get_client_loader().get_client_city(client_name)
-    rules, skip_cells = _rules_and_skip_for_client(client_name, weekday_dates, city=city)
+    rules, skip_cells, constant_items, whole_slot_bases = _rules_and_skip_for_client(
+        client_name, weekday_dates, city=city, client_cfg=client_cfg,
+    )
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
     cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)
@@ -602,7 +764,10 @@ def _prepare_solver_inputs(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days,
     )
-    cfg = _build_solver_config(df, client_cfg, start_date, num_days, time_limit, weekday_dates)
+    cfg = _build_solver_config(
+        df, client_cfg, start_date, num_days, time_limit, weekday_dates,
+        constant_items=constant_items, whole_slot_bases=whole_slot_bases,
+    )
 
     return SolverInputs(
         client_name=client_name,
@@ -1061,6 +1226,9 @@ def saved_plan():
         weekday_dates = _weekdays_from(
             start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
         )
+        weekday_dates = _filter_dates_by_working_days(
+            weekday_dates, getattr(client_cfg, 'working_days', None),
+        )
 
         from src.db import get_supabase
         sb = get_supabase()
@@ -1178,6 +1346,7 @@ def get_client_config(client_name):
             'name': client_name,
             'city': loader.get_client_city(client_name),
             'serve_weekends': loader.get_client_serve_weekends(client_name),
+            'working_days': loader.get_client_working_days(client_name),
             'item_cooldown_days': loader.get_client_item_cooldown_days(client_name),
             'source_pools': loader.get_client_source_pools(client_name),
             'active_base_slots': list(primary['categories']),
@@ -1280,6 +1449,11 @@ def update_client_config(client_name):
         if 'serve_weekends' in data:
             loader.set_client_serve_weekends(
                 client_name, bool(data.get('serve_weekends')))
+        if 'working_days' in data:
+            wd = data.get('working_days')
+            if wd is not None and not isinstance(wd, list):
+                raise ValueError("working_days must be a list of weekday names or null")
+            loader.set_client_working_days(client_name, wd)
         if 'item_cooldown_days' in data:
             loader.set_client_item_cooldown_days(
                 client_name, data.get('item_cooldown_days'))

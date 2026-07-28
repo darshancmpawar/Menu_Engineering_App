@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 import pandas as pd
 from ortools.sat.python import cp_model
 
-from ._helpers import weekday_type_for_config as _weekday_type_cfg
+from ._helpers import (
+    weekday_type_for_config as _weekday_type_cfg,
+    cell_is_skipped as _cell_is_skipped,
+)
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
@@ -45,6 +48,39 @@ DEFAULT_CAP_BY_SLOT: Dict[str, int] = {
 }
 DEFAULT_CAP = 900  # fallback for slots not in DEFAULT_CAP_BY_SLOT
 
+# Weekday token → full lowercase name (for client constant_items maps).
+_WEEKDAY_ALIASES: Dict[str, str] = {
+    'mon': 'monday', 'monday': 'monday',
+    'tue': 'tuesday', 'tuesday': 'tuesday',
+    'wed': 'wednesday', 'wednesday': 'wednesday',
+    'thu': 'thursday', 'thursday': 'thursday',
+    'fri': 'friday', 'friday': 'friday',
+    'sat': 'saturday', 'saturday': 'saturday',
+    'sun': 'sunday', 'sunday': 'sunday',
+}
+
+
+def _resolve_client_constant(spec: Any, weekday: str) -> Optional[str]:
+    """Resolve a ``constant_items`` value for one weekday.
+
+    * ``"Curd"`` → same string every day
+    * ``{"friday": "raita"}`` → only on matching weekdays (full name or abbr)
+    """
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        return spec
+    if isinstance(spec, dict):
+        target = _WEEKDAY_ALIASES.get(weekday.lower(), weekday.lower())
+        for key, value in spec.items():
+            if not isinstance(key, str):
+                continue
+            if _WEEKDAY_ALIASES.get(key.strip().lower()) == target and value is not None:
+                return str(value)
+        return None
+    return str(spec)
+
+
 # Multi-restart strategy defaults
 DEFAULT_CAP_MULTIPLIERS = (1, 2)  # try 1x then 2x candidate pool sizes
 DEFAULT_RESTARTS_PER_MULTIPLIER = 4  # attempts per multiplier
@@ -68,6 +104,11 @@ class SolverConfig:
     # day. ``None`` means "all of them" (legacy behaviour); an explicit list
     # (possibly empty) is the per-client selection.
     const_slots: Optional[List[str]] = None
+    # Per-client overlay from client_rules.json ``constant_items``. Values are
+    # either a daily string or a weekday→string map. Applied after CONST_SLOTS.
+    client_constant_items: Optional[Dict[str, Any]] = None
+    # Client-level weekday filter (lowercase full names). None = unrestricted.
+    working_days: Optional[List[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
     # Color constraints
     color_col: str = 'item_color'
@@ -310,6 +351,11 @@ class MenuSolver:
             dates = list(self.cfg.explicit_dates)
         else:
             dates = [self.cfg.start_date + dt.timedelta(days=i) for i in range(self.cfg.days)]
+        # Client-level working-days restriction: generate only for the named
+        # weekdays (e.g. Quince = Wed/Thu/Fri). None => no restriction.
+        if getattr(self.cfg, 'working_days', None):
+            allowed = {d.lower() for d in self.cfg.working_days}
+            dates = [d for d in dates if d.strftime('%A').lower() in allowed]
         base_slots = self.cfg.active_base_slots or BASE_SLOT_NAMES
         expanded_slots = _expand_slots_in_order(
             base_slots, self.cfg.slot_counts or {s: 1 for s in base_slots}
@@ -414,7 +460,7 @@ class MenuSolver:
         for di, d in enumerate(dates):
             for slot_id in expanded_slots:
                 base = _base_slot(slot_id)
-                if (d, base) in self.skip_cells:
+                if _cell_is_skipped(self.skip_cells, d, slot_id):
                     continue
                 pool2, pref_mask, day_type = cache[di, slot_id]
 
@@ -920,6 +966,7 @@ class MenuSolver:
 
     def _rows_to_week_plan(self, chosen_rows, dates, expanded_slots):
         week_plan = {}
+        client_consts = getattr(self.cfg, 'client_constant_items', None) or {}
         for d in dates:
             day_out = {}
             for slot_id in expanded_slots:
@@ -935,5 +982,13 @@ class MenuSolver:
                 for k in self.cfg.const_slots:
                     if k in CONSTANT_ITEMS:
                         day_out[k] = CONSTANT_ITEMS[k]
+            # Per-client overlay (after globals). Day-specific maps only stamp
+            # on matching weekdays; daily strings stamp every day.
+            if client_consts:
+                weekday = d.strftime('%A').lower()
+                for slot, spec in client_consts.items():
+                    value = _resolve_client_constant(spec, weekday)
+                    if value is not None:
+                        day_out[slot] = value
             week_plan[d] = day_out
         return week_plan

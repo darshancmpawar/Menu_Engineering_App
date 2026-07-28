@@ -291,6 +291,45 @@ class TestServeWeekends:
         assert all(cfg.serve_weekends is True for _n, cfg in cfgs)
 
 
+class TestWorkingDays:
+    def test_default_working_days_none(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Quince', ['rice', 'dal'])
+        assert ld.get_client_working_days('Quince') is None
+        assert ld.get_client('Quince').working_days is None
+
+    def test_set_and_read_working_days(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Quince', ['rice', 'dal'])
+        ld.set_client_working_days(
+            'Quince', ['Wednesday', 'thursday', 'FRIDAY'],
+        )
+        assert ld.get_client_working_days('Quince') == [
+            'wednesday', 'thursday', 'friday',
+        ]
+        assert ld.get_client('Quince').working_days == [
+            'wednesday', 'thursday', 'friday',
+        ]
+
+    def test_clear_working_days(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Quince', ['rice', 'dal'])
+        ld.set_client_working_days('Quince', ['monday'])
+        ld.set_client_working_days('Quince', None)
+        assert ld.get_client_working_days('Quince') is None
+
+    def test_get_client_configs_stamps_working_days(self):
+        ld, _ = _make_loader({'clients': [], 'app_settings': []})
+        ld.create_client('Quince', counter_mode='multi', counters=[
+            _counter('A', ['rice']), _counter('B', ['dal']),
+        ])
+        ld.set_client_working_days('Quince', ['wednesday', 'friday'])
+        cfgs = ld.get_client_configs('Quince')
+        assert all(
+            cfg.working_days == ['wednesday', 'friday'] for _n, cfg in cfgs
+        )
+
+
 class TestItemCooldown:
     def test_create_and_read_cooldown(self):
         ld, _ = _make_loader({'clients': [], 'app_settings': []})

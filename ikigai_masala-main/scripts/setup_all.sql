@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS clients (
     serve_weekends     BOOLEAN NOT NULL DEFAULT false,
     item_cooldown_days INT,
     source_pools       JSONB,
+    working_days       JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -73,6 +74,13 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS city               TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends     BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS item_cooldown_days INT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_pools       JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS working_days       JSONB;
+
+-- Seed working_days for kitchens that do not run a full Mon–Fri week.
+UPDATE clients SET working_days = '["wednesday","thursday","friday"]'::jsonb
+ WHERE name = 'Quince';
+UPDATE clients SET working_days = '["monday","tuesday","thursday"]'::jsonb
+ WHERE name = 'Piramel Finance';
 
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.

@@ -136,6 +136,66 @@ class TestLoadForClient:
         assert len(result) == 1
         assert result[0].name == 'good'
 
+    def test_object_form_disable_and_override(self, tmp_path):
+        import json
+        from src.menu_rules.welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
+        from src.menu_rules.ingredient_ban_rule import IngredientBanRule
+        city = MenuRuleLoader().load_from_dict({'rules': [
+            {'name': 'buttermilk_twice_weekly', 'type': 'welcome_drink_buttermilk',
+             'count': 2, 'non_consecutive': True},
+            {'name': 'keep_me', 'type': 'unique_items'},
+            {'name': 'drop_me', 'type': 'unique_items'},
+        ]})
+        cfg = tmp_path / 'client_rules.json'
+        cfg.write_text(json.dumps({
+            "Acme": {
+                "disable": ["drop_me"],
+                "rules": [
+                    {"name": "buttermilk_twice_weekly", "type": "welcome_drink_buttermilk",
+                     "count": 1, "non_consecutive": False},
+                    {"name": "acme_ban", "type": "ingredient_ban", "ingredients": ["egg"]},
+                ],
+                "constant_items": {"salad": "green salad"},
+            }
+        }))
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(cfg)):
+            loader = MenuRuleLoader()
+            result = loader.load_for_client('Acme', city)
+            consts = loader.get_client_constant_items('Acme')
+        names = [r.name for r in result]
+        assert names == ['buttermilk_twice_weekly', 'keep_me', 'acme_ban']
+        assert isinstance(result[0], WelcomeDrinkButtermilkRule)
+        assert result[0].count == 1
+        assert isinstance(result[2], IngredientBanRule)
+        assert consts == {"salad": "green salad"}
+
+    def test_legacy_list_form_still_appends(self, tmp_path):
+        import json
+        city = MenuRuleLoader().load_from_dict({'rules': [
+            {'name': 'city_rule', 'type': 'unique_items'},
+        ]})
+        cfg = tmp_path / 'client_rules.json'
+        cfg.write_text(json.dumps({
+            "Legacy": [
+                {"name": "extra", "type": "ingredient_ban", "ingredients": ["egg"]},
+            ]
+        }))
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(cfg)):
+            result = MenuRuleLoader().load_for_client('Legacy', city)
+        assert [r.name for r in result] == ['city_rule', 'extra']
+
+    def test_quince_disables_curd_raita_and_has_constants(self):
+        city = MenuRuleLoader().load_for_city('bangalore')
+        loader = MenuRuleLoader()
+        rules = loader.load_for_client('Quince', city)
+        names = [r.name for r in rules]
+        assert 'curd_raita_logic' not in names
+        assert len(names) == len(set(names))  # no duplicate names after merge
+        consts = loader.get_client_constant_items('Quince')
+        assert consts['curd_side']['friday'] == 'raita'
+
 
 class TestInvalidConfigLogging:
     """The loader should log *why* a rule was dropped so admins can fix it."""

@@ -1,23 +1,579 @@
 {
-  "Tekion": [
-    {
-      "name": "tekion_no_mushroom",
-      "type": "ingredient_ban",
-      "ingredients": ["mushroom"]
-    },
-    {
-      "name": "tekion_liquid_rice_once",
-      "type": "item_frequency",
-      "base_slot": "rice",
-      "selector": { "flag": "is_liquid_rice" },
-      "min_per_week": 1,
-      "max_per_week": 1
-    },
-    {
-      "name": "tekion_nonveg_mwf",
-      "type": "slot_day_restriction",
-      "base_slot": "nonveg_main",
-      "allowed_weekdays": ["mon", "wed", "fri"]
+  "Tekion": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "tekion_no_mushroom",
+        "type": "ingredient_ban",
+        "ingredients": ["mushroom"]
+      },
+      {
+        "name": "tekion_liquid_rice_once",
+        "type": "item_frequency",
+        "base_slot": "rice",
+        "selector": { "flag": "is_liquid_rice" },
+        "min_per_week": 1,
+        "max_per_week": 1
+      },
+      {
+        "name": "tekion_nonveg_mwf",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": ["mon", "wed", "fri"]
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Quince": {
+    "disable": ["curd_raita_logic"],
+    "rules": [],
+    "constant_items": {
+      "curd": { "wednesday": "Curd", "thursday": "Curd" },
+      "curd_side": { "friday": "raita" }
     }
-  ]
+  },
+
+  "Computa Centre": {
+    "disable": ["mixedveg_pulao_biryani_weekly", "mixed_veg_gravy_weekly"],
+    "rules": [
+      {
+        "name": "computa_biryani_pulao_rice_3x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "any_flag": [
+            "is_nonveg_biryani",
+            "is_mixedveg_biryani",
+            "is_premium_biryani",
+            "is_pulao"
+          ]
+        },
+        "min": 3
+      },
+      {
+        "name": "computa_chinese_veg_dry_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_dry",
+        "selector": { "cuisine_family": "chinese" },
+        "max": 1
+      },
+      {
+        "name": "computa_plain_chapati_phulka_2x",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": { "flag": "is_plain_phulka_chapathi" },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "name": "computa_no_mixed_veg",
+        "type": "ingredient_ban",
+        "ingredients": ["mixed_veg", "mixed veg"]
+      },
+      {
+        "name": "computa_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "salad": "green salad"
+    }
+  },
+
+  "Zscaler": {
+    "disable": [
+      "mixedveg_pulao_biryani_weekly",
+      "potato_veg_gravy_weekly",
+      "potato_veg_dry_weekly"
+    ],
+    "rules": [
+      {
+        "name": "zscaler_biryani_pulao_rice_2x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "any_flag": [
+            "is_nonveg_biryani",
+            "is_mixedveg_biryani",
+            "is_premium_biryani",
+            "is_pulao"
+          ]
+        },
+        "min": 2
+      },
+      {
+        "name": "zscaler_chinese_veg_dry_starter",
+        "type": "selector_frequency",
+        "base_slot": "starter",
+        "selector": { "cuisine_family": "chinese" },
+        "max": 2
+      },
+      {
+        "name": "zscaler_no_potato",
+        "type": "ingredient_ban",
+        "ingredients": ["potato"]
+      },
+      {
+        "name": "zscaler_mushroom_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "mushroom" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "zscaler_babycorn_exact_1",
+        "type": "selector_frequency",
+        "selector": { "key_ingredient": "baby_corn" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "zscaler_paneer_gravy_1",
+        "type": "selector_frequency",
+        "selector": { "flag": "is_paneer_gravy" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "zscaler_paneer_fry_1",
+        "type": "selector_frequency",
+        "selector": { "flag": "is_paneer_fry" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "H&M": {
+    "disable": ["buttermilk_twice_weekly", "welcome_drink_no_repeat_color"],
+    "rules": [
+      {
+        "name": "hm_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "salad": "green salad",
+      "bread": "plain chapati"
+    }
+  },
+
+  "Ikea": {
+    "disable": ["nonveg_main_daily_pair"],
+    "rules": [
+      {
+        "name": "ikea_paneer_exact_2",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "name": "ikea_no_egg_nonveg",
+        "type": "ingredient_ban",
+        "ingredients": ["egg"]
+      },
+      {
+        "name": "ikea_flavoured_rice_mwf",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": ["mon", "wed", "fri"]
+      },
+      {
+        "name": "ikea_white_rice_tue_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": ["tue", "thu"]
+      }
+    ],
+    "constant_items": {
+      "salad": "green salad"
+    }
+  },
+
+  "Plan View": {
+    "disable": ["buttermilk_twice_weekly", "welcome_drink_no_repeat_color"],
+    "rules": [
+      {
+        "name": "planview_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "planview_mushroom_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "mushroom" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "nonveg_main__2": "boiled egg"
+    }
+  },
+
+  "Vector": {
+    "disable": [
+      "liquid_desserts_twice_nonconsecutive",
+      "buttermilk_twice_weekly",
+      "welcome_drink_no_repeat_color"
+    ],
+    "rules": [
+      {
+        "name": "vector_dessert_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "dessert",
+        "allowed_weekdays": ["wed"]
+      },
+      {
+        "name": "vector_plain_chapati_2x",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": { "flag": "is_plain_phulka_chapathi" },
+        "min": 2,
+        "max": 2
+      }
+    ],
+    "constant_items": {
+      "welcome_drink": "buttermilk"
+    }
+  },
+
+  "Ather": {
+    "disable": ["liquid_desserts_twice_nonconsecutive"],
+    "rules": [
+      {
+        "name": "ather_dessert_thu_only",
+        "type": "slot_day_restriction",
+        "base_slot": "dessert",
+        "allowed_weekdays": ["thu"]
+      },
+      {
+        "name": "ather_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "salad": "mix veg salad",
+      "bread": "plain chapati"
+    }
+  },
+
+  "ToastTab": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "buttermilk_twice_weekly",
+        "type": "welcome_drink_buttermilk",
+        "count": 1,
+        "non_consecutive": false
+      },
+      {
+        "name": "toasttab_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "toasttab_mushroom_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "mushroom" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Astrazeneca": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "astra_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "curd_side": "raita"
+    }
+  },
+
+  "Cloudera": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "cloudera_paneer_exact_2",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "name": "cloudera_special_bread_1x",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": { "any_flag": ["is_dosa", "is_paratha"] },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "healthy_rice": "curd rice"
+    }
+  },
+
+  "Konsberg": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "konsberg_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Sinch": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "sinch_egg_gravy_3x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "flag": "is_egg_dish" },
+        "min": 3,
+        "max": 3
+      }
+    ],
+    "constant_items": {
+      "curd": { "monday": "Curd", "tuesday": "Curd", "thursday": "Curd", "friday": "Curd" },
+      "curd_side": { "wednesday": "raita" }
+    }
+  },
+
+  "Booking.com": {
+    "disable": ["mixedveg_pulao_biryani_weekly"],
+    "rules": [
+      {
+        "name": "booking_pulao_exact_3",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": { "flag": "is_pulao" },
+        "min": 3,
+        "max": 3
+      }
+    ],
+    "constant_items": {
+      "bread": "plain chapati",
+      "starter__2": "veg kati roll",
+      "curd": { "monday": "Curd", "tuesday": "Curd", "thursday": "Curd", "friday": "Curd" },
+      "curd_side": { "wednesday": "raita" }
+    }
+  },
+
+  "Plum": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "plum_pulao_exact_3",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": { "flag": "is_pulao" },
+        "min": 3,
+        "max": 3
+      },
+      {
+        "name": "plum_chapati_exact_2",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": { "flag": "is_plain_phulka_chapathi" },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "name": "plum_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "plum_mushroom_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "mushroom" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "bread": "plain chapati"
+    }
+  },
+
+  "F5": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "nonveg_main_daily_pair",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "requires_slot_count": 2,
+        "components": [
+          { "selector": { "flag": "is_egg_dish" }, "count": 1 },
+          { "selector": { "primary_protein": "chicken" }, "count": 1 }
+        ]
+      },
+      {
+        "name": "f5_nonveg_tue_wed_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": ["tue", "wed", "thu"]
+      }
+    ],
+    "constant_items": {
+      "nonveg_main": { "wednesday": "boiled egg" }
+    }
+  },
+
+  "Cigna": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "nonveg_main_daily_pair",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "requires_slot_count": 2,
+        "components": [
+          { "selector": { "primary_protein": "chicken" }, "count": 1 },
+          { "selector": { "flag": "is_egg_dish" }, "count": 1 }
+        ]
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Tessolve": {
+    "disable": ["buttermilk_twice_weekly", "welcome_drink_no_repeat_color"],
+    "rules": [
+      {
+        "name": "tessolve_nonveg_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": ["wed"]
+      },
+      {
+        "name": "tessolve_green_salad_2x",
+        "type": "selector_frequency",
+        "base_slot": "salad",
+        "selector": { "sub_category": "fresh_veg_salad" },
+        "min": 2,
+        "max": 2
+      }
+    ],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "curd": { "monday": "Curd", "tuesday": "Curd", "thursday": "Curd", "friday": "Curd" },
+      "curd_side": { "wednesday": "raita" }
+    }
+  },
+
+  "Amadeus": {
+    "disable": [],
+    "rules": [],
+    "constant_items": {
+      "salad": "green salad",
+      "bread": "plain chapati"
+    }
+  },
+
+  "Telstra": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "telstra_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "telstra_nonveg_dry_1x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "flag": "is_nonveg_dry" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "curd": { "monday": "Curd", "tuesday": "Curd", "friday": "Curd" },
+      "curd_side": { "wednesday": "raita", "thursday": "raita" }
+    }
+  },
+
+  "Infenion": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "infenion_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "infenion_north_south_bread",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "requires_slot_count": 2,
+        "components": [
+          { "selector": { "cuisine_family": "north_indian" }, "count": 1 },
+          { "selector": { "cuisine_family": "south_indian" }, "count": 1 }
+        ]
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Thales": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "thales_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  },
+
+  "Piramel Finance": {
+    "disable": [],
+    "rules": [],
+    "constant_items": {}
+  }
 }

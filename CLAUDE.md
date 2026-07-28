@@ -75,7 +75,7 @@ No authentication: every endpoint is public (the auth feature was removed).
 | `solver_context.py` | `SolverContext` | runtime bundle passed to rules |
 | `solution_formatter.py` | `SolutionFormatter.to_dict` | solver output → API JSON (tags each item `is_nonveg` from a passed nonveg name-set) |
 | `regenerator.py` | `MenuRegenerator.regenerate`, `similarity_score` | locks fixed cells, re-solves selected ones |
-| `_helpers.py` | `weekday_type_for_config`, `strip_color_suffix`, `items_from_day` | shared utilities |
+| `_helpers.py` | `weekday_type_for_config`, `strip_color_suffix`, `items_from_day`, `cell_is_skipped` | shared utilities. `cell_is_skipped(skip_cells, date, slot_id)` is the single skip predicate for `MenuSolver._build_cells` + `MenuRegenerator`: `skip_cells` holds `(date, base_slot)` entries (skip every expansion — what `slot_day_restriction` emits) **and** `(date, slot_id)` entries (skip one expansion — how a client constant pins `nonveg_main__2` while `__1` stays solved) |
 
 ### 4.2 `src/menu_rules/` — constraint system
 Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (hard/soft constraints on model), `get_objective_terms()` (penalties/bonuses).
@@ -83,7 +83,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | File | Kind | Role |
 |---|---|---|
 | `base_menu_rule.py` | abstract | parent class |
-| `menu_rule_loader.py` | loader | deserialize a rules JSON; `load_for_city(city)` resolves `data/configs/city_rules/<city>.json` + its `extends` chain (override by rule `name`, `disable` list), falling back to `DEFAULT_CITY`; `load_for_client()` appends per-client rules |
+| `menu_rule_loader.py` | loader | deserialize a rules JSON; `load_for_city(city)` resolves `data/configs/city_rules/<city>.json` + its `extends` chain (override by rule `name`, `disable` list), falling back to `DEFAULT_CITY`; `load_for_client()` merges per-client `{disable, rules, constant_items}` over the city list by name (legacy list form still works) |
 | `cuisine_menu_rule.py` | hard | min cuisine variety |
 | `color_variety_menu_rule.py` | hard | min distinct colors/day |
 | `color_pairing_menu_rule.py` | hard | max same-color/day |
@@ -160,7 +160,7 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 |---|---|
 | `ikigai_masala-main/data/raw/menu_items.xlsx` | master **rule-ready** ontology (4,321 items; item_id key; cols incl. course_type, sub_category, cuisine_family, item_color, key_ingredient, primary_protein, is_premium_veg/_veg_dry, is_chinese_*/is_continental_*/is_*_biryani, is_liquid_dessert, welcome-drink subtypes (is_lassi/is_milkshake/is_soda_drink/is_cooler_drink/… + drink_rule_group), is_lentil_based/is_whole_legume_based/is_legume_salad, is_pulao, is_grill, is_dosa(_family), is_oil_based_bread, is_black_chana_gravy/is_kabuli_chana_gravy, plus quality signals classification_confidence/is_rule_ready/rule_data_note). Most CP-SAT rulebook classifications now present; not all wired to rules yet (see phased plan) |
 | `ikigai_masala-main/data/configs/city_rules/<city>.json` | **per-city rulesets** (one file per city: `bangalore.json` = the reference ruleset, plus `pune`/`chennai`/`hyderabad`/`ncr`). A file may `"extends": "<city>"` to inherit + override by rule `name` (and `"disable": [names]`). Loaded via `MenuRuleLoader.load_for_city(city)`; `CITY_RULES_DIR` + `DEFAULT_CITY='bangalore'` (the fallback for any city without its own file) live in `menu_rule_loader.py`. The API caches one ruleset per client's `city` |
-| `ikigai_masala-main/data/configs/client_rules.json` | per-client custom rules (keyed by client name); loaded by `MenuRuleLoader.load_for_client()` on top of the city ruleset |
+| `ikigai_masala-main/data/configs/client_rules.json` | per-client overrides keyed by client name: `{disable, rules, constant_items}` (or legacy rule list); merged by `MenuRuleLoader.load_for_client()` |
 | `ikigai_masala-main/data/configs/clients.json` | legacy client list; real source is Supabase |
 | `ikigai_masala-main/scripts/setup_all.sql` | **master** idempotent schema: creates every table + applies the counter migration in one run (supersedes running the two files below separately) |
 | `ikigai_masala-main/scripts/create_tables.sql` | clients + config schema (incl. `clients.counters` JSONB for multi-cuisine counters) |
@@ -249,7 +249,7 @@ Run: `pytest` from `ikigai_masala-main/`.
 6. **History split**: `menu_history` is one JSON document per client-day (`menu={slot:item}`), exploded to item-level in memory for cooldowns; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.
-9. **Per-client custom rules**: `data/configs/client_rules.json` stores extra rules per client (keyed by client name). Loaded fresh per request by `MenuRuleLoader.load_for_client()`. Three types: `ingredient_ban` (pre-filter), `item_frequency` (CP-SAT cardinality cap), `slot_day_restriction` (skip slot on certain weekdays via `skip_cells` kwarg on `MenuSolver`). Generic rules are cached globally; per-client rules are appended per request.
+9. **Per-client custom rules**: `data/configs/client_rules.json` stores per-client overrides keyed by client name. Shape is `{disable: [city_rule_names], rules: [...], constant_items: {slot: value|{weekday: value}}}` (legacy bare list still works as `{rules: list}`). `load_for_client()` merges by rule `name` via the same `_merge_rule_dicts` used for city `extends` — same name overrides, `disable` drops. `constant_items` are stamped post-solve (and skipped as CP-SAT cells). Client `working_days` (DB column) filters the plan horizon (e.g. Quince = Wed/Thu/Fri).
 
 ---
 
