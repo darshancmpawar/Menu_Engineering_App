@@ -17,7 +17,11 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
-from src.constants import REPEATABLE_ITEM_BASES, REPEATABLE_SLOTS
+from src.constants import (
+    OBJECTIVE_TIER_WEIGHTS,
+    REPEATABLE_ITEM_BASES,
+    REPEATABLE_SLOTS,
+)
 from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
@@ -88,13 +92,8 @@ class UniqueItemsMenuRule(BaseMenuRule):
             return
         repeatable = set(REPEATABLE_ITEM_BASES)
 
+        self._repeat_penalty_vars = []
         relaxed = starved_slots(cells) if cells else {}
-        # The solver's degraded retry widens this when strict uniqueness proved
-        # infeasible for reasons no static check can see (a frequency rule
-        # dictating which of a small pool may go where).
-        forced = getattr(context.get('cfg'), 'relax_unique_slots', None) or set()
-        for slot in forced:
-            relaxed.setdefault(slot, 0)
         if not relaxed:
             # Fast path — identical to the original global constraint.
             for item_base, vars_ in item_to_vars.items():
@@ -103,8 +102,6 @@ class UniqueItemsMenuRule(BaseMenuRule):
             return
 
         for slot, avg in sorted(relaxed.items()):
-            if not avg:
-                continue  # solver-forced relaxation, already logged there
             logger.warning(
                 "unique_items: slot %r has fewer distinct eligible items than "
                 "cells to fill (each item would be needed ~%d time(s)); "
@@ -129,6 +126,42 @@ class UniqueItemsMenuRule(BaseMenuRule):
 
         for item_base, vars_ in healthy.items():
             model.Add(sum(vars_) <= 1)
+
+        # Relaxed does not mean unconstrained. A slot with 4 items over 5 days
+        # must repeat exactly once — serving one dish five times satisfies the
+        # same lifted constraint but is not the menu anyone wants. Record a
+        # per-item "used more than once" bool so get_objective_terms can charge
+        # for each repeat, which drives the solver to spread across the whole
+        # pool and repeat the minimum number of times.
+        self._repeat_penalty_vars = []
+        for slot in relaxed:
+            slot_cells = [c for c in cells if c.base_slot == slot]
+            by_item: Dict[str, List[Any]] = {}
+            for c in slot_cells:
+                for var, row in zip(c.x_vars, c.cand_rows):
+                    item_base = _norm_str(row.get('item', ''))
+                    if item_base and item_base not in repeatable:
+                        by_item.setdefault(item_base, []).append(var)
+            for item_base, vars_ in by_item.items():
+                if len(vars_) < 2:
+                    continue
+                extra = model.NewIntVar(
+                    0, len(vars_), f'repeat_{slot}_{item_base}'[:190])
+                # extra >= uses - 1  ->  every use beyond the first is charged
+                model.Add(extra >= sum(vars_) - 1)
+                self._repeat_penalty_vars.append(extra)
+
+    def get_objective_terms(self, model: cp_model.CpModel,
+                            context: Dict[str, Any]) -> List:
+        """Charge for every avoidable repeat inside a relaxed slot.
+
+        Weighted at the HIGH tier so variety outranks ordinary soft preferences
+        but never competes with theme adherence — the menu should look as varied
+        as the pool allows without reordering the cuisine logic above it.
+        """
+        penalties = getattr(self, '_repeat_penalty_vars', None) or []
+        weight = OBJECTIVE_TIER_WEIGHTS['high']
+        return [-weight * v for v in penalties]
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         """Warn when a slot's eligible pool is too small to stay unique.

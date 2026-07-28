@@ -1000,12 +1000,6 @@ def plan_menu():
         if solver.rule_failures:
             response['rule_warnings'] = solver.rule_failures
             _count_rule_failures(solver.rule_failures)
-        # Constraints the solver had to weaken to return a plan at all. Kept in
-        # its own key so the UI can show it as "this menu repeats an item, and
-        # why" rather than burying it among soft-rule crash warnings.
-        if getattr(solver, 'relaxations', None):
-            response['relaxations'] = list(solver.relaxations)
-            metrics.incr('solver_relaxations_total')
         metrics.incr('plan_requests_total', outcome='success')
         return jsonify(response)
 

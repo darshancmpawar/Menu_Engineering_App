@@ -187,24 +187,43 @@ class TestUniqueItemsRelaxation:
         m.Add(healthy[1].x_vars[0] == 1)
         assert _status(m) == 'INFEASIBLE'
 
-    def test_solver_forced_relaxation_via_cfg(self):
-        """cfg.relax_unique_slots (the degraded retry) lifts a healthy slot."""
+    def test_relaxed_slot_still_maximises_variety(self):
+        """Relaxed must not mean "serve one dish five times".
+
+        4 items over 5 days has to repeat exactly once. The repeat penalty must
+        drive the solver to use all 4 rather than take the cheapest feasible
+        answer of one item five times.
+        """
         m = cp_model.CpModel()
-        cells = _build(m, 5, 'dessert', ['d1', 'd2', 'd3', 'd4', 'd5'])
-        cfg = type('C', (), {'relax_unique_slots': {'dessert'}})()
+        cells = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
         rule = UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'})
-        rule.apply(m, {}, None, {
-            'cells': cells, 'item_to_vars': _item_to_vars(cells), 'cfg': cfg})
-        m.Add(cells[0].x_vars[0] == 1)
-        m.Add(cells[1].x_vars[0] == 1)
-        assert _status(m) in ('OPTIMAL', 'FEASIBLE')
+        ctx = {'cells': cells, 'item_to_vars': _item_to_vars(cells)}
+        rule.apply(m, {}, None, ctx)
+        terms = rule.get_objective_terms(m, ctx)
+        assert terms, "a relaxed slot must contribute a repeat penalty"
+        m.Maximize(sum(terms))
+
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5
+        solver.parameters.num_search_workers = 1
+        assert solver.StatusName(solver.Solve(m)) in ('OPTIMAL', 'FEASIBLE')
+
+        picked = []
+        for c in cells:
+            for v, r in zip(c.x_vars, c.cand_rows):
+                if solver.Value(v) == 1:
+                    picked.append(r['item'])
+        assert len(picked) == 5
+        assert len(set(picked)) == 4, (
+            f"expected all 4 items used with a single repeat, got {picked}"
+        )
 
 
 # --------------------------------------------------------------------------
 # nonveg biryani weekly cap auto-relax
 # --------------------------------------------------------------------------
 
-class TestNonvegBiryaniAutoRelax:
+class TestNonvegBiryaniCap:
     def _cells(self, model, n_days, all_biryani):
         cells = []
         for di in range(n_days):
@@ -224,15 +243,42 @@ class TestNonvegBiryaniAutoRelax:
             'link_any_fn': _link_any,
         }
 
-    def test_relaxes_when_every_day_forces_biryani(self):
+    def test_cap_is_never_silently_raised(self):
+        """A theme map that forces more biryani days than the cap is a config
+        conflict. The rule must keep enforcing the cap — silently raising it
+        would hand back a menu that breaks the weekly-variety rule."""
         m = cp_model.CpModel()
         cells = self._cells(m, 5, all_biryani=True)
         rule = NonvegBiryaniWeeklyRule({
             'name': 'nb', 'type': 'nonveg_biryani_weekly', 'max_per_week': 1})
-        with capture_logs('src.menu_rules.nonveg_rules') as msgs:
-            rule.apply(m, {}, None, self._ctx(cells, 5))
-        assert _status(m) in ('OPTIMAL', 'FEASIBLE')
-        assert any('raised to 5' in msg for msg in msgs), msgs
+        rule.apply(m, {}, None, self._ctx(cells, 5))
+        assert _status(m) == 'INFEASIBLE'
+
+    def test_conflict_is_reported_as_a_blocking_diagnostic(self):
+        """...and the conflict is surfaced with the config change to make."""
+        from src.menu_rules.base_menu_rule import (
+            DiagnoseContext, DiagnosticSeverity,
+        )
+        pool = pd.DataFrame({
+            'item': ['b1', 'b2'], 'is_nonveg_biryani': [1, 1],
+        })
+        dates = [MON + dt.timedelta(days=i) for i in range(5)]
+        ctx = DiagnoseContext(
+            pools={'nonveg_main': pool}, dates=dates,
+            day_types={d: 'biryani' for d in dates},
+            cfg=type('C', (), {'rice_exclude_items': set()})(),
+            df=pool, banned_by_date={}, ricebread_ban_day={}, skip_cells=set(),
+            client_cfg=type('K', (), {'slot_counts': {'nonveg_main': 1}})(),
+            active_base_slots=['nonveg_main'],
+        )
+        rule = NonvegBiryaniWeeklyRule({
+            'name': 'nonveg_biryani_once_per_week',
+            'type': 'nonveg_biryani_weekly', 'max_per_week': 1})
+        errors = [d for d in rule.diagnose(ctx)
+                  if d.severity == DiagnosticSeverity.ERROR]
+        assert errors, "the contradiction must block, not reach the solver"
+        assert 'disable' in errors[0].suggestion
+        assert errors[0].affected['forced_biryani_days'] == 5
 
     def test_cap_still_binds_when_alternatives_exist(self):
         m = cp_model.CpModel()

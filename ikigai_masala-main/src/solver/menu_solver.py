@@ -50,11 +50,12 @@ DEFAULT_CAP_BY_SLOT: Dict[str, int] = {
 }
 DEFAULT_CAP = 900  # fallback for slots not in DEFAULT_CAP_BY_SLOT
 
-# When strict per-horizon uniqueness makes a plan infeasible, uniqueness is
-# lifted first for slots whose distinct-item count exceeds their cell count by
-# no more than this, and only then for every slot. Keeps the relaxation as
-# narrow as possible so variety survives everywhere it can.
-UNIQUENESS_RELAX_HEADROOM = 3
+# A slot whose distinct-item count exceeds its cell count by no more than this
+# is reported as "tight" when a solve fails, to point an admin at the likely
+# cause. It does NOT trigger any automatic relaxation — the only uniqueness that
+# is ever lifted is for a slot that is arithmetically impossible (see
+# UniqueItemsMenuRule.starved_slots).
+UNIQUENESS_TIGHT_HEADROOM = 3
 
 # Weekday token → full lowercase name (for client constant_items maps).
 _WEEKDAY_ALIASES: Dict[str, str] = {
@@ -117,9 +118,6 @@ class SolverConfig:
     client_constant_items: Optional[Dict[str, Any]] = None
     # Client-level weekday filter (lowercase full names). None = unrestricted.
     working_days: Optional[List[str]] = None
-    # Base slots whose per-horizon uniqueness has been lifted. Set by
-    # MenuSolver.solve()'s degraded retry, never by the caller.
-    relax_unique_slots: Optional[Set[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
     # Color constraints
     color_col: str = 'item_color'
@@ -319,9 +317,6 @@ class MenuSolver:
         # reflects the last attempt's failures, which is the most
         # actionable for diagnostics.
         self.rule_failures: List[Dict[str, Any]] = []
-        # Human-readable notes about constraints the solver had to weaken to
-        # return a plan at all. Surfaced by the API alongside rule_warnings.
-        self.relaxations: List[str] = []
         # Stamped onto each rule_failures entry so diagnostics can tell
         # which multi-restart attempt produced which failure.
         self._current_attempt_seed: Optional[int] = None
@@ -400,7 +395,6 @@ class MenuSolver:
         # stop restarting. The happy path (attempt 1 succeeds) is unaffected.
         deadline = time.monotonic() + total_time
         orig_seed, orig_time = self.cfg.seed, self.cfg.time_limit_sec
-        self.relaxations = []
         state = {'last_err': None}
 
         def _attempt_cycle():
@@ -459,62 +453,46 @@ class MenuSolver:
             if result is not None:
                 return result, dates
 
-            # Graceful degradation instead of a bare 500.
+            # No plan. We deliberately do NOT retry with rules switched off.
             #
-            # A plan can be arithmetically impossible under strict per-horizon
-            # uniqueness once the theme filter has narrowed a slot: L&T's
-            # south-only counter has 3 eligible yogurt sides and 7 desserts for
-            # 5 days, and the dessert frequency rules dictate *which* of the 7
-            # may go where. No static pre-check can see that interaction — only
-            # the solver can — so on exhaustion we retry with uniqueness lifted
-            # for the tightest slots, then for all of them. The client gets a
-            # menu with a repeat plus an explicit warning naming the slots,
-            # rather than "No feasible plan found" and nothing to act on.
-            for headroom in (UNIQUENESS_RELAX_HEADROOM, None):
-                relax = self._tight_slots(
-                    dates, expanded_slots, pool_cache, headroom,
-                )
-                if not relax or relax <= (self.cfg.relax_unique_slots or set()):
-                    continue
-                self.cfg.relax_unique_slots = set(relax)
-                logger.warning(
-                    "No feasible plan under strict uniqueness; retrying with "
-                    "uniqueness relaxed for slot(s): %s",
-                    ", ".join(sorted(relax)),
-                )
-                result = _attempt_cycle()
-                if result is not None:
-                    note = (
-                        "Items may repeat in slot(s) "
-                        + ", ".join(sorted(relax))
-                        + ": there are not enough distinct eligible items for "
-                        "every day once this client's themes and frequency "
-                        "rules are applied."
+            # An over-constrained counter is a configuration conflict, and the
+            # useful output is the conflict, not a menu that quietly abandons
+            # the rules the client is paying for. The only relaxation this
+            # solver performs is for a slot that is *arithmetically* impossible
+            # — fewer distinct eligible items than days to fill — which
+            # UniqueItemsMenuRule handles up front, minimally, and reports. A
+            # conflict between two satisfiable rules is surfaced here instead,
+            # naming the slots most likely responsible so an admin can fix the
+            # config rather than guess.
+            tight = self._tight_slots(
+                dates, expanded_slots, pool_cache, UNIQUENESS_TIGHT_HEADROOM,
+            )
+            detail = ''
+            if tight:
+                detail = (
+                    ' Tightest slot(s) for this counter — '
+                    + ', '.join(
+                        f'{s} ({n} distinct item(s) for {c} day-slot(s))'
+                        for s, n, c in sorted(tight)
                     )
-                    self.relaxations.append(note)
-                    self.rule_failures.append({
-                        'rule': 'unique_items_session',
-                        'phase': 'apply',
-                        'error': note,
-                        'attempt_seed': self._current_attempt_seed,
-                    })
-                    return result, dates
-
+                    + '. Check the rules scoped to them (frequency caps, theme'
+                    ' filters, day restrictions), widen this client\'s'
+                    ' source_pools, or reduce the slot count.'
+                )
             raise RuntimeError(
-                'No feasible plan found after CP-SAT restarts. '
-                'Likely causes: tight history cooldown, rice-bread gap, '
-                'insufficient deep-fried starters, tight Chinese/Biryani pools, '
-                'or color/premium constraints.'
+                'No feasible plan found: the rules configured for this counter '
+                'cannot all be satisfied over the requested horizon.' + detail
             ) from state['last_err']
         finally:
             self.cfg.seed, self.cfg.time_limit_sec = orig_seed, orig_time
 
     def _tight_slots(self, dates, expanded_slots, pool_cache, headroom):
-        """Base slots whose eligible pool leaves little room for uniqueness.
+        """Slots whose eligible pool leaves little room for uniqueness.
 
-        ``headroom`` is ``distinct_items - cells_to_fill``; a slot at or below it
-        is returned. ``headroom=None`` returns every non-repeatable slot, the
-        last resort. Repeatable slots are never included — they are exempt from
+        Returns ``{(base_slot, distinct_items, cells_to_fill)}`` for slots whose
+        ``distinct_items - cells_to_fill`` is at or below *headroom*. Used only
+        to make an infeasibility message actionable — it names where an admin
+        should look. Repeatable slots are excluded; they are exempt from
         uniqueness already.
         """
         stats: Dict[str, Dict[str, Any]] = {}
@@ -537,12 +515,9 @@ class MenuSolver:
                     )
         out = set()
         for base, entry in stats.items():
-            if headroom is None:
-                out.add(base)
-                continue
             distinct = len({i for i in entry['items'] if i})
             if distinct - entry['cells'] <= headroom:
-                out.add(base)
+                out.add((base, distinct, entry['cells']))
         return out
 
     # ----- Cell building -----

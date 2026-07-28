@@ -176,15 +176,50 @@ class SelectorFrequencyRule(BaseMenuRule):
         else:
             max_place = len(day_has)
 
+        # ...and cap to the number of DISTINCT matching dishes as well.
+        #
+        # ``max_place`` counts days on which a match could be placed, which is
+        # not the same as how many days can *each carry a different* match. With
+        # unique_items in force, N days of a selector needs N distinct matching
+        # items. L&T's south-only counter has exactly one liquid dessert, yet
+        # `liquid_desserts_twice_nonconsecutive` asked for two days: placeable on
+        # all five, satisfiable on none, so the counter went INFEASIBLE with no
+        # indication that a *dessert* rule was at fault. Bounding by distinct
+        # matches makes the rule ask for what the pool can actually supply.
+        distinct_matches = {
+            _norm_str(r.get('item', ''))
+            for c in cells
+            if self.base_slot is None or c.base_slot == self.base_slot
+            for r in c.cand_rows
+            if self._row_matches(r)
+        }
+        distinct_matches.discard('')
+        if distinct_matches:
+            max_place = min(max_place, len(distinct_matches))
+
         if self.exact is not None:
             tgt = min(self.exact, max_place)
             if tgt != self.exact:
-                logger.info("%s: exact %d capped to %d (pool/horizon limit)",
-                            self.name, self.exact, tgt)
+                logger.warning(
+                    "%s: exact %d capped to %d — the eligible pool offers only "
+                    "%d distinct matching dish(es) across %d placeable day(s). "
+                    "Widen this client's item pools or lower the target.",
+                    self.name, self.exact, tgt, len(distinct_matches),
+                    len(day_has),
+                )
             if tgt > 0:
                 model.Add(sum(hvars) == tgt)
         if self.min is not None and self.min > 0:
             tgt = min(self.min, max_place)
+            if tgt != self.min:
+                logger.warning(
+                    "%s: min %d capped to %d — the eligible pool offers only "
+                    "%d distinct matching dish(es) across %d placeable day(s). "
+                    "The rule is under-enforced; widen this client's item pools "
+                    "or lower the target.",
+                    self.name, self.min, tgt, len(distinct_matches),
+                    len(day_has),
+                )
             if tgt > 0:
                 model.Add(sum(hvars) >= tgt)
 

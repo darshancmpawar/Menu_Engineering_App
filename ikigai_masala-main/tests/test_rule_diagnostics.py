@@ -266,7 +266,26 @@ class TestColorVarietyDiagnostics:
         })
 
     def test_error_when_colours_cannot_fill_cells(self):
-        # 3 colour cells, all pools only 'W' -> 1 colour * max_same(2) = 2 < 3.
+        # 4 colour cells, all pools only 'W'. Real solver capacity for one
+        # colour is max_same(2) + one colour reaching max_same_color_reach(3)
+        # = 3 < 4, so this genuinely cannot be filled.
+        ctx = self._color_ctx(
+            {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W']),
+             'dessert': self._pool(['W']), 'veg_dry': self._pool(['W'])},
+            {'rice': 1, 'veg_gravy': 1, 'dessert': 1, 'veg_dry': 1},
+            ['rice', 'veg_gravy', 'dessert', 'veg_dry'],
+        )
+        diags = color_variety_diagnostics([], ctx)
+        errs = [x for x in diags if x.severity == DiagnosticSeverity.ERROR]
+        assert len(errs) == 1 and 'infeasible' in errs[0].message.lower()
+
+    def test_reach_allowance_is_not_reported_as_infeasible(self):
+        """3 cells of one colour IS fillable: 2 at the soft cap + 1 at reach.
+
+        The capacity formula previously ignored the solver's reach allowance
+        (menu_solver._add_color_constraints), so this day was reported as a
+        blocking ERROR and /plan returned 422 without ever running the solver.
+        """
         ctx = self._color_ctx(
             {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W']),
              'dessert': self._pool(['W'])},
@@ -274,8 +293,9 @@ class TestColorVarietyDiagnostics:
             ['rice', 'veg_gravy', 'dessert'],
         )
         diags = color_variety_diagnostics([], ctx)
-        errs = [x for x in diags if x.severity == DiagnosticSeverity.ERROR]
-        assert len(errs) == 1 and 'infeasible' in errs[0].message.lower()
+        assert [x.severity for x in diags] == [DiagnosticSeverity.WARNING], (
+            [(x.severity, x.message) for x in diags]
+        )
 
     def test_no_diagnostic_when_colours_plentiful(self):
         ctx = self._color_ctx(
@@ -287,10 +307,12 @@ class TestColorVarietyDiagnostics:
         assert color_variety_diagnostics([], ctx) == []
 
     def test_warning_on_zero_slack(self):
-        # 2 cells, 1 colour, max_same 2 -> capacity 2 == 2 cells.
+        # 3 cells, 1 colour -> capacity 2 + 1 reach = 3 == 3 cells, no slack.
         ctx = self._color_ctx(
-            {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W'])},
-            {'rice': 1, 'veg_gravy': 1}, ['rice', 'veg_gravy'],
+            {'rice': self._pool(['W']), 'veg_gravy': self._pool(['W']),
+             'dessert': self._pool(['W'])},
+            {'rice': 1, 'veg_gravy': 1, 'dessert': 1},
+            ['rice', 'veg_gravy', 'dessert'],
         )
         diags = color_variety_diagnostics([], ctx)
         assert [x.severity for x in diags] == [DiagnosticSeverity.WARNING]
