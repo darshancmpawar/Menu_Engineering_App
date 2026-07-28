@@ -450,3 +450,62 @@ class TestConstantValueValidation:
                 'X', {'curd': {'monday': 'green salad', 'friday': 'bogus'}}, df)
         joined = ' '.join(msgs)
         assert 'bogus' in joined and 'green salad' not in joined
+
+
+# --------------------------------------------------------------------------
+# per-counter scoping of client rule overrides
+# --------------------------------------------------------------------------
+
+class TestPerCounterScoping:
+    BLOCK = {
+        'disable': ['client_wide_rule'],
+        'rules': [{'name': 'client_rule', 'type': 'unique_items'}],
+        'constant_items': {'salad': 'client salad'},
+        'counters': {
+            'Non Veg Lunch': {
+                'disable': ['nonveg_biryani_once_per_week'],
+                'rules': [{'name': 'counter_rule', 'type': 'unique_items'}],
+                'constant_items': {'bread': 'counter bread'},
+            },
+        },
+    }
+
+    def test_counter_layer_adds_to_client_layer(self):
+        p = MenuRuleLoader._parse_client_block(self.BLOCK, 'Non Veg Lunch')
+        assert p['disable'] == [
+            'client_wide_rule', 'nonveg_biryani_once_per_week']
+        assert [r['name'] for r in p['rules']] == ['client_rule', 'counter_rule']
+        assert p['constant_items'] == {
+            'salad': 'client salad', 'bread': 'counter bread'}
+
+    def test_other_counters_do_not_see_the_scoped_override(self):
+        """The whole point: a rule dropped for one station stays on elsewhere."""
+        p = MenuRuleLoader._parse_client_block(self.BLOCK, 'South Lunch')
+        assert p['disable'] == ['client_wide_rule']
+        assert 'nonveg_biryani_once_per_week' not in p['disable']
+        assert [r['name'] for r in p['rules']] == ['client_rule']
+        assert p['constant_items'] == {'salad': 'client salad'}
+
+    def test_no_counter_name_yields_client_layer_only(self):
+        p = MenuRuleLoader._parse_client_block(self.BLOCK, None)
+        assert p['disable'] == ['client_wide_rule']
+
+    def test_legacy_list_form_still_supported(self):
+        p = MenuRuleLoader._parse_client_block(
+            [{'name': 'x', 'type': 'unique_items'}], 'Any')
+        assert [r['name'] for r in p['rules']] == ['x']
+        assert p['disable'] == [] and p['constant_items'] == {}
+
+    def test_real_config_scopes_the_lt_biryani_cap(self):
+        """The shipped L&T entry must apply only to its non-veg counter."""
+        import json
+        from pathlib import Path
+        import src.menu_rules.menu_rule_loader as loader_mod
+        blob = json.loads(Path(loader_mod.CLIENT_RULES_CONFIG_PATH).read_text())
+        block = blob.get('L&T')
+        if not block:
+            pytest.skip('no L&T entry configured')
+        nonveg = MenuRuleLoader._parse_client_block(block, 'Non Veg Lunch')
+        south = MenuRuleLoader._parse_client_block(block, 'South Lunch')
+        assert 'nonveg_biryani_once_per_week' in nonveg['disable']
+        assert 'nonveg_biryani_once_per_week' not in south['disable']

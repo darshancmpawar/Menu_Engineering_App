@@ -578,9 +578,14 @@
   },
 
   "L&T": {
-    "_comment": "The 'Non Veg Lunch' counter is themed biryani on all five days and serves a single nonveg_main, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Disabling it here states the intent explicitly rather than having the solver quietly raise the cap. L&T's other counters serve no nonveg_main, so this is scoped in effect.",
-    "disable": ["nonveg_biryani_once_per_week"],
+    "disable": [],
     "rules": [],
-    "constant_items": {}
+    "constant_items": {},
+    "counters": {
+      "Non Veg Lunch": {
+        "_comment": "This counter is themed biryani on all five days and serves a single nonveg_main, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot.",
+        "disable": ["nonveg_biryani_once_per_week"]
+      }
+    }
   }
 }

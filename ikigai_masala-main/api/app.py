@@ -442,9 +442,15 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
     """
     generic = _get_menu_rules_for_city(city)
     loader = MenuRuleLoader()
-    rules = loader.load_for_client(client_name, generic)
+    # Per-counter scoping: an override meant for one station (e.g. L&T's
+    # biryani-only non-veg counter) must not apply to the client's other
+    # counters.
+    counter_name = getattr(client_cfg, 'counter_name', None)
+    rules = loader.load_for_client(client_name, generic, counter_name)
     constant_items, whole_slot_bases = _resolve_constant_items(
-        client_name, loader.get_client_constant_items(client_name), client_cfg,
+        client_name,
+        loader.get_client_constant_items(client_name, counter_name),
+        client_cfg,
     )
     skip_cells = set()
     for rule in rules:

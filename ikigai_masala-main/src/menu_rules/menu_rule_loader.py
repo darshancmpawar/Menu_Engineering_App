@@ -224,23 +224,53 @@ class MenuRuleLoader:
         return self.RULE_CLASSES[rule_type](rule_config)
 
     @staticmethod
-    def _parse_client_block(client_block: Any) -> Dict[str, Any]:
+    def _parse_client_block(
+        client_block: Any, counter_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Normalise a per-client ``client_rules.json`` value.
 
         Accepts the legacy list form ``[rule, …]`` or the object form::
 
-            {"disable": [...], "rules": [...], "constant_items": {...}}
+            {"disable": [...], "rules": [...], "constant_items": {...},
+             "counters": {"<counter name>": {"disable": [...], "rules": [...],
+                                             "constant_items": {...}}}}
+
+        ``counters`` scopes an override to one counter of a multi-counter client.
+        A client-level entry applies to every counter, which is wrong for rules
+        that only make sense for one station: L&T's "Non Veg Lunch" counter is
+        themed biryani every day, so the weekly nonveg-biryani cap has to come
+        off *there* — but leaving it off client-wide would silently disable it if
+        another L&T counter ever gains a nonveg_main slot.
+
+        Counter entries are layered over the client-level ones, so shared
+        overrides stay declared once.
         """
+        empty = {'disable': [], 'rules': [], 'constant_items': {}}
         if isinstance(client_block, list):
-            return {'disable': [], 'rules': list(client_block), 'constant_items': {}}
-        if isinstance(client_block, dict):
-            rules = client_block.get('rules', client_block.get('constraints', []))
+            return {**empty, 'rules': list(client_block)}
+        if not isinstance(client_block, dict):
+            return dict(empty)
+
+        def _layer(block: Dict[str, Any]) -> Dict[str, Any]:
+            rules = block.get('rules', block.get('constraints', []))
             return {
-                'disable': list(client_block.get('disable') or []),
+                'disable': list(block.get('disable') or []),
                 'rules': list(rules or []),
-                'constant_items': dict(client_block.get('constant_items') or {}),
+                'constant_items': dict(block.get('constant_items') or {}),
             }
-        return {'disable': [], 'rules': [], 'constant_items': {}}
+
+        merged = _layer(client_block)
+        counters = client_block.get('counters')
+        if counter_name and isinstance(counters, dict):
+            scoped = counters.get(counter_name)
+            if isinstance(scoped, dict):
+                layer = _layer(scoped)
+                merged['disable'] = merged['disable'] + layer['disable']
+                merged['rules'] = merged['rules'] + layer['rules']
+                merged['constant_items'] = {
+                    **merged['constant_items'], **layer['constant_items'],
+                }
+        return merged
 
     @classmethod
     def _read_client_blob(cls) -> Dict[str, Any]:
@@ -255,15 +285,22 @@ class MenuRuleLoader:
             return {}
         return blob if isinstance(blob, dict) else {}
 
-    def get_client_constant_items(self, client_name: str) -> Dict[str, Any]:
-        """Return ``constant_items`` for *client_name* (empty dict if unset)."""
+    def get_client_constant_items(
+        self, client_name: str, counter_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return ``constant_items`` for *client_name* (empty dict if unset).
+
+        *counter_name* layers that counter's ``counters`` entry over the
+        client-level one.
+        """
         block = self._read_client_blob().get(client_name)
         if not block:
             return {}
-        return self._parse_client_block(block)['constant_items']
+        return self._parse_client_block(block, counter_name)['constant_items']
 
     def load_for_client(
         self, client_name: str, generic_rules: List[BaseMenuRule],
+        counter_name: Optional[str] = None,
     ) -> List[BaseMenuRule]:
         """Merge city/generic rules with per-client overrides for *client_name*.
 
@@ -271,12 +308,15 @@ class MenuRuleLoader:
         be a legacy rule list or ``{disable, rules, constant_items}``. Merge
         semantics match city ``extends``: same ``name`` overrides, ``disable``
         drops by name. Missing file / unknown client → *generic_rules* unchanged.
+
+        *counter_name* additionally applies that counter's ``counters`` entry, so
+        an override can be scoped to one station of a multi-counter client.
         """
         client_block = self._read_client_blob().get(client_name)
         if not client_block:
             return list(generic_rules)
 
-        parsed = self._parse_client_block(client_block)
+        parsed = self._parse_client_block(client_block, counter_name)
         parent_dicts = [
             dict(getattr(r, 'config', {}) or {})
             for r in generic_rules
@@ -305,8 +345,9 @@ class MenuRuleLoader:
         n_extra = len(parsed['rules'])
         n_disabled = len(parsed['disable'])
         logger.info(
-            "Merged client '%s': %d override/add rule(s), %d disabled → %d total",
-            client_name, n_extra, n_disabled, len(merged),
+            "Merged client '%s'%s: %d override/add rule(s), %d disabled → %d total",
+            client_name, f" counter '{counter_name}'" if counter_name else "",
+            n_extra, n_disabled, len(merged),
         )
         return merged
 

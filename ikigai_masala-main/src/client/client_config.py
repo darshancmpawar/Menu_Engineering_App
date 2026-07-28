@@ -159,6 +159,9 @@ class ClientConfig:
     # Client-level: restrict generation to these weekdays only (lowercase full
     # names, e.g. ['wednesday','thursday','friday']). None => all weekdays.
     working_days: Optional[List[str]] = None
+    # Which counter of the client this config came from. Lets per-counter rule
+    # overrides in client_rules.json be scoped to one station.
+    counter_name: Optional[str] = None
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -454,6 +457,7 @@ class ClientConfigLoader:
             active_slots=expanded,
             slot_counts=counts,
             theme_map=dict(counter.get('theme_map') or DEFAULT_THEME_MAP),
+            counter_name=counter.get('name'),
         )
 
     def get_client(self, name: str) -> ClientConfig:
