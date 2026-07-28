@@ -291,6 +291,49 @@ def _exclusive_siblings(base_slot: str) -> Set[str]:
     return out
 
 
+def _validate_constant_values(client_name, resolved, df) -> None:
+    """Warn about ``constant_items`` values that are not real dishes.
+
+    A pinned value is free text written by hand, so a typo ships straight to
+    the printed menu with nothing to catch it. Anything that does not resolve
+    to an ontology item is logged once per (slot, value) — the pin is still
+    honoured, because plenty of legitimate pins (``"Fish Masala"``,
+    ``"Mutton Biryani"``) intentionally name dishes the veg-only ontology does
+    not carry.
+
+    Non-string values are reported too: ``_resolve_client_constant`` falls back
+    to ``str(spec)``, so a stray number or nested object would otherwise print
+    as ``"5"`` or a Python repr in the slot.
+    """
+    if df is None or 'item' not in getattr(df, 'columns', []):
+        return
+    try:
+        known = {str(v).strip().lower() for v in df['item'].tolist()}
+    except Exception:  # noqa: BLE001 — validation must never break planning
+        return
+
+    for slot, spec in (resolved or {}).items():
+        values = [spec] if not isinstance(spec, dict) else list(spec.values())
+        for value in values:
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                logger.warning(
+                    "constant_items[%r] for %s is %s, not a string; it will "
+                    "print as %r. Quote the value in client_rules.json.",
+                    slot, client_name, type(value).__name__, str(value),
+                )
+                continue
+            name = value.strip().lower()
+            if name and name not in known and name.replace(' ', '_') not in known:
+                logger.warning(
+                    "constant_items[%r] for %s pins %r, which is not an item in "
+                    "the ontology. It will be printed verbatim — check for a "
+                    "typo, or confirm this is an intentional off-ontology dish.",
+                    slot, client_name, value,
+                )
+
+
 def _resolve_constant_items(client_name, constant_items, client_cfg):
     """Resolve a client's raw ``constant_items`` block against ONE counter.
 
@@ -408,10 +451,11 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
         if hasattr(rule, 'compute_skip_cells'):
             skip_cells |= rule.compute_skip_cells(dates)
     from src.solver.menu_solver import _resolve_client_constant
+    from src.solver._helpers import weekday_name as _weekday_name_fn
     for slot_id, spec in constant_items.items():
         siblings = _exclusive_siblings(_base_slot(slot_id))
         for d in dates:
-            if _resolve_client_constant(spec, d.strftime('%A').lower()) is None:
+            if _resolve_client_constant(spec, _weekday_name_fn(d)) is None:
                 continue
             skip_cells.add((d, slot_id))
             # Sibling entries are base-level on purpose: every expansion of
@@ -624,11 +668,12 @@ def _filter_dates_by_working_days(dates, working_days):
     if not working_days:
         return list(dates)
     from src.solver.menu_solver import _WEEKDAY_ALIASES
+    from src.solver._helpers import weekday_name
     allowed = {
         _WEEKDAY_ALIASES.get(str(d).strip().lower(), str(d).strip().lower())
         for d in working_days
     }
-    return [d for d in dates if d.strftime('%A').lower() in allowed]
+    return [d for d in dates if weekday_name(d) in allowed]
 
 
 def _client_base_slots(client_cfg):
@@ -755,6 +800,7 @@ def _prepare_solver_inputs(
     rules, skip_cells, constant_items, whole_slot_bases = _rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg,
     )
+    _validate_constant_values(client_name, constant_items, df)
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
     cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)
@@ -954,6 +1000,12 @@ def plan_menu():
         if solver.rule_failures:
             response['rule_warnings'] = solver.rule_failures
             _count_rule_failures(solver.rule_failures)
+        # Constraints the solver had to weaken to return a plan at all. Kept in
+        # its own key so the UI can show it as "this menu repeats an item, and
+        # why" rather than burying it among soft-rule crash warnings.
+        if getattr(solver, 'relaxations', None):
+            response['relaxations'] = list(solver.relaxations)
+            metrics.incr('solver_relaxations_total')
         metrics.incr('plan_requests_total', outcome='success')
         return jsonify(response)
 

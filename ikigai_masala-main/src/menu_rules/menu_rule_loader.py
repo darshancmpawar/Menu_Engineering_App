@@ -165,7 +165,20 @@ class MenuRuleLoader:
     def _merge_rule_dicts(parent, child, disable) -> List[Dict[str, Any]]:
         """Merge *child* rule dicts over *parent*: same ``name`` overrides,
         new names append (parent order preserved), names in *disable* drop.
-        Nameless rules are always appended (never override)."""
+        Nameless rules are always appended (never override).
+
+        An override is a **per-key** merge, not a whole-dict replacement: keys
+        the child omits are inherited from the parent rule of the same name.
+        Whole-dict replacement silently dropped sibling keys — F5 and Cigna
+        override ``nonveg_main_daily_pair`` with just ``components``, which
+        deleted the city rule's ``components_by_theme`` and left their Chinese
+        day with no Chinese requirement and their biryani day with no biryani.
+        Inheriting the omitted keys keeps a partial override meaning "change
+        this field", which is what every author of these files expects.
+
+        To *remove* an inherited key, set it to ``null`` in the child (dropped
+        below), or drop the whole rule via ``disable``.
+        """
         disable = set(disable or [])
         by_name: Dict[str, Any] = {}
         order: List[str] = []
@@ -177,7 +190,16 @@ class MenuRuleLoader:
                 continue
             if n not in by_name:
                 order.append(n)
-            by_name[n] = r
+                by_name[n] = dict(r)
+                continue
+            merged = {**by_name[n], **r}
+            inherited = sorted(set(by_name[n]) - set(r))
+            if inherited:
+                logger.info(
+                    "Rule %r overridden; inheriting unspecified key(s) from the "
+                    "base rule: %s", n, ", ".join(inherited),
+                )
+            by_name[n] = {k: v for k, v in merged.items() if v is not None}
         return [by_name[n] for n in order if n not in disable] + anon
 
     def load_from_dict(self, config_data: Dict[str, Any]) -> List[BaseMenuRule]:

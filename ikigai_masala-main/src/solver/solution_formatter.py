@@ -12,7 +12,7 @@ from ._helpers import (
     theme_label as _theme_label,
     strip_color_suffix as _strip_color_suffix,
 )
-from src.constants import DISPLAY_SLOT_NAME
+from src.constants import DISPLAY_SLOT_NAME, NONVEG_SLOT
 from ..preprocessor.pool_builder import _base_slot, _slot_num
 
 
@@ -41,8 +41,29 @@ class SolutionFormatter:
         # means "unknown" → everything reported as veg.
         self._nonveg_items = nonveg_items or set()
 
-    def _is_nonveg(self, item_base: str) -> bool:
-        return bool(item_base) and item_base.strip().lower() in self._nonveg_items
+    def _is_nonveg(self, item_base: str, slot_id: str = '') -> bool:
+        """Is this dish non-vegetarian?
+
+        Three-step, in order of confidence:
+
+        1. Exact ontology match (the normal solved-item path).
+        2. Whitespace-normalised match, so a hand-written client constant like
+           ``"boiled egg"`` still finds ``boiled_egg`` in the snake_case
+           ontology.
+        3. Slot identity: anything occupying ``nonveg_main`` is non-veg by
+           definition. Pinned ``constant_items`` values are free text with no
+           ontology row, so without this a constant such as ``"boiled egg"``
+           rendered black in the table and the Excel export — a dietary error,
+           not a cosmetic one.
+        """
+        if not item_base:
+            return False
+        name = item_base.strip().lower()
+        if name in self._nonveg_items:
+            return True
+        if name.replace(' ', '_') in self._nonveg_items:
+            return True
+        return _base_slot(slot_id) == NONVEG_SLOT if slot_id else False
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -61,6 +82,6 @@ class SolutionFormatter:
                     'display_name': _display_slot(slot_id),
                     'item': item_str,
                     'item_base': item_base,
-                    'is_nonveg': self._is_nonveg(item_base),
+                    'is_nonveg': self._is_nonveg(item_base, slot_id),
                 }
         return result

@@ -56,6 +56,15 @@ def run_diagnostics(
     """
     diagnostics: List[Diagnostic] = []
 
+    rules = list(rules)
+    # A few diagnose() implementations need to replay the pre-filter chain to
+    # see the pool the solver will actually get (theme filters are what starve
+    # a slot). Hand them their peers rather than widening DiagnoseContext for
+    # one consumer; rules that don't declare the hook are untouched.
+    for rule in rules:
+        if hasattr(type(rule), '_peer_rules'):
+            rule._peer_rules = rules
+
     # Per-rule pass.
     for rule in rules:
         try:

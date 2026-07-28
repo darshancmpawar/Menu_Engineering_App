@@ -15,6 +15,7 @@ import pandas as pd
 from ._helpers import (
     strip_color_suffix as _strip_color_suffix,
     cell_is_skipped as _cell_is_skipped,
+    planned_dates as _planned_dates,
 )
 from .menu_solver import MenuSolver, SolverConfig, REGEN_SIMILARITY_PENALTY
 from ..preprocessor.column_mapper import _norm_str
@@ -69,15 +70,23 @@ class MenuRegenerator:
         Returns:
             (new_plan, dates)
         """
-        dates = [self.cfg.start_date + dt.timedelta(days=i) for i in range(self.cfg.days)]
+        # Same horizon the solver will plan. Deriving this independently (a
+        # plain contiguous start_date + i range) diverged from
+        # MenuSolver.solve() for any non-Monday start, any weekend-skipping
+        # client and every client with working_days: cells the user did not
+        # select were left unlocked and silently re-solved.
+        dates = _planned_dates(self.cfg)
 
         if sum(len(v) for v in replace_mask.values()) == 0:
             return base_plan, dates
 
         from src.constants import BASE_SLOT_NAMES
         from ..preprocessor.pool_builder import _expand_slots_in_order
+        # Mirror the solver's slot set too, so we never lock a slot this
+        # counter does not serve.
+        base_slots = self.cfg.active_base_slots or BASE_SLOT_NAMES
         expanded_slots = _expand_slots_in_order(
-            BASE_SLOT_NAMES, self.cfg.slot_counts or {s: 1 for s in BASE_SLOT_NAMES}
+            base_slots, self.cfg.slot_counts or {s: 1 for s in base_slots}
         )
 
         # Build locked dict

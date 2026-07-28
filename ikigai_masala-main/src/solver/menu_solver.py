@@ -22,6 +22,8 @@ from ortools.sat.python import cp_model
 from ._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
     cell_is_skipped as _cell_is_skipped,
+    planned_dates as _planned_dates,
+    weekday_name as _weekday_name,
 )
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
@@ -47,6 +49,12 @@ DEFAULT_CAP_BY_SLOT: Dict[str, int] = {
     'sambar': 900, 'rasam': 900,
 }
 DEFAULT_CAP = 900  # fallback for slots not in DEFAULT_CAP_BY_SLOT
+
+# When strict per-horizon uniqueness makes a plan infeasible, uniqueness is
+# lifted first for slots whose distinct-item count exceeds their cell count by
+# no more than this, and only then for every slot. Keeps the relaxation as
+# narrow as possible so variety survives everywhere it can.
+UNIQUENESS_RELAX_HEADROOM = 3
 
 # Weekday token → full lowercase name (for client constant_items maps).
 _WEEKDAY_ALIASES: Dict[str, str] = {
@@ -109,6 +117,9 @@ class SolverConfig:
     client_constant_items: Optional[Dict[str, Any]] = None
     # Client-level weekday filter (lowercase full names). None = unrestricted.
     working_days: Optional[List[str]] = None
+    # Base slots whose per-horizon uniqueness has been lifted. Set by
+    # MenuSolver.solve()'s degraded retry, never by the caller.
+    relax_unique_slots: Optional[Set[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
     # Color constraints
     color_col: str = 'item_color'
@@ -308,6 +319,9 @@ class MenuSolver:
         # reflects the last attempt's failures, which is the most
         # actionable for diagnostics.
         self.rule_failures: List[Dict[str, Any]] = []
+        # Human-readable notes about constraints the solver had to weaken to
+        # return a plan at all. Surfaced by the API alongside rule_warnings.
+        self.relaxations: List[str] = []
         # Stamped onto each rule_failures entry so diagnostics can tell
         # which multi-restart attempt produced which failure.
         self._current_attempt_seed: Optional[int] = None
@@ -347,15 +361,17 @@ class MenuSolver:
         """
         self.rule_failures = []
         self._current_attempt_seed = None
-        if self.cfg.explicit_dates:
-            dates = list(self.cfg.explicit_dates)
-        else:
-            dates = [self.cfg.start_date + dt.timedelta(days=i) for i in range(self.cfg.days)]
-        # Client-level working-days restriction: generate only for the named
-        # weekdays (e.g. Quince = Wed/Thu/Fri). None => no restriction.
-        if getattr(self.cfg, 'working_days', None):
-            allowed = {d.lower() for d in self.cfg.working_days}
-            dates = [d for d in dates if d.strftime('%A').lower() in allowed]
+        # Horizon resolution (explicit_dates / start_date+days, then the
+        # client-level working-days filter) is shared with the regenerator via
+        # ``planned_dates`` so the two can never disagree about which days the
+        # plan covers.
+        dates = _planned_dates(self.cfg)
+        if not dates:
+            raise RuntimeError(
+                'No planning dates: the requested horizon contains none of '
+                f"the client's working days ({self.cfg.working_days}). "
+                'Widen working_days or move the start date.'
+            )
         base_slots = self.cfg.active_base_slots or BASE_SLOT_NAMES
         expanded_slots = _expand_slots_in_order(
             base_slots, self.cfg.slot_counts or {s: 1 for s in base_slots}
@@ -383,10 +399,12 @@ class MenuSolver:
         # slice and the time left in the budget; once the budget is spent we
         # stop restarting. The happy path (attempt 1 succeeds) is unaffected.
         deadline = time.monotonic() + total_time
-        last_err = None
         orig_seed, orig_time = self.cfg.seed, self.cfg.time_limit_sec
+        self.relaxations = []
+        state = {'last_err': None}
 
-        try:
+        def _attempt_cycle():
+            """Run the full multi-restart cycle. Returns the result or None."""
             for mult in cap_multipliers:
                 cap_default = self.cfg.cap_default * mult
                 cap_by_slot = {k: v * mult for k, v in self.cfg.cap_by_slot.items()}
@@ -394,7 +412,7 @@ class MenuSolver:
                 for r in range(restarts_per_mult):
                     remaining = deadline - time.monotonic()
                     if remaining <= 1.0:
-                        break  # budget spent — don't start another attempt
+                        return None  # budget spent — don't start another attempt
                     attempt_seed = base_seed + mult * DEFAULT_SEED_MULT_FACTOR + r * DEFAULT_SEED_RESTART_STEP
                     rng = random.Random(attempt_seed)
                     self.cfg.seed = attempt_seed
@@ -418,33 +436,114 @@ class MenuSolver:
                                 locked=locked, similarity=similarity,
                                 forbidden=forbidden,
                             )
-                            plans = [
+                            return [
                                 self._rows_to_week_plan(c, dates, expanded_slots)
                                 for c in chosen_list
                             ]
-                            return plans, dates
                         chosen_rows = self._solve_cpsat(
                             dates, cells, locked=locked, similarity=similarity,
                             forbidden=forbidden,
                         )
-                        week_plan = self._rows_to_week_plan(
+                        return self._rows_to_week_plan(
                             chosen_rows, dates, expanded_slots
                         )
-                        return week_plan, dates
                     except RuntimeError as e:
-                        last_err = e
+                        state['last_err'] = e
                         continue
                 if deadline - time.monotonic() <= 1.0:
-                    break  # break the outer cap-multiplier loop too
+                    return None
+            return None
+
+        try:
+            result = _attempt_cycle()
+            if result is not None:
+                return result, dates
+
+            # Graceful degradation instead of a bare 500.
+            #
+            # A plan can be arithmetically impossible under strict per-horizon
+            # uniqueness once the theme filter has narrowed a slot: L&T's
+            # south-only counter has 3 eligible yogurt sides and 7 desserts for
+            # 5 days, and the dessert frequency rules dictate *which* of the 7
+            # may go where. No static pre-check can see that interaction — only
+            # the solver can — so on exhaustion we retry with uniqueness lifted
+            # for the tightest slots, then for all of them. The client gets a
+            # menu with a repeat plus an explicit warning naming the slots,
+            # rather than "No feasible plan found" and nothing to act on.
+            for headroom in (UNIQUENESS_RELAX_HEADROOM, None):
+                relax = self._tight_slots(
+                    dates, expanded_slots, pool_cache, headroom,
+                )
+                if not relax or relax <= (self.cfg.relax_unique_slots or set()):
+                    continue
+                self.cfg.relax_unique_slots = set(relax)
+                logger.warning(
+                    "No feasible plan under strict uniqueness; retrying with "
+                    "uniqueness relaxed for slot(s): %s",
+                    ", ".join(sorted(relax)),
+                )
+                result = _attempt_cycle()
+                if result is not None:
+                    note = (
+                        "Items may repeat in slot(s) "
+                        + ", ".join(sorted(relax))
+                        + ": there are not enough distinct eligible items for "
+                        "every day once this client's themes and frequency "
+                        "rules are applied."
+                    )
+                    self.relaxations.append(note)
+                    self.rule_failures.append({
+                        'rule': 'unique_items_session',
+                        'phase': 'apply',
+                        'error': note,
+                        'attempt_seed': self._current_attempt_seed,
+                    })
+                    return result, dates
 
             raise RuntimeError(
                 'No feasible plan found after CP-SAT restarts. '
                 'Likely causes: tight history cooldown, rice-bread gap, '
                 'insufficient deep-fried starters, tight Chinese/Biryani pools, '
                 'or color/premium constraints.'
-            ) from last_err
+            ) from state['last_err']
         finally:
             self.cfg.seed, self.cfg.time_limit_sec = orig_seed, orig_time
+
+    def _tight_slots(self, dates, expanded_slots, pool_cache, headroom):
+        """Base slots whose eligible pool leaves little room for uniqueness.
+
+        ``headroom`` is ``distinct_items - cells_to_fill``; a slot at or below it
+        is returned. ``headroom=None`` returns every non-repeatable slot, the
+        last resort. Repeatable slots are never included — they are exempt from
+        uniqueness already.
+        """
+        stats: Dict[str, Dict[str, Any]] = {}
+        for di, d in enumerate(dates):
+            for slot_id in expanded_slots:
+                if _cell_is_skipped(self.skip_cells, d, slot_id):
+                    continue
+                base = _base_slot(slot_id)
+                if base in REPEATABLE_SLOTS:
+                    continue
+                entry = stats.setdefault(base, {'cells': 0, 'items': set()})
+                entry['cells'] += 1
+                cached = pool_cache.get((di, slot_id))
+                if not cached:
+                    continue
+                pool = cached[0]
+                if len(pool):
+                    entry['items'].update(
+                        _norm_str(v) for v in pool['item'].tolist()
+                    )
+        out = set()
+        for base, entry in stats.items():
+            if headroom is None:
+                out.add(base)
+                continue
+            distinct = len({i for i in entry['items'] if i})
+            if distinct - entry['cells'] <= headroom:
+                out.add(base)
+        return out
 
     # ----- Cell building -----
 
@@ -976,16 +1075,27 @@ class MenuSolver:
                     )
             # Append the client's selected constant items. None = all
             # (legacy default); an explicit list scopes them per-client.
-            if self.cfg.const_slots is None:
-                day_out.update(CONSTANT_ITEMS)
-            else:
-                for k in self.cfg.const_slots:
-                    if k in CONSTANT_ITEMS:
-                        day_out[k] = CONSTANT_ITEMS[k]
+            #
+            # Constant slots are stamped, not solved, so they have no cell for
+            # ``skip_cells`` to suppress — a ``slot_day_restriction`` on
+            # white_rice/papad/pickle/chutney used to be a silent no-op and the
+            # staple appeared every day anyway. Honour skip_cells here so a day
+            # restriction (or a whole-slot client constant) can genuinely remove
+            # a constant slot from a given day.
+            const_keys = (
+                list(CONSTANT_ITEMS) if self.cfg.const_slots is None
+                else list(self.cfg.const_slots)
+            )
+            for k in const_keys:
+                if k not in CONSTANT_ITEMS:
+                    continue
+                if _cell_is_skipped(self.skip_cells, d, k):
+                    continue
+                day_out[k] = CONSTANT_ITEMS[k]
             # Per-client overlay (after globals). Day-specific maps only stamp
             # on matching weekdays; daily strings stamp every day.
             if client_consts:
-                weekday = d.strftime('%A').lower()
+                weekday = _weekday_name(d)
                 for slot, spec in client_consts.items():
                     value = _resolve_client_constant(spec, weekday)
                     if value is not None:

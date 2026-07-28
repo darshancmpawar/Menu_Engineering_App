@@ -136,27 +136,56 @@ class SlotCompositionRule(BaseMenuRule):
             ]
             if not day_cells:
                 continue
-            # Self-gate: only compose when the counter has the expected number
-            # of this slot on this day (leaves single-slot counters untouched).
-            if self.requires_slot_count is not None \
-                    and len(day_cells) != self.requires_slot_count:
-                continue
+            # Self-gate: only compose when the *counter* is configured with the
+            # expected number of this slot (leaves single-slot counters
+            # untouched).
+            #
+            # Gate on the configured slot count, not on len(day_cells): a client
+            # constant that pins one expansion (e.g. nonveg_main__2 = "boiled
+            # egg") removes that cell, and gating on surviving cells silently
+            # switched the whole composition rule off for that day — Plan View
+            # pins nonveg_main__2 every day, which disabled the nonveg pairing
+            # for the entire week with no warning. Components are already capped
+            # to what the surviving cells can supply just below, so composing
+            # against a partially-pinned family degrades instead of vanishing.
+            if self.requires_slot_count is not None:
+                cfg = context.get('cfg')
+                slot_counts = getattr(cfg, 'slot_counts', None) or {}
+                configured = int(slot_counts.get(self.base_slot, len(day_cells)))
+                if configured != self.requires_slot_count:
+                    continue
 
             theme = day_types[di] if di < len(day_types) else ''
             comps = self.components_by_theme.get(theme, self.components)
             if not comps:
                 continue
 
+            # Components are capped to what this day can actually supply: each
+            # to its own candidate count, and collectively to the number of
+            # cells left to fill. The cell budget matters when a client constant
+            # pins one expansion of the family — two count-1 components against
+            # a single surviving cell would demand two different dishes from one
+            # slot and make the day INFEASIBLE. Earlier components win the
+            # budget, so config order expresses priority.
+            budget = len(day_cells)
             for matcher, count in comps:
+                if budget <= 0:
+                    logger.info(
+                        "%s: day %d component %s dropped (no cell left to fill; "
+                        "the rest of the family is pinned or restricted)",
+                        self.name, di, matcher)
+                    continue
                 lits = [
                     v for c in day_cells
                     for v, r in zip(c.x_vars, c.cand_rows)
                     if SelectorFrequencyRule._matches(r, matcher)
                 ]
-                required = min(count, len(lits))
+                required = min(count, len(lits), budget)
                 if required != count:
                     logger.info(
-                        "%s: day %d component %s capped %d -> %d (pool limit)",
+                        "%s: day %d component %s capped %d -> %d "
+                        "(pool/cell limit)",
                         self.name, di, matcher, count, required)
                 if required > 0:
                     model.Add(sum(lits) >= required)
+                    budget -= required

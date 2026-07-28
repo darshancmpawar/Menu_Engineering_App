@@ -11,10 +11,13 @@ Non-veg menu rules.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Any, Dict, List
 
 import pandas as pd
 from ortools.sat.python import cp_model
+
+logger = logging.getLogger(__name__)
 
 from ..preprocessor.column_mapper import _to_bool01
 from .base_menu_rule import (
@@ -77,8 +80,44 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
                 link_any(model, biryani_lits, day_has_biryani)
                 biryani_day_vars.append(day_has_biryani)
 
-        if biryani_day_vars:
-            model.Add(sum(biryani_day_vars) <= self.max_per_week)
+        if not biryani_day_vars:
+            return
+
+        # Auto-relax to what the horizon can actually satisfy. On a day whose
+        # nonveg_main pool contains ONLY nonveg biryanis — which is what the
+        # theme filter produces on a biryani-theme day for a single-nonveg
+        # counter — a biryani is forced, so the day var cannot be 0. A counter
+        # themed biryani on more days than the cap therefore makes the model
+        # INFEASIBLE through no fault of the client's own config (L&T's Non Veg
+        # counter is biryani all five days against a cap of 1).
+        #
+        # Every other frequency rule in the ruleset caps its target to what is
+        # placeable rather than failing; this one now does the same, and logs so
+        # the weakened cap is visible.
+        forced_days = 0
+        for di in range(len(dates)):
+            nv_cells = [
+                c for c in cells
+                if c.d_idx == di and c.base_slot == 'nonveg_main'
+            ]
+            if not nv_cells:
+                continue
+            if all(
+                all(int(r.get('is_nonveg_biryani', 0)) == 1 for r in c.cand_rows)
+                for c in nv_cells if c.cand_rows
+            ):
+                forced_days += 1
+
+        effective_max = max(self.max_per_week, forced_days)
+        if effective_max != self.max_per_week:
+            logger.warning(
+                "%s: %d day(s) can only be filled with a nonveg biryani "
+                "(theme leaves no alternative), so the weekly cap of %d is "
+                "raised to %d instead of failing the plan. Widen the theme map "
+                "or raise max_per_week to make this explicit.",
+                self.name, forced_days, self.max_per_week, effective_max,
+            )
+        model.Add(sum(biryani_day_vars) <= effective_max)
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         """Constraint is ``sum(nonveg_biryani_day_vars) <= max_per_week``.
