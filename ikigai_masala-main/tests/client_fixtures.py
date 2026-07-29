@@ -418,9 +418,13 @@ CLIENTS: List[Dict[str, Any]] = [
                {'bread': 1, 'curd_side': 1, 'dal': 1, 'dessert': 1, 'rice': 1,
                 'salad': 1, 'soup': 1, 'veg_gravy': 1},
                _MIX),
+            # The 5-dish non-veg station: biryani + gravy + dry + kebab + egg
+            # every day (see nonveg_main_five_dish in the city ruleset). The
+            # live row still says 1; set this counter's frequency to 5 in the
+            # editor to match.
             _c('Non Veg Lunch',
                ['bread', 'curd_side', 'nonveg_main'],
-               {'bread': 1, 'curd_side': 1, 'nonveg_main': 1},
+               {'bread': 1, 'curd_side': 1, 'nonveg_main': 5},
                _ALL_BIRYANI),
         ],
     },

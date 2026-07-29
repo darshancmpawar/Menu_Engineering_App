@@ -79,6 +79,14 @@ class SelectorFrequencyRule(BaseMenuRule):
         self.exact: Optional[int] = self._int_or_none(rule_config, 'exact')
         self.daily_max: Optional[int] = self._int_or_none(rule_config, 'daily_max')
         self.non_consecutive: bool = bool(rule_config.get('non_consecutive', False))
+        # Restrict the selector to days of these themes. A nonveg biryani belongs
+        # on a biryani day; without this, `mix` days (which the theme filter does
+        # not narrow at all) were free to serve one, so a themed counter got
+        # biryani on Monday and none on its actual biryani day.
+        adt = rule_config.get('allowed_day_types')
+        self.allowed_day_types: Optional[Set[str]] = (
+            {str(t).strip().lower() for t in adt} if adt else None
+        )
 
     @staticmethod
     def _int_or_none(cfg, key):
@@ -135,10 +143,19 @@ class SelectorFrequencyRule(BaseMenuRule):
     def _row_matches(self, row) -> bool:
         return self._matches(row, self._inc) and not self._matches(row, self._exc)
 
+    def _ban_leaves_every_cell_fillable(self, day_cells) -> bool:
+        """True when every cell still has a non-matching candidate to fall back
+        on, so forbidding the selector cannot empty a cell."""
+        for cell in day_cells:
+            if not any(not self._row_matches(r) for r in cell.cand_rows):
+                return False
+        return True
+
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         cells = context.get('cells', [])
         dates = context.get('dates', [])
+        day_types = context.get('day_types', [])
         link_any = context.get('link_any_fn')
         if not cells or not link_any or not self.sel_kind:
             return
@@ -158,6 +175,24 @@ class SelectorFrequencyRule(BaseMenuRule):
             ]
             if not lits:
                 continue
+            # Theme restriction: forbid the selector outright on a day whose
+            # theme is not in `allowed_day_types`. Skipped when banning would
+            # leave the day's cells nothing to choose from — a slot whose whole
+            # pool matches the selector must still be fillable, so an
+            # unsatisfiable ban degrades instead of failing the plan (diagnose()
+            # reports it).
+            if self.allowed_day_types is not None:
+                day_type = str(day_types[di]).lower() if di < len(day_types) else ''
+                if day_type not in self.allowed_day_types:
+                    if self._ban_leaves_every_cell_fillable(day_cells):
+                        for lit in lits:
+                            model.Add(lit == 0)
+                        continue
+                    logger.info(
+                        "%s: day %d (%s) is outside allowed_day_types but the "
+                        "slot has nothing else to offer; ban skipped",
+                        self.name, di, day_type,
+                    )
             # Per-day occurrence cap.
             if self.daily_max is not None:
                 model.Add(sum(lits) <= self.daily_max)

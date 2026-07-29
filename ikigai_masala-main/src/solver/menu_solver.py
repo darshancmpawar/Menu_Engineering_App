@@ -116,6 +116,11 @@ class SolverConfig:
     # Per-client overlay from client_rules.json ``constant_items``. Values are
     # either a daily string or a weekday→string map. Applied after CONST_SLOTS.
     client_constant_items: Optional[Dict[str, Any]] = None
+    # ``{(date, slot_id): item_name}`` for pins that name a real ontology dish.
+    # These cells stay in the model with their candidate list narrowed to the
+    # pinned item, so the rules see it; pins with no ontology match are stamped
+    # post-solve via ``client_constant_items`` instead.
+    forced_items: Optional[Dict[Any, str]] = None
     # Client-level weekday filter (lowercase full names). None = unrestricted.
     working_days: Optional[List[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
@@ -546,6 +551,33 @@ class MenuSolver:
                         f'Empty pool after filters: {d.isoformat()} '
                         f'slot={slot_id} day_type={day_type}{extra}'
                     )
+
+                # A client constant naming a real ontology dish is solved, not
+                # stamped: restricting the cell to that one candidate pins the
+                # dish while leaving it visible to every other rule, so the rest
+                # of the day is composed around it (its colour counts toward
+                # colour variety, its cuisine toward cuisine variety, and it
+                # cannot be duplicated elsewhere). A pin naming a dish the
+                # ontology does not carry has no candidate to restrict to and is
+                # stamped verbatim after the solve instead.
+                forced = (self.cfg.forced_items or {}).get((d, slot_id))
+                if forced:
+                    match = pool2[
+                        pool2['item'].astype(str).str.strip().str.lower()
+                        == forced
+                    ]
+                    if len(match):
+                        # Narrow the pool only. ``pref_mask`` is index-aligned
+                        # and _sample_cell_candidates reindexes it onto whatever
+                        # pool it is given, so it must be left intact.
+                        pool2 = match
+                    else:
+                        logger.info(
+                            "%s on %s: pinned dish %r is not eligible for this "
+                            "slot today (filtered out or absent from the pool); "
+                            "solving the cell normally",
+                            slot_id, d.isoformat(), forced,
+                        )
 
                 cap = cap_by_slot.get(base, cap_default)
                 sampled, theme_flags = _sample_cell_candidates(pool2, pref_mask, cap, rng)
@@ -1071,7 +1103,14 @@ class MenuSolver:
             # on matching weekdays; daily strings stamp every day.
             if client_consts:
                 weekday = _weekday_name(d)
+                forced = self.cfg.forced_items or {}
                 for slot, spec in client_consts.items():
+                    # A pin the solver placed itself is already in day_out with
+                    # its colour suffix; stamping the raw text over it would
+                    # throw that away and re-hide the item from the rendered
+                    # menu's colour column.
+                    if (d, slot) in forced:
+                        continue
                     value = _resolve_client_constant(spec, weekday)
                     if value is not None:
                         day_out[slot] = value

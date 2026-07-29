@@ -223,10 +223,14 @@ class TestSkipCellsSuppressSibling:
             'src.menu_rules.MenuRuleLoader.get_client_constant_items',
             lambda self, name, counter_name=None: constants,
         )
-        _rules, skips, resolved, whole = _rules_and_skip_for_client(
+        _rules, skips, resolved, whole, forced = _rules_and_skip_for_client(
             'Booking.com', dates, city='bangalore',
             client_cfg=_cfg('Counter 1', active_slots),
         )
+        # A pin naming a real ontology dish is solved (its cell is narrowed to
+        # that dish) rather than skipped; either way the cell is accounted for,
+        # so tests that care about "this slot is not left free" check both.
+        self._forced = forced
         return skips, resolved, whole
 
     def test_curd_constant_suppresses_curd_side_cell(self, monkeypatch):
@@ -242,12 +246,22 @@ class TestSkipCellsSuppressSibling:
             dates,
         )
         assert set(resolved) == {'curd', 'curd_side'}
-        # Every day pins exactly one of the pair, so no curd_side is solved.
+        # Every day pins exactly one of the pair, so no curd_side is ever left
+        # free to be chosen. A pin naming a real dish is honoured by narrowing
+        # its cell to that dish (forced) instead of skipping it, so "not free"
+        # means skipped OR forced.
         for d in dates:
-            assert cell_is_skipped(skips, d, 'curd_side'), d
-        # Wednesday pins the raita itself; the other days pin curd instead.
-        assert (wed, 'curd_side') in skips
-        assert (dates[0], 'curd_side') in skips
+            accounted = (
+                cell_is_skipped(skips, d, 'curd_side')
+                or (d, 'curd_side') in self._forced
+            )
+            assert accounted, d
+        # Wednesday pins the raita itself — 'raita' is a real ontology dish, so
+        # that cell is solved-and-pinned rather than stamped.
+        assert (wed, 'curd_side') in self._forced
+        assert (wed, 'curd') in skips, 'the curd sibling must still be removed'
+        # The other days pin curd, which removes the curd_side cell outright.
+        assert cell_is_skipped(skips, dates[0], 'curd_side')
 
     def test_unconstrained_day_still_solves_the_slot(self, monkeypatch):
         """Quince pins curd Wed/Thu and raita Fri — Mon/Tue stay solvable."""
@@ -260,11 +274,16 @@ class TestSkipCellsSuppressSibling:
             ['rice', 'curd'],
             dates,
         )
-        assert not cell_is_skipped(skips, dates[0], 'curd')   # Monday solved
-        assert not cell_is_skipped(skips, dates[1], 'curd')   # Tuesday solved
-        assert cell_is_skipped(skips, dates[2], 'curd')       # Wed pinned
-        assert cell_is_skipped(skips, dates[3], 'curd')       # Thu pinned
-        # Friday pins raita, which must remove the curd cell.
+        def pinned(d):
+            return (cell_is_skipped(skips, d, 'curd')
+                    or (d, 'curd') in self._forced)
+
+        assert not pinned(dates[0])   # Monday free to solve
+        assert not pinned(dates[1])   # Tuesday free to solve
+        # 'Curd' is a real ontology dish, so Wed/Thu are solved-and-pinned.
+        assert (dates[2], 'curd') in self._forced
+        assert (dates[3], 'curd') in self._forced
+        # Friday pins raita, which must remove the curd cell entirely.
         assert cell_is_skipped(skips, dates[4], 'curd')
 
     def test_multi_expansion_pin_leaves_sibling_solvable(self, monkeypatch):

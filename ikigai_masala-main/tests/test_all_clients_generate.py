@@ -308,25 +308,65 @@ def test_biryani_lands_on_biryani_days_for_a_three_slot_counter(live_clients):
 
 @pytest.mark.slow
 def test_theme_forced_cap_conflict_is_explained_not_infeasible(live_clients):
-    """A cap the themes force past must 422 with the rule named.
+    """A cap the themes force past must 422 with the rule named and a fix given.
 
-    Siemens Technology's non-veg counter is themed biryani on two weekdays while
-    ``nonveg_biryani_once_per_week`` allows one biryani day. Neither rule alone
-    can see the contradiction, and the solve used to come back as a bare
-    INFEASIBLE 500 with nothing to act on.
+    Neither rule alone can see this contradiction — the cap does not know the
+    theme map, and the composition does not know the cap — so the solve used to
+    come back as a bare INFEASIBLE 500 with nothing to act on. Provoked here by
+    re-enabling the weekly biryani cap on a counter themed biryani twice, which
+    is the shape the shipped config resolves with a per-counter disable.
     """
-    resp, body = _plan(live_clients, 'Siemens Technology', 2, start_date='2026-07-29')
+    import src.menu_rules.menu_rule_loader as loader_mod
+
+    real = loader_mod.MenuRuleLoader.load_for_client
+
+    def without_the_disable(self, client, generic=None, counter_name=None):
+        rules = real(self, client, generic, counter_name)
+        if any(r.name == 'nonveg_biryani_once_per_week' for r in rules):
+            return rules
+        from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
+        return rules + [NonvegBiryaniWeeklyRule({
+            'type': 'nonveg_biryani_weekly',
+            'name': 'nonveg_biryani_once_per_week', 'max_per_week': 1,
+        })]
+
+    loader_mod.MenuRuleLoader.load_for_client = without_the_disable
+    try:
+        resp, body = _plan(live_clients, 'Siemens Technology', 2,
+                           start_date='2026-07-29')
+    finally:
+        loader_mod.MenuRuleLoader.load_for_client = real
+
     assert resp.status_code == 422, (
         f"expected a pre-flight block, got {resp.status_code}: "
         f"{body.get('error') or body.get('message')}"
     )
     errs = [d for d in body['rule_diagnostics'] if d['severity'] == 'error']
-    assert any(d['rule'] == 'nonveg_biryani_once_per_week' for d in errs), \
-        [d['rule'] for d in errs]
-    conflict = next(d for d in errs
-                    if d['rule'] == 'nonveg_biryani_once_per_week')
+    conflict = next(
+        (d for d in errs if d['rule'] == 'nonveg_biryani_once_per_week'), None,
+    )
+    assert conflict is not None, [d['rule'] for d in errs]
+    # Two biryani-theme weekdays, each mandating a biryani via the composition.
     assert conflict['affected']['forced_biryani_days'] == 2
     assert 'disable' in conflict['suggestion']
+
+
+@pytest.mark.slow
+def test_configured_counters_no_longer_hit_that_conflict(live_clients):
+    """The shipped config resolves it: both biryani days get a biryani."""
+    resp, body = _plan(live_clients, 'Siemens Technology', 2,
+                       start_date='2026-07-29')
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+    for key, day in body['solution'].items():
+        nonveg = [v['item_base'] for k, v in day['items'].items()
+                  if k.startswith('nonveg_main')]
+        has_biryani = any('biryani' in n for n in nonveg)
+        if day['day_type'] == 'biryani':
+            assert has_biryani, f"{key} is a biryani day but got {nonveg}"
+        else:
+            assert not has_biryani, (
+                f"{key} is a {day['day_type']} day but got a biryani: {nonveg}"
+            )
 
 
 @pytest.mark.slow

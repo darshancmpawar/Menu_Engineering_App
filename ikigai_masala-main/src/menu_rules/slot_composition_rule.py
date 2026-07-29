@@ -69,6 +69,20 @@ logger = logging.getLogger(__name__)
 _Component = Tuple[Any, int]
 
 
+def _matcher_key(matcher) -> Tuple[str, str]:
+    """Hashable identity for a matcher (``any_flag`` carries a list)."""
+    kind, val = matcher
+    if isinstance(val, (list, tuple)):
+        return (kind, '|'.join(sorted(str(v) for v in val)))
+    return (kind, str(val))
+
+
+def _safe(matcher) -> str:
+    """A CP-SAT-variable-safe label for a matcher."""
+    kind, val = _matcher_key(matcher)
+    return f"{kind}_{val}".replace(' ', '_')[:60]
+
+
 def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
     """How many days a peer composition rule *mandates* an item that
     ``row_matches`` accepts, for ``base_slot``.
@@ -255,6 +269,16 @@ class SlotCompositionRule(BaseMenuRule):
         if not cells or not self.base_slot:
             return
 
+        # Which components cannot be required on every applicable day, because
+        # the horizon does not hold enough DISTINCT matching items to satisfy
+        # them under unique_items. Per-day availability is not the binding
+        # constraint here: L&T's 5-dish non-veg station has a kebab candidate
+        # every day, but only ONE distinct kebab in its pool, so "a kebab daily"
+        # over five days is arithmetically impossible however the solver picks.
+        # Those components get a horizon-level floor of what the pool can supply
+        # instead of an impossible per-day mandate.
+        limited = self._horizon_limited_components(cells, dates, day_types, context)
+
         for di in range(len(dates)):
             day_cells = [
                 c for c in cells
@@ -306,6 +330,14 @@ class SlotCompositionRule(BaseMenuRule):
                     for v, r in zip(c.x_vars, c.cand_rows)
                     if SelectorFrequencyRule._matches(r, matcher)
                 ]
+                key = _matcher_key(matcher)
+                if key in limited:
+                    # Horizon-limited: collected below as an at-least-N-days
+                    # floor rather than mandated here. Still reserve a cell so a
+                    # later component cannot claim the whole family.
+                    limited[key]['day_lits'].append((di, lits, count))
+                    budget -= min(count, budget)
+                    continue
                 required = min(count, len(lits), budget)
                 if required != count:
                     logger.info(
@@ -315,6 +347,77 @@ class SlotCompositionRule(BaseMenuRule):
                 if required > 0:
                     model.Add(sum(lits) >= required)
                     budget -= required
+
+        self._add_horizon_floors(model, limited)
+
+    def _horizon_limited_components(self, cells, dates, day_types, context):
+        """Components whose per-day mandate is arithmetically impossible.
+
+        Returns ``{matcher_key: {matcher, distinct, days, day_lits}}`` for each
+        component that applies on more days than the horizon has distinct
+        matching items. Uniqueness makes each day's occurrence need its own
+        item, so ``distinct`` days is the ceiling on how often it can hold.
+        """
+        cfg = context.get('cfg')
+        slot_counts = getattr(cfg, 'slot_counts', None) or {}
+        out: Dict[Any, Dict[str, Any]] = {}
+        seen: Dict[Any, Dict[str, Any]] = {}
+
+        for di in range(len(dates)):
+            day_cells = [c for c in cells
+                         if c.d_idx == di and c.base_slot == self.base_slot]
+            if not day_cells:
+                continue
+            if self.requires_slot_count is not None or self.min_slot_count is not None \
+                    or self.max_slot_count is not None:
+                configured = int(slot_counts.get(self.base_slot, len(day_cells)))
+                if not self._gate_allows(configured):
+                    continue
+            theme = day_types[di] if di < len(day_types) else ''
+            for matcher, count in self.components_by_theme.get(theme, self.components):
+                key = _matcher_key(matcher)
+                entry = seen.setdefault(
+                    key, {'matcher': matcher, 'days': 0, 'need': 0,
+                          'items': set(), 'day_lits': []})
+                entry['days'] += 1
+                entry['need'] += count
+                for c in day_cells:
+                    for r in c.cand_rows:
+                        if SelectorFrequencyRule._matches(r, matcher):
+                            name = str(r.get('item', '')).strip().lower()
+                            if name:
+                                entry['items'].add(name)
+
+        for key, entry in seen.items():
+            distinct = len(entry['items'])
+            if distinct and distinct < entry['need']:
+                logger.info(
+                    "%s: component %s needs %d occurrence(s) across %d day(s) "
+                    "but the pool holds %d distinct matching item(s); enforcing "
+                    "it on %d day(s) instead of every day",
+                    self.name, entry['matcher'], entry['need'], entry['days'],
+                    distinct, distinct)
+                entry['distinct'] = distinct
+                out[key] = entry
+        return out
+
+    def _add_horizon_floors(self, model, limited) -> None:
+        """For each horizon-limited component, require it on as many days as the
+        pool can actually supply — the maximum achievable, not an arbitrary
+        subset and not nothing."""
+        for entry in limited.values():
+            day_lits = [(di, lits, count) for di, lits, count in entry['day_lits']
+                        if lits]
+            if not day_lits:
+                continue
+            indicators = []
+            for di, lits, count in day_lits:
+                b = model.NewBoolVar(f'{self.name}_hz_{_safe(entry["matcher"])}_{di}')
+                model.Add(sum(lits) >= count).OnlyEnforceIf(b)
+                indicators.append(b)
+            floor = min(entry['distinct'], len(indicators))
+            if floor > 0:
+                model.Add(sum(indicators) >= floor)
 
     # Populated by the diagnostics aggregator (see diagnostics.run_diagnostics).
     _peer_rules: List[Any] = []

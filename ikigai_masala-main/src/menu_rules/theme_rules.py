@@ -202,14 +202,26 @@ _CUISINE_MAIN_SLOTS = {'rice', 'veg_gravy', 'veg_dry', 'starter', 'nonveg_main'}
 _NONVEG_REGIONAL_GRAVY_FLAGS = ('is_north_chicken_gravy', 'is_south_chicken_gravy')
 
 
+# Dish families a larger non-veg station composes beyond the themed dish and the
+# regional gravy. Kept in the pool for counters that serve enough dishes to need
+# them (see _augment_nonveg_pair).
+_NONVEG_STRUCTURAL_FLAGS = (
+    'is_nonveg_dry', 'is_tandoor', 'is_tandoor_nonveg_dry', 'is_egg_dish',
+)
+
+
+def _nonveg_slot_count(cfg) -> int:
+    counts = getattr(cfg, 'slot_counts', None) or {}
+    try:
+        return int(counts.get('nonveg_main', 1) or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
 def _has_multi_nonveg(cfg) -> bool:
     """True when the counter serves 2+ ``nonveg_main`` dishes (so the day's
     nonveg pair needs a themed dish + a regional gravy)."""
-    counts = getattr(cfg, 'slot_counts', None) or {}
-    try:
-        return int(counts.get('nonveg_main', 1) or 1) >= 2
-    except (TypeError, ValueError):
-        return False
+    return _nonveg_slot_count(cfg) >= 2
 
 
 def _nonveg_regional_gravy_mask(pool: pd.DataFrame) -> pd.Series:
@@ -315,16 +327,32 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
     def _augment_nonveg_pair(self, pool: pd.DataFrame, base_slot: str,
                              filtered: pd.DataFrame, cfg) -> pd.DataFrame:
-        """On a two-nonveg counter, keep the day's themed ``nonveg_main`` dishes
+        """Keep a multi-dish non-veg counter's non-themed dish families.
+
+        On a two-nonveg counter, keep the day's themed ``nonveg_main`` dishes
         PLUS the always-allowed north/south chicken gravies, so the
         ``slot_composition`` rule can place one themed dish + one regional gravy.
-        A single-nonveg counter is returned unchanged."""
+        A single-nonveg counter is returned unchanged.
+
+        A counter serving 3+ also keeps the structural families a bigger
+        composition places — dry, kebab/tandoor and egg. The filter's job is to
+        guarantee the *themed* dish is available, not to make every dish on the
+        counter themed: narrowing a 5-dish station to biryani + chicken gravy
+        left it 0 dry and 2 egg items against a composition wanting one of each
+        every day, which is unsatisfiable however the solver picks. The themed
+        dish is still guaranteed — the composition rule mandates it.
+        """
         if base_slot != 'nonveg_main' or not _has_multi_nonveg(cfg):
             return filtered
-        reg = pool[_nonveg_regional_gravy_mask(pool)]
-        if len(reg) == 0:
+        keep = _nonveg_regional_gravy_mask(pool)
+        if _nonveg_slot_count(cfg) >= 3:
+            for col in _NONVEG_STRUCTURAL_FLAGS:
+                if col in pool.columns:
+                    keep = keep | (pool[col].map(_to_bool01) == 1)
+        extra = pool[keep]
+        if len(extra) == 0:
             return filtered
-        return pool.loc[filtered.index.union(reg.index)]
+        return pool.loc[filtered.index.union(extra.index)]
 
     def _filter_chinese(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)

@@ -906,3 +906,136 @@ class TestFiveDishNonvegStation:
             'components': [{'selector': {'flag': 'f'}, 'count': 1}],
         })
         assert any('must be <=' in e for e in r.validation_errors())
+
+
+class TestAllowedDayTypes:
+    """A themed dish belongs on its themed day.
+
+    A `mix` day is not narrowed by the theme filter at all, so without this a
+    counter served biryani on Monday and none on its actual biryani day.
+    """
+
+    def _rule(self):
+        return SelectorFrequencyRule({
+            'type': 'selector_frequency', 'name': 'biryani_on_biryani_days',
+            'selector': {'flag': 'is_biry'}, 'base_slot': 'nonveg_main',
+            'allowed_day_types': ['biryani'],
+        })
+
+    def test_parses_and_lowercases(self):
+        assert self._rule().allowed_day_types == {'biryani'}
+
+    def test_absent_means_unrestricted(self):
+        r = SelectorFrequencyRule({
+            'type': 'selector_frequency', 'name': 'x',
+            'selector': {'flag': 'is_biry'}, 'max': 1,
+        })
+        assert r.allowed_day_types is None
+
+    def test_ban_is_skipped_when_it_would_empty_a_cell(self):
+        """A slot whose whole pool matches must stay fillable."""
+        rule = self._rule()
+
+        class _Cell:
+            def __init__(self, rows):
+                self.cand_rows = rows
+
+        all_match = _Cell([{'item': 'a', 'is_biry': 1}])
+        assert not rule._ban_leaves_every_cell_fillable([all_match])
+        has_alt = _Cell([{'item': 'a', 'is_biry': 1}, {'item': 'b', 'is_biry': 0}])
+        assert rule._ban_leaves_every_cell_fillable([has_alt])
+
+    def test_shipped_rule_restricts_biryani_to_biryani_days(self):
+        rules = MenuRuleLoader('data/configs/city_rules/bangalore.json').load_from_file()
+        rule = next(r for r in rules if r.name == 'nonveg_biryani_one_per_day')
+        assert rule.allowed_day_types == {'biryani'}
+        assert rule.daily_max == 1
+
+
+class TestHorizonLimitedComponent:
+    """A component needing more distinct items than the pool holds must relax to
+    the achievable count, not mandate the impossible.
+
+    L&T's 5-dish station has a kebab candidate every day but only ONE distinct
+    kebab in its pool, so "a kebab daily" over five days is unsatisfiable under
+    unique_items however the solver picks.
+    """
+
+    def _rule(self):
+        return SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'five',
+            'base_slot': 'nonveg_main', 'min_slot_count': 2,
+            'components': [
+                {'selector': {'flag': 'is_biry'}, 'count': 1},
+                {'selector': {'flag': 'is_kebab'}, 'count': 1},
+            ],
+        })
+
+    def _cells(self, n_days):
+        """One cell per day, each offering 3 biryanis and the single kebab."""
+        class _Cell:
+            def __init__(self, di, rows):
+                self.d_idx, self.base_slot = di, 'nonveg_main'
+                self.cand_rows = rows
+                self.x_vars = [None] * len(rows)
+
+        out = []
+        for di in range(n_days):
+            rows = [
+                {'item': f'biryani_{di}_{k}', 'is_biry': 1, 'is_kebab': 0}
+                for k in range(3)
+            ] + [{'item': 'the_only_kebab', 'is_biry': 0, 'is_kebab': 1}]
+            out.append(_Cell(di, rows))
+        return out
+
+    def test_scarce_component_is_flagged_as_horizon_limited(self):
+        rule = self._rule()
+        cells = self._cells(5)
+        dates = [MON + dt.timedelta(days=i) for i in range(5)]
+
+        class _Cfg:
+            slot_counts = {'nonveg_main': 5}
+
+        limited = rule._horizon_limited_components(
+            cells, dates, [''] * 5, {'cfg': _Cfg()},
+        )
+        keys = {k[1] for k in limited}
+        assert 'is_kebab' in keys, limited
+        assert 'is_biry' not in keys, 'plenty of distinct biryanis exist'
+        entry = next(v for k, v in limited.items() if k[1] == 'is_kebab')
+        assert entry['distinct'] == 1
+        assert entry['need'] == 5
+
+    def test_plentiful_component_is_not_limited(self):
+        rule = self._rule()
+        cells = self._cells(2)
+        dates = [MON, MON + dt.timedelta(days=1)]
+
+        class _Cfg:
+            slot_counts = {'nonveg_main': 5}
+
+        limited = rule._horizon_limited_components(
+            cells, dates, [''] * 2, {'cfg': _Cfg()},
+        )
+        assert 'is_biry' not in {k[1] for k in limited}
+
+
+class TestPinnedDishGoesThroughTheSolver:
+    """A pin naming a real dish is solved; one that names an unknown dish is
+    printed verbatim. Adding the dish to the ontology switches it over with no
+    config change."""
+
+    def test_canonical_name_matches_spaces_and_underscores(self):
+        import api.app as api_app
+        known = frozenset({'boiled_egg', 'plain_curd'})
+        assert api_app._canonical_item_name('Boiled Egg', known) == 'boiled_egg'
+        assert api_app._canonical_item_name('boiled_egg', known) == 'boiled_egg'
+        assert api_app._canonical_item_name('Mutton Biryani', known) is None
+        assert api_app._canonical_item_name('', known) is None
+        assert api_app._canonical_item_name(None, known) is None
+        assert api_app._canonical_item_name(5, known) is None
+
+    def test_solver_config_carries_forced_items(self):
+        from src.solver.menu_solver import SolverConfig
+        cfg = SolverConfig(days=1, start_date=MON)
+        assert cfg.forced_items is None, 'default must not force anything'

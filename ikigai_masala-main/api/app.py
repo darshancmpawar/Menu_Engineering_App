@@ -506,7 +506,7 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
 
 
 def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
-    """Return ``(rules, skip_cells, constant_items, whole_slot_bases)``.
+    """Return ``(rules, skip_cells, constant_items, whole_slot_bases, forced_items)``.
 
     Merges the city ruleset with per-client overrides (by name + disable) and
     resolves ``constant_items`` against *client_cfg* — the counter being
@@ -533,16 +533,63 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
             skip_cells |= rule.compute_skip_cells(dates)
     from src.solver.menu_solver import _resolve_client_constant
     from src.solver._helpers import weekday_name as _weekday_name_fn
+
+    # A pin is honoured one of two ways, and which one depends on whether the
+    # dish exists in the ontology:
+    #
+    #   * it does  -> the cell stays in the model with its candidates narrowed to
+    #                 that dish (`forced_items`), so every other rule sees it and
+    #                 the day is composed around it.
+    #   * it does not -> the cell is skipped and the text is stamped verbatim
+    #                 after the solve, which is how off-ontology dishes ("Mutton
+    #                 Biryani", "Fish Tikka Masala") print today. Add the dish to
+    #                 menu_items.xlsx and the same pin starts going through the
+    #                 solver with no config change.
+    known_items = _ontology_item_names()
+    forced_items: Dict[Any, str] = {}
     for slot_id, spec in constant_items.items():
         siblings = _exclusive_siblings(_base_slot(slot_id))
         for d in dates:
-            if _resolve_client_constant(spec, _weekday_name_fn(d)) is None:
+            value = _resolve_client_constant(spec, _weekday_name_fn(d))
+            if value is None:
                 continue
-            skip_cells.add((d, slot_id))
             # Sibling entries are base-level on purpose: every expansion of
-            # the excluded slot goes away for that day.
+            # the excluded slot goes away for that day. This holds either way —
+            # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
-    return rules, skip_cells, constant_items, whole_slot_bases
+            canonical = _canonical_item_name(value, known_items)
+            if canonical is not None:
+                forced_items[(d, slot_id)] = canonical
+            else:
+                skip_cells.add((d, slot_id))
+    return rules, skip_cells, constant_items, whole_slot_bases, forced_items
+
+
+def _ontology_item_names():
+    """Lowercased ontology item names, for resolving a pin to a real dish."""
+    df = _get_menu_data()[0]
+    if df is None or 'item' not in getattr(df, 'columns', []):
+        return frozenset()
+    try:
+        return frozenset(str(v).strip().lower() for v in df['item'].tolist())
+    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
+        return frozenset()
+
+
+def _canonical_item_name(value, known_items):
+    """Return the ontology spelling of *value*, or None if it is not a dish.
+
+    Pins are hand-written, so ``"Boiled Egg"`` has to match ``boiled_egg``.
+    """
+    if not isinstance(value, str):
+        return None
+    name = value.strip().lower()
+    if not name:
+        return None
+    for candidate in (name, name.replace(' ', '_')):
+        if candidate in known_items:
+            return candidate
+    return None
 
 
 def _apply_item_cooldown_override(rules, cooldown_days):
@@ -791,7 +838,7 @@ def _client_base_slots(client_cfg):
 
 def _build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
-    constant_items=None, whole_slot_bases=None,
+    constant_items=None, whole_slot_bases=None, forced_items=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -815,6 +862,7 @@ def _build_solver_config(
         active_base_slots=active_base or None,
         const_slots=const_selected,
         client_constant_items=dict(constant_items or {}),
+        forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
         premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
@@ -896,7 +944,7 @@ def _prepare_solver_inputs(
         weekday_dates, getattr(client_cfg, 'working_days', None),
     )
     city = row['city']
-    rules, skip_cells, constant_items, whole_slot_bases = _rules_and_skip_for_client(
+    rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg,
     )
     _validate_constant_values(client_name, constant_items, df)
@@ -912,6 +960,7 @@ def _prepare_solver_inputs(
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
+        forced_items=forced_items,
     )
 
     return SolverInputs(

@@ -589,7 +589,19 @@
     "constant_items": {},
     "counters": {
       "Non Veg Lunch": {
-        "_comment": "This counter is themed biryani on all five days and serves a single nonveg_main, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot.",
+        "_comment": "This counter is themed biryani on all five days, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot. This is also the 5-dish station: with nonveg_main set to 5, 'nonveg_main_five_dish' composes biryani + gravy + dry + kebab + egg each day.",
+        "disable": ["nonveg_biryani_once_per_week"]
+      }
+    }
+  },
+
+  "Siemens Technology": {
+    "disable": [],
+    "rules": [],
+    "constant_items": {},
+    "counters": {
+      "Non Veg Lunch": {
+        "_comment": "Themed biryani on two weekdays (Wed + Fri) against the city cap of one biryani day per week. Before the composition rule applied to 3-slot counters this contradiction was hidden — the solver satisfied the cap by putting its one biryani day on a mix day and leaving both biryani days without one. Client confirmed two biryani days are intended, so the weekly cap is dropped for this counter only.",
         "disable": ["nonveg_biryani_once_per_week"]
       }
     }
