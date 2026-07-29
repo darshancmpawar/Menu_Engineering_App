@@ -1149,3 +1149,65 @@ class TestStapleItemsRecurDaily:
             [''] * 5, {'cfg': _Cfg()},
         )
         assert limited == {}, limited
+
+
+class TestWholeHorizonPinStaysStamped:
+    """A pin replacing a slot for the whole horizon must still be stamped.
+
+    Routing an in-ontology pin through the solver is right for a per-day pin, but
+    a whole-horizon pin has its base slot dropped from the model
+    (`whole_slot_bases`), so there is no cell to narrow — and solving one anyway
+    would be INFEASIBLE under unique_items, since the same dish cannot occupy
+    five days unless it is a staple. Six counters shipped a blank salad /
+    curd_side / healthy_rice row before this guard.
+    """
+
+    def _skips(self, monkeypatch, constants, active_slots, dates):
+        import api.app as api_app
+        monkeypatch.setattr('api.app._get_menu_rules_for_city', lambda city: [])
+        monkeypatch.setattr(
+            'src.menu_rules.MenuRuleLoader.load_for_client',
+            lambda self, name, generic, counter_name=None: [],
+        )
+        monkeypatch.setattr(
+            'src.menu_rules.MenuRuleLoader.get_client_constant_items',
+            lambda self, name, counter_name=None: constants,
+        )
+
+        class _Cfg:
+            def __init__(self, slots):
+                self.name = 'T'
+                self.counter_name = 'Counter 1'
+                self.active_slots = list(slots)
+                self.slot_counts = {}
+                self.theme_map = {}
+
+        _r, skips, _resolved, whole, forced = (
+            api_app._rules_and_skip_for_client(
+                'Booking.com', dates, city='bangalore',
+                client_cfg=_Cfg(active_slots),
+            )
+        )
+        return skips, whole, forced
+
+    def test_daily_string_pin_is_stamped_not_solved(self, monkeypatch):
+        dates = [MON + dt.timedelta(days=i) for i in range(5)]
+        skips, whole, forced = self._skips(
+            monkeypatch, {'salad': 'green salad'}, ['rice', 'salad'], dates,
+        )
+        assert 'salad' in whole, 'a daily string replaces the slot outright'
+        assert not any(slot == 'salad' for _d, slot in forced), forced
+        for d in dates:
+            assert (d, 'salad') in skips, d
+
+    def test_per_day_pin_of_a_real_dish_is_solved(self, monkeypatch):
+        """The per-day case is the one that should reach the solver."""
+        dates = [MON + dt.timedelta(days=i) for i in range(5)]
+        wed = dates[2]
+        skips, whole, forced = self._skips(
+            monkeypatch, {'salad': {'wednesday': 'green salad'}},
+            ['rice', 'salad'], dates,
+        )
+        assert 'salad' not in whole, 'a weekday map does not replace the slot'
+        assert (wed, 'salad') in forced, forced
+        assert (wed, 'salad') not in skips

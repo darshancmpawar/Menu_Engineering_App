@@ -558,7 +558,14 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
             # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
             canonical = _canonical_item_name(value, known_items)
-            if canonical is not None:
+            # A pin that replaces the slot for the WHOLE horizon must still be
+            # stamped, even when it names a real dish. Its base slot is dropped
+            # from the model (`whole_slot_bases`), so there is no cell to narrow
+            # — and solving one anyway would be INFEASIBLE under unique_items,
+            # which is why the slot is dropped in the first place: the same dish
+            # cannot occupy five days unless it is a staple.
+            if canonical is not None \
+                    and _base_slot(slot_id) not in whole_slot_bases:
                 forced_items[(d, slot_id)] = canonical
             else:
                 skip_cells.add((d, slot_id))
