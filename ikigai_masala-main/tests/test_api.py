@@ -1050,6 +1050,72 @@ class TestCounterClientEndpoints:
         }, headers=auth_headers)
         assert resp.status_code == 400
 
+    def test_create_rejects_unknown_pool_without_creating_the_client(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """A bad ``source_pools`` token must not leave a client behind.
+
+        ``source_pools`` used to be validated *after* create_client() had
+        committed the row: the caller got 400 while a real client existed with
+        no pools, and retrying with a corrected payload then failed on the
+        duplicate name. Validation now happens before the insert.
+        """
+        resp = client.post('/api/v1/client', json={
+            'name': 'Orphan',
+            'active_slots': ['rice', 'dal'],
+            'source_pools': ['definitely_not_a_pool'],
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert 'pool' in resp.get_json()['error'].lower()
+        # Nothing was created — the retry path stays open.
+        assert 'Orphan' not in client.get(
+            '/api/v1/clients', headers=auth_headers,
+        ).get_json()['clients']
+        assert not [r for r in fake_supabase.rows('clients')
+                    if r['name'] == 'Orphan']
+
+    def test_create_rejects_bad_working_days_without_creating_the_client(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/client', json={
+            'name': 'Orphan2',
+            'active_slots': ['rice'],
+            'working_days': ['funday'],
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert not [r for r in fake_supabase.rows('clients')
+                    if r['name'] == 'Orphan2']
+
+    def test_create_persists_pools_and_working_days_in_one_write(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """Valid optional columns land on the created row directly."""
+        resp = client.post('/api/v1/client', json={
+            'name': 'Quince2',
+            'active_slots': ['rice', 'dal'],
+            'working_days': ['Wed', 'thursday', 'FRI'],
+            'source_pools': ['common', 'icon'],
+            'item_cooldown_days': 7,
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+        row = [r for r in fake_supabase.rows('clients')
+               if r['name'] == 'Quince2'][0]
+        assert row['working_days'] == ['wednesday', 'thursday', 'friday']
+        # 'common' is implicit and never stored.
+        assert row['source_pools'] == ['icon']
+        assert row['item_cooldown_days'] == 7
+
+    def test_create_rejects_negative_cooldown(
+        self, client, auth_headers, fake_supabase,
+    ):
+        resp = client.post('/api/v1/client', json={
+            'name': 'Orphan3', 'active_slots': ['rice'],
+            'item_cooldown_days': -3,
+        }, headers=auth_headers)
+        assert resp.status_code == 400
+        assert not [r for r in fake_supabase.rows('clients')
+                    if r['name'] == 'Orphan3']
+
     def test_classic_create_defaults_to_single(
         self, client, auth_headers, fake_supabase,
     ):

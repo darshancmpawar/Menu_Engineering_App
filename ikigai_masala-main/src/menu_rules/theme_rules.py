@@ -407,7 +407,15 @@ class ThemeSlotFilterRule(BaseMenuRule):
             items at all (filter would empty the pool; the rule itself
             falls back to unfiltered, so the user gets a non-theme
             menu silently — surfacing this lets them fix the data).
-          - INFO   when the filter narrows the pool by ≥50%.
+          - INFO   when the filter narrows the pool by ≥50%, aggregated to
+            one entry per slot rather than one per (date, slot).
+
+        The narrowing INFO is emitted **per slot, not per day**. Narrowing is
+        this rule's whole job — every themed day narrows every cuisine-main
+        slot — so the per-day form produced 706 entries across the client base,
+        each carrying the suggestion "No action needed", and buried the handful
+        of real warnings operators need to see. One line per slot keeps the
+        same information (day count and the resulting range) at 1/5 the volume.
 
         Never ERROR: this rule's design is to fall back to the
         unfiltered pool when filtering would empty it, so it can't be
@@ -416,6 +424,8 @@ class ThemeSlotFilterRule(BaseMenuRule):
         based on the data the user actually has.)
         """
         diags: List[Diagnostic] = []
+        # slot -> {'days': [...], 'before': set(), 'after': [...], 'themes': set()}
+        narrowed: Dict[str, Dict[str, Any]] = {}
         cfg = ctx.cfg
         cuisine_col = cfg.cuisine_col if cfg else 'cuisine_family'
         south_val = cfg.cuisine_south_value if cfg else 'south_indian'
@@ -472,25 +482,43 @@ class ThemeSlotFilterRule(BaseMenuRule):
                         },
                     ))
                 elif filtered_size < len(pool) // 2:
-                    diags.append(Diagnostic(
-                        rule=self.name,
-                        rule_type=self.rule_type.value,
-                        severity=DiagnosticSeverity.INFO,
-                        phase=DiagnosticPhase.PRE_FILTER,
-                        message=(
-                            f"{day_type.capitalize()} {day_label}: filter "
-                            f"narrowed {slot_label} pool from {len(pool)} "
-                            f"to {filtered_size} items."
-                        ),
-                        suggestion="No action needed.",
-                        affected={
-                            'date': d.isoformat(),
-                            'slot': base,
-                            'day_type': day_type,
-                            'pool_size_before': len(pool),
-                            'pool_size_after': filtered_size,
-                        },
-                    ))
+                    entry = narrowed.setdefault(base, {
+                        'days': [], 'themes': set(), 'before': len(pool),
+                        'after': [],
+                    })
+                    entry['days'].append(d.isoformat())
+                    entry['themes'].add(day_type)
+                    entry['after'].append(filtered_size)
+
+        for base, entry in sorted(narrowed.items()):
+            slot_label = base.replace('_', ' ')
+            after = entry['after']
+            span = (
+                f"{min(after)} items"
+                if min(after) == max(after)
+                else f"{min(after)}-{max(after)} items"
+            )
+            diags.append(Diagnostic(
+                rule=self.name,
+                rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.PRE_FILTER,
+                message=(
+                    f"Theme filter narrowed the {slot_label} pool on "
+                    f"{len(entry['days'])} day(s) "
+                    f"({', '.join(sorted(entry['themes']))}): "
+                    f"{entry['before']} → {span}."
+                ),
+                suggestion="No action needed — this is the theme filter working.",
+                affected={
+                    'slot': base,
+                    'dates': entry['days'],
+                    'day_types': sorted(entry['themes']),
+                    'pool_size_before': entry['before'],
+                    'pool_size_after_min': min(after),
+                    'pool_size_after_max': max(after),
+                },
+            ))
         return diags
 
     def _project_filter_size(

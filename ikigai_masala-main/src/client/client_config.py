@@ -740,6 +740,8 @@ class ClientConfigLoader:
         city: str | None = None,
         serve_weekends: bool = False,
         item_cooldown_days=None,
+        working_days=None,
+        source_pools=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -751,7 +753,13 @@ class ClientConfigLoader:
         ``city`` is an optional client location from ``AVAILABLE_CITIES``;
         ``serve_weekends`` flags a kitchen that also runs Sat/Sun;
         ``item_cooldown_days`` overrides the default cooldown window (None =
-        default).
+        default); ``working_days`` restricts the plan horizon to those weekdays
+        (None = every weekday); ``source_pools`` are the extra ontology item
+        pools this client draws from (``common`` is implicit).
+
+        Every optional column is part of the same INSERT. They used to be
+        applied by follow-up setters after the row existed, so a rejected value
+        left a created-but-misconfigured client behind.
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
         row = {
@@ -759,6 +767,15 @@ class ClientConfigLoader:
             'city': normalize_city(city), 'serve_weekends': bool(serve_weekends),
             'item_cooldown_days': normalize_item_cooldown_days(item_cooldown_days),
         }
+        # Only send the newer optional columns when the caller set them, so a
+        # database that predates them still takes the common create path.
+        if working_days is not None:
+            row['working_days'] = self._normalize_working_days_value(working_days)
+        if source_pools is not None:
+            row['source_pools'] = sorted({
+                t for t in (_normalize_pool_name(p) for p in source_pools)
+                if t and t != COMMON_POOL
+            })
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
@@ -770,9 +787,9 @@ class ClientConfigLoader:
                     "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
-                row.pop('city', None)
-                row.pop('serve_weekends', None)
-                row.pop('item_cooldown_days', None)
+                for optional in ('city', 'serve_weekends', 'item_cooldown_days',
+                                 'working_days', 'source_pools'):
+                    row.pop(optional, None)
                 self._sb.table('clients').insert(row).execute()
             else:
                 raise
@@ -1146,48 +1163,12 @@ class ClientConfigLoader:
                         column, name, exc,
                     )
 
-    def bump_version_if_matches(self, name: str, expected: int) -> int:
-        """Atomically bump ``version`` from *expected* to *expected+1*.
-
-        Implemented as a conditional update — the WHERE clause includes
-        ``version = expected``, so concurrent writers race at the DB and only
-        one succeeds. Zero rows affected means our version is stale or the
-        client was deleted.
-
-        If the ``version`` column doesn't exist, fall back to a non-conditional
-        touch so writes still go through (without the concurrency check).
-
-        Raises:
-            ConcurrentEditError: when the update matches no rows.
-        """
-        new_version = int(expected) + 1
-        try:
-            result = (
-                self._sb.table('clients')
-                .update({'version': new_version})
-                .eq('name', name)
-                .eq('version', int(expected))
-                .execute()
-            )
-        except Exception as exc:
-            if _is_undefined_column(exc):
-                logger.error(
-                    "clients.version column missing — bumping without "
-                    "concurrency check for %r. %s",
-                    name, _MIGRATION_HINT,
-                )
-                self._require_client_exists(name)
-                return 1
-            raise
-        if not result.data:
-            current = self.get_client_version(name)  # raises ValueError if gone
-            raise ConcurrentEditError(
-                f"Client {name!r} has been modified by another request "
-                f"(expected version {expected}, currently {current}). "
-                "Refresh and retry.",
-                current_version=current,
-            )
-        return new_version
+    # NOTE: a standalone ``bump_version_if_matches`` used to live here. It was
+    # the first half of the bump-then-write sequence that update_client_atomic
+    # replaced, and after that refactor nothing called it. Keeping it would have
+    # left the unsafe ordering available to the next caller who needed a version
+    # bump, so it is gone; use update_client_atomic, which bumps the version in
+    # the same statement as the fields it guards.
 
     # ---- validation --------------------------------------------------------
 

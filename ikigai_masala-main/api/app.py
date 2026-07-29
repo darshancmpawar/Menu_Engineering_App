@@ -1705,9 +1705,28 @@ def create_client():
             return jsonify({'success': False, 'error': 'name is required'}), 400
 
         loader = _get_client_loader()
-        city = data.get('city')
+
+        # Validate and normalise EVERY field before the row is inserted.
+        #
+        # `source_pools` used to be validated *after* create_client() had
+        # already committed the row, so `{"source_pools": ["typo"]}` answered
+        # 400 while leaving a real client behind with no pools — and the
+        # caller's retry then failed on the duplicate name. Same class of bug
+        # the PUT handler had; same fix, one write.
+        city = normalize_city(data.get('city'))
         serve_weekends = bool(data.get('serve_weekends', False))
-        item_cooldown_days = data.get('item_cooldown_days')
+        item_cooldown_days = _validated_cooldown_days(
+            data.get('item_cooldown_days'))
+        working_days = (
+            _validated_working_days(data.get('working_days'))
+            if 'working_days' in data else None
+        )
+        # F5: optional client item-pool config (validated against the ontology).
+        source_pools = (
+            _validated_source_pools(data.get('source_pools'))
+            if 'source_pools' in data else None
+        )
+
         counters = data.get('counters')
         if counters:
             loader.create_client(
@@ -1717,25 +1736,16 @@ def create_client():
                 city=city,
                 serve_weekends=serve_weekends,
                 item_cooldown_days=item_cooldown_days,
+                working_days=working_days,
+                source_pools=source_pools,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
             loader.create_client(name, active_slots, city=city,
                                  serve_weekends=serve_weekends,
-                                 item_cooldown_days=item_cooldown_days)
-
-        # F5: optional client item-pool config (validated against the ontology).
-        if 'source_pools' in data:
-            sp = data.get('source_pools') or []
-            if not isinstance(sp, list):
-                raise ValueError("source_pools must be a list of pool tokens")
-            available = available_pool_tokens(_get_menu_data()[0])
-            requested = {normalize_name(t) for t in sp if normalize_name(t)}
-            requested.discard('common')
-            unknown = requested - available
-            if unknown:
-                raise ValueError(f"Unknown client pool(s): {sorted(unknown)}")
-            loader.set_client_source_pools(name, sorted(requested))
+                                 item_cooldown_days=item_cooldown_days,
+                                 working_days=working_days,
+                                 source_pools=source_pools)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
