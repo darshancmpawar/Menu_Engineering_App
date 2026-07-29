@@ -98,6 +98,18 @@ _LIMITS: Dict[str, _TokenBucketLimiter] = {
     "regenerate": _TokenBucketLimiter(
         name="regenerate", capacity=20, refill_per_second=20 / 60.0,
     ),  # 20 per minute, burst 20
+    # Mutating endpoints (save / create / delete / config update). These were
+    # unthrottled entirely, so a loop could hammer Supabase writes or mass-create
+    # clients for free. Generous enough that an admin clicking through the editor
+    # never notices.
+    "write": _TokenBucketLimiter(
+        name="write", capacity=30, refill_per_second=30 / 60.0,
+    ),  # 30 per minute, burst 30
+    # /diagnose runs the whole preprocessing + rule pass without solving, so it
+    # is far from free even though it mutates nothing.
+    "diagnose": _TokenBucketLimiter(
+        name="diagnose", capacity=20, refill_per_second=20 / 60.0,
+    ),  # 20 per minute, burst 20
 }
 
 

@@ -62,7 +62,19 @@ Helpers:
 - `api/config.py` — path constants, day/time limits.
 - `api/rate_limit.py` — per-IP token-bucket throttle on `/plan` + `/regenerate`.
 
-No authentication: every endpoint is public (the auth feature was removed).
+Hardening (all opt-in / non-breaking):
+- `MAX_CONTENT_LENGTH_BYTES` (default 2 MB) caps request bodies; an over-limit
+  body is rejected in `before_request` so the status is 413 rather than a 500
+  swallowed by an endpoint's broad `except Exception`.
+- `API_WRITE_TOKEN` (env, unset by default) gates the mutating endpoints via
+  `@require_write_token` — `X-API-Key` or `Authorization: Bearer`. Unset means
+  the API behaves exactly as before (open), so this changes nothing until an
+  operator opts in. Reads are never gated.
+- Rate-limit buckets: `plan` 10/min, `regenerate` 20/min, `write` 30/min
+  (save / create / delete / config PUT), `diagnose` 20/min (also `/pool-preview`).
+
+Beyond the optional write token there is no per-user authentication: reads are
+public and the deployment relies on the network perimeter.
 
 ---
 
@@ -123,7 +135,8 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
 - `client_config.py` → `ClientConfig` (dataclass, incl. `serve_weekends`), `ClientConfigLoader`, plus counter helpers `default_counter`, `normalize_counter`, `MAX_COUNTERS`. City: `AVAILABLE_CITIES` + `normalize_city`; a client's `city` is a plain `clients.city` column (not per-counter). `serve_weekends` is a plain `clients.serve_weekends` bool (Sat/Sun coverage). `item_cooldown_days` (`clients.item_cooldown_days`, nullable; None = `DEFAULT_ITEM_COOLDOWN_DAYS`=20) overrides the item-cooldown window per client. All read/written via `get_client_city`/`set_client_city`/`get_client_serve_weekends`/`set_client_serve_weekends`/`get_client_item_cooldown_days`/`set_client_item_cooldown_days`/`create_client(...)`. `AVAILABLE_THEMES` includes `continental` + the weekly-alternating `chinese_continental`.
-- No in-memory cache; every read hits Supabase. Supabase tables (consolidated to 4): `clients`, `app_settings`, `menu_history`, `week_signatures`.
+- No in-memory cache; every read hits Supabase. Reads are **consolidated**: `get_client_row(name)` selects every config column in one query and `api.app._client_row()` memoises it on Flask's `g` for the request, so `GET /client-config` costs 1 round trip (was 7) and `/plan` 2 (was 6). `get_client_configs_from_row(name, row)` builds the per-counter `ClientConfig` list from an already-read row. Writes are **atomic**: `update_client_atomic(name, expected_version, fields)` applies every field plus the version bump in ONE conditional `UPDATE` (`WHERE name=? AND version=?`), replacing a bump-then-N-setters sequence in which a validation failure part-way left the row half-written with the version already incremented. `normalize_counters_for_write()` / `primary_counter_patch()` are the write-free validation halves used to check the whole payload before anything is persisted.
+- `ClientConfig.counter_name` records which counter a config came from, so per-counter rule overrides can be scoped. Supabase tables (consolidated to 4): `clients`, `app_settings`, `menu_history`, `week_signatures`.
 - **F5 client item pools**: `clients.source_pools` (JSONB, nullable) stores the ontology `client`-column pool tokens this client draws from; `common` is implicit. `get_client_source_pools` returns `None` (column missing → callers use the full ontology), `[]` (unset → common-only), or the token list. `set_client_source_pools` normalizes/dedupes and strips `common`.
 - Default day themes: Mon=mix, Tue=chinese, Wed=biryani, Thu=south, Fri=north.
 - **Client config is one JSON document.** `clients.counters` (JSONB) is the single source of truth — an ordered, non-empty list `[{name, categories, slot_counts, theme_map}, …]`. `counters[0]` is the **primary** counter that `MenuSolver` plans from (`get_client` derives `ClientConfig` from it); extra entries are additional cuisine stations. `get_client_configs` yields one `ClientConfig` per counter — the API solves each independently (client-orchestrated: the planner calls `/plan` once per counter with `counter_index`), and the planner renders one table per counter (tabs) with per-counter regenerate/clear + a shared save/download. Mode is *derived*: `single` ⇔ 1 counter, `multi` ⇔ 2+. `get_counters_for_client` / `get_counter_setup` / `set_counters_for_client` / `update_primary_counter` read/write it. The old normalized `menu_categories` / `slot_count_overrides` / `theme_overrides` tables were folded into this column (premature normalization — config was always read/written per-client, never cross-client). The loader keeps a guarded `_legacy_primary_counter` fallback for a database that hasn't run `scripts/setup_all.sql` yet.
@@ -248,6 +261,8 @@ Run: `pytest` from `ikigai_masala-main/`.
 6. **History split**: `menu_history` is one JSON document per client-day (`menu={slot:item}`), exploded to item-level in memory for cooldowns; `week_signatures` is a weekly hash for week-level cooldowns.
 7. **Supabase is the source of truth** for clients, history, overrides — Flask and Streamlit both read it directly.
 8. **Slot expansion**: base slot names like `veg_dry` get expanded to indexed slots `veg_dry__1`, `veg_dry__2` in `PoolBuilder._expand_slots_in_order`. Rules operate on expanded names.
+9b. **Per-counter rule scoping**: a `client_rules.json` block may carry a `counters` map — `{"counters": {"<counter name>": {disable, rules, constant_items}}}` — layered over the client-level entry. A rule that only applies to one station (L&T's `Non Veg Lunch` is themed biryani daily, so the weekly nonveg-biryani cap is dropped there) stays scoped instead of silently switching off for the client's other counters. `load_for_client(client, generic, counter_name)` and `get_client_constant_items(client, counter_name)` take the counter.
+9c. **Rules are never relaxed just to return a menu**: an over-constrained counter fails with a message naming the tightest slots, because the useful output is the conflict, not a plan that abandoned the rules. The single exception is *provable arithmetic impossibility* — a slot with fewer distinct eligible items than days to fill (`unique_items_menu_rule.starved_slots`) — where uniqueness is lifted for that one slot only, a HIGH-tier repeat penalty still maximises variety, and `diagnose()` reports it. Frequency targets cap to `min(placeable_days, distinct_matching_items)`: counting placeable days alone asked for two liquid desserts from a pool holding one. Every config-driven rule type (`selector_frequency`, `slot_composition`, `attribute_grouping`, `unique_items`, `curd_side`) implements `diagnose()`, so an inert or under-enforced rule is reported rather than silently dropped.
 9. **Per-client custom rules**: `data/configs/client_rules.json` stores per-client overrides keyed by client name. Shape is `{disable: [city_rule_names], rules: [...], constant_items: {slot: value|{weekday: value}}}` (legacy bare list still works as `{rules: list}`). `load_for_client()` merges by rule `name` via the same `_merge_rule_dicts` used for city `extends` — same name overrides, `disable` drops. `constant_items` are stamped post-solve (and skipped as CP-SAT cells). Client `working_days` (DB column) filters the plan horizon (e.g. Quince = Wed/Thu/Fri).
 
 ---

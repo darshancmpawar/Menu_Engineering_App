@@ -936,6 +936,102 @@ class ClientConfigLoader:
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
 
+    # --- value normalisation, shared by the per-field getters and the
+    # --- combined get_client_row() so both return identical shapes.
+
+    def _normalize_counters_value(self, name: str, raw) -> List[Dict]:
+        """Normalise a raw ``counters`` column value (see _counters_list)."""
+        if raw:
+            return [normalize_counter(c, i) for i, c in enumerate(raw)]
+        legacy = self._legacy_primary_counter(name)
+        return [legacy] if legacy else [default_counter(0)]
+
+    @staticmethod
+    def _normalize_working_days_value(raw) -> Optional[List[str]]:
+        if not raw:
+            return None
+        return [str(d).strip().lower() for d in raw]
+
+    @staticmethod
+    def _normalize_source_pools_value(raw) -> Optional[List[str]]:
+        # None means "column unset" -> caller treats it as common-only ([]),
+        # matching get_client_source_pools.
+        if raw is None:
+            return []
+        return [_normalize_pool_name(t) for t in raw if _normalize_pool_name(t)]
+
+    # Config columns that live directly on the ``clients`` row. Read together so
+    # one request costs one round trip instead of one per field.
+    _CONFIG_COLUMNS = (
+        'counters', 'city', 'serve_weekends', 'working_days',
+        'item_cooldown_days', 'source_pools', 'version',
+    )
+
+    def get_client_row(self, name: str) -> Dict[str, Any]:
+        """Return every config column for *name* in a single query.
+
+        The per-field getters each issued their own
+        ``select('<one column>').eq('name', …)``, so a single ``GET
+        /client-config`` cost seven round trips against the same row and
+        ``POST /plan`` cost six. Reads stay live — this is still an
+        uncached query per call — they are just no longer fragmented.
+
+        Degrades on a pre-migration database: if the combined select fails
+        because a column is missing, each field falls back to its own getter,
+        which already handles the missing-column case individually.
+
+        Raises:
+            ValueError: when the client does not exist.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select(', '.join(self._CONFIG_COLUMNS))
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return {
+                    'counters': self._counters_list(name),
+                    'city': self.get_client_city(name),
+                    'serve_weekends': self.get_client_serve_weekends(name),
+                    'working_days': self.get_client_working_days(name),
+                    'item_cooldown_days': self.get_client_item_cooldown_days(name),
+                    'source_pools': self.get_client_source_pools(name),
+                    'version': self.get_client_version(name),
+                }
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        data = dict(row.data)
+        return {
+            'counters': self._normalize_counters_value(name, data.get('counters')),
+            'city': normalize_city(data.get('city')),
+            'serve_weekends': bool(data.get('serve_weekends')),
+            'working_days': self._normalize_working_days_value(
+                data.get('working_days')),
+            'item_cooldown_days': normalize_item_cooldown_days(
+                data.get('item_cooldown_days')),
+            'source_pools': self._normalize_source_pools_value(
+                data.get('source_pools')),
+            'version': int(data.get('version') or 1),
+        }
+
+    def get_client_configs_from_row(self, name: str, row: Dict[str, Any]):
+        """``[(counter_name, ClientConfig), …]`` built from an already-read row.
+
+        Lets a caller that fetched the row once avoid re-reading it per counter.
+        """
+        out = []
+        for counter in row['counters']:
+            cfg = self._config_from_counter(name, counter)
+            cfg.serve_weekends = row['serve_weekends']
+            cfg.working_days = row['working_days']
+            out.append((counter['name'], cfg))
+        return out
+
     def normalize_counters_for_write(
         self, counter_mode: str, counters: List[Dict],
     ) -> List[Dict]:

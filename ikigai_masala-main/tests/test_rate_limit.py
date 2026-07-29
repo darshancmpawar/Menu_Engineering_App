@@ -195,3 +195,86 @@ class TestCheckRateLimitHelper:
         from api.rate_limit import check_rate_limit
         with pytest.raises(KeyError):
             check_rate_limit("never-registered", "u")
+
+
+class TestWriteEndpointHardening:
+    """Mutating endpoints were unthrottled and ungated entirely."""
+
+    def test_write_bucket_exists_and_throttles(self):
+        # Exercise the bucket directly: check_rate_limit builds a Flask
+        # response, which needs an app context this unit test does not need.
+        from api.rate_limit import _LIMITS, reset_for_tests
+        reset_for_tests()
+        assert 'write' in _LIMITS and 'diagnose' in _LIMITS
+        bucket = _LIMITS['write']
+        cap = int(bucket.capacity)
+        now = 1000.0
+        for _ in range(cap):
+            allowed, _retry = bucket.try_acquire('ip:x', now=now)
+            assert allowed
+        allowed, retry = bucket.try_acquire('ip:x', now=now)
+        assert not allowed and retry > 0
+        reset_for_tests()
+
+    def test_oversized_body_is_rejected_before_parsing(self, fake_supabase):
+        import api.app as api_app
+        api_app.app.config['TESTING'] = True
+        limit = api_app.app.config['MAX_CONTENT_LENGTH']
+        assert limit and limit > 0
+        # TESTING makes Flask re-raise HTTPExceptions; turn that off so the
+        # registered 413 handler runs and we see the JSON body a caller gets.
+        api_app.app.config['PROPAGATE_EXCEPTIONS'] = False
+        try:
+            c = api_app.app.test_client()
+            resp = c.post(
+                '/api/v1/save',
+                data=b'x' * (limit + 1024),
+                content_type='application/json',
+            )
+            assert resp.status_code == 413
+            assert (resp.get_json() or {}).get('success') is False
+        finally:
+            api_app.app.config.pop('PROPAGATE_EXCEPTIONS', None)
+
+    def test_writes_open_when_no_token_configured(self, fake_supabase, monkeypatch):
+        """Default deployment must behave exactly as before."""
+        import api.app as api_app
+        monkeypatch.setattr(api_app, 'API_WRITE_TOKEN', '', raising=False)
+        api_app.app.config['TESTING'] = True
+        from api.rate_limit import reset_for_tests
+        reset_for_tests()
+        c = api_app.app.test_client()
+        # No token supplied; a missing-field 400 proves we got past the gate.
+        resp = c.post('/api/v1/client', json={})
+        assert resp.status_code == 400
+
+    def test_write_requires_token_when_configured(self, fake_supabase, monkeypatch):
+        import api.app as api_app
+        monkeypatch.setattr(api_app, 'API_WRITE_TOKEN', 's3cret', raising=False)
+        api_app.app.config['TESTING'] = True
+        from api.rate_limit import reset_for_tests
+        reset_for_tests()
+        c = api_app.app.test_client()
+
+        assert c.post('/api/v1/client', json={'name': 'X'}).status_code == 401
+        assert c.delete('/api/v1/client/Rippling').status_code == 401
+
+        # Correct token gets through to normal handling.
+        ok = c.post('/api/v1/client', json={},
+                    headers={'X-API-Key': 's3cret'})
+        assert ok.status_code == 400  # past the gate, then missing 'name'
+        ok2 = c.post('/api/v1/client', json={},
+                     headers={'Authorization': 'Bearer s3cret'})
+        assert ok2.status_code == 400
+        # Wrong token stays out.
+        assert c.post('/api/v1/client', json={'name': 'X'},
+                      headers={'X-API-Key': 'wrong'}).status_code == 401
+
+    def test_reads_are_never_gated(self, fake_supabase, monkeypatch):
+        """A write token must not lock out the planner's read paths."""
+        import api.app as api_app
+        monkeypatch.setattr(api_app, 'API_WRITE_TOKEN', 's3cret', raising=False)
+        api_app.app.config['TESTING'] = True
+        c = api_app.app.test_client()
+        assert c.get('/api/v1/clients').status_code == 200
+        assert c.get('/api/v1/health').status_code in (200, 503)
