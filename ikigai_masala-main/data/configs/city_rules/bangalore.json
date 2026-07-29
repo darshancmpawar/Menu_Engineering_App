@@ -85,6 +85,14 @@
       "max_per_week": 1
     },
     {
+      "_comment": "nonveg_biryani_once_per_week counts biryani DAYS, so a counter with 2+ nonveg slots could satisfy it by stacking two biryanis onto one day. This caps the dishes per day so the pair is biryani + something else.",
+      "name": "nonveg_biryani_one_per_day",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_nonveg_biryani" },
+      "base_slot": "nonveg_main",
+      "daily_max": 1
+    },
+    {
       "name": "mixed_veg_gravy_weekly",
       "type": "selector_frequency",
       "selector": { "flag": "is_mixedveg_gravy" },
@@ -340,7 +348,7 @@
       "name": "nonveg_main_daily_pair",
       "type": "slot_composition",
       "base_slot": "nonveg_main",
-      "requires_slot_count": 2,
+      "min_slot_count": 2,
       "components": [
         { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
         { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
@@ -360,7 +368,7 @@
       "name": "veg_dry_north_south_pair",
       "type": "slot_composition",
       "base_slot": "veg_dry",
-      "requires_slot_count": 2,
+      "min_slot_count": 2,
       "components": [
         { "selector": { "cuisine_family": "north_indian" }, "count": 1 },
         { "selector": { "cuisine_family": "south_indian" }, "count": 1 }

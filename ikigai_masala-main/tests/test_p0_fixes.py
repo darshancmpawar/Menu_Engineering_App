@@ -661,3 +661,199 @@ class TestAttributeGroupingDiagnose:
         ctx = _diag_ctx({'sambar': pool}, slot_counts={'sambar': 1},
                         active=['sambar'])
         assert rule.diagnose(ctx) == []
+
+
+# ---------------------------------------------------------------------------
+# Theme-forced vs. frequency-cap conflict detection
+# ---------------------------------------------------------------------------
+
+
+class _ConflictCfg:
+    rice_exclude_items = ()
+    cuisine_col = 'cuisine_family'
+    cuisine_south_value = 'south_indian'
+    cuisine_north_value = 'north_indian'
+
+
+class _ConflictClientCfg:
+    def __init__(self, slot_counts):
+        self.slot_counts = slot_counts
+
+
+def _conflict_ctx(pools, dates, day_types, slot_counts=None, active=None):
+    from src.menu_rules.base_menu_rule import DiagnoseContext
+    return DiagnoseContext(
+        pools=pools, dates=dates, day_types=day_types, cfg=_ConflictCfg(),
+        df=None, banned_by_date={}, ricebread_ban_day={}, skip_cells=set(),
+        client_cfg=_ConflictClientCfg(slot_counts or {}),
+        active_base_slots=active if active is not None else list(pools),
+    )
+
+
+class TestForcedVersusMaxConflict:
+    """A `max` rule the pool forces past is provably unsatisfiable.
+
+    This is how Amadeus's Chinese counter failed: every weekday resolves to
+    `continental`, the theme filter narrows `rice` to continental rice only, and
+    `continental_rice_weekly` allows one such day.
+    """
+
+    def _rule(self, **extra):
+        cfg = {'type': 'selector_frequency', 'name': 'cont_rice_weekly',
+               'selector': {'flag': 'is_cont'}, 'base_slot': 'rice', 'max': 1}
+        cfg.update(extra)
+        return SelectorFrequencyRule(cfg)
+
+    def test_errors_when_every_day_is_forced(self):
+        pool = pd.DataFrame([
+            {'item': 'cont_a', 'is_cont': 1},
+            {'item': 'cont_b', 'is_cont': 1},
+        ])
+        dates = [MON + dt.timedelta(days=i) for i in range(3)]
+        ctx = _conflict_ctx({'rice': pool}, dates, {d: 'continental' for d in dates})
+        diags = self._rule().diagnose(ctx)
+        errors = [d for d in diags if d.severity.value == 'error']
+        assert errors, [d.message for d in diags]
+        assert errors[0].affected['forced_days'] == 3
+        assert errors[0].affected['limit'] == 1
+        # The message has to name the fix, not just the failure.
+        assert 'disable' in errors[0].suggestion
+
+    def test_silent_when_the_pool_offers_alternatives(self):
+        pool = pd.DataFrame([
+            {'item': 'cont_a', 'is_cont': 1},
+            {'item': 'indian_a', 'is_cont': 0},
+        ])
+        dates = [MON + dt.timedelta(days=i) for i in range(3)]
+        ctx = _conflict_ctx({'rice': pool}, dates, {d: 'mix' for d in dates})
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity.value == 'error']
+
+    def test_max_equal_to_forced_is_not_an_error(self):
+        pool = pd.DataFrame([{'item': 'cont_a', 'is_cont': 1}])
+        dates = [MON]
+        ctx = _conflict_ctx({'rice': pool}, dates, {MON: 'continental'})
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity.value == 'error']
+
+
+class TestCompositionForcesCap:
+    """A composition mandating a selector forces it as hard as a thin pool."""
+
+    def test_days_forced_by_composition_counts_theme_days(self):
+        from src.menu_rules.slot_composition_rule import (
+            days_forced_by_composition,
+        )
+        comp = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'pair',
+            'base_slot': 'nonveg_main', 'min_slot_count': 2,
+            'components': [{'selector': {'flag': 'is_dry'}, 'count': 1}],
+            'components_by_theme': {
+                'biryani': [{'selector': {'flag': 'is_biry'}, 'count': 1}],
+            },
+        })
+        pool = pd.DataFrame([
+            {'item': 'chicken_biryani', 'is_biry': 1, 'is_dry': 0},
+            {'item': 'chicken_gravy', 'is_biry': 0, 'is_dry': 0},
+            {'item': 'chicken_fry', 'is_biry': 0, 'is_dry': 1},
+        ])
+        dates = [MON + dt.timedelta(days=i) for i in range(3)]
+        day_types = {dates[0]: 'biryani', dates[1]: 'mix', dates[2]: 'biryani'}
+        ctx = _conflict_ctx({'nonveg_main': pool}, dates, day_types,
+                        slot_counts={'nonveg_main': 3})
+        forced = days_forced_by_composition(
+            [comp], ctx, 'nonveg_main', lambda r: int(r.get('is_biry', 0)) == 1,
+        )
+        assert forced == 2, 'both biryani-theme days mandate a biryani'
+
+    def test_inactive_composition_forces_nothing(self):
+        from src.menu_rules.slot_composition_rule import (
+            days_forced_by_composition,
+        )
+        comp = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'pair',
+            'base_slot': 'nonveg_main', 'min_slot_count': 2,
+            'components_by_theme': {
+                'biryani': [{'selector': {'flag': 'is_biry'}, 'count': 1}],
+            },
+        })
+        pool = pd.DataFrame([{'item': 'b', 'is_biry': 1}])
+        ctx = _conflict_ctx({'nonveg_main': pool}, [MON], {MON: 'biryani'},
+                        slot_counts={'nonveg_main': 1})   # below min_slot_count
+        assert days_forced_by_composition(
+            [comp], ctx, 'nonveg_main', lambda r: True) == 0
+
+
+class TestCompositionSlotCountGate:
+    """`requires_slot_count` is exact; `min_slot_count` is a range.
+
+    The exact form silently excluded every counter serving more than the stated
+    number, so a 3-dish non-veg counter got no composition at all.
+    """
+
+    def _rule(self, **gate):
+        cfg = {'type': 'slot_composition', 'name': 'pair',
+               'base_slot': 'nonveg_main',
+               'components': [{'selector': {'flag': 'is_dry'}, 'count': 1}]}
+        cfg.update(gate)
+        return SlotCompositionRule(cfg)
+
+    def test_min_slot_count_admits_more(self):
+        r = self._rule(min_slot_count=2)
+        assert r._gate_allows(2) and r._gate_allows(3) and r._gate_allows(5)
+        assert not r._gate_allows(1)
+
+    def test_requires_slot_count_stays_exact(self):
+        r = self._rule(requires_slot_count=2)
+        assert r._gate_allows(2)
+        assert not r._gate_allows(3), 'exact gate must not widen silently'
+
+    def test_no_gate_applies_everywhere(self):
+        r = self._rule()
+        assert r._gate_allows(1) and r._gate_allows(5)
+
+    def test_both_gates_is_a_config_error(self):
+        r = self._rule(min_slot_count=2, requires_slot_count=2)
+        assert any('not both' in e for e in r.validation_errors())
+
+    def test_shipped_ruleset_uses_the_range_form(self):
+        """The base ruleset must not regress to the exact gate."""
+        rules = MenuRuleLoader('data/configs/city_rules/bangalore.json').load_from_file()
+        comps = [r for r in rules if isinstance(r, SlotCompositionRule)]
+        assert comps, 'no slot_composition rules in the base ruleset'
+        for r in comps:
+            assert r.min_slot_count is not None, (
+                f"{r.name} uses requires_slot_count; a counter serving more "
+                f"than {r.requires_slot_count} would get no composition"
+            )
+
+
+class TestSlotCountCeiling:
+    """A 5-dish non-veg counter must be configurable."""
+
+    def test_five_is_accepted(self):
+        from src.client.client_config import normalize_counter
+        c = normalize_counter({
+            'name': 'Non Veg', 'categories': ['nonveg_main'],
+            'slot_counts': {'nonveg_main': 5},
+        }, 0)
+        assert c['slot_counts']['nonveg_main'] == 5
+
+    def test_above_the_ceiling_still_clamps(self):
+        from src.client.client_config import (
+            normalize_counter, _MAX_SLOT_COUNT,
+        )
+        c = normalize_counter({
+            'name': 'Non Veg', 'categories': ['nonveg_main'],
+            'slot_counts': {'nonveg_main': 99},
+        }, 0)
+        assert c['slot_counts']['nonveg_main'] == _MAX_SLOT_COUNT
+
+    def test_editor_bounds_match_the_loader(self):
+        """The UI must not offer a value the loader would clamp."""
+        import customisation.multi_slot_editor as ed
+        from src.client.client_config import (
+            _MAX_SLOT_COUNT, _MIN_SLOT_COUNT,
+        )
+        assert ed._MAX_SLOT_COUNT == _MAX_SLOT_COUNT
+        assert ed._MIN_SLOT_COUNT == _MIN_SLOT_COUNT

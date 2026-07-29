@@ -183,9 +183,12 @@ def _dedupe_preserve_order(values: List[str]) -> List[str]:
 #     {'name': str, 'categories': [slot],
 #      'slot_counts': {slot: int}, 'theme_map': {day: theme}}
 
-# Frequency bounds mirror the editor's number_input (1..3 per category).
+# Frequency bounds mirror the editor's number_input (1..5 per category).
+# The ceiling was 3, which made a real counter unconfigurable: a non-veg lunch
+# station serving biryani + gravy + dry + kebab + egg needs 5 nonveg_main slots,
+# and the editor rejected the value with "outside the allowed range" instead.
 _MIN_SLOT_COUNT = 1
-_MAX_SLOT_COUNT = 3
+_MAX_SLOT_COUNT = 5
 # Hard cap on counters per client — keeps the editor UI and payloads sane.
 MAX_COUNTERS = 6
 
@@ -214,7 +217,7 @@ def normalize_counter(raw: Dict, index: int = 0) -> Dict:
     """Coerce arbitrary/partial counter input into the canonical shape.
 
     - drops unknown / constant slots from ``categories`` (dedup, order-preserving)
-    - clamps every ``slot_counts`` value to [1, 3]; only keeps active categories
+    - clamps every ``slot_counts`` value to [1, 5]; only keeps active categories
     - merges ``theme_map`` over the global defaults, ignoring invalid days/themes
     - falls back to ``Counter N`` for a blank name
     """

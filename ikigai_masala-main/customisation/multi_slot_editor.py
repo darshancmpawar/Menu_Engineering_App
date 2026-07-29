@@ -9,6 +9,10 @@ from typing import Dict, List
 
 from ui.formatters import display_label_for_slot_id as prettify_slot_name
 
+# Single source of truth for the bounds, so the editor can never offer a value
+# the loader would clamp (or reject) behind its back.
+from src.client.client_config import _MAX_SLOT_COUNT, _MIN_SLOT_COUNT
+
 
 def render_multi_slot_editor(
     active_base_slots: List[str],
@@ -23,7 +27,7 @@ def render_multi_slot_editor(
         '<p class="pulse-sub-title">Frequency</p>'
         '<p class="pulse-sub-desc">'
         'Set a count of 2+ for categories that need duplicates per day '
-        '(e.g. Veg Dry 1 &amp; Veg Dry 2).</p>',
+        f'(e.g. Veg Dry 1 &amp; Veg Dry 2). Up to {_MAX_SLOT_COUNT}.</p>',
         unsafe_allow_html=True,
     )
 
@@ -42,10 +46,11 @@ def render_multi_slot_editor(
     for idx, slot in enumerate(editable):
         with cols[idx % 3]:
             current = int(current_slot_counts.get(slot, 1) or 1)
-            current = max(1, min(3, current))
+            current = max(_MIN_SLOT_COUNT, min(_MAX_SLOT_COUNT, current))
             val = st.number_input(
                 prettify_slot_name(slot),
-                min_value=1, max_value=3, value=current, step=1,
+                min_value=_MIN_SLOT_COUNT, max_value=_MAX_SLOT_COUNT,
+                value=current, step=1,
                 key=f"cnt_{key_prefix}_{slot}",
             )
             updated[slot] = int(val)

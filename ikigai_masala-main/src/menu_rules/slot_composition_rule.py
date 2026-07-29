@@ -69,6 +69,67 @@ logger = logging.getLogger(__name__)
 _Component = Tuple[Any, int]
 
 
+def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
+    """How many days a peer composition rule *mandates* an item that
+    ``row_matches`` accepts, for ``base_slot``.
+
+    This is the missing half of conflict detection. A frequency cap can be
+    contradicted two ways: the pool leaves nothing but matching items (see
+    ``SelectorFrequencyRule._forced_days``), or a *composition* rule requires a
+    matching item on that day. Siemens Technology's non-veg counter is the second
+    kind — its biryani-theme Wednesday and Friday each get a mandatory biryani
+    from ``nonveg_main_daily_pair`` while ``nonveg_biryani_once_per_week`` allows
+    one biryani day, and neither rule alone can see the contradiction.
+
+    Implication between a component's selector and the caller's is decided from
+    the data rather than by comparing selector syntax: the component forces the
+    caller's selector on a day when every item the component could satisfy also
+    satisfies the caller. That is exact for the identical-selector case and stays
+    correct for a narrower component (e.g. "chicken biryani" forcing "biryani").
+    """
+    from .selector_frequency_rule import SelectorFrequencyRule
+
+    comps_by_rule = [
+        r for r in (peer_rules or [])
+        if isinstance(r, SlotCompositionRule) and r.base_slot == base_slot
+    ]
+    if not comps_by_rule:
+        return 0
+
+    forced = 0
+    for d in ctx.dates:
+        if (d, base_slot) in (ctx.skip_cells or set()):
+            continue
+        pool = ctx.pools.get(base_slot)
+        if pool is None or not len(pool):
+            continue
+        day_type = ctx.day_types.get(d, '')
+        filter_ctx = {
+            'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+            'pools': ctx.pools, 'slot_num': None,
+        }
+        for rule in (peer_rules or []):
+            pool = rule.pre_filter_pool(pool, d, base_slot, day_type, filter_ctx)
+        if not len(pool):
+            continue
+        rows = [r for _i, r in pool.iterrows()]
+        hit = False
+        for rule in comps_by_rule:
+            for matcher, _count in rule.mandated_components(ctx, day_type):
+                candidates = [
+                    r for r in rows
+                    if SelectorFrequencyRule._matches(r, matcher)
+                ]
+                if candidates and all(row_matches(r) for r in candidates):
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            forced += 1
+    return forced
+
+
 class SlotCompositionRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
@@ -76,6 +137,8 @@ class SlotCompositionRule(BaseMenuRule):
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         rsc = rule_config.get('requires_slot_count')
         self.requires_slot_count: Optional[int] = int(rsc) if rsc is not None else None
+        msc = rule_config.get('min_slot_count')
+        self.min_slot_count: Optional[int] = int(msc) if msc is not None else None
         self.components: List[_Component] = self._parse_components(
             rule_config.get('components'))
         self.components_by_theme: Dict[str, List[_Component]] = {
@@ -106,6 +169,23 @@ class SlotCompositionRule(BaseMenuRule):
     def _all_component_lists(self) -> List[List[_Component]]:
         return [self.components] + list(self.components_by_theme.values())
 
+    def _gate_allows(self, configured: int) -> bool:
+        """Does a counter serving *configured* of this slot get composed?
+
+        ``min_slot_count`` is the form to prefer. ``requires_slot_count`` demands
+        an *exact* match, which silently excluded every counter that serves more
+        than the stated number: the base ruleset asked for exactly 2
+        ``nonveg_main``, so Siemens Technology's 3-dish non-veg counter got no
+        composition at all and its biryani-theme days came back with no biryani
+        while non-biryani days got two. Exact matching is kept for configs that
+        rely on it, but a range is what "compose the family" actually means.
+        """
+        if self.min_slot_count is not None:
+            return configured >= self.min_slot_count
+        if self.requires_slot_count is not None:
+            return configured == self.requires_slot_count
+        return True
+
     def validate_config(self) -> bool:
         return not self.validation_errors()
 
@@ -126,7 +206,27 @@ class SlotCompositionRule(BaseMenuRule):
             errs.append("every component needs a valid selector and integer count >= 1")
         if self.requires_slot_count is not None and self.requires_slot_count < 1:
             errs.append(f"requires_slot_count must be >= 1 (got {self.requires_slot_count})")
+        if self.min_slot_count is not None and self.min_slot_count < 1:
+            errs.append(f"min_slot_count must be >= 1 (got {self.min_slot_count})")
+        if self.min_slot_count is not None and self.requires_slot_count is not None:
+            errs.append("set either min_slot_count or requires_slot_count, not both")
         return errs
+
+    def mandated_components(self, ctx, day_type: str) -> List[_Component]:
+        """Components this rule will require on a day of *day_type*.
+
+        Empty when the counter's slot count leaves the rule inactive, so a
+        caller reasoning about conflicts sees the same gate ``apply()`` uses.
+        """
+        if not self.base_slot:
+            return []
+        slot_counts = (
+            ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
+        ) or {}
+        configured = int(slot_counts.get(self.base_slot, 1) or 1)
+        if not self._gate_allows(configured):
+            return []
+        return self.components_by_theme.get(day_type, self.components)
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -155,11 +255,11 @@ class SlotCompositionRule(BaseMenuRule):
             # for the entire week with no warning. Components are already capped
             # to what the surviving cells can supply just below, so composing
             # against a partially-pinned family degrades instead of vanishing.
-            if self.requires_slot_count is not None:
+            if self.requires_slot_count is not None or self.min_slot_count is not None:
                 cfg = context.get('cfg')
                 slot_counts = getattr(cfg, 'slot_counts', None) or {}
                 configured = int(slot_counts.get(self.base_slot, len(day_cells)))
-                if configured != self.requires_slot_count:
+                if not self._gate_allows(configured):
                     continue
 
             theme = day_types[di] if di < len(day_types) else ''
@@ -224,25 +324,29 @@ class SlotCompositionRule(BaseMenuRule):
             ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
         ) or {}
         configured = int(slot_counts.get(self.base_slot, 1) or 1)
-        if self.requires_slot_count is not None \
-                and configured != self.requires_slot_count:
+        if not self._gate_allows(configured):
+            wanted = (
+                f"at least {self.min_slot_count}"
+                if self.min_slot_count is not None
+                else f"exactly {self.requires_slot_count}"
+            )
             diags.append(Diagnostic(
                 rule=self.name, rule_type=self.rule_type.value,
                 severity=DiagnosticSeverity.INFO,
                 phase=DiagnosticPhase.APPLY,
                 message=(
                     f"Composition for '{self.base_slot}' is inactive: it applies "
-                    f"to counters serving {self.requires_slot_count} of that "
-                    f"slot, and this counter serves {configured}."
+                    f"to counters serving {wanted} of that slot, and this "
+                    f"counter serves {configured}."
                 ),
                 suggestion=(
-                    f"If this counter should be composed, set its "
-                    f"{self.base_slot} count to {self.requires_slot_count}; "
-                    f"otherwise no action is needed."
+                    f"If this counter should be composed, raise its "
+                    f"{self.base_slot} count; otherwise no action is needed."
                 ),
                 affected={
                     'base_slot': self.base_slot,
                     'requires_slot_count': self.requires_slot_count,
+                    'min_slot_count': self.min_slot_count,
                     'configured_slot_count': configured,
                 },
             ))

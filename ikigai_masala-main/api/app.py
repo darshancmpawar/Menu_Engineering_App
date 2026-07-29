@@ -1796,7 +1796,18 @@ def diagnose_plan():
         }
     """
     try:
-        inputs = _prepare_solver_inputs(request.get_json() or {})
+        data = request.get_json() or {}
+        # Resolve `counter_index` exactly as /plan does. Without this the
+        # endpoint built its inputs from the *primary* counter no matter which
+        # counter was asked about, so every multi-counter client got a clean
+        # bill of health for counter 0 while the counter actually being planned
+        # was unsatisfiable — Amadeus's Chinese counter reported
+        # "would_succeed: true" and then came back INFEASIBLE.
+        _require_known_client(data.get('client_name'))
+        counter_index, counter_name, counter_count, client_cfg = _resolve_counter(
+            data.get('client_name'), data,
+        )
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
         diagnostics, summary = _run_preflight(inputs)
         _record_diag_metrics(diagnostics)
         diag_dicts = [d.to_dict() for d in diagnostics]
@@ -1804,6 +1815,9 @@ def diagnose_plan():
             'success': True,
             'rule_diagnostics': diag_dicts,
             'summary': summary,
+            'counter_index': counter_index,
+            'counter_name': counter_name,
+            'counter_count': counter_count,
         }
         pool_warnings = pool_warnings_projection(diagnostics)
         if pool_warnings:

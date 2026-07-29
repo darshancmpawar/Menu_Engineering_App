@@ -282,6 +282,53 @@ class SelectorFrequencyRule(BaseMenuRule):
                 days += 1
         return days, len(distinct)
 
+    def _forced_days(self, ctx: "DiagnoseContext") -> int:
+        """Days on which a match is *unavoidable* for this rule's slot.
+
+        A day is forced when every item still eligible for the slot matches the
+        selector, so whatever the solver picks there counts against ``max``.
+        This is what makes a ``max`` rule collide with a theme map: Amadeus's
+        Chinese counter is themed ``chinese_continental`` every weekday, which on
+        an odd ISO week resolves to *continental* on all five days, and the theme
+        filter then narrows ``rice`` to continental rice only — five forced days
+        against ``continental_rice_weekly``'s ``max: 1``.
+
+        Counted per *day*, matching how ``apply()`` counts ``max``.
+        """
+        if not self.base_slot or self.base_slot not in ctx.pools:
+            return 0
+        active = ctx.active_base_slots
+        if active is not None and self.base_slot not in active:
+            return 0
+
+        forced = 0
+        for d in ctx.dates:
+            if (d, self.base_slot) in (ctx.skip_cells or set()):
+                continue
+            pool = ctx.pools[self.base_slot]
+            if self.base_slot in ('rice', 'healthy_rice') and len(pool) > 0:
+                pool = pool[~pool['item'].isin(ctx.cfg.rice_exclude_items)]
+            day_type = ctx.day_types.get(d, '')
+            filter_ctx = {
+                'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+                'pools': ctx.pools, 'slot_num': None,
+            }
+            for rule in (self._peer_rules or []):
+                pool = rule.pre_filter_pool(
+                    pool, d, self.base_slot, day_type, filter_ctx)
+            if not len(pool):
+                continue
+            if all(self._row_matches(row) for _i, row in pool.iterrows()):
+                forced += 1
+
+        # A composition rule mandating a matching item forces the selector just
+        # as hard as a pool that offers nothing else.
+        from .slot_composition_rule import days_forced_by_composition
+        by_composition = days_forced_by_composition(
+            self._peer_rules, ctx, self.base_slot, self._row_matches,
+        )
+        return max(forced, by_composition)
+
     def diagnose(self, ctx: "DiagnoseContext") -> List["Diagnostic"]:
         """Report when this rule cannot ask for what it is configured to ask.
 
@@ -303,9 +350,47 @@ class SelectorFrequencyRule(BaseMenuRule):
           * INFO    — the selector matches nothing anywhere, so the rule is inert.
         """
         diags: List["Diagnostic"] = []
+
+        # A `max` is NOT automatically satisfiable. When the theme filter leaves
+        # the slot with nothing *but* matching items on more days than `max`
+        # allows, the two rules contradict each other and the solve comes back
+        # INFEASIBLE with no explanation — which is exactly how Amadeus's Chinese
+        # counter failed while this pass reported "would_succeed: true". Provable
+        # from the pools, so it is an ERROR and /plan answers 422 with the fix.
+        cap = self.max if self.max is not None else self.exact
+        if cap is not None:
+            forced = self._forced_days(ctx)
+            if forced > cap:
+                sel_desc = f"{self.sel_kind}={self.sel_value!r}"
+                diags.append(Diagnostic(
+                    rule=self.name, rule_type=self.rule_type.value,
+                    severity=DiagnosticSeverity.ERROR,
+                    phase=DiagnosticPhase.APPLY,
+                    message=(
+                        f"This counter's themes leave {sel_desc} as the only "
+                        f"option for '{self.base_slot}' on {forced} day(s), but "
+                        f"this rule allows {cap}. Those rules contradict each "
+                        f"other, so no menu can satisfy both."
+                    ),
+                    suggestion=(
+                        f"Raise this rule's limit to {forced}, add "
+                        f"\"{self.name}\" to this client's `disable` list in "
+                        f"client_rules.json if the limit is not meant to apply "
+                        f"to this counter, or give the counter day themes that "
+                        f"do not force {sel_desc} every day."
+                    ),
+                    affected={
+                        'selector': sel_desc,
+                        'base_slot': self.base_slot,
+                        'limit': cap,
+                        'forced_days': forced,
+                    },
+                ))
+                return diags
+
         if self.min is None and self.exact is None:
-            # max / daily_max / non_consecutive only tighten; a thin pool makes
-            # them trivially satisfied, never wrong.
+            # min/exact shortfalls are the only remaining failure mode; a `max`
+            # that is not force-violated above only ever tightens.
             return diags
 
         placeable, distinct = self._eligible_days(ctx)
