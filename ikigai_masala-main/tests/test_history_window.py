@@ -113,7 +113,9 @@ class TestSolverInputsPicksCorrectWindow:
 
         monkeypatch.setattr(
             api_app, "_rules_and_skip_for_client",
-            lambda name, dates, city=None: ([_DeepRule()], set()),
+            lambda name, dates, city=None, client_cfg=None: (
+                [_DeepRule()], set(), {}, set(),
+            ),
         )
 
         with api_app.app.test_client() as c:

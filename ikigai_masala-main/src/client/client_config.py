@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
@@ -156,6 +156,12 @@ class ClientConfig:
     # Client-level (not per-counter): when True the planner also covers
     # Saturday/Sunday instead of skipping them.
     serve_weekends: bool = False
+    # Client-level: restrict generation to these weekdays only (lowercase full
+    # names, e.g. ['wednesday','thursday','friday']). None => all weekdays.
+    working_days: Optional[List[str]] = None
+    # Which counter of the client this config came from. Lets per-counter rule
+    # overrides in client_rules.json be scoped to one station.
+    counter_name: Optional[str] = None
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -451,6 +457,7 @@ class ClientConfigLoader:
             active_slots=expanded,
             slot_counts=counts,
             theme_map=dict(counter.get('theme_map') or DEFAULT_THEME_MAP),
+            counter_name=counter.get('name'),
         )
 
     def get_client(self, name: str) -> ClientConfig:
@@ -459,6 +466,7 @@ class ClientConfigLoader:
         unaffected."""
         cfg = self._config_from_counter(name, self._counters_list(name)[0])
         cfg.serve_weekends = self.get_client_serve_weekends(name)
+        cfg.working_days = self.get_client_working_days(name)
         return cfg
 
     def get_client_configs(self, name: str):
@@ -470,10 +478,12 @@ class ClientConfigLoader:
         ``serve_weekends`` flag is stamped onto every counter's config.
         """
         serve_weekends = self.get_client_serve_weekends(name)
+        working_days = self.get_client_working_days(name)
         out = []
         for c in self._counters_list(name):
             cfg = self._config_from_counter(name, c)
             cfg.serve_weekends = serve_weekends
+            cfg.working_days = working_days
             out.append((c['name'], cfg))
         return out
 
@@ -579,6 +589,56 @@ class ClientConfigLoader:
                 )
                 raise ValueError(
                     "Cannot save weekend setting: the clients.serve_weekends "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
+    def get_client_working_days(self, name: str) -> Optional[List[str]]:
+        """Return the restricted set of working weekdays for a client, or None.
+
+        Degrades to ``None`` (all weekdays) when the ``clients.working_days``
+        column is missing (pre-migration database) or unset."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('working_days')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        raw = row.data.get('working_days')
+        if not raw:
+            return None
+        return [str(d).strip().lower() for d in raw]
+
+    def set_client_working_days(
+        self, name: str, value: Optional[List[str]],
+    ) -> None:
+        """Update a client's working-days restriction (None / [] = all days)."""
+        self._require_client_exists(name)
+        normalized = None
+        if value:
+            normalized = [str(d).strip().lower() for d in value if str(d).strip()]
+            if not normalized:
+                normalized = None
+        try:
+            self._sb.table('clients').update({
+                'working_days': normalized,
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.working_days column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save working days: the clients.working_days "
                     "column is missing. " + _MIGRATION_HINT_COUNTERS
                 ) from exc
             raise
@@ -875,6 +935,120 @@ class ClientConfigLoader:
         )
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
+
+    def normalize_counters_for_write(
+        self, counter_mode: str, counters: List[Dict],
+    ) -> List[Dict]:
+        """Validate + normalise a counters payload without writing it.
+
+        Split out of :meth:`set_counters_for_client` so a caller can validate
+        every field of an update before any of it is persisted.
+        """
+        return self._counters_from_inputs(None, counter_mode, counters)
+
+    def primary_counter_patch(
+        self,
+        name: str,
+        *,
+        active_base_slots: List[str] | None = None,
+        slot_counts: Dict[str, int] | None = None,
+        theme_map: Dict[str, str] | None = None,
+    ) -> List[Dict]:
+        """Return the full counters list with legacy per-field edits applied.
+
+        The write-free half of :meth:`update_primary_counter`, so the legacy
+        API shape can also go through the single atomic update.
+        """
+        counters = self._counters_list(name)
+        primary = dict(counters[0])
+        if active_base_slots is not None:
+            primary['categories'] = active_base_slots
+        if slot_counts is not None:
+            primary['slot_counts'] = slot_counts
+        if theme_map is not None:
+            primary['theme_map'] = theme_map
+        out = [normalize_counter(primary, 0)] + [
+            normalize_counter(c, i) for i, c in enumerate(counters[1:], start=1)
+        ]
+        self._validate_counters(out)
+        return out
+
+    def update_client_atomic(
+        self, name: str, expected: int, fields: Dict[str, Any],
+    ) -> int:
+        """Apply *fields* and bump ``version`` in ONE conditional UPDATE.
+
+        ``fields`` holds already-validated, already-normalised column values
+        (``counters``, ``city``, ``serve_weekends``, ``working_days``,
+        ``item_cooldown_days``, ``source_pools``). Every one is a plain column on
+        ``clients``, so they all fit in a single statement together with the
+        version bump.
+
+        This replaces a bump-then-N-setters sequence that was neither atomic nor
+        safe: each setter was its own round trip, so any failure part-way left
+        the row half-updated with ``version`` already incremented — and because
+        input validation happened *between* those writes, a single malformed
+        ``source_pools`` deterministically committed the earlier fields and then
+        returned 400. One statement removes the partial-write window entirely
+        and collapses the round trips.
+
+        The ``version = expected`` predicate is still the race gate, so a stale
+        writer changes nothing at all rather than clobbering a concurrent edit.
+
+        Raises:
+            ConcurrentEditError: when the update matches no rows.
+        """
+        new_version = int(expected) + 1
+        payload = {**fields, 'version': new_version}
+        try:
+            result = (
+                self._sb.table('clients')
+                .update(payload)
+                .eq('name', name)
+                .eq('version', int(expected))
+                .execute()
+            )
+        except Exception as exc:
+            if _is_undefined_column(exc):
+                # Pre-migration database: fall back to the per-field setters,
+                # which each degrade individually with a migration hint.
+                logger.error(
+                    "clients.version (or a config column) missing — applying "
+                    "%r without the concurrency check. %s", name, _MIGRATION_HINT,
+                )
+                self._require_client_exists(name)
+                self._apply_fields_individually(name, fields)
+                return 1
+            raise
+        if not result.data:
+            current = self.get_client_version(name)  # raises ValueError if gone
+            raise ConcurrentEditError(
+                f"Client {name!r} has been modified by another request "
+                f"(expected version {expected}, currently {current}). "
+                "Refresh and retry.",
+                current_version=current,
+            )
+        return new_version
+
+    def _apply_fields_individually(self, name: str, fields: Dict[str, Any]) -> None:
+        """Degraded path for a database missing the consolidated columns."""
+        if 'counters' in fields:
+            self._write_counters_column(name, fields['counters'])
+        for column, setter in (
+            ('city', self.set_client_city),
+            ('serve_weekends', self.set_client_serve_weekends),
+            ('working_days', self.set_client_working_days),
+            ('item_cooldown_days', self.set_client_item_cooldown_days),
+            ('source_pools', self.set_client_source_pools),
+        ):
+            if column in fields:
+                try:
+                    setter(name, fields[column])
+                except ValueError as exc:
+                    logger.warning(
+                        "Could not apply %s for %r on the degraded path: %s",
+                        column, name, exc,
+                    )
 
     def bump_version_if_matches(self, name: str, expected: int) -> int:
         """Atomically bump ``version`` from *expected* to *expected+1*.

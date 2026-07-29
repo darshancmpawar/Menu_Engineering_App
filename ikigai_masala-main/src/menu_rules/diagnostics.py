@@ -56,6 +56,15 @@ def run_diagnostics(
     """
     diagnostics: List[Diagnostic] = []
 
+    rules = list(rules)
+    # A few diagnose() implementations need to replay the pre-filter chain to
+    # see the pool the solver will actually get (theme filters are what starve
+    # a slot). Hand them their peers rather than widening DiagnoseContext for
+    # one consumer; rules that don't declare the hook are untouched.
+    for rule in rules:
+        if hasattr(type(rule), '_peer_rules'):
+            rule._peer_rules = rules
+
     # Per-rule pass.
     for rule in rules:
         try:
@@ -313,6 +322,14 @@ def color_variety_diagnostics(
 
     slot_counts = ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
     max_same = max(1, int(getattr(cfg, 'max_same_color_per_day', 2)))
+    # The solver's per-colour cap is asymmetric (menu_solver._add_color_constraints):
+    # every colour is capped at max_same_color_per_day EXCEPT up to
+    # max_colors_at_reach colour(s), which may go as high as max_same_color_reach.
+    # Ignoring the reach allowance under-counts real capacity by exactly
+    # max_colors_at_reach * (reach - max_same) and made this check emit a
+    # BLOCKING error for days the solver can actually fill.
+    reach = max(max_same, int(getattr(cfg, 'max_same_color_reach', max_same)))
+    at_reach = max(0, int(getattr(cfg, 'max_colors_at_reach', 0)))
     color_col = getattr(cfg, 'color_col', 'item_color')
     rules_list = list(rules)
     filter_ctx_base = {
@@ -345,7 +362,11 @@ def color_variety_diagnostics(
                 )
         if n_cells == 0:
             continue
-        capacity = len(colours) * max_same
+        n_colours = len(colours)
+        capacity = (
+            n_colours * max_same
+            + min(at_reach, n_colours) * (reach - max_same)
+        )
         day_label = d.strftime('%A %d %b')
         if capacity < n_cells:
             out.append(Diagnostic(
@@ -355,9 +376,10 @@ def color_variety_diagnostics(
                 phase=DiagnosticPhase.APPLY,
                 message=(
                     f"{day_type.capitalize()} {day_label}: {n_cells} colour "
-                    f"slots but only {len(colours)} distinct colour(s) available "
-                    f"in their pools; with at most {max_same} of each colour, "
-                    f"only {capacity} can be filled. The day is infeasible."
+                    f"slots but only {n_colours} distinct colour(s) available "
+                    f"in their pools; at most {max_same} of each colour "
+                    f"({min(at_reach, n_colours)} may reach {reach}), so only "
+                    f"{capacity} can be filled. The day is infeasible."
                 ),
                 suggestion=(
                     "Add items in more colours to these slots (or fewer theme "
@@ -368,8 +390,11 @@ def color_variety_diagnostics(
                     'date': d.isoformat(),
                     'day_type': day_type,
                     'color_slots': n_cells,
-                    'colors_available': len(colours),
+                    'colors_available': n_colours,
                     'max_same_color': max_same,
+                    'max_same_color_reach': reach,
+                    'max_colors_at_reach': at_reach,
+                    'capacity': capacity,
                 },
             ))
         elif capacity == n_cells:
@@ -380,9 +405,11 @@ def color_variety_diagnostics(
                 phase=DiagnosticPhase.APPLY,
                 message=(
                     f"{day_type.capitalize()} {day_label}: {n_cells} colour "
-                    f"slots and exactly {len(colours)} colour(s) × {max_same} = "
-                    f"{capacity} capacity — zero slack. A cooldown or theme drop "
-                    f"of any colour will make this day infeasible."
+                    f"slots against a capacity of exactly {capacity} "
+                    f"({n_colours} colour(s), max {max_same} each, "
+                    f"{min(at_reach, n_colours)} may reach {reach}) — zero "
+                    f"slack. A cooldown or theme drop of any colour will make "
+                    f"this day infeasible."
                 ),
                 suggestion=(
                     "Add more colour variety to these slots to leave headroom."

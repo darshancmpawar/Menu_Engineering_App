@@ -36,7 +36,14 @@ from typing import Dict, Any, List, Optional
 
 from ortools.sat.python import cp_model
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnoseContext,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    MenuRuleType,
+)
 from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
@@ -119,3 +126,107 @@ class AttributeGroupingRule(BaseMenuRule):
                     b = dv_bool.get((di + 1, val))
                     if a is not None and b is not None:
                         model.Add(a + b <= 1)
+
+    # Populated by the diagnostics aggregator (see diagnostics.run_diagnostics).
+    _peer_rules: List[Any] = []
+
+    def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
+        """Report when this grouping cannot bite, or cannot be satisfied.
+
+        The rule caps how often each distinct value of ``group_by`` may appear,
+        so two things are worth saying out loud:
+
+        * the attribute column is missing or empty in the eligible pool, so the
+          rule constrains nothing (a silently inert variety rule);
+        * there are fewer distinct values than the cap allows slots for, which
+          means the cap has to be relaxed somewhere — the same arithmetic as a
+          starved slot, reported so it isn't a surprise.
+        """
+        diags: List[Diagnostic] = []
+        if not self.group_by or not self.base_slot:
+            return diags
+        active = ctx.active_base_slots
+        if active is not None and self.base_slot not in active:
+            return diags
+        pool = ctx.pools.get(self.base_slot)
+        if pool is None:
+            return diags
+
+        if self.group_by not in pool.columns:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Column '{self.group_by}' is not present in the "
+                    f"{self.base_slot} pool, so this grouping rule constrains "
+                    f"nothing."
+                ),
+                suggestion=(
+                    f"Add the '{self.group_by}' column to the ontology, correct "
+                    f"the group_by name, or remove the rule."
+                ),
+                affected={'base_slot': self.base_slot, 'group_by': self.group_by},
+            ))
+            return diags
+
+        values = {
+            _norm_str(str(v)) for v in pool[self.group_by].dropna().tolist()
+        }
+        values.discard('')
+        slot_counts = (
+            ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
+        ) or {}
+        per_day = int(slot_counts.get(self.base_slot, 1) or 1)
+        planned_days = sum(
+            1 for d in ctx.dates
+            if (d, self.base_slot) not in (ctx.skip_cells or set())
+        )
+        cells = planned_days * per_day
+
+        if not values:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Every {self.base_slot} candidate has an empty "
+                    f"'{self.group_by}', so this grouping rule constrains "
+                    f"nothing."
+                ),
+                suggestion=(
+                    f"Populate '{self.group_by}' for {self.base_slot} items in "
+                    f"the ontology, or remove the rule."
+                ),
+                affected={'base_slot': self.base_slot, 'group_by': self.group_by},
+            ))
+            return diags
+
+        if self.max_per_group is not None and cells:
+            capacity = len(values) * self.max_per_group
+            if capacity < cells:
+                diags.append(Diagnostic(
+                    rule=self.name, rule_type=self.rule_type.value,
+                    severity=DiagnosticSeverity.WARNING,
+                    phase=DiagnosticPhase.APPLY,
+                    message=(
+                        f"{self.base_slot} has {len(values)} distinct "
+                        f"'{self.group_by}' value(s) capped at "
+                        f"{self.max_per_group} each = {capacity} placements, but "
+                        f"{cells} are needed. The cap cannot hold for every day."
+                    ),
+                    suggestion=(
+                        f"Add {self.base_slot} items with more varied "
+                        f"'{self.group_by}' values, widen source_pools, raise "
+                        f"max_per_group, or shorten the horizon."
+                    ),
+                    affected={
+                        'base_slot': self.base_slot,
+                        'group_by': self.group_by,
+                        'distinct_values': len(values),
+                        'max_per_group': self.max_per_group,
+                        'capacity': capacity,
+                        'cells_needed': cells,
+                    },
+                ))
+        return diags

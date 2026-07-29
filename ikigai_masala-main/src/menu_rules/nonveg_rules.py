@@ -11,10 +11,13 @@ Non-veg menu rules.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Any, Dict, List
 
 import pandas as pd
 from ortools.sat.python import cp_model
+
+logger = logging.getLogger(__name__)
 
 from ..preprocessor.column_mapper import _to_bool01
 from .base_menu_rule import (
@@ -77,8 +80,56 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
                 link_any(model, biryani_lits, day_has_biryani)
                 biryani_day_vars.append(day_has_biryani)
 
-        if biryani_day_vars:
-            model.Add(sum(biryani_day_vars) <= self.max_per_week)
+        if not biryani_day_vars:
+            return
+
+        # The cap is enforced as configured. It is NOT auto-raised to fit a
+        # theme map that forces more biryani days than the cap allows: that
+        # combination is a configuration conflict, and silently raising the cap
+        # would hand back a menu that breaks the weekly-variety rule the cap
+        # exists to enforce. ``diagnose()`` reports the conflict with the exact
+        # config change to make (disable this rule for the counter, or raise
+        # max_per_week) so the relaxation is a decision someone takes, not one
+        # the solver takes for them.
+        model.Add(sum(biryani_day_vars) <= self.max_per_week)
+
+    def forced_biryani_days(self, ctx: DiagnoseContext) -> int:
+        """Days whose nonveg_main pool offers nothing but nonveg biryani.
+
+        On a biryani-theme day the theme filter narrows a single-nonveg counter
+        to biryani only, so a biryani is unavoidable on that day. More such days
+        than ``max_per_week`` is provably unsatisfiable.
+        """
+        pool = ctx.pools.get('nonveg_main')
+        if pool is None or 'is_nonveg_biryani' not in pool.columns:
+            return 0
+        active = ctx.active_base_slots
+        if active is not None and 'nonveg_main' not in active:
+            return 0
+
+        forced = 0
+        for d in ctx.dates:
+            if (d, 'nonveg_main') in (ctx.skip_cells or set()):
+                continue
+            day_pool = pool
+            day_type = ctx.day_types.get(d, '')
+            filter_ctx = {
+                'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+                'pools': ctx.pools, 'slot_num': None,
+            }
+            for rule in (getattr(self, '_peer_rules', None) or []):
+                day_pool = rule.pre_filter_pool(
+                    day_pool, d, 'nonveg_main', day_type, filter_ctx)
+            if len(day_pool) and all(
+                _to_bool01(v) == 1
+                for v in day_pool['is_nonveg_biryani'].tolist()
+            ):
+                forced += 1
+        return forced
+
+    # Populated by the diagnostics aggregator so the check above can replay the
+    # theme filter that narrows the pool.
+    _peer_rules: List[Any] = []
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         """Constraint is ``sum(nonveg_biryani_day_vars) <= max_per_week``.
@@ -128,6 +179,38 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
                 affected={
                     'max_per_week': self.max_per_week,
                     'biryani_count': 0,
+                },
+            ))
+            return diags
+
+        # Config conflict: the theme map forces a nonveg biryani on more days
+        # than the cap permits. Provably unsatisfiable, so report it as an ERROR
+        # (which gates /plan with an actionable 422) rather than letting the
+        # solver return a bare INFEASIBLE — or, worse, quietly raising the cap.
+        forced = self.forced_biryani_days(ctx)
+        if forced > self.max_per_week:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.ERROR,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"This counter's themes leave nonveg biryani as the only "
+                    f"option on {forced} day(s), but the weekly cap allows "
+                    f"{self.max_per_week}. Those rules contradict each other, "
+                    f"so no menu can satisfy both."
+                ),
+                suggestion=(
+                    f"For a counter that is meant to serve biryani daily, add "
+                    f"\"{self.name}\" to this client's `disable` list in "
+                    f"client_rules.json (that is the intended way to say \"the "
+                    f"weekly cap does not apply here\"), or raise max_per_week "
+                    f"to {forced}. Alternatively give the counter non-biryani "
+                    f"theme days, or a second nonveg_main slot so a "
+                    f"non-biryani dish can share the day."
+                ),
+                affected={
+                    'max_per_week': self.max_per_week,
+                    'forced_biryani_days': forced,
                 },
             ))
         return diags

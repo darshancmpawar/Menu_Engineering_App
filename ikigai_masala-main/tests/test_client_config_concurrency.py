@@ -162,3 +162,88 @@ class TestPutRejectsStaleVersion:
         assert after_loser == after_winner, (
             "a rejected PUT must not modify clients.counters"
         )
+
+
+class TestAtomicConfigUpdate:
+    """PUT /client-config must validate everything before it writes anything.
+
+    The handler used to bump `version` first and then run one setter per field,
+    validating as it went. A malformed `source_pools` — the last field checked —
+    returned 400 *after* city / serve_weekends / working_days /
+    item_cooldown_days had been committed and the version incremented, so a
+    single bad request left a half-updated row whose bumped version made the
+    caller's retry 409.
+    """
+
+    CLIENT = 'Rippling'
+
+    def _row(self, fake, name=None):
+        return [
+            r for r in fake._tables['clients'] if r['name'] == (name or self.CLIENT)
+        ][0]
+
+    def _put(self, client, body):
+        return client.put(f'/api/v1/client-config/{self.CLIENT}', json=body)
+
+    def test_invalid_source_pools_writes_nothing(self, fake_supabase):
+        import api.app as api_app
+        api_app.app.config['TESTING'] = True
+        c = api_app.app.test_client()
+        before = dict(self._row(fake_supabase))
+
+        resp = self._put(c, {
+            'version': before['version'], 'city': 'Pune',
+            'serve_weekends': True, 'item_cooldown_days': 15,
+            'source_pools': ['definitely_not_a_pool'],
+        })
+        assert resp.status_code == 400
+        after = self._row(fake_supabase)
+        assert after['version'] == before['version'], "version was bumped"
+        assert after.get('city') == before.get('city')
+        assert after.get('serve_weekends') == before.get('serve_weekends')
+        assert after.get('item_cooldown_days') == before.get('item_cooldown_days')
+
+    def test_invalid_working_days_writes_nothing(self, fake_supabase):
+        import api.app as api_app
+        api_app.app.config['TESTING'] = True
+        c = api_app.app.test_client()
+        before = dict(self._row(fake_supabase))
+
+        resp = self._put(c, {
+            'version': before['version'], 'city': 'Chennai',
+            'working_days': ['funday'],
+        })
+        assert resp.status_code == 400
+        after = self._row(fake_supabase)
+        assert after['version'] == before['version']
+        assert after.get('city') == before.get('city')
+
+    def test_valid_update_applies_and_bumps_once(self, fake_supabase):
+        import api.app as api_app
+        api_app.app.config['TESTING'] = True
+        c = api_app.app.test_client()
+        before = dict(self._row(fake_supabase))
+
+        resp = self._put(c, {
+            'version': before['version'], 'city': 'Pune',
+            'item_cooldown_days': 15, 'working_days': ['mon', 'Wednesday'],
+        })
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()['version'] == before['version'] + 1
+        after = self._row(fake_supabase)
+        assert after['city'] == 'Pune'
+        assert after['item_cooldown_days'] == 15
+        # abbreviations normalise to full lowercase names
+        assert after['working_days'] == ['monday', 'wednesday']
+
+    def test_stale_version_changes_nothing(self, fake_supabase):
+        import api.app as api_app
+        api_app.app.config['TESTING'] = True
+        c = api_app.app.test_client()
+        before = dict(self._row(fake_supabase))
+
+        resp = self._put(c, {'version': before['version'] - 1, 'city': 'NCR'})
+        assert resp.status_code == 409
+        after = self._row(fake_supabase)
+        assert after.get('city') == before.get('city')
+        assert after['version'] == before['version']

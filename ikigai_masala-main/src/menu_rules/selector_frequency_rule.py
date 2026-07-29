@@ -35,11 +35,18 @@ diagnostics surface the shortfall.
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from ortools.sat.python import cp_model
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnoseContext,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    MenuRuleType,
+)
 from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
@@ -176,15 +183,50 @@ class SelectorFrequencyRule(BaseMenuRule):
         else:
             max_place = len(day_has)
 
+        # ...and cap to the number of DISTINCT matching dishes as well.
+        #
+        # ``max_place`` counts days on which a match could be placed, which is
+        # not the same as how many days can *each carry a different* match. With
+        # unique_items in force, N days of a selector needs N distinct matching
+        # items. L&T's south-only counter has exactly one liquid dessert, yet
+        # `liquid_desserts_twice_nonconsecutive` asked for two days: placeable on
+        # all five, satisfiable on none, so the counter went INFEASIBLE with no
+        # indication that a *dessert* rule was at fault. Bounding by distinct
+        # matches makes the rule ask for what the pool can actually supply.
+        distinct_matches = {
+            _norm_str(r.get('item', ''))
+            for c in cells
+            if self.base_slot is None or c.base_slot == self.base_slot
+            for r in c.cand_rows
+            if self._row_matches(r)
+        }
+        distinct_matches.discard('')
+        if distinct_matches:
+            max_place = min(max_place, len(distinct_matches))
+
         if self.exact is not None:
             tgt = min(self.exact, max_place)
             if tgt != self.exact:
-                logger.info("%s: exact %d capped to %d (pool/horizon limit)",
-                            self.name, self.exact, tgt)
+                logger.warning(
+                    "%s: exact %d capped to %d — the eligible pool offers only "
+                    "%d distinct matching dish(es) across %d placeable day(s). "
+                    "Widen this client's item pools or lower the target.",
+                    self.name, self.exact, tgt, len(distinct_matches),
+                    len(day_has),
+                )
             if tgt > 0:
                 model.Add(sum(hvars) == tgt)
         if self.min is not None and self.min > 0:
             tgt = min(self.min, max_place)
+            if tgt != self.min:
+                logger.warning(
+                    "%s: min %d capped to %d — the eligible pool offers only "
+                    "%d distinct matching dish(es) across %d placeable day(s). "
+                    "The rule is under-enforced; widen this client's item pools "
+                    "or lower the target.",
+                    self.name, self.min, tgt, len(distinct_matches),
+                    len(day_has),
+                )
             if tgt > 0:
                 model.Add(sum(hvars) >= tgt)
 
@@ -192,3 +234,137 @@ class SelectorFrequencyRule(BaseMenuRule):
             for (da, ha), (db, hb) in zip(day_has, day_has[1:]):
                 if db == da + 1:
                     model.Add(ha + hb <= 1)
+
+    # Populated by the diagnostics aggregator so diagnose() can replay the
+    # pre-filter chain and see the pool the solver will actually receive.
+    _peer_rules: List[Any] = []
+
+    def _eligible_days(self, ctx: "DiagnoseContext"):
+        """Return ``(placeable_days, distinct_matching_items)`` for the horizon.
+
+        Mirrors what ``apply()`` computes, but from the pre-flight pools, so the
+        numbers reported here are the numbers the constraint will be built from.
+        """
+        slots = (
+            [self.base_slot] if self.base_slot
+            else list(ctx.active_base_slots or [])
+        )
+        days = 0
+        distinct: Set[str] = set()
+        for d in ctx.dates:
+            day_has_match = False
+            for base in slots:
+                if base not in ctx.pools:
+                    continue
+                if (d, base) in (ctx.skip_cells or set()):
+                    continue
+                pool = ctx.pools[base]
+                if base in ('rice', 'healthy_rice') and len(pool) > 0:
+                    pool = pool[~pool['item'].isin(ctx.cfg.rice_exclude_items)]
+                day_type = ctx.day_types.get(d, '')
+                filter_ctx = {
+                    'cfg': ctx.cfg, 'banned_by_date': {},
+                    'ricebread_ban_day': {}, 'pools': ctx.pools,
+                    'slot_num': None,
+                }
+                for rule in (self._peer_rules or []):
+                    pool = rule.pre_filter_pool(
+                        pool, d, base, day_type, filter_ctx)
+                if not len(pool):
+                    continue
+                for _i, row in pool.iterrows():
+                    if self._row_matches(row):
+                        day_has_match = True
+                        name = _norm_str(row.get('item', ''))
+                        if name:
+                            distinct.add(name)
+            if day_has_match:
+                days += 1
+        return days, len(distinct)
+
+    def diagnose(self, ctx: "DiagnoseContext") -> List["Diagnostic"]:
+        """Report when this rule cannot ask for what it is configured to ask.
+
+        ``apply()`` caps ``min``/``exact`` to what the pool can supply so a thin
+        pool relaxes instead of going INFEASIBLE. That relaxation is correct, but
+        it used to be invisible: a rule targeting a flag no item carries — or
+        fewer items than days — silently stopped constraining anything, and the
+        menu looked fine while a client requirement went unenforced. This is the
+        surface that says so.
+
+        Severities are deliberately non-blocking. ``apply()`` caps the target to
+        what is achievable and the solve proceeds, so a shortfall never makes the
+        plan impossible — reporting it as an ERROR would gate /plan with a 422 for
+        a counter that generates a perfectly good menu (L&T's south counter has
+        one liquid dessert against a target of two, and is otherwise fine).
+
+          * WARNING — target capped: the rule is partially enforced, and the
+                      response says by how much.
+          * INFO    — the selector matches nothing anywhere, so the rule is inert.
+        """
+        diags: List["Diagnostic"] = []
+        if self.min is None and self.exact is None:
+            # max / daily_max / non_consecutive only tighten; a thin pool makes
+            # them trivially satisfied, never wrong.
+            return diags
+
+        placeable, distinct = self._eligible_days(ctx)
+        target = self.exact if self.exact is not None else self.min
+        if not target or target <= 0:
+            return diags
+        achievable = min(placeable, distinct) if distinct else 0
+        if achievable >= target:
+            return diags
+
+        sel = f"{self.sel_kind}={self.sel_value!r}"
+        scope = f" in {self.base_slot}" if self.base_slot else ""
+        shared = {
+            'selector': sel,
+            'base_slot': self.base_slot,
+            'target': target,
+            'placeable_days': placeable,
+            'distinct_items': distinct,
+            'achievable': achievable,
+        }
+
+        if distinct == 0:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"No eligible item matches {sel}{scope}, so this rule is "
+                    f"inert — its target of {target} is not enforced at all."
+                ),
+                suggestion=(
+                    "Check the selector spelling against the ontology columns, "
+                    "populate the flag in menu_items.xlsx, or remove the rule. "
+                    "A selector that matches nothing silently drops a client "
+                    "requirement."
+                ),
+                affected=shared,
+            ))
+            return diags
+
+        wording = (
+            f"Requires exactly {target} day(s)" if self.exact is not None
+            else f"Asks for at least {target} day(s)"
+        )
+        diags.append(Diagnostic(
+            rule=self.name, rule_type=self.rule_type.value,
+            severity=DiagnosticSeverity.WARNING,
+            phase=DiagnosticPhase.APPLY,
+            message=(
+                f"{wording} with {sel}{scope}, but only {achievable} can be "
+                f"achieved ({distinct} distinct matching item(s) across "
+                f"{placeable} placeable day(s)). The rule is enforced at "
+                f"{achievable} — partially, not as configured."
+            ),
+            suggestion=(
+                f"Widen this client's source_pools, add matching items to the "
+                f"ontology, or lower the target to {achievable} so the config "
+                f"states what is actually achievable."
+            ),
+            affected=shared,
+        ))
+        return diags

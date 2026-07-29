@@ -165,7 +165,20 @@ class MenuRuleLoader:
     def _merge_rule_dicts(parent, child, disable) -> List[Dict[str, Any]]:
         """Merge *child* rule dicts over *parent*: same ``name`` overrides,
         new names append (parent order preserved), names in *disable* drop.
-        Nameless rules are always appended (never override)."""
+        Nameless rules are always appended (never override).
+
+        An override is a **per-key** merge, not a whole-dict replacement: keys
+        the child omits are inherited from the parent rule of the same name.
+        Whole-dict replacement silently dropped sibling keys — F5 and Cigna
+        override ``nonveg_main_daily_pair`` with just ``components``, which
+        deleted the city rule's ``components_by_theme`` and left their Chinese
+        day with no Chinese requirement and their biryani day with no biryani.
+        Inheriting the omitted keys keeps a partial override meaning "change
+        this field", which is what every author of these files expects.
+
+        To *remove* an inherited key, set it to ``null`` in the child (dropped
+        below), or drop the whole rule via ``disable``.
+        """
         disable = set(disable or [])
         by_name: Dict[str, Any] = {}
         order: List[str] = []
@@ -177,7 +190,16 @@ class MenuRuleLoader:
                 continue
             if n not in by_name:
                 order.append(n)
-            by_name[n] = r
+                by_name[n] = dict(r)
+                continue
+            merged = {**by_name[n], **r}
+            inherited = sorted(set(by_name[n]) - set(r))
+            if inherited:
+                logger.info(
+                    "Rule %r overridden; inheriting unspecified key(s) from the "
+                    "base rule: %s", n, ", ".join(inherited),
+                )
+            by_name[n] = {k: v for k, v in merged.items() if v is not None}
         return [by_name[n] for n in order if n not in disable] + anon
 
     def load_from_dict(self, config_data: Dict[str, Any]) -> List[BaseMenuRule]:
@@ -201,34 +223,116 @@ class MenuRuleLoader:
             raise ValueError(f"Unknown rule type: {rule_type}")
         return self.RULE_CLASSES[rule_type](rule_config)
 
-    def load_for_client(
-        self, client_name: str, generic_rules: List[BaseMenuRule],
-    ) -> List[BaseMenuRule]:
-        """Return *generic_rules* plus any per-client rules for *client_name*.
+    @staticmethod
+    def _parse_client_block(
+        client_block: Any, counter_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Normalise a per-client ``client_rules.json`` value.
 
-        Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call.  If the file is
-        missing or the client has no entry, returns *generic_rules* unchanged.
+        Accepts the legacy list form ``[rule, …]`` or the object form::
+
+            {"disable": [...], "rules": [...], "constant_items": {...},
+             "counters": {"<counter name>": {"disable": [...], "rules": [...],
+                                             "constant_items": {...}}}}
+
+        ``counters`` scopes an override to one counter of a multi-counter client.
+        A client-level entry applies to every counter, which is wrong for rules
+        that only make sense for one station: L&T's "Non Veg Lunch" counter is
+        themed biryani every day, so the weekly nonveg-biryani cap has to come
+        off *there* — but leaving it off client-wide would silently disable it if
+        another L&T counter ever gains a nonveg_main slot.
+
+        Counter entries are layered over the client-level ones, so shared
+        overrides stay declared once.
         """
+        empty = {'disable': [], 'rules': [], 'constant_items': {}}
+        if isinstance(client_block, list):
+            return {**empty, 'rules': list(client_block)}
+        if not isinstance(client_block, dict):
+            return dict(empty)
+
+        def _layer(block: Dict[str, Any]) -> Dict[str, Any]:
+            rules = block.get('rules', block.get('constraints', []))
+            return {
+                'disable': list(block.get('disable') or []),
+                'rules': list(rules or []),
+                'constant_items': dict(block.get('constant_items') or {}),
+            }
+
+        merged = _layer(client_block)
+        counters = client_block.get('counters')
+        if counter_name and isinstance(counters, dict):
+            scoped = counters.get(counter_name)
+            if isinstance(scoped, dict):
+                layer = _layer(scoped)
+                merged['disable'] = merged['disable'] + layer['disable']
+                merged['rules'] = merged['rules'] + layer['rules']
+                merged['constant_items'] = {
+                    **merged['constant_items'], **layer['constant_items'],
+                }
+        return merged
+
+    @classmethod
+    def _read_client_blob(cls) -> Dict[str, Any]:
         path = Path(CLIENT_RULES_CONFIG_PATH)
         if not path.exists():
-            return list(generic_rules)
+            return {}
         try:
             with open(path, 'r') as f:
                 blob = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to read client_rules.json: %s", exc)
-            return list(generic_rules)
+            return {}
+        return blob if isinstance(blob, dict) else {}
 
-        client_block = blob.get(client_name)
+    def get_client_constant_items(
+        self, client_name: str, counter_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return ``constant_items`` for *client_name* (empty dict if unset).
+
+        *counter_name* layers that counter's ``counters`` entry over the
+        client-level one.
+        """
+        block = self._read_client_blob().get(client_name)
+        if not block:
+            return {}
+        return self._parse_client_block(block, counter_name)['constant_items']
+
+    def load_for_client(
+        self, client_name: str, generic_rules: List[BaseMenuRule],
+        counter_name: Optional[str] = None,
+    ) -> List[BaseMenuRule]:
+        """Merge city/generic rules with per-client overrides for *client_name*.
+
+        Reads ``CLIENT_RULES_CONFIG_PATH`` fresh every call. Client entries may
+        be a legacy rule list or ``{disable, rules, constant_items}``. Merge
+        semantics match city ``extends``: same ``name`` overrides, ``disable``
+        drops by name. Missing file / unknown client → *generic_rules* unchanged.
+
+        *counter_name* additionally applies that counter's ``counters`` entry, so
+        an override can be scoped to one station of a multi-counter client.
+        """
+        client_block = self._read_client_blob().get(client_name)
         if not client_block:
             return list(generic_rules)
 
-        extra: List[BaseMenuRule] = []
-        for rule_cfg in client_block:
+        parsed = self._parse_client_block(client_block, counter_name)
+        parent_dicts = [
+            dict(getattr(r, 'config', {}) or {})
+            for r in generic_rules
+            if getattr(r, 'config', None) is not None
+        ]
+        # Preserve rules that somehow lack a config dict (tests may pass stubs).
+        stubs = [r for r in generic_rules if getattr(r, 'config', None) is None]
+        merged_dicts = self._merge_rule_dicts(
+            parent_dicts, parsed['rules'], parsed['disable'],
+        )
+        merged: List[BaseMenuRule] = list(stubs)
+        for rule_cfg in merged_dicts:
             try:
                 rule = self._create_rule(rule_cfg)
                 if rule and rule.validate_config():
-                    extra.append(rule)
+                    merged.append(rule)
                 else:
                     _log_invalid_rule(
                         rule, rule_cfg,
@@ -238,10 +342,14 @@ class MenuRuleLoader:
                 logger.warning(
                     "Error creating per-client rule for %s: %s",
                     client_name, exc)
+        n_extra = len(parsed['rules'])
+        n_disabled = len(parsed['disable'])
         logger.info(
-            "Loaded %d extra rule(s) for client '%s'",
-            len(extra), client_name)
-        return list(generic_rules) + extra
+            "Merged client '%s'%s: %d override/add rule(s), %d disabled → %d total",
+            client_name, f" counter '{counter_name}'" if counter_name else "",
+            n_extra, n_disabled, len(merged),
+        )
+        return merged
 
     def get_rules_by_type(self, rule_type: str) -> List[BaseMenuRule]:
         return [r for r in self.rules if r.rule_type.value == rule_type]

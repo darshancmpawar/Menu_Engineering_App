@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS clients (
     serve_weekends     BOOLEAN NOT NULL DEFAULT false,
     item_cooldown_days INT,
     source_pools       JSONB,
+    working_days       JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -73,6 +74,47 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS city               TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends     BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS item_cooldown_days INT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_pools       JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS working_days       JSONB;
+
+-- Seed working_days for kitchens that do not run a full Mon–Fri week.
+UPDATE clients SET working_days = '["wednesday","thursday","friday"]'::jsonb
+ WHERE name = 'Quince';
+UPDATE clients SET working_days = '["monday","tuesday","thursday"]'::jsonb
+ WHERE name = 'Piramel Finance';
+
+-- -----------------------------------------------------------------------------
+-- Attach clients to their own item pools.
+--
+-- `source_pools` lists the ontology `client`-column tokens a client draws on;
+-- `common` is always implicit. NULL means "use the whole ontology", and an
+-- empty array means "common only" — so a client left at '[]' silently runs on
+-- the ~865 common items even when the ontology carries a pool named for it.
+--
+-- These three were in that state. The uplift in distinct eligible items is
+-- large enough to change how varied their menus can be:
+--
+--   Cloudera   865 -> 1525   (veg_gravy 139->284, dessert 27->81, dal 37->88)
+--   Infenion   865 -> 1326   (salad 25->74, starter 43->76, veg_dry 116->193)
+--   Icon Blr   865 ->  968   (dessert 27->41, dal 37->48, salad 25->31)
+--
+-- Only applied where the value is still unset/empty, so a deliberate later
+-- choice is never overwritten.
+UPDATE clients SET source_pools = '["cloudera"]'::jsonb
+ WHERE name = 'Cloudera'
+   AND (source_pools IS NULL OR source_pools = '[]'::jsonb);
+
+UPDATE clients SET source_pools = '["icon"]'::jsonb
+ WHERE name = 'Icon Blr'
+   AND (source_pools IS NULL OR source_pools = '[]'::jsonb);
+
+-- NOTE: the `infineon` pool is also referenced by 'Plan View'. Pools are
+-- shareable (a client's universe is common ∪ its tokens), so granting it here
+-- takes nothing away from Plan View. Whether Plan View should keep it is a
+-- separate question for whoever owns that account — this script does not touch
+-- Plan View.
+UPDATE clients SET source_pools = '["infineon"]'::jsonb
+ WHERE name = 'Infenion'
+   AND (source_pools IS NULL OR source_pools = '[]'::jsonb);
 
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.

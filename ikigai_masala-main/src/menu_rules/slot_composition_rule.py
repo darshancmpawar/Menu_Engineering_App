@@ -53,7 +53,14 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import (
+    BaseMenuRule,
+    Diagnostic,
+    DiagnoseContext,
+    DiagnosticPhase,
+    DiagnosticSeverity,
+    MenuRuleType,
+)
 from .selector_frequency_rule import SelectorFrequencyRule
 
 logger = logging.getLogger(__name__)
@@ -136,27 +143,158 @@ class SlotCompositionRule(BaseMenuRule):
             ]
             if not day_cells:
                 continue
-            # Self-gate: only compose when the counter has the expected number
-            # of this slot on this day (leaves single-slot counters untouched).
-            if self.requires_slot_count is not None \
-                    and len(day_cells) != self.requires_slot_count:
-                continue
+            # Self-gate: only compose when the *counter* is configured with the
+            # expected number of this slot (leaves single-slot counters
+            # untouched).
+            #
+            # Gate on the configured slot count, not on len(day_cells): a client
+            # constant that pins one expansion (e.g. nonveg_main__2 = "boiled
+            # egg") removes that cell, and gating on surviving cells silently
+            # switched the whole composition rule off for that day — Plan View
+            # pins nonveg_main__2 every day, which disabled the nonveg pairing
+            # for the entire week with no warning. Components are already capped
+            # to what the surviving cells can supply just below, so composing
+            # against a partially-pinned family degrades instead of vanishing.
+            if self.requires_slot_count is not None:
+                cfg = context.get('cfg')
+                slot_counts = getattr(cfg, 'slot_counts', None) or {}
+                configured = int(slot_counts.get(self.base_slot, len(day_cells)))
+                if configured != self.requires_slot_count:
+                    continue
 
             theme = day_types[di] if di < len(day_types) else ''
             comps = self.components_by_theme.get(theme, self.components)
             if not comps:
                 continue
 
+            # Components are capped to what this day can actually supply: each
+            # to its own candidate count, and collectively to the number of
+            # cells left to fill. The cell budget matters when a client constant
+            # pins one expansion of the family — two count-1 components against
+            # a single surviving cell would demand two different dishes from one
+            # slot and make the day INFEASIBLE. Earlier components win the
+            # budget, so config order expresses priority.
+            budget = len(day_cells)
             for matcher, count in comps:
+                if budget <= 0:
+                    logger.info(
+                        "%s: day %d component %s dropped (no cell left to fill; "
+                        "the rest of the family is pinned or restricted)",
+                        self.name, di, matcher)
+                    continue
                 lits = [
                     v for c in day_cells
                     for v, r in zip(c.x_vars, c.cand_rows)
                     if SelectorFrequencyRule._matches(r, matcher)
                 ]
-                required = min(count, len(lits))
+                required = min(count, len(lits), budget)
                 if required != count:
                     logger.info(
-                        "%s: day %d component %s capped %d -> %d (pool limit)",
+                        "%s: day %d component %s capped %d -> %d "
+                        "(pool/cell limit)",
                         self.name, di, matcher, count, required)
                 if required > 0:
                     model.Add(sum(lits) >= required)
+                    budget -= required
+
+    # Populated by the diagnostics aggregator (see diagnostics.run_diagnostics).
+    _peer_rules: List[Any] = []
+
+    def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
+        """Report when a day's composition cannot be assembled as configured.
+
+        Two silent failure modes, both WARNING because ``apply()`` caps each
+        component to what the day can supply rather than failing:
+
+        * the counter is not configured with ``requires_slot_count`` of this
+          slot, so the rule never fires at all — easy to miss when a slot count
+          is edited in the UI and a composition rule quietly stops applying;
+        * a component's selector matches nothing in the day's pool, so that part
+          of the pairing is dropped (a Chinese day with no Chinese dish left
+          after the theme filter, for example).
+        """
+        diags: List[Diagnostic] = []
+        if not self.base_slot:
+            return diags
+        active = ctx.active_base_slots
+        if active is not None and self.base_slot not in active:
+            return diags
+
+        slot_counts = (
+            ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
+        ) or {}
+        configured = int(slot_counts.get(self.base_slot, 1) or 1)
+        if self.requires_slot_count is not None \
+                and configured != self.requires_slot_count:
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Composition for '{self.base_slot}' is inactive: it applies "
+                    f"to counters serving {self.requires_slot_count} of that "
+                    f"slot, and this counter serves {configured}."
+                ),
+                suggestion=(
+                    f"If this counter should be composed, set its "
+                    f"{self.base_slot} count to {self.requires_slot_count}; "
+                    f"otherwise no action is needed."
+                ),
+                affected={
+                    'base_slot': self.base_slot,
+                    'requires_slot_count': self.requires_slot_count,
+                    'configured_slot_count': configured,
+                },
+            ))
+            return diags
+
+        if self.base_slot not in ctx.pools:
+            return diags
+
+        missing: Dict[str, List[str]] = {}
+        for d in ctx.dates:
+            if (d, self.base_slot) in (ctx.skip_cells or set()):
+                continue
+            day_type = ctx.day_types.get(d, '')
+            comps = self.components_by_theme.get(day_type, self.components)
+            if not comps:
+                continue
+            pool = ctx.pools[self.base_slot]
+            filter_ctx = {
+                'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+                'pools': ctx.pools, 'slot_num': None,
+            }
+            for rule in (self._peer_rules or []):
+                pool = rule.pre_filter_pool(
+                    pool, d, self.base_slot, day_type, filter_ctx)
+            rows = [r for _i, r in pool.iterrows()] if len(pool) else []
+            for matcher, count in comps:
+                have = sum(
+                    1 for r in rows
+                    if SelectorFrequencyRule._matches(r, matcher)
+                )
+                if have < count:
+                    label = f"{matcher[0]}={matcher[1]!r}"
+                    missing.setdefault(label, []).append(d.isoformat())
+
+        for label, days in sorted(missing.items()):
+            diags.append(Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.WARNING,
+                phase=DiagnosticPhase.APPLY,
+                message=(
+                    f"Composition component {label} for '{self.base_slot}' has "
+                    f"too few candidates on {len(days)} day(s), so that part of "
+                    f"the pairing is dropped there."
+                ),
+                suggestion=(
+                    "Widen this client's source_pools, add matching items, or "
+                    "relax the theme filter on those days if the pairing matters."
+                ),
+                affected={
+                    'base_slot': self.base_slot,
+                    'component': label,
+                    'days': days,
+                },
+            ))
+        return diags

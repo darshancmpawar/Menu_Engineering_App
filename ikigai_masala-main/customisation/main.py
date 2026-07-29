@@ -13,6 +13,8 @@ Called from app.py when st.session_state.view == "editor".
 
 from typing import Dict, List
 
+import html
+
 import streamlit as st
 
 from ui.api_client import MenuApiClient
@@ -344,7 +346,12 @@ def render_customisation_editor(api: MenuApiClient):
     if empty_counters:
         st.markdown(
             f'<p class="pulse-hint warn">Every counter needs at least one '
-            f'food category. Missing: {", ".join(empty_counters)}.</p>',
+            f'food category. Missing: '
+            # Counter names are free text typed by an admin, and this block
+            # renders with unsafe_allow_html — escape before interpolating so a
+            # name containing markup cannot execute. Every other raw-HTML site
+            # in the app already does this (ui/formatters.py, app.py).
+            f'{", ".join(html.escape(n) for n in empty_counters)}.</p>',
             unsafe_allow_html=True,
         )
 

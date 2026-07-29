@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS clients (
     serve_weekends     BOOLEAN NOT NULL DEFAULT false,
     item_cooldown_days INT,
     source_pools       JSONB,
+    working_days       JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 -- Migrations for tables created before these columns existed. No-ops on fresh
@@ -36,6 +37,7 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS city               TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends     BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS item_cooldown_days INT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_pools       JSONB;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS working_days       JSONB;
 
 -- 2. App-level settings (core_min_one_slots, constant_slots, fallback, etc.)
 CREATE TABLE IF NOT EXISTS app_settings (
