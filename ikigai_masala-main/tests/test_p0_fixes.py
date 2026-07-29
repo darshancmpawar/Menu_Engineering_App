@@ -17,6 +17,7 @@ from ortools.sat.python import cp_model
 
 from src.menu_rules.menu_rule_loader import MenuRuleLoader
 from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
+from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
 from src.menu_rules.slot_composition_rule import SlotCompositionRule
 from src.menu_rules.unique_items_menu_rule import (
     UniqueItemsMenuRule,
@@ -509,3 +510,154 @@ class TestPerCounterScoping:
         south = MenuRuleLoader._parse_client_block(block, 'South Lunch')
         assert 'nonveg_biryani_once_per_week' in nonveg['disable']
         assert 'nonveg_biryani_once_per_week' not in south['disable']
+
+
+# --------------------------------------------------------------------------
+# diagnose() on the config-driven rule types (P1)
+# --------------------------------------------------------------------------
+
+def _diag_ctx(pools, *, dates=None, day_types=None, slot_counts=None,
+              active=None, skip=None):
+    from src.menu_rules.base_menu_rule import DiagnoseContext
+    dates = dates or [MON + dt.timedelta(days=i) for i in range(5)]
+    return DiagnoseContext(
+        pools=pools, dates=dates,
+        day_types=day_types or {d: 'mix' for d in dates},
+        cfg=type('C', (), {'rice_exclude_items': set()})(),
+        df=pd.DataFrame(), banned_by_date={}, ricebread_ban_day={},
+        skip_cells=skip or set(),
+        client_cfg=type('K', (), {'slot_counts': slot_counts or {}})(),
+        active_base_slots=active,
+    )
+
+
+class TestSelectorFrequencyDiagnose:
+    """The most-used rule type was invisible to pre-flight before this."""
+
+    def _rule(self, **over):
+        cfg = {'name': 'r', 'type': 'selector_frequency',
+               'selector': {'flag': 'is_liquid_dessert'},
+               'base_slot': 'dessert'}
+        cfg.update(over)
+        return SelectorFrequencyRule(cfg)
+
+    def _pool(self, liquid_flags):
+        return pd.DataFrame({
+            'item': [f'd{i}' for i in range(len(liquid_flags))],
+            'is_liquid_dessert': liquid_flags,
+        })
+
+    def test_inert_selector_reports_info(self):
+        """A flag no item carries silently dropped a client requirement."""
+        rule = self._rule(exact=2)
+        ctx = _diag_ctx({'dessert': self._pool([0, 0, 0, 0, 0])},
+                        slot_counts={'dessert': 1}, active=['dessert'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['info']
+        assert 'inert' in diags[0].message
+
+    def test_shortfall_reports_warning_not_error(self):
+        """apply() caps the target, so this must not gate /plan with a 422."""
+        rule = self._rule(exact=2)
+        ctx = _diag_ctx({'dessert': self._pool([1, 0, 0, 0, 0])},
+                        slot_counts={'dessert': 1}, active=['dessert'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['warning']
+        assert diags[0].affected['achievable'] == 1
+        assert diags[0].affected['target'] == 2
+
+    def test_satisfiable_target_is_quiet(self):
+        rule = self._rule(exact=2)
+        ctx = _diag_ctx({'dessert': self._pool([1, 1, 1, 0, 0])},
+                        slot_counts={'dessert': 1}, active=['dessert'])
+        assert rule.diagnose(ctx) == []
+
+    def test_max_only_rule_is_quiet(self):
+        """max/daily_max only tighten; a thin pool makes them trivially met."""
+        rule = self._rule(max=1)
+        ctx = _diag_ctx({'dessert': self._pool([0, 0, 0])},
+                        slot_counts={'dessert': 1}, active=['dessert'])
+        assert rule.diagnose(ctx) == []
+
+
+class TestSlotCompositionDiagnose:
+    RULE = {
+        'name': 'pair', 'type': 'slot_composition', 'base_slot': 'nonveg_main',
+        'requires_slot_count': 2,
+        'components': [
+            {'selector': {'flag': 'is_egg_dish'}, 'count': 1},
+            {'selector': {'primary_protein': 'chicken'}, 'count': 1},
+        ],
+    }
+
+    def test_inactive_when_slot_count_differs(self):
+        rule = SlotCompositionRule(dict(self.RULE))
+        pool = pd.DataFrame({'item': ['a'], 'is_egg_dish': [1],
+                             'primary_protein': ['egg']})
+        ctx = _diag_ctx({'nonveg_main': pool},
+                        slot_counts={'nonveg_main': 1},
+                        active=['nonveg_main'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['info']
+        assert 'inactive' in diags[0].message
+
+    def test_missing_component_reports_the_days(self):
+        rule = SlotCompositionRule(dict(self.RULE))
+        # egg present, chicken absent -> the chicken half cannot be composed
+        pool = pd.DataFrame({'item': ['e1', 'e2'], 'is_egg_dish': [1, 1],
+                             'primary_protein': ['egg', 'egg']})
+        ctx = _diag_ctx({'nonveg_main': pool},
+                        slot_counts={'nonveg_main': 2},
+                        active=['nonveg_main'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['warning']
+        assert 'chicken' in diags[0].affected['component']
+        assert len(diags[0].affected['days']) == 5
+
+    def test_satisfiable_composition_is_quiet(self):
+        rule = SlotCompositionRule(dict(self.RULE))
+        pool = pd.DataFrame({'item': ['e1', 'c1'], 'is_egg_dish': [1, 0],
+                             'primary_protein': ['egg', 'chicken']})
+        ctx = _diag_ctx({'nonveg_main': pool},
+                        slot_counts={'nonveg_main': 2},
+                        active=['nonveg_main'])
+        assert rule.diagnose(ctx) == []
+
+
+class TestAttributeGroupingDiagnose:
+    def _rule(self, **over):
+        from src.menu_rules.attribute_grouping_rule import AttributeGroupingRule
+        cfg = {'name': 'g', 'type': 'attribute_grouping', 'base_slot': 'sambar',
+               'group_by': 'key_ingredient'}
+        cfg.update(over)
+        return AttributeGroupingRule(cfg)
+
+    def test_missing_column_reports_info(self):
+        rule = self._rule(max_per_group=1)
+        ctx = _diag_ctx({'sambar': pd.DataFrame({'item': ['a', 'b']})},
+                        slot_counts={'sambar': 1}, active=['sambar'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['info']
+        assert 'key_ingredient' in diags[0].message
+
+    def test_cap_capacity_shortfall_warns(self):
+        """2 distinct values x max 1 each = 2 placements for a 5-day plan."""
+        rule = self._rule(max_per_group=1)
+        pool = pd.DataFrame({'item': ['a', 'b'],
+                             'key_ingredient': ['drumstick', 'brinjal']})
+        ctx = _diag_ctx({'sambar': pool}, slot_counts={'sambar': 1},
+                        active=['sambar'])
+        diags = rule.diagnose(ctx)
+        assert [d.severity.value for d in diags] == ['warning']
+        assert diags[0].affected['capacity'] == 2
+        assert diags[0].affected['cells_needed'] == 5
+
+    def test_enough_variety_is_quiet(self):
+        rule = self._rule(max_per_group=1)
+        pool = pd.DataFrame({
+            'item': list('abcde'),
+            'key_ingredient': ['a1', 'b1', 'c1', 'd1', 'e1'],
+        })
+        ctx = _diag_ctx({'sambar': pool}, slot_counts={'sambar': 1},
+                        active=['sambar'])
+        assert rule.diagnose(ctx) == []
