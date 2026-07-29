@@ -1211,3 +1211,181 @@ class TestWholeHorizonPinStaysStamped:
         assert 'salad' not in whole, 'a weekday map does not replace the slot'
         assert (wed, 'salad') in forced, forced
         assert (wed, 'salad') not in skips
+
+
+class TestWeekdayKeyedComposition:
+    """A dish family pinned to a named weekday, not to a theme.
+
+    Six clients state requirements no theme expresses. Infenion's non-veg row is
+    the clearest: "Monday chicken gravy, Wednesday egg, Friday biryani, other days
+    blank" — and its sample menu serves exactly that.
+    """
+
+    def _infenion(self):
+        return SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'infenion_nonveg_by_weekday',
+            'base_slot': 'nonveg_main', 'min_slot_count': 1,
+            'components_by_weekday': {
+                'mon': [{'selector': {'any_flag': ['is_north_chicken_gravy',
+                                                   'is_south_chicken_gravy']},
+                         'count': 1}],
+                'tue': [],
+                'wed': [{'selector': {'flag': 'is_egg_dish'}, 'count': 1}],
+                'thu': [],
+                'fri': [{'selector': {'flag': 'is_nonveg_biryani'}, 'count': 1}],
+            },
+        })
+
+    def test_each_weekday_gets_its_own_family(self):
+        r = self._infenion()
+        assert r.validate_config(), r.validation_errors()
+        got = [
+            [m[0] for m, _c in r._components_for(MON + dt.timedelta(days=i), 'mix')]
+            for i in range(5)
+        ]
+        assert got == [['any_flag'], [], ['flag'], [], ['flag']], got
+
+    def test_empty_weekday_list_composes_nothing(self):
+        """"other days blank" — an empty list is a real instruction, not absence."""
+        r = self._infenion()
+        tue = MON + dt.timedelta(days=1)
+        assert r._components_for(tue, 'biryani') == [], (
+            'a weekday configured empty must not fall through to the theme map'
+        )
+
+    def test_weekday_outranks_theme_and_theme_outranks_default(self):
+        r = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'x', 'base_slot': 'nonveg_main',
+            'components': [{'selector': {'flag': 'is_default'}, 'count': 1}],
+            'components_by_theme': {
+                'biryani': [{'selector': {'flag': 'is_theme'}, 'count': 1}]},
+            'components_by_weekday': {
+                'friday': [{'selector': {'flag': 'is_weekday'}, 'count': 1}]},
+        })
+        fri, wed = MON + dt.timedelta(days=4), MON + dt.timedelta(days=2)
+        assert r._components_for(fri, 'biryani')[0][0][1] == 'is_weekday'
+        assert r._components_for(wed, 'biryani')[0][0][1] == 'is_theme'
+        assert r._components_for(wed, 'mix')[0][0][1] == 'is_default'
+
+    def test_accepts_short_and_long_weekday_tokens(self):
+        for token in ('fri', 'friday', 'FRIDAY', ' Fri '):
+            r = SlotCompositionRule({
+                'type': 'slot_composition', 'name': 'x',
+                'base_slot': 'nonveg_main',
+                'components_by_weekday': {
+                    token: [{'selector': {'flag': 'f'}, 'count': 1}]},
+            })
+            assert r.validate_config(), (token, r.validation_errors())
+            assert 4 in r.components_by_weekday, token
+
+    def test_unrecognised_weekday_is_a_config_error(self):
+        r = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'x', 'base_slot': 'nonveg_main',
+            'components': [{'selector': {'flag': 'f'}, 'count': 1}],
+            'components_by_weekday': {
+                'funday': [{'selector': {'flag': 'f'}, 'count': 1}]},
+        })
+        assert not r.validate_config()
+        assert any('funday' in e for e in r.validation_errors())
+
+    def test_bad_selector_under_a_weekday_is_not_silent(self):
+        r = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'x', 'base_slot': 'nonveg_main',
+            'components_by_weekday': {
+                'mon': [{'selector': {'nonsense_key': 'v'}, 'count': 1}]},
+        })
+        assert not r.validate_config(), r.validation_errors()
+
+    def test_no_weekday_config_is_unchanged(self):
+        """Existing rules must behave exactly as before."""
+        r = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'pair',
+            'base_slot': 'nonveg_main', 'min_slot_count': 2,
+            'components': [{'selector': {'flag': 'is_dry'}, 'count': 1}],
+            'components_by_theme': {
+                'biryani': [{'selector': {'flag': 'is_biry'}, 'count': 1}]},
+        })
+        assert r.components_by_weekday == {}
+        for i in range(5):
+            d = MON + dt.timedelta(days=i)
+            assert r._components_for(d, 'mix')[0][0][1] == 'is_dry'
+            assert r._components_for(d, 'biryani')[0][0][1] == 'is_biry'
+
+
+class TestComponentExclude:
+    """A component may exclude a selector, because the flags are not clean.
+
+    `egg_drumstick_curry` and `egg_kurma` carry `is_south_chicken_gravy` despite
+    being egg dishes, so "a chicken gravy on Monday" was satisfied by an egg
+    curry. Excluding `is_egg_dish` states the intent without a data fix.
+    """
+
+    def _rule(self, exclude=None):
+        comp = {'selector': {'any_flag': ['is_north_chicken_gravy',
+                                          'is_south_chicken_gravy']},
+                'count': 1}
+        if exclude:
+            comp['exclude'] = exclude
+        return SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'x',
+            'base_slot': 'nonveg_main', 'components': [comp],
+        })
+
+    EGG_GRAVY = {'item': 'egg_drumstick_curry', 'is_south_chicken_gravy': 1,
+                 'is_egg_dish': 1}
+    CHICKEN_GRAVY = {'item': 'goan_chicken_curry', 'is_south_chicken_gravy': 1,
+                     'is_egg_dish': 0}
+
+    def test_without_exclude_the_egg_dish_matches(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        matcher = self._rule().components[0][0]
+        assert _component_matches(self.EGG_GRAVY, matcher)
+
+    def test_exclude_rejects_the_egg_dish_and_keeps_the_chicken(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        matcher = self._rule(exclude={'flag': 'is_egg_dish'}).components[0][0]
+        assert not _component_matches(self.EGG_GRAVY, matcher)
+        assert _component_matches(self.CHICKEN_GRAVY, matcher)
+
+    def test_bad_exclude_selector_is_a_config_error(self):
+        r = self._rule(exclude={'nonsense_key': 'v'})
+        assert not r.validate_config(), r.validation_errors()
+
+    def test_excluded_component_still_has_a_stable_key(self):
+        """The horizon-limit bookkeeping keys components by matcher."""
+        from src.menu_rules.slot_composition_rule import _matcher_key
+        a = self._rule(exclude={'flag': 'is_egg_dish'}).components[0][0]
+        b = self._rule(exclude={'flag': 'is_egg_dish'}).components[0][0]
+        plain = self._rule().components[0][0]
+        assert _matcher_key(a) == _matcher_key(b)
+        assert _matcher_key(a) != _matcher_key(plain)
+
+
+class TestInfenionMatchesItsSample:
+    """The shipped Infenion config must encode its sample's weekday pattern."""
+
+    def _rule(self):
+        rules = MenuRuleLoader().load_for_client(
+            'Infenion', MenuRuleLoader().load_for_city('bangalore'), 'Counter 1')
+        return next(r for r in rules if r.name == 'infenion_nonveg_by_weekday')
+
+    def test_weekday_pattern_is_configured(self):
+        r = self._rule()
+        assert r.validate_config(), r.validation_errors()
+        shape = {
+            i: [m[0] for m, _c in r.components_by_weekday[i]]
+            for i in sorted(r.components_by_weekday)
+        }
+        assert shape == {
+            0: ['_and_not'],   # Mon chicken gravy, excluding egg
+            1: [],             # Tue blank
+            2: ['flag'],       # Wed egg
+            3: [],             # Thu blank
+            4: ['flag'],       # Fri biryani
+        }, shape
+
+    def test_non_veg_is_restricted_to_three_days(self):
+        rules = MenuRuleLoader().load_for_client(
+            'Infenion', MenuRuleLoader().load_for_city('bangalore'), 'Counter 1')
+        r = next(r for r in rules if r.name == 'infenion_nonveg_mon_wed_fri')
+        assert r.allowed_weekdays == {0, 2, 4}, r.allowed_weekdays

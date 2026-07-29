@@ -47,6 +47,111 @@ not as a score.
 
 ---
 
+## Verified against real menu samples
+
+**Source:** `menu_samples.xlsx` (committed alongside) — one printed week per client for 14 clients
+(Infenion, Continental, Ikea, AstraZeneca, H&M, Cloudera, Thales, Icon,
+Computacenter, Zscaler, Plan View, Kongsberg, Vector, Quince).
+
+These are what the kitchen actually served, so where a sample and the written
+requirement disagree, the sample is the better evidence of intent — but the
+disagreement is worth resolving explicitly rather than silently picking one.
+
+### What the samples settle: "biryani day" is two different things
+
+The single biggest ambiguity in the rulebook. "Biryani to be served on Wednesday"
+turns out to mean the **veg biryani in the flavoured-rice slot** for some clients
+and the **non-veg biryani in the non-veg slot** for others — and several clients
+have both, on *different* days:
+
+| Client | Veg biryani (flavoured rice) | Non-veg biryani |
+|---|---|---|
+| AstraZeneca | Mon + Wed | none — non-veg is plain curry all week |
+| H&M | Fri | Wed |
+| Icon | Wed | Wed |
+| Computacenter | Wed | Tue, Wed, Thu |
+| Zscaler | Wed | Tue, Thu |
+| Plan View | Fri | Tue |
+| Kongsberg | Fri | Fri |
+| Infenion | Fri | Fri |
+| Ikea | Wed | **never** — non-veg is curry, by rule |
+
+Consequences for the rules:
+
+- A requirement naming a biryani has to say *which* slot it means. Several
+  currently-configured rules assume the veg one and the sample shows the client
+  meant the non-veg one (see the config notes below).
+- The counter's `theme_map` biryani day and the non-veg biryani day are **not the
+  same thing**. Plan View's theme day is Tuesday (its non-veg biryani) while its
+  veg biryani is Friday; Zscaler serves non-veg biryani on two days that are not
+  its veg-biryani day.
+- Ikea's non-veg row confirms the reading in its requirement table: no non-veg
+  biryani appears at all, and the biryani lives in the veg rice slot on Wednesday.
+
+### What the samples confirm
+
+Requirements the sample matches dish-for-dish — these are safe to promote once
+the corresponding rule exists:
+
+- **Infenion** — non-veg is exactly `Mon: Murgh Do Pyaza / Tue: blank / Wed:
+  Punjabi Egg Masala / Thu: blank / Fri: Mughlai Chicken Biryani`. Precisely the
+  stated weekday pattern, and the clearest specification of capability gap 3 in
+  the whole set. Its two bread rows are south (Kali Dosa, Ragi Roti, Onion
+  Uttapam, Pesarattu) and north (Jeera/Ajwain/Palak/Carrot Chapati) — so
+  "Indian Bread 1" is the south slot and "Indian Bread 2" the north.
+- **Kongsberg** — Wed `EGG PEPPER`, Thu chinese (Veg Noodles + Honey Chilli
+  Potatoes), Fri `Mughlai Chicken Biryani`. All three stated weekday rules hold.
+- **Plan View** — buttermilk daily, a boiled-egg row daily, paneer once (Wed),
+  mushroom once (Thu). On its non-veg biryani day (Tue) the veg gravy *and*
+  flavoured rice both go chinese — `Veg Dumplings in Manchurian` + `Schezwan
+  fried rice` — which is exactly the stated rule and was previously unclear.
+- **Vector** — dessert appears **only** on Wednesday and flavoured rice **only**
+  on Friday; both blank the other four days. Confirms that a deliberately empty
+  slot is a normal outcome, not a failure.
+- **Computacenter** — three non-veg rows (dry / gravy / biryani-or-curry), curd
+  rice daily, green salad daily, raita daily, a chinese dry once (Chicken
+  Manchurian, Tue).
+- **Quince** — three service days only (Wed/Thu/Fri) and two non-veg rows, one
+  dry ("NON VEG STARTER") and one gravy-or-biryani.
+- **Ikea** — no egg anywhere in non-veg; four chicken gravies plus one dry
+  (Chilly Chicken, Tue); raita on the Wednesday biryani day, curd otherwise.
+
+### What the samples contradict — needs a decision
+
+| Client | Written requirement | What the sample serves | Currently configured |
+|---|---|---|---|
+| AstraZeneca | "daily just raita" | **Curd**, all five days | `constant_items.curd_side = 'raita'` |
+| AstraZeneca | "plain chapati twice a week, phulka once, Tue phulka + ragi mudde, other days flavoured, no south bread" | **Plain Chapati daily** (Fri adds Poori) | nothing |
+| Cloudera | "curd rice daily in healthy rice" | Curd Rice Tue–Thu, **Red Rice on Monday** | `constant_items.healthy_rice = 'curd rice'` (forces it daily) |
+
+The AstraZeneca curd/raita conflict matters because the config actively forces
+the opposite of what was served. Resolve before promoting either row.
+
+### Config notes the samples exposed
+
+- **Zscaler / Computacenter biryani rules target the wrong slot.** Both have a
+  `selector_frequency` on `base_slot: rice` whose selector lists
+  `is_nonveg_biryani` and `is_premium_biryani` — and **both flags match 0 rows in
+  the rice pool**, because non-veg items never enter any slot except
+  `nonveg_main`. The rules therefore reduce to "mixed-veg biryani or pulao", which
+  the samples do satisfy, so nothing is broken. But the *stated* requirement in
+  both cases is about non-veg biryani on named weekdays (Zscaler Tue/Thu,
+  Computacenter Tue/Wed/Thu), and that is not implemented at all. Drop the two
+  dead flags for clarity and add the weekday rule via gap 3.
+- **Printed row labels are not tool slots.** Worth knowing when comparing output
+  to a sample: Quince merges curd, raita and papad into one `ACCOMPANIMENTS`
+  cell; H&M's `Dal/Raitha` row carries dal on normal days and raita on the
+  biryani day; Icon and Computacenter both label a row `NON VEG - EGG` that in
+  fact holds chicken gravies and biryanis; Zscaler's `Soup` row holds welcome
+  drinks. Do not map these by label.
+- **Categories in the samples with no slot in the tool:** `INFUSED WATER`
+  (AstraZeneca, Cloudera) and a separate `Compound salad` alongside green salad
+  (Plan View, which needs `salad` × 2).
+- **Cloudera's sample covers four days and its Wednesday and Thursday columns are
+  identical** — likely a draft rather than a rule. Not treated as evidence.
+
+---
+
 ## Capability gaps
 
 Requirements that cannot be expressed with today's rule types. Ordered by how
@@ -74,14 +179,27 @@ counter. This is the one genuinely architectural item in the list.
 is not expressible when the biryani day is set by the theme map rather than
 hard-coded to a weekday. Needs the restriction to accept day *types*.
 
-### 3. Composition keyed to the weekday
-*Infenion, Thales, Kongsberg, Cloudera, Plum, Sinch*
+### 3. Composition keyed to the weekday — **BUILT**
+*Infenion (wired), Thales, Kongsberg, Cloudera, Plum, Sinch (not yet wired)*
 
 > "Monday chicken gravy, Wednesday egg and Friday biryani, other days blank" — Infenion
 
-`slot_composition` switches its components on the day's **theme**. These clients
-pin a dish *family* to a named weekday instead. Adding `components_by_weekday`
-alongside `components_by_theme` would cover all six.
+`slot_composition` now accepts `components_by_weekday` alongside
+`components_by_theme`. Weekday wins over theme, which wins over the default list,
+because a weekday is the more specific statement — "Friday biryani" means Friday
+whatever theme Friday carries. A weekday configured with an **empty list**
+composes nothing that day, which is how "other days blank" is expressed.
+
+A component may also carry an `exclude` selector, same grammar as `selector`.
+That is needed because the flags are not clean: `egg_drumstick_curry` and
+`egg_kurma` carry `is_south_chicken_gravy` despite being egg dishes, so
+"a chicken gravy on Monday" was satisfied by an egg curry until Monday's
+component excluded `is_egg_dish`.
+
+Infenion is wired and reproduces its sample menu exactly — chicken gravy Monday,
+blank Tuesday, egg Wednesday, blank Thursday, chicken biryani Friday — on both an
+even and an odd ISO week. The other five clients need the same treatment; their
+weekday patterns are in the per-client tables below.
 
 ### 4. Frequency windows longer than the horizon, and co-occurrence
 *Icon, Telstra, Take 2, Vector, Piramel Finance*
@@ -268,10 +386,10 @@ No `client_rules.json` entry.
 |---|---|---|
 | Paneer served weekly once | DONE | `infenion_paneer_exact_1` |
 | 2 chapati in indian bread — one north, one south | DONE | `infenion_north_south_bread` |
-| Non-veg 3×/week: Mon chicken gravy, Wed egg, Fri biryani; other days blank | BLOCKED | Gap 3 — the day restriction is expressible, the per-weekday dish family is not |
-| Chicken curry or dry on Monday | BLOCKED | Gap 3 |
-| Egg curry on Wednesday | BLOCKED | Gap 3 |
-| Chicken biryani on Friday | BLOCKED | Gap 3 |
+| Non-veg 3×/week: Mon chicken gravy, Wed egg, Fri biryani; other days blank | DONE | `infenion_nonveg_mon_wed_fri` (day restriction) + `infenion_nonveg_by_weekday` (`components_by_weekday`). **Verified against the sample** on two start dates. |
+| Chicken curry or dry on Monday | DONE | Monday component, excluding `is_egg_dish` |
+| Egg curry on Wednesday | DONE | Wednesday component |
+| Chicken biryani on Friday | DONE | Friday component |
 
 ### Kongsberg
 | Requirement | Status | Mechanism |

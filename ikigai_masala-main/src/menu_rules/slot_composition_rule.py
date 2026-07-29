@@ -63,6 +63,7 @@ from .base_menu_rule import (
 )
 from src.constants import repeatable_row
 from .selector_frequency_rule import SelectorFrequencyRule
+from .slot_day_restriction_rule import _WEEKDAY_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,30 @@ logger = logging.getLogger(__name__)
 _Component = Tuple[Any, int]
 
 
+def _component_matches(row, matcher) -> bool:
+    """Match *row* against a component matcher, honouring ``exclude``.
+
+    A component may carry an ``exclude`` selector, same grammar as its
+    ``selector`` — needed because the ontology's flags are not always clean:
+    ``egg_drumstick_curry`` and ``egg_kurma`` carry ``is_south_chicken_gravy``
+    despite being egg dishes, so "a chicken gravy on Monday" would happily be
+    satisfied by an egg curry. Excluding ``is_egg_dish`` states the intent
+    precisely without waiting on a data fix.
+    """
+    kind, val = matcher
+    if kind == '_and_not':
+        include, exclude = val
+        return (SelectorFrequencyRule._matches(row, include)
+                and not SelectorFrequencyRule._matches(row, exclude))
+    return SelectorFrequencyRule._matches(row, matcher)
+
+
 def _matcher_key(matcher) -> Tuple[str, str]:
     """Hashable identity for a matcher (``any_flag`` carries a list)."""
     kind, val = matcher
+    if kind == '_and_not':
+        include, exclude = val
+        return (kind, f"{_matcher_key(include)}!{_matcher_key(exclude)}")
     if isinstance(val, (list, tuple)):
         return (kind, '|'.join(sorted(str(v) for v in val)))
     return (kind, str(val))
@@ -102,8 +124,6 @@ def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
     satisfies the caller. That is exact for the identical-selector case and stays
     correct for a narrower component (e.g. "chicken biryani" forcing "biryani").
     """
-    from .selector_frequency_rule import SelectorFrequencyRule
-
     comps_by_rule = [
         r for r in (peer_rules or [])
         if isinstance(r, SlotCompositionRule) and r.base_slot == base_slot
@@ -130,10 +150,10 @@ def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
         rows = [r for _i, r in pool.iterrows()]
         hit = False
         for rule in comps_by_rule:
-            for matcher, _count in rule.mandated_components(ctx, day_type):
+            for matcher, _count in rule.mandated_components(ctx, day_type, d):
                 candidates = [
                     r for r in rows
-                    if SelectorFrequencyRule._matches(r, matcher)
+                    if _component_matches(r, matcher)
                 ]
                 if candidates and all(row_matches(r) for r in candidates):
                     hit = True
@@ -162,6 +182,20 @@ class SlotCompositionRule(BaseMenuRule):
             str(theme): self._parse_components(comps)
             for theme, comps in (rule_config.get('components_by_theme') or {}).items()
         }
+        # Per-weekday override, checked BEFORE the theme map. Several clients pin
+        # a dish family to a named weekday rather than to a theme — Infenion's
+        # non-veg row is "Monday chicken gravy, Wednesday egg, Friday biryani,
+        # other days blank", which no theme expresses. Keyed by Python weekday
+        # index so it lines up with `date.weekday()`. Unrecognised tokens are
+        # dropped and reported by validation_errors().
+        self.components_by_weekday: Dict[int, List[_Component]] = {}
+        self._bad_weekdays: List[str] = []
+        for day, comps in (rule_config.get('components_by_weekday') or {}).items():
+            idx = _WEEKDAY_TOKENS.get(str(day).strip().lower())
+            if idx is None:
+                self._bad_weekdays.append(str(day))
+                continue
+            self.components_by_weekday[idx] = self._parse_components(comps)
 
     @staticmethod
     def _parse_components(raw) -> List[_Component]:
@@ -174,6 +208,12 @@ class SlotCompositionRule(BaseMenuRule):
             if not isinstance(comp, dict):
                 continue
             matcher = SelectorFrequencyRule._parse_matcher(comp.get('selector'))
+            if matcher is not None and comp.get('exclude'):
+                excl = SelectorFrequencyRule._parse_matcher(comp['exclude'])
+                if excl is None:
+                    matcher = None      # bad exclude -> surfaced by validation
+                else:
+                    matcher = ('_and_not', (matcher, excl))
             count = comp.get('count', 1)
             try:
                 count = int(count)
@@ -184,7 +224,8 @@ class SlotCompositionRule(BaseMenuRule):
         return out
 
     def _all_component_lists(self) -> List[List[_Component]]:
-        return [self.components] + list(self.components_by_theme.values())
+        return ([self.components] + list(self.components_by_theme.values())
+                + list(self.components_by_weekday.values()))
 
     def _gate_allows(self, configured: int) -> bool:
         """Does a counter serving *configured* of this slot get composed?
@@ -222,6 +263,7 @@ class SlotCompositionRule(BaseMenuRule):
         # configured component that produced nothing means a bad selector/count.
         raw_total = len(self.config.get('components') or [])
         raw_total += sum(len(v or []) for v in (self.config.get('components_by_theme') or {}).values())
+        raw_total += sum(len(v or []) for v in (self.config.get('components_by_weekday') or {}).values())
         parsed_total = sum(len(lst) for lst in lists)
         if raw_total and parsed_total < raw_total:
             errs.append("every component needs a valid selector and integer count >= 1")
@@ -229,6 +271,11 @@ class SlotCompositionRule(BaseMenuRule):
             errs.append(f"requires_slot_count must be >= 1 (got {self.requires_slot_count})")
         if self.min_slot_count is not None and self.min_slot_count < 1:
             errs.append(f"min_slot_count must be >= 1 (got {self.min_slot_count})")
+        if self._bad_weekdays:
+            errs.append(
+                f"components_by_weekday has unrecognised weekday(s): "
+                f"{sorted(self._bad_weekdays)}"
+            )
         if self.max_slot_count is not None and self.max_slot_count < 1:
             errs.append(f"max_slot_count must be >= 1 (got {self.max_slot_count})")
         if (self.min_slot_count is not None and self.max_slot_count is not None
@@ -246,7 +293,21 @@ class SlotCompositionRule(BaseMenuRule):
             )
         return errs
 
-    def mandated_components(self, ctx, day_type: str) -> List[_Component]:
+    def _components_for(self, date, day_type: str) -> List[_Component]:
+        """Components for one day: weekday override first, then theme, then default.
+
+        Weekday wins because it is the more specific statement — a client saying
+        "Friday biryani" means Friday regardless of what theme Friday carries. A
+        weekday configured with an empty list composes nothing that day, which is
+        how "other days blank" is expressed.
+        """
+        if date is not None and self.components_by_weekday:
+            idx = date.weekday()
+            if idx in self.components_by_weekday:
+                return self.components_by_weekday[idx]
+        return self.components_by_theme.get(day_type, self.components)
+
+    def mandated_components(self, ctx, day_type: str, date=None) -> List[_Component]:
         """Components this rule will require on a day of *day_type*.
 
         Empty when the counter's slot count leaves the rule inactive, so a
@@ -260,7 +321,7 @@ class SlotCompositionRule(BaseMenuRule):
         configured = int(slot_counts.get(self.base_slot, 1) or 1)
         if not self._gate_allows(configured):
             return []
-        return self.components_by_theme.get(day_type, self.components)
+        return self._components_for(date, day_type)
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -307,7 +368,7 @@ class SlotCompositionRule(BaseMenuRule):
                     continue
 
             theme = day_types[di] if di < len(day_types) else ''
-            comps = self.components_by_theme.get(theme, self.components)
+            comps = self._components_for(dates[di], theme)
             if not comps:
                 continue
 
@@ -329,7 +390,7 @@ class SlotCompositionRule(BaseMenuRule):
                 lits = [
                     v for c in day_cells
                     for v, r in zip(c.x_vars, c.cand_rows)
-                    if SelectorFrequencyRule._matches(r, matcher)
+                    if _component_matches(r, matcher)
                 ]
                 key = _matcher_key(matcher)
                 if key in limited:
@@ -375,7 +436,7 @@ class SlotCompositionRule(BaseMenuRule):
                 if not self._gate_allows(configured):
                     continue
             theme = day_types[di] if di < len(day_types) else ''
-            for matcher, count in self.components_by_theme.get(theme, self.components):
+            for matcher, count in self._components_for(dates[di], theme):
                 key = _matcher_key(matcher)
                 entry = seen.setdefault(
                     key, {'matcher': matcher, 'days': 0, 'need': 0,
@@ -384,7 +445,7 @@ class SlotCompositionRule(BaseMenuRule):
                 entry['need'] += count
                 for c in day_cells:
                     for r in c.cand_rows:
-                        if SelectorFrequencyRule._matches(r, matcher):
+                        if _component_matches(r, matcher):
                             if repeatable_row(r, self.base_slot):
                                 # A staple satisfies the component on every day
                                 # by itself, so distinct count is irrelevant.
@@ -493,7 +554,7 @@ class SlotCompositionRule(BaseMenuRule):
             if (d, self.base_slot) in (ctx.skip_cells or set()):
                 continue
             day_type = ctx.day_types.get(d, '')
-            comps = self.components_by_theme.get(day_type, self.components)
+            comps = self._components_for(d, day_type)
             if not comps:
                 continue
             pool = ctx.pools[self.base_slot]
@@ -508,7 +569,7 @@ class SlotCompositionRule(BaseMenuRule):
             for matcher, count in comps:
                 have = sum(
                     1 for r in rows
-                    if SelectorFrequencyRule._matches(r, matcher)
+                    if _component_matches(r, matcher)
                 )
                 if have < count:
                     label = f"{matcher[0]}={matcher[1]!r}"
