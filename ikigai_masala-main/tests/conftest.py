@@ -97,8 +97,13 @@ def fake_supabase(monkeypatch, seeded_fake_supabase):
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
         monkeypatch.setattr(api_app, '_pools', None, raising=False)
         monkeypatch.setattr(api_app, '_df', None, raising=False)
-        monkeypatch.setattr(api_app, '_menu_rules', None, raising=False)
         monkeypatch.setattr(api_app, '_nonveg_items', None, raising=False)
+        # These two are dicts, not None-sentinels, and the rule cache was
+        # renamed to _menu_rules_by_city — resetting the old `_menu_rules`
+        # name silently created a junk attribute and left the real per-city
+        # rule cache and the F5 per-pool-set pool cache leaking across tests.
+        monkeypatch.setattr(api_app, '_menu_rules_by_city', {}, raising=False)
+        monkeypatch.setattr(api_app, '_filtered_cache', {}, raising=False)
     except ImportError:
         pass
 

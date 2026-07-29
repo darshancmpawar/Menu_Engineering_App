@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
@@ -935,6 +935,120 @@ class ClientConfigLoader:
         )
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
+
+    def normalize_counters_for_write(
+        self, counter_mode: str, counters: List[Dict],
+    ) -> List[Dict]:
+        """Validate + normalise a counters payload without writing it.
+
+        Split out of :meth:`set_counters_for_client` so a caller can validate
+        every field of an update before any of it is persisted.
+        """
+        return self._counters_from_inputs(None, counter_mode, counters)
+
+    def primary_counter_patch(
+        self,
+        name: str,
+        *,
+        active_base_slots: List[str] | None = None,
+        slot_counts: Dict[str, int] | None = None,
+        theme_map: Dict[str, str] | None = None,
+    ) -> List[Dict]:
+        """Return the full counters list with legacy per-field edits applied.
+
+        The write-free half of :meth:`update_primary_counter`, so the legacy
+        API shape can also go through the single atomic update.
+        """
+        counters = self._counters_list(name)
+        primary = dict(counters[0])
+        if active_base_slots is not None:
+            primary['categories'] = active_base_slots
+        if slot_counts is not None:
+            primary['slot_counts'] = slot_counts
+        if theme_map is not None:
+            primary['theme_map'] = theme_map
+        out = [normalize_counter(primary, 0)] + [
+            normalize_counter(c, i) for i, c in enumerate(counters[1:], start=1)
+        ]
+        self._validate_counters(out)
+        return out
+
+    def update_client_atomic(
+        self, name: str, expected: int, fields: Dict[str, Any],
+    ) -> int:
+        """Apply *fields* and bump ``version`` in ONE conditional UPDATE.
+
+        ``fields`` holds already-validated, already-normalised column values
+        (``counters``, ``city``, ``serve_weekends``, ``working_days``,
+        ``item_cooldown_days``, ``source_pools``). Every one is a plain column on
+        ``clients``, so they all fit in a single statement together with the
+        version bump.
+
+        This replaces a bump-then-N-setters sequence that was neither atomic nor
+        safe: each setter was its own round trip, so any failure part-way left
+        the row half-updated with ``version`` already incremented — and because
+        input validation happened *between* those writes, a single malformed
+        ``source_pools`` deterministically committed the earlier fields and then
+        returned 400. One statement removes the partial-write window entirely
+        and collapses the round trips.
+
+        The ``version = expected`` predicate is still the race gate, so a stale
+        writer changes nothing at all rather than clobbering a concurrent edit.
+
+        Raises:
+            ConcurrentEditError: when the update matches no rows.
+        """
+        new_version = int(expected) + 1
+        payload = {**fields, 'version': new_version}
+        try:
+            result = (
+                self._sb.table('clients')
+                .update(payload)
+                .eq('name', name)
+                .eq('version', int(expected))
+                .execute()
+            )
+        except Exception as exc:
+            if _is_undefined_column(exc):
+                # Pre-migration database: fall back to the per-field setters,
+                # which each degrade individually with a migration hint.
+                logger.error(
+                    "clients.version (or a config column) missing — applying "
+                    "%r without the concurrency check. %s", name, _MIGRATION_HINT,
+                )
+                self._require_client_exists(name)
+                self._apply_fields_individually(name, fields)
+                return 1
+            raise
+        if not result.data:
+            current = self.get_client_version(name)  # raises ValueError if gone
+            raise ConcurrentEditError(
+                f"Client {name!r} has been modified by another request "
+                f"(expected version {expected}, currently {current}). "
+                "Refresh and retry.",
+                current_version=current,
+            )
+        return new_version
+
+    def _apply_fields_individually(self, name: str, fields: Dict[str, Any]) -> None:
+        """Degraded path for a database missing the consolidated columns."""
+        if 'counters' in fields:
+            self._write_counters_column(name, fields['counters'])
+        for column, setter in (
+            ('city', self.set_client_city),
+            ('serve_weekends', self.set_client_serve_weekends),
+            ('working_days', self.set_client_working_days),
+            ('item_cooldown_days', self.set_client_item_cooldown_days),
+            ('source_pools', self.set_client_source_pools),
+        ):
+            if column in fields:
+                try:
+                    setter(name, fields[column])
+                except ValueError as exc:
+                    logger.warning(
+                        "Could not apply %s for %r on the degraded path: %s",
+                        column, name, exc,
+                    )
 
     def bump_version_if_matches(self, name: str, expected: int) -> int:
         """Atomically bump ``version`` from *expected* to *expected+1*.

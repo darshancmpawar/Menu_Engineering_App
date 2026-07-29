@@ -111,7 +111,7 @@ Two-phase: `pre_filter_pool()` (cheap removals before CP-SAT vars), `apply()` (h
 | `slot_day_restriction_rule.py` | skip-cells | per-client: skip a slot on certain weekdays (e.g. no nonveg_main on Tue/Thu) |
 
 ### 4.3 `src/preprocessor/` — data pipeline
-Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `PoolBuilder.build_pools` → `ThemeFilter` (optional).
+Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `PoolBuilder.build_pools`. Theme filtering is **not** here — it lives in the rules layer (`src/menu_rules/theme_rules.py::ThemeSlotFilterRule`) so it can run per (date, slot) with the day's theme.
 
 | File | Key symbols |
 |---|---|
@@ -119,7 +119,6 @@ Flow: `ExcelReader.read` → `ColumnMapper.apply` → `DataCleanser.clean` → `
 | `column_mapper.py` | `ColumnMapper.apply` (alias detection, derived `key_eff`) |
 | `data_cleanser.py` | `DataCleanser.clean` |
 | `pool_builder.py` | `PoolBuilder.build_pools`, `_base_slot`, `_expand_slots_in_order` (expands `veg_dry` → `veg_dry__1, veg_dry__2`), `_nonveg_mask` (build_pools drops non-veg items from every slot except `nonveg_main`) |
-| `theme_filter.py` | `ThemeFilter` |
 | `client_pool_filter.py` | `parse_client_pools`, `get_active_pools`, `item_is_eligible`, `filter_eligible`, `available_pool_tokens` — F5 client-based item-pool eligibility (pure) |
 
 ### 4.4 `src/client/` — client config (Supabase, live reads)
@@ -222,7 +221,7 @@ Streamlit customisation/* → PUT /api/v1/client-config/<name>  [api/app.py]
 | `test_menu_rule_loader.py` | JSON deserialization |
 | `test_pool_builder.py` | pool & slot expansion |
 | `test_column_mapper.py` | alias/normalize/derived cols |
-| `test_theme_filter.py` | theme filtering |
+| `test_slot_composition.py` | theme-filter union + slot composition |
 | `test_prefilter_integration.py` | multi-rule pre-filter chain |
 | `test_history_manager.py` | cooldowns & signatures |
 | `test_client_config.py` | Supabase-backed config |

@@ -55,6 +55,7 @@ from src.constants import (
     MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
 )
 from src.client import ClientConfigLoader
+from src.client.client_config import normalize_city
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
     DEFAULT_THEME_MAP,
     AVAILABLE_THEMES,
@@ -1441,6 +1442,58 @@ def _expected_version(data: Dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _validated_working_days(raw):
+    """Normalise ``working_days`` or raise ValueError. ``None`` clears it."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError("working_days must be a list of weekday names or null")
+    from src.solver._helpers import _WEEKDAY_NAMES
+    from src.solver.menu_solver import _WEEKDAY_ALIASES
+    out = []
+    for value in raw:
+        name = str(value).strip().lower()
+        full = _WEEKDAY_ALIASES.get(name, name)
+        if full not in _WEEKDAY_NAMES:
+            raise ValueError(
+                f"working_days contains {value!r}, which is not a weekday. "
+                f"Use full names or three-letter abbreviations."
+            )
+        if full not in out:
+            out.append(full)
+    return out or None
+
+
+def _validated_cooldown_days(raw):
+    """Normalise ``item_cooldown_days`` or raise ValueError. ``None`` = default."""
+    if raw is None or raw == '':
+        return None
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError("item_cooldown_days must be an integer or null")
+    if days < 0:
+        raise ValueError("item_cooldown_days must be >= 0")
+    return days
+
+
+def _validated_source_pools(raw):
+    """Normalise ``source_pools`` against the ontology or raise ValueError."""
+    sp = raw or []
+    if not isinstance(sp, list):
+        raise ValueError("source_pools must be a list of pool tokens")
+    available = available_pool_tokens(_get_menu_data()[0])
+    requested = {normalize_name(t) for t in sp if normalize_name(t)}
+    requested.discard('common')
+    unknown = requested - available
+    if unknown:
+        raise ValueError(
+            f"Unknown client pool(s): {sorted(unknown)}. "
+            f"Valid pools: {sorted(available)}"
+        )
+    return sorted(requested)
+
+
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides).
@@ -1470,24 +1523,27 @@ def update_client_config(client_name):
                 ),
             }), 400
 
-        # Bump first: the conditional update is the actual race gate.
-        # If another writer snuck in between the caller's GET and this
-        # PUT, the update matches zero rows and we 409 before doing any
-        # partial sub-update.
-        new_version = loader.bump_version_if_matches(client_name, expected)
+        # Validate and normalise EVERYTHING before touching the database.
+        #
+        # This used to bump the version first and then run each field's setter
+        # in turn, validating as it went — so a malformed `source_pools` (the
+        # last field checked) returned 400 *after* city, serve_weekends,
+        # working_days and item_cooldown_days had already been committed and the
+        # version incremented. A single bad request deterministically left a
+        # half-updated row whose bumped version then made the caller's retry
+        # 409. Validate-then-write, in one statement, removes that entirely.
+        fields: Dict[str, Any] = {}
 
         # Counter-aware path: ``counters`` is the full source of truth for the
         # client's cuisine setup. Otherwise, accept the legacy per-field shape
         # (active_base_slots / slot_counts / theme_map) and apply it to the
         # primary counter for backward compatibility.
         if 'counters' in data:
-            loader.set_counters_for_client(
-                client_name,
-                data.get('counter_mode', 'single'),
-                data['counters'],
+            fields['counters'] = loader.normalize_counters_for_write(
+                data.get('counter_mode', 'single'), data['counters'],
             )
         elif any(k in data for k in ('active_base_slots', 'slot_counts', 'theme_map')):
-            loader.update_primary_counter(
+            fields['counters'] = loader.primary_counter_patch(
                 client_name,
                 active_base_slots=data.get('active_base_slots'),
                 slot_counts=data.get('slot_counts'),
@@ -1497,32 +1553,20 @@ def update_client_config(client_name):
         # City / weekend-service are plain client attributes (not per-counter);
         # update them when the caller includes them.
         if 'city' in data:
-            loader.set_client_city(client_name, data.get('city'))
+            fields['city'] = normalize_city(data.get('city'))
         if 'serve_weekends' in data:
-            loader.set_client_serve_weekends(
-                client_name, bool(data.get('serve_weekends')))
+            fields['serve_weekends'] = bool(data.get('serve_weekends'))
         if 'working_days' in data:
-            wd = data.get('working_days')
-            if wd is not None and not isinstance(wd, list):
-                raise ValueError("working_days must be a list of weekday names or null")
-            loader.set_client_working_days(client_name, wd)
+            fields['working_days'] = _validated_working_days(
+                data.get('working_days'))
         if 'item_cooldown_days' in data:
-            loader.set_client_item_cooldown_days(
-                client_name, data.get('item_cooldown_days'))
+            fields['item_cooldown_days'] = _validated_cooldown_days(
+                data.get('item_cooldown_days'))
         if 'source_pools' in data:
-            sp = data.get('source_pools') or []
-            if not isinstance(sp, list):
-                raise ValueError("source_pools must be a list of pool tokens")
-            available = available_pool_tokens(_get_menu_data()[0])
-            requested = {normalize_name(t) for t in sp if normalize_name(t)}
-            requested.discard('common')
-            unknown = requested - available
-            if unknown:
-                raise ValueError(
-                    f"Unknown client pool(s): {sorted(unknown)}. "
-                    f"Valid pools: {sorted(available)}"
-                )
-            loader.set_client_source_pools(client_name, sorted(requested))
+            fields['source_pools'] = _validated_source_pools(
+                data.get('source_pools'))
+
+        new_version = loader.update_client_atomic(client_name, expected, fields)
 
         response = jsonify({
             'success': True,
