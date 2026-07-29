@@ -349,6 +349,7 @@
       "type": "slot_composition",
       "base_slot": "nonveg_main",
       "min_slot_count": 2,
+      "max_slot_count": 4,
       "components": [
         { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
         { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
@@ -363,6 +364,20 @@
           { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
         ]
       }
+    },
+    {
+      "_comment": "A 5-dish non-veg lunch station: biryani + gravy + dry + kebab + egg, every day. Gated to counters configured with 5 nonveg_main so it is inert elsewhere, and nonveg_main_daily_pair is capped at 4 so the two never compose the same counter. 'kebab' maps to the tandoor flags — the ontology has no kebab flag of its own, and only 13 tandoor nonveg items, so that component auto-relaxes on days it cannot be filled.",
+      "name": "nonveg_main_five_dish",
+      "type": "slot_composition",
+      "base_slot": "nonveg_main",
+      "min_slot_count": 5,
+      "components": [
+        { "selector": { "flag": "is_nonveg_biryani" }, "count": 1 },
+        { "selector": { "flag": "is_nonveg_gravy" }, "count": 1 },
+        { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
+        { "selector": { "any_flag": ["is_tandoor", "is_tandoor_nonveg_dry"] }, "count": 1 },
+        { "selector": { "flag": "is_egg_dish" }, "count": 1 }
+      ]
     },
     {
       "name": "veg_dry_north_south_pair",

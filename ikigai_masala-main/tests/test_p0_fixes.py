@@ -857,3 +857,52 @@ class TestSlotCountCeiling:
         )
         assert ed._MAX_SLOT_COUNT == _MAX_SLOT_COUNT
         assert ed._MIN_SLOT_COUNT == _MIN_SLOT_COUNT
+
+
+class TestFiveDishNonvegStation:
+    """A 5-dish non-veg station is expressible and does not collide with the
+    2-dish pair (the pair is capped at 4 so exactly one composes a counter)."""
+
+    def _comps(self):
+        rules = MenuRuleLoader('data/configs/city_rules/bangalore.json').load_from_file()
+        return {r.name: r for r in rules if isinstance(r, SlotCompositionRule)}
+
+    def test_five_dish_rule_exists_with_the_expected_components(self):
+        rule = self._comps()['nonveg_main_five_dish']
+        assert rule.base_slot == 'nonveg_main'
+        assert rule.min_slot_count == 5
+        kinds = {m[0] for m, _c in rule.components}
+        values = {str(m[1]) for m, _c in rule.components}
+        assert 'flag' in kinds or 'any_flag' in kinds
+        # biryani / gravy / dry / kebab / egg
+        assert len(rule.components) == 5, rule.components
+        assert any('biryani' in v for v in values), values
+        assert any('egg' in v for v in values), values
+        assert any('tandoor' in v for v in values), values
+
+    def test_exactly_one_nonveg_composition_applies_per_slot_count(self):
+        comps = self._comps()
+        nonveg = [r for r in comps.values() if r.base_slot == 'nonveg_main']
+        for count in range(1, 6):
+            active = [r.name for r in nonveg if r._gate_allows(count)]
+            assert len(active) <= 1, (
+                f"{count} nonveg slots would be composed by {active}; two "
+                f"compositions on one slot family can demand more dishes "
+                f"than the counter has cells"
+            )
+        # And 2..5 each get exactly one.
+        for count in (2, 3, 4, 5):
+            assert len([r for r in nonveg if r._gate_allows(count)]) == 1, count
+
+    def test_max_slot_count_bounds_the_pair(self):
+        pair = self._comps()['nonveg_main_daily_pair']
+        assert pair._gate_allows(4)
+        assert not pair._gate_allows(5)
+
+    def test_min_above_max_is_a_config_error(self):
+        r = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'x', 'base_slot': 'rice',
+            'min_slot_count': 4, 'max_slot_count': 2,
+            'components': [{'selector': {'flag': 'f'}, 'count': 1}],
+        })
+        assert any('must be <=' in e for e in r.validation_errors())

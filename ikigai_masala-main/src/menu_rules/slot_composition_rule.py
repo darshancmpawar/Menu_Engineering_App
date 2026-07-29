@@ -139,6 +139,8 @@ class SlotCompositionRule(BaseMenuRule):
         self.requires_slot_count: Optional[int] = int(rsc) if rsc is not None else None
         msc = rule_config.get('min_slot_count')
         self.min_slot_count: Optional[int] = int(msc) if msc is not None else None
+        xsc = rule_config.get('max_slot_count')
+        self.max_slot_count: Optional[int] = int(xsc) if xsc is not None else None
         self.components: List[_Component] = self._parse_components(
             rule_config.get('components'))
         self.components_by_theme: Dict[str, List[_Component]] = {
@@ -180,8 +182,12 @@ class SlotCompositionRule(BaseMenuRule):
         while non-biryani days got two. Exact matching is kept for configs that
         rely on it, but a range is what "compose the family" actually means.
         """
-        if self.min_slot_count is not None:
-            return configured >= self.min_slot_count
+        if self.min_slot_count is not None or self.max_slot_count is not None:
+            if self.min_slot_count is not None and configured < self.min_slot_count:
+                return False
+            if self.max_slot_count is not None and configured > self.max_slot_count:
+                return False
+            return True
         if self.requires_slot_count is not None:
             return configured == self.requires_slot_count
         return True
@@ -208,8 +214,21 @@ class SlotCompositionRule(BaseMenuRule):
             errs.append(f"requires_slot_count must be >= 1 (got {self.requires_slot_count})")
         if self.min_slot_count is not None and self.min_slot_count < 1:
             errs.append(f"min_slot_count must be >= 1 (got {self.min_slot_count})")
-        if self.min_slot_count is not None and self.requires_slot_count is not None:
-            errs.append("set either min_slot_count or requires_slot_count, not both")
+        if self.max_slot_count is not None and self.max_slot_count < 1:
+            errs.append(f"max_slot_count must be >= 1 (got {self.max_slot_count})")
+        if (self.min_slot_count is not None and self.max_slot_count is not None
+                and self.min_slot_count > self.max_slot_count):
+            errs.append(
+                f"min_slot_count ({self.min_slot_count}) must be <= "
+                f"max_slot_count ({self.max_slot_count})"
+            )
+        if self.requires_slot_count is not None and (
+                self.min_slot_count is not None
+                or self.max_slot_count is not None):
+            errs.append(
+                "set either min_slot_count/max_slot_count or "
+                "requires_slot_count, not both"
+            )
         return errs
 
     def mandated_components(self, ctx, day_type: str) -> List[_Component]:
@@ -325,11 +344,14 @@ class SlotCompositionRule(BaseMenuRule):
         ) or {}
         configured = int(slot_counts.get(self.base_slot, 1) or 1)
         if not self._gate_allows(configured):
-            wanted = (
-                f"at least {self.min_slot_count}"
-                if self.min_slot_count is not None
-                else f"exactly {self.requires_slot_count}"
-            )
+            if self.min_slot_count is not None and self.max_slot_count is not None:
+                wanted = f"{self.min_slot_count}-{self.max_slot_count}"
+            elif self.min_slot_count is not None:
+                wanted = f"at least {self.min_slot_count}"
+            elif self.max_slot_count is not None:
+                wanted = f"at most {self.max_slot_count}"
+            else:
+                wanted = f"exactly {self.requires_slot_count}"
             diags.append(Diagnostic(
                 rule=self.name, rule_type=self.rule_type.value,
                 severity=DiagnosticSeverity.INFO,
