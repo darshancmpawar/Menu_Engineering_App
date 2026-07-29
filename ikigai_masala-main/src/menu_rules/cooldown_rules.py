@@ -23,7 +23,7 @@ from ortools.sat.python import cp_model
 
 from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
-from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS
+from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS, repeatable_row
 from .base_menu_rule import (
     BaseMenuRule,
     Diagnostic,
@@ -72,7 +72,12 @@ class ItemCooldownMenuRule(BaseMenuRule):
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
         if banned and len(pool) > 0:
-            pool = pool[~pool['item'].isin(banned)]
+            drop = pool['item'].isin(banned)
+            # A staple item (flag-marked, e.g. the chicken kebab) recurs by
+            # design, so the 20-day window never bans it — same exemption the
+            # plain-curd slot gets above, applied per item instead of per slot.
+            staple = pool.apply(repeatable_row, axis=1, base_slot=base_slot)
+            pool = pool[~(drop & ~staple)]
         return pool
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],

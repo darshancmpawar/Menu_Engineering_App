@@ -61,6 +61,7 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
+from src.constants import repeatable_row
 from .selector_frequency_rule import SelectorFrequencyRule
 
 logger = logging.getLogger(__name__)
@@ -378,17 +379,24 @@ class SlotCompositionRule(BaseMenuRule):
                 key = _matcher_key(matcher)
                 entry = seen.setdefault(
                     key, {'matcher': matcher, 'days': 0, 'need': 0,
-                          'items': set(), 'day_lits': []})
+                          'items': set(), 'day_lits': [], 'staple': False})
                 entry['days'] += 1
                 entry['need'] += count
                 for c in day_cells:
                     for r in c.cand_rows:
                         if SelectorFrequencyRule._matches(r, matcher):
+                            if repeatable_row(r, self.base_slot):
+                                # A staple satisfies the component on every day
+                                # by itself, so distinct count is irrelevant.
+                                entry['staple'] = True
+                                continue
                             name = str(r.get('item', '')).strip().lower()
                             if name:
                                 entry['items'].add(name)
 
         for key, entry in seen.items():
+            if entry['staple']:
+                continue
             distinct = len(entry['items'])
             if distinct and distinct < entry['need']:
                 logger.info(

@@ -127,6 +127,45 @@ EXEMPT_FROM_CUISINE: Set[str] = {
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
 
+# Ontology flags marking a dish that recurs like a staple **within one slot**:
+# the SAME dish may be served every day there, the way steamed rice is. Such a
+# dish is exempt from unique_items and from the item-cooldown ban, exactly like
+# the plain-curd station — the 20-day no-repeat window governs ordinary dishes,
+# not staples.
+#
+# The chicken kebab on a non-veg station is one of these. Treating it as an
+# ordinary dish made a 5-dish counter unsatisfiable: only one kebab is eligible
+# for a common-only client, so "a kebab every day" needed five distinct ones. It
+# is a staple, not a variety slot.
+#
+# Keyed BY SLOT on purpose. ``is_tandoor`` also marks tandoor breads
+# (butter_naan, butter_kulcha) and veg kebabs, and a flat flag list would have
+# let butter naan repeat all week in the bread slot and skip its cooldown. The
+# kebab is a staple of the non-veg station specifically.
+REPEATABLE_ITEM_FLAGS_BY_SLOT: Dict[str, Set[str]] = {
+    'nonveg_main': {'is_tandoor', 'is_tandoor_nonveg_dry'},
+}
+
+_TRUTHY = ('1', 'true', 'yes', 'y')
+
+
+def repeatable_row(row, base_slot: str = None) -> bool:
+    """True when *row* is a staple that may recur daily in *base_slot*.
+
+    Matches on item name (:data:`REPEATABLE_ITEM_BASES`) or, when *base_slot* has
+    an entry in :data:`REPEATABLE_ITEM_FLAGS_BY_SLOT`, on any of that slot's flag
+    columns being set — so the ontology decides which dishes are staples and the
+    slot decides where that applies. ``base_slot=None`` checks names only.
+    """
+    name = str(row.get('item', '') or '').strip().lower()
+    if name in REPEATABLE_ITEM_BASES:
+        return True
+    for flag in REPEATABLE_ITEM_FLAGS_BY_SLOT.get(base_slot or '', ()):
+        value = row.get(flag)
+        if value is not None and str(value).strip().lower() in _TRUTHY:
+            return True
+    return False
+
 # Proteins that mark a dish non-vegetarian (matched against the ontology's
 # ``primary_protein`` column, plus the ``is_egg_dish`` flag). Single source of
 # truth shared by the UI's red-dish tagging AND the pool builder's rule that

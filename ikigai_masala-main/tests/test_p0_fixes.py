@@ -1039,3 +1039,113 @@ class TestPinnedDishGoesThroughTheSolver:
         from src.solver.menu_solver import SolverConfig
         cfg = SolverConfig(days=1, start_date=MON)
         assert cfg.forced_items is None, 'default must not force anything'
+
+
+class TestStapleItemsRecurDaily:
+    """A staple is the same dish every day, like steamed rice.
+
+    The chicken kebab on a non-veg station is one: only one kebab is eligible for
+    a common-only client, so treating it as an ordinary variety dish made "a
+    kebab daily" need five distinct ones and the counter unsatisfiable. The 20-day
+    no-repeat window governs ordinary dishes, not staples.
+    """
+
+    def test_kebab_is_a_staple_in_the_nonveg_slot(self):
+        from src.constants import repeatable_row
+        kebab = {'item': 'tandoori_murgh_lababdar', 'is_tandoor': 1}
+        assert repeatable_row(kebab, 'nonveg_main')
+
+    def test_ordinary_nonveg_is_not_a_staple(self):
+        from src.constants import repeatable_row
+        assert not repeatable_row({'item': 'murgh_korma'}, 'nonveg_main')
+
+    def test_tandoor_bread_is_not_a_staple_in_the_bread_slot(self):
+        """The flags are keyed by slot for this reason.
+
+        ``is_tandoor`` also marks tandoor breads and veg kebabs; a flat flag list
+        would have let butter naan repeat all week in the bread slot and skip its
+        cooldown.
+        """
+        from src.constants import repeatable_row
+        naan = {'item': 'butter_naan', 'is_tandoor': 1}
+        assert not repeatable_row(naan, 'bread')
+        assert not repeatable_row(naan, 'rice')
+
+    def test_plain_curd_stays_a_staple_by_name(self):
+        from src.constants import repeatable_row
+        assert repeatable_row({'item': 'curd'}, 'curd')
+        assert repeatable_row({'item': 'curd'}, None)
+
+    def test_a_slot_holding_a_staple_is_never_starved(self):
+        """`starved_slots` must not relax uniqueness for a slot a staple can
+        fill on its own — the staple already covers every cell."""
+        class _Cell:
+            def __init__(self, rows, slot='nonveg_main'):
+                self.base_slot = slot
+                self.cand_rows = rows
+
+        one_staple = [
+            _Cell([{'item': 'tandoori_murgh_lababdar', 'is_tandoor': 1}])
+            for _ in range(5)
+        ]
+        assert starved_slots(one_staple) == {}
+        # Without the staple flag the same shape IS starved.
+        one_plain = [_Cell([{'item': 'murgh_korma'}]) for _ in range(5)]
+        assert 'nonveg_main' in starved_slots(one_plain)
+
+    def test_cooldown_never_bans_a_staple(self):
+        import datetime as _dt
+        from src.menu_rules.cooldown_rules import ItemCooldownMenuRule
+        rule = ItemCooldownMenuRule({'type': 'item_cooldown',
+                                     'name': 'cd', 'cooldown_days': 20})
+        pool = pd.DataFrame([
+            {'item': 'tandoori_murgh_lababdar', 'is_tandoor': 1},
+            {'item': 'murgh_korma', 'is_tandoor': 0},
+        ])
+        day = _dt.date(2026, 8, 3)
+        ctx = {'banned_by_date': {day: {'tandoori_murgh_lababdar', 'murgh_korma'}}}
+        kept = rule.pre_filter_pool(pool, day, 'nonveg_main', 'mix', ctx)
+        assert list(kept['item']) == ['tandoori_murgh_lababdar'], list(kept['item'])
+
+    def test_cooldown_still_bans_a_tandoor_bread(self):
+        """Slot scoping again: the same flag must not exempt a bread."""
+        import datetime as _dt
+        from src.menu_rules.cooldown_rules import ItemCooldownMenuRule
+        rule = ItemCooldownMenuRule({'type': 'item_cooldown',
+                                     'name': 'cd', 'cooldown_days': 20})
+        pool = pd.DataFrame([
+            {'item': 'butter_naan', 'is_tandoor': 1},
+            {'item': 'jeera_chapatti', 'is_tandoor': 0},
+        ])
+        day = _dt.date(2026, 8, 3)
+        ctx = {'banned_by_date': {day: {'butter_naan'}}}
+        kept = rule.pre_filter_pool(pool, day, 'bread', 'mix', ctx)
+        assert list(kept['item']) == ['jeera_chapatti'], list(kept['item'])
+
+    def test_composition_does_not_relax_a_staple_component(self):
+        """One kebab covering five days is not a shortfall — it is a staple."""
+        rule = SlotCompositionRule({
+            'type': 'slot_composition', 'name': 'five',
+            'base_slot': 'nonveg_main', 'min_slot_count': 2,
+            'components': [{'selector': {'flag': 'is_tandoor'}, 'count': 1}],
+        })
+
+        class _Cell:
+            def __init__(self, di, rows):
+                self.d_idx, self.base_slot = di, 'nonveg_main'
+                self.cand_rows = rows
+                self.x_vars = [None] * len(rows)
+
+        cells = [
+            _Cell(di, [{'item': 'the_only_kebab', 'is_tandoor': 1}])
+            for di in range(5)
+        ]
+
+        class _Cfg:
+            slot_counts = {'nonveg_main': 5}
+
+        limited = rule._horizon_limited_components(
+            cells, [MON + dt.timedelta(days=i) for i in range(5)],
+            [''] * 5, {'cfg': _Cfg()},
+        )
+        assert limited == {}, limited

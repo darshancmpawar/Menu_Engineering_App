@@ -307,6 +307,46 @@ def test_biryani_lands_on_biryani_days_for_a_three_slot_counter(live_clients):
 
 
 @pytest.mark.slow
+def test_five_dish_station_serves_a_kebab_every_day(live_clients):
+    """L&T's 5-dish non-veg station: 5 dishes daily, kebab included.
+
+    Only one kebab is eligible for a common-only client, so a variety dish would
+    make "a kebab daily" need five distinct ones. The kebab is a staple — the
+    same dish every day, like steamed rice — so it recurs, while the rest of the
+    counter still varies.
+    """
+    resp, body = _plan(live_clients, 'L&T', 2, start_date='2026-07-29',
+                       time_limit_seconds=120)
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+
+    _name, cfg = _counters(live_clients, 'L&T')[2]
+    expected = int(cfg.slot_counts.get('nonveg_main', 1))
+    assert expected == 5, 'fixture no longer configures the 5-dish station'
+
+    df = live_clients._get_menu_data()[0]
+    truthy = df['is_tandoor'].fillna(0).astype(str).str.strip().str.lower()
+    staples = {
+        str(v).strip().lower()
+        for v in df[truthy.isin(('1', 'true', 'yes', 'y'))]['item'].tolist()
+    }
+
+    for key, day in body['solution'].items():
+        nonveg = [v['item_base'] for k, v in day['items'].items()
+                  if k.startswith('nonveg_main')]
+        assert len(nonveg) == 5, f"{key} served {len(nonveg)} dishes: {nonveg}"
+        assert any(n in staples for n in nonveg), (
+            f"{key} has no kebab among {nonveg}"
+        )
+
+    # The staple exemption is slot-scoped: bread must still vary. `is_tandoor`
+    # also marks tandoor breads, and a flat flag list would have let butter naan
+    # repeat all week here.
+    breads = [d['items']['bread']['item_base']
+              for d in body['solution'].values() if 'bread' in d['items']]
+    assert len(set(breads)) == len(breads), f"bread repeated: {breads}"
+
+
+@pytest.mark.slow
 def test_theme_forced_cap_conflict_is_explained_not_infeasible(live_clients):
     """A cap the themes force past must 422 with the rule named and a fix given.
 
