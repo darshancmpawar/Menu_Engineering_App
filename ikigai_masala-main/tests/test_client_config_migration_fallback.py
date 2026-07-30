@@ -1,7 +1,7 @@
 """Tests for the column-missing graceful-fallback paths.
 
 If a deployment hasn't applied the Phase 2 #14 migration that added
-``clients.version``, ``get_client_version`` and ``bump_version_if_matches``
+``clients.version``, ``get_client_version`` and ``update_client_atomic``
 must NOT 500 the editor. Instead they log a clear ERROR pointing at the
 fix and degrade to "no concurrency check" so the editor stays usable.
 """
@@ -136,7 +136,10 @@ class TestGetClientVersionFallback:
             loader.get_client_version("Ghost")
 
 
-class TestBumpVersionFallback:
+class TestAtomicUpdateFallback:
+    """``update_client_atomic`` is the single write path for config edits, so
+    its missing-column fallback is what actually has to degrade cleanly."""
+
     def test_falls_back_when_column_missing(self, monkeypatch, caplog):
         loader, sb = _loader_with_mock_supabase(monkeypatch)
 
@@ -150,9 +153,20 @@ class TestBumpVersionFallback:
         )
 
         caplog.set_level(logging.ERROR, logger="src.client.client_config")
-        result = loader.bump_version_if_matches("Cargil", expected=1)
+        result = loader.update_client_atomic(
+            "Cargil", 1, {"serve_weekends": True},
+        )
         assert result == 1
         assert any(
-            "without concurrency check" in rec.message
+            "without the concurrency check" in rec.message
             for rec in caplog.records
         )
+
+    def test_re_raises_unrelated_errors(self, monkeypatch):
+        """A network error must not be mistaken for a missing column."""
+        loader, sb = _loader_with_mock_supabase(monkeypatch)
+        sb.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.side_effect = (
+            RuntimeError("network down")
+        )
+        with pytest.raises(RuntimeError, match="network down"):
+            loader.update_client_atomic("Cargil", 1, {"serve_weekends": True})

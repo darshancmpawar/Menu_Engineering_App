@@ -75,6 +75,53 @@ def _all_counters():
             yield client['name'], idx, counter['name']
 
 
+# Start dates that exercise the theme resolution, not just one happy Monday.
+# `chinese_continental` resolves per ISO-week parity, so a counter can be
+# satisfiable on an even week and INFEASIBLE on an odd one; a mid-week start
+# spans two ISO weeks and flips the theme inside a single horizon. Sweeping only
+# MONDAY of an even week hid Amadeus's Chinese counter failing on 9 of 14 start
+# dates.
+ALT_STARTS = [
+    '2026-07-27',   # Monday, ISO week 31 (odd)  -> all-continental horizon
+    '2026-07-29',   # Wednesday                  -> horizon spans weeks 31/32
+]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('start', ALT_STARTS)
+@pytest.mark.parametrize(
+    'client_name,idx,counter_name',
+    list(_all_counters()),
+    ids=[f"{c}-{n}" for c, _i, n in _all_counters()],
+)
+def test_every_counter_generates_on_other_start_dates(
+    live_clients, client_name, idx, counter_name, start,
+):
+    """The fleet must generate whatever weekday and ISO week it is asked for.
+
+    A 422 is an acceptable outcome here and a 500 is not: 422 means the
+    pre-flight named a real config contradiction with a fix, which is the
+    designed behaviour for an over-constrained counter. An unexplained
+    INFEASIBLE is the failure this test exists to catch.
+    """
+    resp, body = _plan(live_clients, client_name, idx, start_date=start)
+    assert resp.status_code in (200, 422), (
+        f"{client_name}/{counter_name} start={start} returned "
+        f"{resp.status_code}: {body.get('error') or body.get('message')}"
+    )
+    if resp.status_code == 422:
+        errors = [d for d in body.get('rule_diagnostics', [])
+                  if d.get('severity') == 'error']
+        assert errors, (
+            f"{client_name}/{counter_name} start={start} was blocked with no "
+            f"error diagnostic explaining why"
+        )
+        for d in errors:
+            assert d.get('suggestion'), (
+                f"{d['rule']} blocked the plan without suggesting a fix"
+            )
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize(
     'client_name,idx,counter_name',
@@ -225,3 +272,163 @@ def test_starved_slot_warns_instead_of_failing(live_clients):
         "expected a warning naming curd_rice as under-supplied; got "
         f"{[d.get('message') for d in body.get('rule_diagnostics', [])][:6]}"
     )
+
+
+@pytest.mark.slow
+def test_biryani_lands_on_biryani_days_for_a_three_slot_counter(live_clients):
+    """A 3-nonveg counter must still get its themed composition.
+
+    ``nonveg_main_daily_pair`` used to gate on ``requires_slot_count: 2`` — an
+    exact match — so Computa Centre's 3-dish non-veg counter got no composition
+    at all: its biryani-theme day came back with no biryani while non-biryani
+    days got two. The gate is now a minimum.
+    """
+    resp, body = _plan(live_clients, 'Computa Centre', 0, start_date='2026-07-29')
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+
+    def biryanis(day):
+        return [
+            v['item_base'] for k, v in day['items'].items()
+            if k.startswith('nonveg_main') and 'biryani' in v['item_base']
+        ]
+
+    biryani_days = [(k, d) for k, d in body['solution'].items()
+                    if d['day_type'] == 'biryani']
+    assert biryani_days, 'fixture no longer has a biryani-theme day'
+    for key, day in biryani_days:
+        assert biryanis(day), (
+            f"{key} is a biryani day but no nonveg_main is a biryani: "
+            f"{ {k: v['item_base'] for k, v in day['items'].items() if k.startswith('nonveg_main')} }"
+        )
+    # And no day may stack two biryanis (the weekly cap counts days, so the
+    # per-day cap is what stops a pair of biryanis sharing one).
+    for key, day in body['solution'].items():
+        assert len(biryanis(day)) <= 1, f"{key} has {biryanis(day)}"
+
+
+@pytest.mark.slow
+def test_five_dish_station_serves_a_kebab_every_day(live_clients):
+    """L&T's 5-dish non-veg station: 5 dishes daily, kebab included.
+
+    Only one kebab is eligible for a common-only client, so a variety dish would
+    make "a kebab daily" need five distinct ones. The kebab is a staple — the
+    same dish every day, like steamed rice — so it recurs, while the rest of the
+    counter still varies.
+    """
+    resp, body = _plan(live_clients, 'L&T', 2, start_date='2026-07-29',
+                       time_limit_seconds=120)
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+
+    _name, cfg = _counters(live_clients, 'L&T')[2]
+    expected = int(cfg.slot_counts.get('nonveg_main', 1))
+    assert expected == 5, 'fixture no longer configures the 5-dish station'
+
+    df = live_clients._get_menu_data()[0]
+    truthy = df['is_tandoor'].fillna(0).astype(str).str.strip().str.lower()
+    staples = {
+        str(v).strip().lower()
+        for v in df[truthy.isin(('1', 'true', 'yes', 'y'))]['item'].tolist()
+    }
+
+    for key, day in body['solution'].items():
+        nonveg = [v['item_base'] for k, v in day['items'].items()
+                  if k.startswith('nonveg_main')]
+        assert len(nonveg) == 5, f"{key} served {len(nonveg)} dishes: {nonveg}"
+        assert any(n in staples for n in nonveg), (
+            f"{key} has no kebab among {nonveg}"
+        )
+
+    # The staple exemption is slot-scoped: bread must still vary. `is_tandoor`
+    # also marks tandoor breads, and a flat flag list would have let butter naan
+    # repeat all week here.
+    breads = [d['items']['bread']['item_base']
+              for d in body['solution'].values() if 'bread' in d['items']]
+    assert len(set(breads)) == len(breads), f"bread repeated: {breads}"
+
+
+@pytest.mark.slow
+def test_theme_forced_cap_conflict_is_explained_not_infeasible(live_clients):
+    """A cap the themes force past must 422 with the rule named and a fix given.
+
+    Neither rule alone can see this contradiction — the cap does not know the
+    theme map, and the composition does not know the cap — so the solve used to
+    come back as a bare INFEASIBLE 500 with nothing to act on. Provoked here by
+    re-enabling the weekly biryani cap on a counter themed biryani twice, which
+    is the shape the shipped config resolves with a per-counter disable.
+    """
+    import src.menu_rules.menu_rule_loader as loader_mod
+
+    real = loader_mod.MenuRuleLoader.load_for_client
+
+    def without_the_disable(self, client, generic=None, counter_name=None):
+        rules = real(self, client, generic, counter_name)
+        if any(r.name == 'nonveg_biryani_once_per_week' for r in rules):
+            return rules
+        from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
+        return rules + [NonvegBiryaniWeeklyRule({
+            'type': 'nonveg_biryani_weekly',
+            'name': 'nonveg_biryani_once_per_week', 'max_per_week': 1,
+        })]
+
+    loader_mod.MenuRuleLoader.load_for_client = without_the_disable
+    try:
+        resp, body = _plan(live_clients, 'Siemens Technology', 2,
+                           start_date='2026-07-29')
+    finally:
+        loader_mod.MenuRuleLoader.load_for_client = real
+
+    assert resp.status_code == 422, (
+        f"expected a pre-flight block, got {resp.status_code}: "
+        f"{body.get('error') or body.get('message')}"
+    )
+    errs = [d for d in body['rule_diagnostics'] if d['severity'] == 'error']
+    conflict = next(
+        (d for d in errs if d['rule'] == 'nonveg_biryani_once_per_week'), None,
+    )
+    assert conflict is not None, [d['rule'] for d in errs]
+    # Two biryani-theme weekdays, each mandating a biryani via the composition.
+    assert conflict['affected']['forced_biryani_days'] == 2
+    assert 'disable' in conflict['suggestion']
+
+
+@pytest.mark.slow
+def test_configured_counters_no_longer_hit_that_conflict(live_clients):
+    """The shipped config resolves it: both biryani days get a biryani."""
+    resp, body = _plan(live_clients, 'Siemens Technology', 2,
+                       start_date='2026-07-29')
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+    for key, day in body['solution'].items():
+        nonveg = [v['item_base'] for k, v in day['items'].items()
+                  if k.startswith('nonveg_main')]
+        has_biryani = any('biryani' in n for n in nonveg)
+        if day['day_type'] == 'biryani':
+            assert has_biryani, f"{key} is a biryani day but got {nonveg}"
+        else:
+            assert not has_biryani, (
+                f"{key} is a {day['day_type']} day but got a biryani: {nonveg}"
+            )
+
+
+@pytest.mark.slow
+def test_diagnose_reports_the_counter_it_was_asked_about(live_clients):
+    """/diagnose must honour counter_index like /plan does.
+
+    It used to build its inputs from the primary counter regardless, so every
+    multi-counter client got a clean bill of health for counter 0 while the
+    counter being planned was unsatisfiable.
+    """
+    from api.rate_limit import reset_for_tests
+    seen = {}
+    for idx in (0, 2):
+        reset_for_tests()
+        resp = live_clients.app.test_client().post('/api/v1/diagnose', json={
+            'client_name': 'Amadeus', 'counter_index': idx,
+            'start_date': '2026-07-27', 'num_days': 5,
+        })
+        body = resp.get_json()
+        assert resp.status_code == 200, body
+        seen[idx] = body['counter_name']
+    assert seen[0] != seen[2], (
+        f"/diagnose returned the same counter for both indexes: {seen}"
+    )
+    assert seen[2] == 'Chinese', seen

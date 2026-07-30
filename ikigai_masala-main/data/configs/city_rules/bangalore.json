@@ -85,6 +85,15 @@
       "max_per_week": 1
     },
     {
+      "_comment": "nonveg_biryani_once_per_week counts biryani DAYS, so a counter with 2+ nonveg slots could satisfy it by stacking two biryanis onto one day. This caps the dishes per day so the pair is biryani + something else. allowed_day_types keeps the biryani on the biryani day: a 'mix' day is not narrowed by the theme filter at all, so without this a themed counter could serve biryani on Monday and none on its actual biryani day. A counter themed biryani every weekday is unaffected (every day is an allowed day).",
+      "name": "nonveg_biryani_one_per_day",
+      "type": "selector_frequency",
+      "selector": { "flag": "is_nonveg_biryani" },
+      "base_slot": "nonveg_main",
+      "daily_max": 1,
+      "allowed_day_types": ["biryani"]
+    },
+    {
       "name": "mixed_veg_gravy_weekly",
       "type": "selector_frequency",
       "selector": { "flag": "is_mixedveg_gravy" },
@@ -340,7 +349,8 @@
       "name": "nonveg_main_daily_pair",
       "type": "slot_composition",
       "base_slot": "nonveg_main",
-      "requires_slot_count": 2,
+      "min_slot_count": 2,
+      "max_slot_count": 4,
       "components": [
         { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
         { "selector": { "any_flag": ["is_north_chicken_gravy", "is_south_chicken_gravy"] }, "count": 1 }
@@ -357,10 +367,24 @@
       }
     },
     {
+      "_comment": "A 5-dish non-veg lunch station: biryani + gravy + dry + kebab + egg, every day. Gated to counters configured with 5 nonveg_main so it is inert elsewhere, and nonveg_main_daily_pair is capped at 4 so the two never compose the same counter. 'kebab' maps to the tandoor flags — the ontology has no kebab flag of its own, and only 13 tandoor nonveg items, so that component auto-relaxes on days it cannot be filled.",
+      "name": "nonveg_main_five_dish",
+      "type": "slot_composition",
+      "base_slot": "nonveg_main",
+      "min_slot_count": 5,
+      "components": [
+        { "selector": { "flag": "is_nonveg_biryani" }, "count": 1 },
+        { "selector": { "flag": "is_nonveg_gravy" }, "count": 1 },
+        { "selector": { "flag": "is_nonveg_dry" }, "count": 1 },
+        { "selector": { "any_flag": ["is_tandoor", "is_tandoor_nonveg_dry"] }, "count": 1 },
+        { "selector": { "flag": "is_egg_dish" }, "count": 1 }
+      ]
+    },
+    {
       "name": "veg_dry_north_south_pair",
       "type": "slot_composition",
       "base_slot": "veg_dry",
-      "requires_slot_count": 2,
+      "min_slot_count": 2,
       "components": [
         { "selector": { "cuisine_family": "north_indian" }, "count": 1 },
         { "selector": { "cuisine_family": "south_indian" }, "count": 1 }

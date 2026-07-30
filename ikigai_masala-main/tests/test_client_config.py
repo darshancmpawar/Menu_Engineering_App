@@ -12,6 +12,7 @@ from src.client.client_config import (
     _dedupe_preserve_order,
     DEFAULT_THEME_MAP,
     MAX_COUNTERS,
+    _MAX_SLOT_COUNT,
 )
 
 
@@ -215,7 +216,7 @@ class TestHelpers:
         # bogus dropped + deduped; constants (white_rice) are now KEPT as
         # selectable categories.
         assert c['categories'] == ['veg_dry', 'white_rice']
-        assert c['slot_counts']['veg_dry'] == 3          # clamped to max 3
+        assert c['slot_counts']['veg_dry'] == _MAX_SLOT_COUNT   # clamped to the max
         assert 'white_rice' not in c['slot_counts']      # constants have no frequency
         assert c['theme_map']['monday'] == 'chinese'
         assert c['theme_map']['tuesday'] == DEFAULT_THEME_MAP['tuesday']

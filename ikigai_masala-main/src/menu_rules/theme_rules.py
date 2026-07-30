@@ -202,14 +202,26 @@ _CUISINE_MAIN_SLOTS = {'rice', 'veg_gravy', 'veg_dry', 'starter', 'nonveg_main'}
 _NONVEG_REGIONAL_GRAVY_FLAGS = ('is_north_chicken_gravy', 'is_south_chicken_gravy')
 
 
+# Dish families a larger non-veg station composes beyond the themed dish and the
+# regional gravy. Kept in the pool for counters that serve enough dishes to need
+# them (see _augment_nonveg_pair).
+_NONVEG_STRUCTURAL_FLAGS = (
+    'is_nonveg_dry', 'is_tandoor', 'is_tandoor_nonveg_dry', 'is_egg_dish',
+)
+
+
+def _nonveg_slot_count(cfg) -> int:
+    counts = getattr(cfg, 'slot_counts', None) or {}
+    try:
+        return int(counts.get('nonveg_main', 1) or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
 def _has_multi_nonveg(cfg) -> bool:
     """True when the counter serves 2+ ``nonveg_main`` dishes (so the day's
     nonveg pair needs a themed dish + a regional gravy)."""
-    counts = getattr(cfg, 'slot_counts', None) or {}
-    try:
-        return int(counts.get('nonveg_main', 1) or 1) >= 2
-    except (TypeError, ValueError):
-        return False
+    return _nonveg_slot_count(cfg) >= 2
 
 
 def _nonveg_regional_gravy_mask(pool: pd.DataFrame) -> pd.Series:
@@ -315,16 +327,32 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
     def _augment_nonveg_pair(self, pool: pd.DataFrame, base_slot: str,
                              filtered: pd.DataFrame, cfg) -> pd.DataFrame:
-        """On a two-nonveg counter, keep the day's themed ``nonveg_main`` dishes
+        """Keep a multi-dish non-veg counter's non-themed dish families.
+
+        On a two-nonveg counter, keep the day's themed ``nonveg_main`` dishes
         PLUS the always-allowed north/south chicken gravies, so the
         ``slot_composition`` rule can place one themed dish + one regional gravy.
-        A single-nonveg counter is returned unchanged."""
+        A single-nonveg counter is returned unchanged.
+
+        A counter serving 3+ also keeps the structural families a bigger
+        composition places — dry, kebab/tandoor and egg. The filter's job is to
+        guarantee the *themed* dish is available, not to make every dish on the
+        counter themed: narrowing a 5-dish station to biryani + chicken gravy
+        left it 0 dry and 2 egg items against a composition wanting one of each
+        every day, which is unsatisfiable however the solver picks. The themed
+        dish is still guaranteed — the composition rule mandates it.
+        """
         if base_slot != 'nonveg_main' or not _has_multi_nonveg(cfg):
             return filtered
-        reg = pool[_nonveg_regional_gravy_mask(pool)]
-        if len(reg) == 0:
+        keep = _nonveg_regional_gravy_mask(pool)
+        if _nonveg_slot_count(cfg) >= 3:
+            for col in _NONVEG_STRUCTURAL_FLAGS:
+                if col in pool.columns:
+                    keep = keep | (pool[col].map(_to_bool01) == 1)
+        extra = pool[keep]
+        if len(extra) == 0:
             return filtered
-        return pool.loc[filtered.index.union(reg.index)]
+        return pool.loc[filtered.index.union(extra.index)]
 
     def _filter_chinese(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)
@@ -407,7 +435,15 @@ class ThemeSlotFilterRule(BaseMenuRule):
             items at all (filter would empty the pool; the rule itself
             falls back to unfiltered, so the user gets a non-theme
             menu silently — surfacing this lets them fix the data).
-          - INFO   when the filter narrows the pool by ≥50%.
+          - INFO   when the filter narrows the pool by ≥50%, aggregated to
+            one entry per slot rather than one per (date, slot).
+
+        The narrowing INFO is emitted **per slot, not per day**. Narrowing is
+        this rule's whole job — every themed day narrows every cuisine-main
+        slot — so the per-day form produced 706 entries across the client base,
+        each carrying the suggestion "No action needed", and buried the handful
+        of real warnings operators need to see. One line per slot keeps the
+        same information (day count and the resulting range) at 1/5 the volume.
 
         Never ERROR: this rule's design is to fall back to the
         unfiltered pool when filtering would empty it, so it can't be
@@ -416,6 +452,8 @@ class ThemeSlotFilterRule(BaseMenuRule):
         based on the data the user actually has.)
         """
         diags: List[Diagnostic] = []
+        # slot -> {'days': [...], 'before': set(), 'after': [...], 'themes': set()}
+        narrowed: Dict[str, Dict[str, Any]] = {}
         cfg = ctx.cfg
         cuisine_col = cfg.cuisine_col if cfg else 'cuisine_family'
         south_val = cfg.cuisine_south_value if cfg else 'south_indian'
@@ -472,25 +510,43 @@ class ThemeSlotFilterRule(BaseMenuRule):
                         },
                     ))
                 elif filtered_size < len(pool) // 2:
-                    diags.append(Diagnostic(
-                        rule=self.name,
-                        rule_type=self.rule_type.value,
-                        severity=DiagnosticSeverity.INFO,
-                        phase=DiagnosticPhase.PRE_FILTER,
-                        message=(
-                            f"{day_type.capitalize()} {day_label}: filter "
-                            f"narrowed {slot_label} pool from {len(pool)} "
-                            f"to {filtered_size} items."
-                        ),
-                        suggestion="No action needed.",
-                        affected={
-                            'date': d.isoformat(),
-                            'slot': base,
-                            'day_type': day_type,
-                            'pool_size_before': len(pool),
-                            'pool_size_after': filtered_size,
-                        },
-                    ))
+                    entry = narrowed.setdefault(base, {
+                        'days': [], 'themes': set(), 'before': len(pool),
+                        'after': [],
+                    })
+                    entry['days'].append(d.isoformat())
+                    entry['themes'].add(day_type)
+                    entry['after'].append(filtered_size)
+
+        for base, entry in sorted(narrowed.items()):
+            slot_label = base.replace('_', ' ')
+            after = entry['after']
+            span = (
+                f"{min(after)} items"
+                if min(after) == max(after)
+                else f"{min(after)}-{max(after)} items"
+            )
+            diags.append(Diagnostic(
+                rule=self.name,
+                rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.INFO,
+                phase=DiagnosticPhase.PRE_FILTER,
+                message=(
+                    f"Theme filter narrowed the {slot_label} pool on "
+                    f"{len(entry['days'])} day(s) "
+                    f"({', '.join(sorted(entry['themes']))}): "
+                    f"{entry['before']} → {span}."
+                ),
+                suggestion="No action needed — this is the theme filter working.",
+                affected={
+                    'slot': base,
+                    'dates': entry['days'],
+                    'day_types': sorted(entry['themes']),
+                    'pool_size_before': entry['before'],
+                    'pool_size_after_min': min(after),
+                    'pool_size_after_max': max(after),
+                },
+            ))
         return diags
 
     def _project_filter_size(

@@ -19,8 +19,8 @@ from .base_menu_rule import (
 )
 from src.constants import (
     OBJECTIVE_TIER_WEIGHTS,
-    REPEATABLE_ITEM_BASES,
     REPEATABLE_SLOTS,
+    repeatable_row,
 )
 from ..preprocessor.column_mapper import _norm_str
 
@@ -53,13 +53,21 @@ def starved_slots(cells) -> Dict[str, int]:
     for cell in cells:
         if cell.base_slot in REPEATABLE_SLOTS:
             continue
-        entry = stats.setdefault(cell.base_slot, {'cells': 0, 'items': set()})
+        entry = stats.setdefault(
+            cell.base_slot, {'cells': 0, 'items': set(), 'staple': False})
         entry['cells'] += 1
         for row in cell.cand_rows:
+            if repeatable_row(row, cell.base_slot):
+                # A staple can cover any number of cells on its own, so its
+                # presence means this slot can never be arithmetically starved.
+                entry['staple'] = True
+                continue
             entry['items'].add(_norm_str(row.get('item', '')))
 
     out: Dict[str, int] = {}
     for slot, entry in stats.items():
+        if entry['staple']:
+            continue
         distinct = len({i for i in entry['items'] if i})
         if distinct and distinct < entry['cells']:
             out[slot] = max(1, math.ceil(entry['cells'] / distinct))
@@ -90,7 +98,12 @@ class UniqueItemsMenuRule(BaseMenuRule):
         item_to_vars = context.get('item_to_vars', {})
         if not item_to_vars:
             return
-        repeatable = set(REPEATABLE_ITEM_BASES)
+        repeatable = {
+            _norm_str(row.get('item', ''))
+            for cell in cells for row in cell.cand_rows
+            if repeatable_row(row, cell.base_slot)
+        }
+        repeatable.discard('')
 
         self._repeat_penalty_vars = []
         relaxed = starved_slots(cells) if cells else {}

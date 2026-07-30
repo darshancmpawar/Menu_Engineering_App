@@ -41,6 +41,21 @@ MAX_NUM_DAYS = 30
 # (in addition to the primary). Bounds solver work per request.
 MAX_ALTERNATES = 4
 
+# Largest request body the API will read, in bytes. Without a cap, /save and
+# /regenerate parse an unbounded `week_plan` / `base_plan` straight into memory,
+# so a single large POST is a cheap memory-pressure lever. 2 MB is far above a
+# real payload (a 30-day multi-counter plan is a few tens of KB).
+MAX_CONTENT_LENGTH_BYTES = int(
+    os.getenv('MAX_CONTENT_LENGTH_BYTES', str(2 * 1024 * 1024))
+)
+
+# Optional shared-secret gate for the mutating endpoints. Unset (the default)
+# leaves the API exactly as it is today — open — so nothing breaks for an
+# existing deployment. Set it and every write must present a matching
+# `X-API-Key` header (or `Authorization: Bearer <token>`), which is enough to
+# stop an accidentally-exposed port from being writable by anyone who finds it.
+API_WRITE_TOKEN = os.getenv('API_WRITE_TOKEN', '').strip()
+
 API_HOST = os.getenv('API_HOST', '127.0.0.1')
 API_PORT = int(os.getenv('API_PORT', '5000'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'

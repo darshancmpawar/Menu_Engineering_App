@@ -10,6 +10,8 @@ Endpoints:
 """
 
 import datetime as dt
+import functools
+import hmac
 import logging
 import os
 import re
@@ -26,6 +28,8 @@ from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
+    API_WRITE_TOKEN,
+    MAX_CONTENT_LENGTH_BYTES,
     DEFAULT_EXCEL_PATH,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
@@ -110,6 +114,73 @@ def _internal_error_response(status: int = 500):
 _STARTED_AT = time.time()
 
 app = Flask(__name__)
+
+# Reject oversized bodies before they are parsed (see MAX_CONTENT_LENGTH_BYTES).
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH_BYTES
+
+
+def _too_large_response():
+    return jsonify({
+        'success': False,
+        'error': (
+            f'Request body exceeds the {MAX_CONTENT_LENGTH_BYTES} byte limit.'
+        ),
+    }), 413
+
+
+@app.errorhandler(413)
+def _payload_too_large(_exc):
+    return _too_large_response()
+
+
+@app.before_request
+def _reject_oversized_body():
+    """Reject an over-limit body before the view runs.
+
+    ``MAX_CONTENT_LENGTH`` alone is not enough here: Werkzeug raises
+    ``RequestEntityTooLarge`` lazily, when the view first reads the stream — and
+    every endpoint wraps its body in a broad ``except Exception`` that catches
+    it and returns a misleading 500 instead of 413. Checking the declared
+    Content-Length up front keeps the status honest regardless of the handler.
+    """
+    limit = app.config.get('MAX_CONTENT_LENGTH')
+    if limit and (request.content_length or 0) > limit:
+        return _too_large_response()
+    return None
+
+
+def require_write_token(fn):
+    """Gate a mutating endpoint on the optional shared secret.
+
+    A no-op when ``API_WRITE_TOKEN`` is unset, which is the shipped default, so
+    this changes nothing for a deployment that relies on the network perimeter.
+    When it *is* set, a write without the matching token gets 401 — the cheapest
+    thing that stops an exposed port from being writable by anyone.
+
+    This is not a substitute for real per-user auth; it is the minimum that
+    makes "the port leaked" survivable. The rate-limit principal hook
+    (api.rate_limit._principal_key) is where a future identity would slot in.
+    """
+    @functools.wraps(fn)
+    def _inner(*args, **kwargs):
+        if not API_WRITE_TOKEN:
+            return fn(*args, **kwargs)
+        supplied = request.headers.get('X-API-Key', '').strip()
+        if not supplied:
+            auth = request.headers.get('Authorization', '').strip()
+            if auth.lower().startswith('bearer '):
+                supplied = auth[7:].strip()
+        if not hmac.compare_digest(supplied, API_WRITE_TOKEN):
+            metrics.incr('write_auth_rejected_total')
+            return jsonify({
+                'success': False,
+                'error': (
+                    'This endpoint requires a write token. Send it as '
+                    'X-API-Key or Authorization: Bearer <token>.'
+                ),
+            }), 401
+        return fn(*args, **kwargs)
+    return _inner
 
 # CORS: default to loopback-only (the Streamlit frontend calls the API
 # server-side via `requests`, so no browser origin needs access). Set
@@ -221,7 +292,10 @@ def _menu_data_for_client(client_name):
       every mandatory slot stays populated (build_pools never empties).
     """
     df, pools = _get_menu_data()
-    source_pools = _get_client_loader().get_client_source_pools(client_name)
+    if has_request_context():
+        source_pools = _client_row(client_name)['source_pools']
+    else:
+        source_pools = _get_client_loader().get_client_source_pools(client_name)
     if source_pools is None:
         return df, pools
     active = get_active_pools(source_pools)
@@ -432,7 +506,7 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
 
 
 def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
-    """Return ``(rules, skip_cells, constant_items, whole_slot_bases)``.
+    """Return ``(rules, skip_cells, constant_items, whole_slot_bases, forced_items)``.
 
     Merges the city ruleset with per-client overrides (by name + disable) and
     resolves ``constant_items`` against *client_cfg* — the counter being
@@ -459,16 +533,70 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
             skip_cells |= rule.compute_skip_cells(dates)
     from src.solver.menu_solver import _resolve_client_constant
     from src.solver._helpers import weekday_name as _weekday_name_fn
+
+    # A pin is honoured one of two ways, and which one depends on whether the
+    # dish exists in the ontology:
+    #
+    #   * it does  -> the cell stays in the model with its candidates narrowed to
+    #                 that dish (`forced_items`), so every other rule sees it and
+    #                 the day is composed around it.
+    #   * it does not -> the cell is skipped and the text is stamped verbatim
+    #                 after the solve, which is how off-ontology dishes ("Mutton
+    #                 Biryani", "Fish Tikka Masala") print today. Add the dish to
+    #                 menu_items.xlsx and the same pin starts going through the
+    #                 solver with no config change.
+    known_items = _ontology_item_names()
+    forced_items: Dict[Any, str] = {}
     for slot_id, spec in constant_items.items():
         siblings = _exclusive_siblings(_base_slot(slot_id))
         for d in dates:
-            if _resolve_client_constant(spec, _weekday_name_fn(d)) is None:
+            value = _resolve_client_constant(spec, _weekday_name_fn(d))
+            if value is None:
                 continue
-            skip_cells.add((d, slot_id))
             # Sibling entries are base-level on purpose: every expansion of
-            # the excluded slot goes away for that day.
+            # the excluded slot goes away for that day. This holds either way —
+            # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
-    return rules, skip_cells, constant_items, whole_slot_bases
+            canonical = _canonical_item_name(value, known_items)
+            # A pin that replaces the slot for the WHOLE horizon must still be
+            # stamped, even when it names a real dish. Its base slot is dropped
+            # from the model (`whole_slot_bases`), so there is no cell to narrow
+            # — and solving one anyway would be INFEASIBLE under unique_items,
+            # which is why the slot is dropped in the first place: the same dish
+            # cannot occupy five days unless it is a staple.
+            if canonical is not None \
+                    and _base_slot(slot_id) not in whole_slot_bases:
+                forced_items[(d, slot_id)] = canonical
+            else:
+                skip_cells.add((d, slot_id))
+    return rules, skip_cells, constant_items, whole_slot_bases, forced_items
+
+
+def _ontology_item_names():
+    """Lowercased ontology item names, for resolving a pin to a real dish."""
+    df = _get_menu_data()[0]
+    if df is None or 'item' not in getattr(df, 'columns', []):
+        return frozenset()
+    try:
+        return frozenset(str(v).strip().lower() for v in df['item'].tolist())
+    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
+        return frozenset()
+
+
+def _canonical_item_name(value, known_items):
+    """Return the ontology spelling of *value*, or None if it is not a dish.
+
+    Pins are hand-written, so ``"Boiled Egg"`` has to match ``boiled_egg``.
+    """
+    if not isinstance(value, str):
+        return None
+    name = value.strip().lower()
+    if not name:
+        return None
+    for candidate in (name, name.replace(' ', '_')):
+        if candidate in known_items:
+            return candidate
+    return None
 
 
 def _apply_item_cooldown_override(rules, cooldown_days):
@@ -620,6 +748,20 @@ def _cached_on_g(key: str, compute):
     return cache[key]
 
 
+def _client_row(client_name):
+    """All of a client's config columns, read once per request.
+
+    ``ClientConfigLoader`` intentionally has no cross-request cache so admin
+    edits are live. That is fine, but the per-field getters each issued their
+    own query, so one /plan cost six round trips against the same row. This
+    keeps reads live while collapsing them to one per request.
+    """
+    return _cached_on_g(
+        f'client_row:{client_name}',
+        lambda: _get_client_loader().get_client_row(client_name),
+    )
+
+
 def _request_client_names():
     return _cached_on_g(
         'client_names',
@@ -703,7 +845,7 @@ def _client_base_slots(client_cfg):
 
 def _build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
-    constant_items=None, whole_slot_bases=None,
+    constant_items=None, whole_slot_bases=None, forced_items=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -727,6 +869,7 @@ def _build_solver_config(
         active_base_slots=active_base or None,
         const_slots=const_selected,
         client_constant_items=dict(constant_items or {}),
+        forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
         premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
@@ -757,7 +900,8 @@ def _resolve_counter(client_name: str, data: Dict[str, Any]):
     """Return ``(counter_index, counter_name, counter_count, client_cfg)`` for
     the requested counter. ``counter_index`` defaults to 0 (primary). Raises
     ValueError for an out-of-range index."""
-    configs = _get_client_loader().get_client_configs(client_name)
+    row = _client_row(client_name)
+    configs = _get_client_loader().get_client_configs_from_row(client_name, row)
     counter_count = len(configs)
     try:
         idx = int(data.get('counter_index', 0) or 0)
@@ -792,8 +936,11 @@ def _prepare_solver_inputs(
         min(MAX_TIME_LIMIT_SECONDS, int(data.get('time_limit_seconds', 240))),
     )
 
+    row = _client_row(client_name)
     if client_cfg is None:
-        client_cfg = _get_client_loader().get_client(client_name)
+        client_cfg = _get_client_loader().get_client_configs_from_row(
+            client_name, row,
+        )[0][1]
     df, pools = _menu_data_for_client(client_name)
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(
@@ -803,14 +950,14 @@ def _prepare_solver_inputs(
     weekday_dates = _filter_dates_by_working_days(
         weekday_dates, getattr(client_cfg, 'working_days', None),
     )
-    city = _get_client_loader().get_client_city(client_name)
-    rules, skip_cells, constant_items, whole_slot_bases = _rules_and_skip_for_client(
+    city = row['city']
+    rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg,
     )
     _validate_constant_values(client_name, constant_items, df)
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
-    cooldown_days = _get_client_loader().get_client_item_cooldown_days(client_name)
+    cooldown_days = row['item_cooldown_days']
     rules = _apply_item_cooldown_override(rules, cooldown_days)
     window_days = _effective_history_window(rules)
     banned, rb_ban, recent_sigs = _build_history_context(
@@ -820,6 +967,7 @@ def _prepare_solver_inputs(
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
+        forced_items=forced_items,
     )
 
     return SolverInputs(
@@ -1100,6 +1248,8 @@ def regenerate_cells():
 
 
 @app.route('/api/v1/save', methods=['POST'])
+@rate_limit("write")
+@require_write_token
 def save_plan():
     try:
         data = request.get_json(silent=True) or {}
@@ -1338,6 +1488,7 @@ def editor_metadata():
 
 
 @app.route('/api/v1/pool-preview', methods=['POST'])
+@rate_limit("diagnose")
 def pool_preview():
     """Preview the eligible item pool for a set of source pools (F5 config UI).
 
@@ -1387,21 +1538,23 @@ def get_client_config(client_name):
     header so callers can issue optimistic-concurrency-safe PUTs.
     """
     try:
-        loader = _get_client_loader()
-        # The whole config is one document: a single counters read gives the
-        # mode + list; the primary counter (index 0) supplies the flat fields
-        # the editor still consumes (active_base_slots / slot_counts / themes).
-        counter_mode, counters = loader.get_counter_setup(client_name)
-        version = loader.get_client_version(client_name)
+        # The whole config is one document, so one read serves the whole
+        # response: the counters list gives the mode, and the primary counter
+        # (index 0) supplies the flat fields the editor still consumes
+        # (active_base_slots / slot_counts / theme_map).
+        row = _client_row(client_name)
+        counters = row['counters']
+        counter_mode = 'multi' if len(counters) > 1 else 'single'
+        version = row['version']
         primary = counters[0]
         response = jsonify({
             'success': True,
             'name': client_name,
-            'city': loader.get_client_city(client_name),
-            'serve_weekends': loader.get_client_serve_weekends(client_name),
-            'working_days': loader.get_client_working_days(client_name),
-            'item_cooldown_days': loader.get_client_item_cooldown_days(client_name),
-            'source_pools': loader.get_client_source_pools(client_name),
+            'city': row['city'],
+            'serve_weekends': row['serve_weekends'],
+            'working_days': row['working_days'],
+            'item_cooldown_days': row['item_cooldown_days'],
+            'source_pools': row['source_pools'],
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1495,6 +1648,8 @@ def _validated_source_pools(raw):
 
 
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
+@rate_limit("write")
+@require_write_token
 def update_client_config(client_name):
     """Update a client's configuration (slots, slot counts, theme overrides).
 
@@ -1589,6 +1744,8 @@ def update_client_config(client_name):
 
 
 @app.route('/api/v1/client', methods=['POST'])
+@rate_limit("write")
+@require_write_token
 def create_client():
     """Create a new client.
 
@@ -1604,9 +1761,28 @@ def create_client():
             return jsonify({'success': False, 'error': 'name is required'}), 400
 
         loader = _get_client_loader()
-        city = data.get('city')
+
+        # Validate and normalise EVERY field before the row is inserted.
+        #
+        # `source_pools` used to be validated *after* create_client() had
+        # already committed the row, so `{"source_pools": ["typo"]}` answered
+        # 400 while leaving a real client behind with no pools — and the
+        # caller's retry then failed on the duplicate name. Same class of bug
+        # the PUT handler had; same fix, one write.
+        city = normalize_city(data.get('city'))
         serve_weekends = bool(data.get('serve_weekends', False))
-        item_cooldown_days = data.get('item_cooldown_days')
+        item_cooldown_days = _validated_cooldown_days(
+            data.get('item_cooldown_days'))
+        working_days = (
+            _validated_working_days(data.get('working_days'))
+            if 'working_days' in data else None
+        )
+        # F5: optional client item-pool config (validated against the ontology).
+        source_pools = (
+            _validated_source_pools(data.get('source_pools'))
+            if 'source_pools' in data else None
+        )
+
         counters = data.get('counters')
         if counters:
             loader.create_client(
@@ -1616,25 +1792,16 @@ def create_client():
                 city=city,
                 serve_weekends=serve_weekends,
                 item_cooldown_days=item_cooldown_days,
+                working_days=working_days,
+                source_pools=source_pools,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
             loader.create_client(name, active_slots, city=city,
                                  serve_weekends=serve_weekends,
-                                 item_cooldown_days=item_cooldown_days)
-
-        # F5: optional client item-pool config (validated against the ontology).
-        if 'source_pools' in data:
-            sp = data.get('source_pools') or []
-            if not isinstance(sp, list):
-                raise ValueError("source_pools must be a list of pool tokens")
-            available = available_pool_tokens(_get_menu_data()[0])
-            requested = {normalize_name(t) for t in sp if normalize_name(t)}
-            requested.discard('common')
-            unknown = requested - available
-            if unknown:
-                raise ValueError(f"Unknown client pool(s): {sorted(unknown)}")
-            loader.set_client_source_pools(name, sorted(requested))
+                                 item_cooldown_days=item_cooldown_days,
+                                 working_days=working_days,
+                                 source_pools=source_pools)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
@@ -1645,6 +1812,8 @@ def create_client():
 
 
 @app.route('/api/v1/client/<client_name>', methods=['DELETE'])
+@rate_limit("write")
+@require_write_token
 def delete_client(client_name):
     """Delete a client."""
     try:
@@ -1661,6 +1830,7 @@ def delete_client(client_name):
 
 
 @app.route('/api/v1/diagnose', methods=['POST'])
+@rate_limit("diagnose")
 def diagnose_plan():
     """Pre-flight rule diagnostic. Same body shape as /plan but never
     invokes the solver — returns structured ``rule_diagnostics`` so the
@@ -1682,7 +1852,18 @@ def diagnose_plan():
         }
     """
     try:
-        inputs = _prepare_solver_inputs(request.get_json() or {})
+        data = request.get_json() or {}
+        # Resolve `counter_index` exactly as /plan does. Without this the
+        # endpoint built its inputs from the *primary* counter no matter which
+        # counter was asked about, so every multi-counter client got a clean
+        # bill of health for counter 0 while the counter actually being planned
+        # was unsatisfiable — Amadeus's Chinese counter reported
+        # "would_succeed: true" and then came back INFEASIBLE.
+        _require_known_client(data.get('client_name'))
+        counter_index, counter_name, counter_count, client_cfg = _resolve_counter(
+            data.get('client_name'), data,
+        )
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
         diagnostics, summary = _run_preflight(inputs)
         _record_diag_metrics(diagnostics)
         diag_dicts = [d.to_dict() for d in diagnostics]
@@ -1690,6 +1871,9 @@ def diagnose_plan():
             'success': True,
             'rule_diagnostics': diag_dicts,
             'summary': summary,
+            'counter_index': counter_index,
+            'counter_name': counter_name,
+            'counter_count': counter_count,
         }
         pool_warnings = pool_warnings_projection(diagnostics)
         if pool_warnings:

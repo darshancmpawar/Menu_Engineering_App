@@ -125,7 +125,18 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
                 for v in day_pool['is_nonveg_biryani'].tolist()
             ):
                 forced += 1
-        return forced
+
+        # A biryani is also unavoidable on a day whose slot_composition mandates
+        # one — the pool is not biryani-only there (the pair's other half is a
+        # gravy), so the check above misses it. Siemens Technology's non-veg
+        # counter has two biryani-theme days against this cap of one and used to
+        # come back as a bare INFEASIBLE.
+        from .slot_composition_rule import days_forced_by_composition
+        by_composition = days_forced_by_composition(
+            getattr(self, '_peer_rules', None), ctx, 'nonveg_main',
+            lambda r: _to_bool01(r.get('is_nonveg_biryani', 0)) == 1,
+        )
+        return max(forced, by_composition)
 
     # Populated by the diagnostics aggregator so the check above can replay the
     # theme filter that narrows the pool.

@@ -183,9 +183,12 @@ def _dedupe_preserve_order(values: List[str]) -> List[str]:
 #     {'name': str, 'categories': [slot],
 #      'slot_counts': {slot: int}, 'theme_map': {day: theme}}
 
-# Frequency bounds mirror the editor's number_input (1..3 per category).
+# Frequency bounds mirror the editor's number_input (1..5 per category).
+# The ceiling was 3, which made a real counter unconfigurable: a non-veg lunch
+# station serving biryani + gravy + dry + kebab + egg needs 5 nonveg_main slots,
+# and the editor rejected the value with "outside the allowed range" instead.
 _MIN_SLOT_COUNT = 1
-_MAX_SLOT_COUNT = 3
+_MAX_SLOT_COUNT = 5
 # Hard cap on counters per client — keeps the editor UI and payloads sane.
 MAX_COUNTERS = 6
 
@@ -214,7 +217,7 @@ def normalize_counter(raw: Dict, index: int = 0) -> Dict:
     """Coerce arbitrary/partial counter input into the canonical shape.
 
     - drops unknown / constant slots from ``categories`` (dedup, order-preserving)
-    - clamps every ``slot_counts`` value to [1, 3]; only keeps active categories
+    - clamps every ``slot_counts`` value to [1, 5]; only keeps active categories
     - merges ``theme_map`` over the global defaults, ignoring invalid days/themes
     - falls back to ``Counter N`` for a blank name
     """
@@ -740,6 +743,8 @@ class ClientConfigLoader:
         city: str | None = None,
         serve_weekends: bool = False,
         item_cooldown_days=None,
+        working_days=None,
+        source_pools=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -751,7 +756,13 @@ class ClientConfigLoader:
         ``city`` is an optional client location from ``AVAILABLE_CITIES``;
         ``serve_weekends`` flags a kitchen that also runs Sat/Sun;
         ``item_cooldown_days`` overrides the default cooldown window (None =
-        default).
+        default); ``working_days`` restricts the plan horizon to those weekdays
+        (None = every weekday); ``source_pools`` are the extra ontology item
+        pools this client draws from (``common`` is implicit).
+
+        Every optional column is part of the same INSERT. They used to be
+        applied by follow-up setters after the row existed, so a rejected value
+        left a created-but-misconfigured client behind.
         """
         norm = self._counters_from_inputs(active_slots, counter_mode, counters)
         row = {
@@ -759,6 +770,15 @@ class ClientConfigLoader:
             'city': normalize_city(city), 'serve_weekends': bool(serve_weekends),
             'item_cooldown_days': normalize_item_cooldown_days(item_cooldown_days),
         }
+        # Only send the newer optional columns when the caller set them, so a
+        # database that predates them still takes the common create path.
+        if working_days is not None:
+            row['working_days'] = self._normalize_working_days_value(working_days)
+        if source_pools is not None:
+            row['source_pools'] = sorted({
+                t for t in (_normalize_pool_name(p) for p in source_pools)
+                if t and t != COMMON_POOL
+            })
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
@@ -770,9 +790,9 @@ class ClientConfigLoader:
                     "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
-                row.pop('city', None)
-                row.pop('serve_weekends', None)
-                row.pop('item_cooldown_days', None)
+                for optional in ('city', 'serve_weekends', 'item_cooldown_days',
+                                 'working_days', 'source_pools'):
+                    row.pop(optional, None)
                 self._sb.table('clients').insert(row).execute()
             else:
                 raise
@@ -936,6 +956,102 @@ class ClientConfigLoader:
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
 
+    # --- value normalisation, shared by the per-field getters and the
+    # --- combined get_client_row() so both return identical shapes.
+
+    def _normalize_counters_value(self, name: str, raw) -> List[Dict]:
+        """Normalise a raw ``counters`` column value (see _counters_list)."""
+        if raw:
+            return [normalize_counter(c, i) for i, c in enumerate(raw)]
+        legacy = self._legacy_primary_counter(name)
+        return [legacy] if legacy else [default_counter(0)]
+
+    @staticmethod
+    def _normalize_working_days_value(raw) -> Optional[List[str]]:
+        if not raw:
+            return None
+        return [str(d).strip().lower() for d in raw]
+
+    @staticmethod
+    def _normalize_source_pools_value(raw) -> Optional[List[str]]:
+        # None means "column unset" -> caller treats it as common-only ([]),
+        # matching get_client_source_pools.
+        if raw is None:
+            return []
+        return [_normalize_pool_name(t) for t in raw if _normalize_pool_name(t)]
+
+    # Config columns that live directly on the ``clients`` row. Read together so
+    # one request costs one round trip instead of one per field.
+    _CONFIG_COLUMNS = (
+        'counters', 'city', 'serve_weekends', 'working_days',
+        'item_cooldown_days', 'source_pools', 'version',
+    )
+
+    def get_client_row(self, name: str) -> Dict[str, Any]:
+        """Return every config column for *name* in a single query.
+
+        The per-field getters each issued their own
+        ``select('<one column>').eq('name', …)``, so a single ``GET
+        /client-config`` cost seven round trips against the same row and
+        ``POST /plan`` cost six. Reads stay live — this is still an
+        uncached query per call — they are just no longer fragmented.
+
+        Degrades on a pre-migration database: if the combined select fails
+        because a column is missing, each field falls back to its own getter,
+        which already handles the missing-column case individually.
+
+        Raises:
+            ValueError: when the client does not exist.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select(', '.join(self._CONFIG_COLUMNS))
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return {
+                    'counters': self._counters_list(name),
+                    'city': self.get_client_city(name),
+                    'serve_weekends': self.get_client_serve_weekends(name),
+                    'working_days': self.get_client_working_days(name),
+                    'item_cooldown_days': self.get_client_item_cooldown_days(name),
+                    'source_pools': self.get_client_source_pools(name),
+                    'version': self.get_client_version(name),
+                }
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        data = dict(row.data)
+        return {
+            'counters': self._normalize_counters_value(name, data.get('counters')),
+            'city': normalize_city(data.get('city')),
+            'serve_weekends': bool(data.get('serve_weekends')),
+            'working_days': self._normalize_working_days_value(
+                data.get('working_days')),
+            'item_cooldown_days': normalize_item_cooldown_days(
+                data.get('item_cooldown_days')),
+            'source_pools': self._normalize_source_pools_value(
+                data.get('source_pools')),
+            'version': int(data.get('version') or 1),
+        }
+
+    def get_client_configs_from_row(self, name: str, row: Dict[str, Any]):
+        """``[(counter_name, ClientConfig), …]`` built from an already-read row.
+
+        Lets a caller that fetched the row once avoid re-reading it per counter.
+        """
+        out = []
+        for counter in row['counters']:
+            cfg = self._config_from_counter(name, counter)
+            cfg.serve_weekends = row['serve_weekends']
+            cfg.working_days = row['working_days']
+            out.append((counter['name'], cfg))
+        return out
+
     def normalize_counters_for_write(
         self, counter_mode: str, counters: List[Dict],
     ) -> List[Dict]:
@@ -1050,48 +1166,12 @@ class ClientConfigLoader:
                         column, name, exc,
                     )
 
-    def bump_version_if_matches(self, name: str, expected: int) -> int:
-        """Atomically bump ``version`` from *expected* to *expected+1*.
-
-        Implemented as a conditional update — the WHERE clause includes
-        ``version = expected``, so concurrent writers race at the DB and only
-        one succeeds. Zero rows affected means our version is stale or the
-        client was deleted.
-
-        If the ``version`` column doesn't exist, fall back to a non-conditional
-        touch so writes still go through (without the concurrency check).
-
-        Raises:
-            ConcurrentEditError: when the update matches no rows.
-        """
-        new_version = int(expected) + 1
-        try:
-            result = (
-                self._sb.table('clients')
-                .update({'version': new_version})
-                .eq('name', name)
-                .eq('version', int(expected))
-                .execute()
-            )
-        except Exception as exc:
-            if _is_undefined_column(exc):
-                logger.error(
-                    "clients.version column missing — bumping without "
-                    "concurrency check for %r. %s",
-                    name, _MIGRATION_HINT,
-                )
-                self._require_client_exists(name)
-                return 1
-            raise
-        if not result.data:
-            current = self.get_client_version(name)  # raises ValueError if gone
-            raise ConcurrentEditError(
-                f"Client {name!r} has been modified by another request "
-                f"(expected version {expected}, currently {current}). "
-                "Refresh and retry.",
-                current_version=current,
-            )
-        return new_version
+    # NOTE: a standalone ``bump_version_if_matches`` used to live here. It was
+    # the first half of the bump-then-write sequence that update_client_atomic
+    # replaced, and after that refactor nothing called it. Keeping it would have
+    # left the unsafe ordering available to the next caller who needed a version
+    # bump, so it is gone; use update_client_atomic, which bumps the version in
+    # the same statement as the fields it guards.
 
     # ---- validation --------------------------------------------------------
 
