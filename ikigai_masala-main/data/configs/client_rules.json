@@ -370,7 +370,9 @@
     "constant_items": {}
   },
   "Astrazeneca": {
-    "disable": [],
+    "disable": [
+      "curd_raita_logic"
+    ],
     "rules": [
       {
         "name": "astra_paneer_exact_1",
@@ -383,7 +385,8 @@
       }
     ],
     "constant_items": {
-      "curd_side": "raita"
+      "curd_side": "Curd",
+      "bread": "plain chapati"
     }
   },
   "Cloudera": {
@@ -410,6 +413,23 @@
         },
         "min": 1,
         "max": 1
+      },
+      {
+        "_comment": "Monday is egg gravy (sample: Kadai Egg Curry). Other days fall through to the theme map. 'curd rice daily' in healthy_rice is confirmed and pinned via constant_items.",
+        "name": "cloudera_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ]
+        }
       }
     ],
     "constant_items": {
@@ -427,6 +447,59 @@
         },
         "min": 1,
         "max": 1
+      },
+      {
+        "_comment": "Sample: Mon/Tue chicken gravy, Wed EGG PEPPER, Thu ghee-roast chicken on its chinese theme day, Fri Mughlai Chicken Biryani. Thursday is left to the theme map rather than pinned.",
+        "name": "konsberg_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
       }
     ],
     "constant_items": {}
@@ -443,6 +516,40 @@
         },
         "min": 3,
         "max": 3
+      },
+      {
+        "_comment": "Wednesday is this counter's biryani day and carries the chicken biryani. With one nonveg_main slot the stated 'chicken gravy and chicken biryani on biryani day' resolves across the week: 3 egg gravies (sinch_egg_gravy_3x), one chicken gravy, one chicken biryani.",
+        "name": "sinch_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Exactly one chicken gravy in the week.",
+        "name": "sinch_chicken_gravy_once",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "any_flag": [
+            "is_north_chicken_gravy",
+            "is_south_chicken_gravy"
+          ]
+        },
+        "exclude": {
+          "flag": "is_egg_dish"
+        },
+        "min": 1,
+        "max": 1
       }
     ],
     "constant_items": {
@@ -527,6 +634,23 @@
         },
         "min": 1,
         "max": 1
+      },
+      {
+        "_comment": "Every Friday is a chicken gravy or dry. Which second day carries the other non-veg service is not yet specified, so no day restriction is applied.",
+        "name": "plum_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "fri": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ]
+        }
       }
     ],
     "constant_items": {
@@ -783,6 +907,75 @@
         "type": "selector_frequency",
         "selector": {
           "primary_protein": "paneer"
+        },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "_comment": "Wednesday chicken gravy, Friday chicken biryani, and egg on the other three days. Wednesday excludes is_egg_dish because two egg dishes are mis-flagged is_south_chicken_gravy in the ontology. The 2-gravy/1-fry split across the egg days is not yet expressed - see thales_egg_dry_once.",
+        "name": "thales_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Of the three egg days, one is a dry/fry rather than a gravy.",
+        "name": "thales_egg_dry_once",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_nonveg_dry"
+        },
+        "exclude": {
+          "primary_protein": "chicken"
         },
         "min": 1,
         "max": 1

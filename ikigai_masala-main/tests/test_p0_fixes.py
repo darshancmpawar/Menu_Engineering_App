@@ -1389,3 +1389,76 @@ class TestInfenionMatchesItsSample:
             'Infenion', MenuRuleLoader().load_for_city('bangalore'), 'Counter 1')
         r = next(r for r in rules if r.name == 'infenion_nonveg_mon_wed_fri')
         assert r.allowed_weekdays == {0, 2, 4}, r.allowed_weekdays
+
+
+class TestWeekdayClientsAreWired:
+    """The five clients whose samples specify a weekday non-veg pattern.
+
+    Config-shape assertions only — the generated-menu check lives in the slow
+    sweep. These fail fast if a rule is renamed, dropped, or loses its weekdays.
+    """
+
+    def _rules(self, client, counter='Counter 1'):
+        loader = MenuRuleLoader()
+        return {
+            r.name: r for r in loader.load_for_client(
+                client, loader.load_for_city('bangalore'), counter)
+        }
+
+    @pytest.mark.parametrize('client,rule_name,expected', [
+        # weekday index -> number of components mandated that day
+        ('Infenion', 'infenion_nonveg_by_weekday', {0: 1, 1: 0, 2: 1, 3: 0, 4: 1}),
+        ('Thales', 'thales_nonveg_by_weekday', {0: 1, 1: 1, 2: 1, 3: 1, 4: 1}),
+        ('Konsberg', 'konsberg_nonveg_by_weekday', {0: 1, 1: 1, 2: 1, 4: 1}),
+        ('Cloudera', 'cloudera_nonveg_by_weekday', {0: 1}),
+        ('Sinch', 'sinch_nonveg_by_weekday', {2: 1}),
+        ('Plum', 'plum_nonveg_by_weekday', {4: 1}),
+    ])
+    def test_weekday_pattern_is_configured(self, client, rule_name, expected):
+        rules = self._rules(client)
+        assert rule_name in rules, sorted(rules)
+        r = rules[rule_name]
+        assert r.validate_config(), r.validation_errors()
+        got = {k: len(v) for k, v in r.components_by_weekday.items()}
+        assert got == expected, got
+
+    def test_kongsberg_leaves_thursday_to_its_chinese_theme(self):
+        """Thursday is configured as a chinese theme day, not pinned by weekday."""
+        r = self._rules('Konsberg')['konsberg_nonveg_by_weekday']
+        assert 3 not in r.components_by_weekday
+        thu = MON + dt.timedelta(days=3)
+        # Falls through to the theme map rather than composing nothing.
+        assert r._components_for(thu, 'chinese') is r.components_by_theme.get(
+            'chinese', r.components)
+
+    def test_thales_has_exactly_three_egg_days(self):
+        r = self._rules('Thales')['thales_nonveg_by_weekday']
+        egg_days = [
+            i for i, comps in r.components_by_weekday.items()
+            if any(m == ('flag', 'is_egg_dish') for m, _c in comps)
+        ]
+        assert sorted(egg_days) == [0, 1, 3], egg_days
+
+
+class TestResolvedSampleConflicts:
+    """The three sample-vs-rulebook conflicts, as decided by the client."""
+
+    def _entry(self, client):
+        import json
+        return json.load(open('data/configs/client_rules.json'))[client]
+
+    def test_astrazeneca_serves_curd_not_raita(self):
+        e = self._entry('Astrazeneca')
+        assert e['constant_items']['curd_side'] == 'Curd'
+        assert 'curd_raita_logic' in e['disable'], (
+            'the city curd/raita split must be off, or it would put raita on '
+            'the biryani day'
+        )
+
+    def test_astrazeneca_bread_is_plain_chapati_daily(self):
+        assert self._entry('Astrazeneca')['constant_items']['bread'] == \
+            'plain chapati'
+
+    def test_cloudera_keeps_curd_rice_daily(self):
+        assert self._entry('Cloudera')['constant_items']['healthy_rice'] == \
+            'curd rice'

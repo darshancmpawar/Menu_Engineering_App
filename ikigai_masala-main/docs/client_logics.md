@@ -116,16 +116,15 @@ the corresponding rule exists:
 - **Ikea** — no egg anywhere in non-veg; four chicken gravies plus one dry
   (Chilly Chicken, Tue); raita on the Wednesday biryani day, curd otherwise.
 
-### What the samples contradict — needs a decision
+### Where the samples contradicted the rulebook — resolved
 
-| Client | Written requirement | What the sample serves | Currently configured |
+All three were settled by the client; the config now matches the decision.
+
+| Client | Written requirement | Sample served | **Decision** |
 |---|---|---|---|
-| AstraZeneca | "daily just raita" | **Curd**, all five days | `constant_items.curd_side = 'raita'` |
-| AstraZeneca | "plain chapati twice a week, phulka once, Tue phulka + ragi mudde, other days flavoured, no south bread" | **Plain Chapati daily** (Fri adds Poori) | nothing |
-| Cloudera | "curd rice daily in healthy rice" | Curd Rice Tue–Thu, **Red Rice on Monday** | `constant_items.healthy_rice = 'curd rice'` (forces it daily) |
-
-The AstraZeneca curd/raita conflict matters because the config actively forces
-the opposite of what was served. Resolve before promoting either row.
+| AstraZeneca | "daily just raita" | Curd, all five days | **Curd daily.** `constant_items.curd_side = 'Curd'` and `curd_raita_logic` disabled — without the disable, the city rule would still put raita on the biryani day. |
+| AstraZeneca | plain chapati 2× + phulka + ragi mudde + flavoured | Plain Chapati daily | **Plain chapati daily.** `constant_items.bread`. |
+| Cloudera | "curd rice daily in healthy rice" | Curd Rice Tue–Thu, Red Rice Monday | **Curd rice daily** — the rulebook wins; Monday's red rice was a one-off. Config unchanged. |
 
 ### Config notes the samples exposed
 
@@ -179,8 +178,8 @@ counter. This is the one genuinely architectural item in the list.
 is not expressible when the biryani day is set by the theme map rather than
 hard-coded to a weekday. Needs the restriction to accept day *types*.
 
-### 3. Composition keyed to the weekday — **BUILT**
-*Infenion (wired), Thales, Kongsberg, Cloudera, Plum, Sinch (not yet wired)*
+### 3. Composition keyed to the weekday — **BUILT AND WIRED**
+*Infenion, Thales, Kongsberg, Cloudera, Sinch, Plum — all six configured*
 
 > "Monday chicken gravy, Wednesday egg and Friday biryani, other days blank" — Infenion
 
@@ -196,10 +195,21 @@ That is needed because the flags are not clean: `egg_drumstick_curry` and
 "a chicken gravy on Monday" was satisfied by an egg curry until Monday's
 component excluded `is_egg_dish`.
 
-Infenion is wired and reproduces its sample menu exactly — chicken gravy Monday,
-blank Tuesday, egg Wednesday, blank Thursday, chicken biryani Friday — on both an
-even and an odd ISO week. The other five clients need the same treatment; their
-weekday patterns are in the per-client tables below.
+All six clients are wired. Verified non-veg output:
+
+| Client | Mon | Tue | Wed | Thu | Fri |
+|---|---|---|---|---|---|
+| Infenion | chicken gravy | *blank* | egg | *blank* | biryani |
+| Thales | egg | egg | chicken gravy | egg | biryani |
+| Kongsberg | chicken gravy | chicken gravy | egg | chinese (theme) | biryani |
+| Cloudera | egg | — | — | — | — |
+| Sinch | — | — | biryani | — | — |
+| Plum | — | — | — | — | chicken |
+
+A dash means the day is deliberately left to the theme map rather than pinned.
+Kongsberg's Thursday is the clearest case: its requirement says "Thursday
+chinese", which is already its theme, so pinning a dish family there would only
+narrow what the theme filter already handles.
 
 ### 4. Frequency windows longer than the horizon, and co-occurrence
 *Icon, Telstra, Take 2, Vector, Piramel Finance*
