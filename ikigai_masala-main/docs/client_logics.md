@@ -251,10 +251,10 @@ rules against.
 
 | Rule as written | Status | Mechanism |
 |---|---|---|
-| "Chinese Rice & Chinese gravy to be served on Tuesday (Lunch)" | TODO | `components_by_weekday` on `rice` + `veg_gravy`. Both sample weeks honour it. |
-| "Paneer Gravy to be served every wednesday (Lunch & Dinner)" | PARTIAL | Lunch half is a weekday rule; the dinner half needs meal periods. Both sample weeks serve paneer on Wednesday. |
-| "Khichdi to be served every Thursday (Lunch)" | TODO | Weekday rule on `rice`. Both weeks honour it. |
-| "Non-Vegetarian Gravy Items Lunch on Monday and Wednesday" | PARTIAL | `tekion_nonveg_mwf` currently allows Mon/Wed/**Fri**; the sample serves a non-veg biryani on Friday, so Friday is a biryani day rather than a gravy day. Needs splitting: gravy Mon/Wed, biryani Fri. |
+| "Chinese Rice & Chinese gravy to be served on Tuesday (Lunch)" | DONE | `tekion_chinese_rice_tuesday` + `tekion_chinese_gravy_tuesday`. Verified. |
+| "Paneer Gravy to be served every wednesday (Lunch & Dinner)" | DONE | `tekion_paneer_gravy_wednesday`. Dinner is out of scope, so the lunch rule is the whole of it. Verified. |
+| "Khichdi to be served every Thursday (Lunch)" | DONE | `tekion_khichdi_thursday`. No `is_khichdi` flag exists; every khichdi carries `is_liquid_rice` and `tekion_liquid_rice_once` already caps that at one a week, so pinning Thursday lands it there. Verified. |
+| "Non-Vegetarian Gravy Items Lunch on Monday and Wednesday" | DONE | `tekion_nonveg_mwf` restricts the slot to Mon/Wed/Fri; `tekion_nonveg_by_weekday` then makes Mon/Wed a chicken gravy and Friday a biryani. Friday **is** its biryani day, confirmed in the live client config. |
 | "only infused or flavoured chapthi to be served in indian bread" | TODO | Bread sub-category restriction. The sample's first Monday serves "Plain Chapati", which contradicts it — worth confirming. |
 | "curd daily except [biryani day] raitha" | TODO | Both weeks: curd Mon–Thu, raitha Friday. |
 | "Chinese Noodles to be served once in a month on Tuesday (Lunch)" | BLOCKED | New gap — a **monthly** window. Longest window the engine has is a per-item cooldown in days. |
@@ -726,8 +726,8 @@ Entry exists but is empty.
 | 3 pulao a week, 2 varieties of chapati | DONE | `plum_pulao_exact_3`, `plum_chapati_exact_2` |
 | 1 day paneer | DONE | `plum_paneer_exact_1` |
 | 1 day mushroom | DONE | `plum_mushroom_exact_1` |
-| Non-veg twice weekly only, other days blank | TODO | `slot_day_restriction` + a 2×/week cap |
-| Every Friday chicken gravy or dry | BLOCKED | Gap 3 |
+| Non-veg **once** weekly, other days blank | DONE | Client corrected the tracker: one a week, not two. `plum_nonveg_fri_only`. Verified. |
+| Every Friday chicken gravy or dry | DONE | `plum_nonveg_by_weekday` |
 
 ### Quince
 | Requirement | Status | Mechanism |
@@ -853,12 +853,10 @@ Each one changes the implementation, not just the wording.
 
 | # | Question | Why it blocks | Default if unanswered |
 |---|---|---|---|
-| 1 | **Plum:** the tracker says "weekly twice only non veg, other days blank"; the sheet note says "chicken once in a week". Is the second non-veg day an egg day? | Plum currently serves non-veg all five days because I would not guess which two days. | Leave unrestricted (current behaviour). |
-| 2 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
-| 3 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
-| 4 | **Tekion non-veg days:** the rule says gravy on Monday and Wednesday, and the sample also serves a non-veg **biryani on Friday**. Is Friday a third non-veg day? | `tekion_nonveg_mwf` currently allows Mon/Wed/Fri without distinguishing gravy from biryani. | Mon/Wed gravy, Fri biryani — as the sample shows. |
-| 5 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
-| 6 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
+| 1 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
+| 2 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
+| 3 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
+| 4 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
 
 ### Already answered — recorded so they are not re-asked
 
@@ -873,6 +871,8 @@ Each one changes the implementation, not just the wording.
 | Breakfast and dinner | **Out of scope — lunch only.** A period-qualified rule is read as its lunch part. |
 | Is `Sheet6` Booking.com? | **Yes.** Its four stated requirements are all confirmed by that sheet. |
 | L&T's egg | **A fixed dish daily, like the kebab.** Implemented as `fixed_daily_item`. |
+| Plum's non-veg days | **One a week**, on Friday. `plum_nonveg_fri_only` + the Friday chicken component. Verified: non-veg on Friday only. |
+| Tekion's Friday | **Friday is its biryani day**, set in the live client config (`fri: biryani`, confirmed by the new DB snapshot). Non-veg gravy Mon/Wed, biryani Fri. Verified against both sample weeks. |
 
 ---
 
