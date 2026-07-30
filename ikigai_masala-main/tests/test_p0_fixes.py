@@ -1462,3 +1462,61 @@ class TestResolvedSampleConflicts:
     def test_cloudera_keeps_curd_rice_daily(self):
         assert self._entry('Cloudera')['constant_items']['healthy_rice'] == \
             'curd rice'
+
+
+class TestFiveDishRolesAreDistinct:
+    """The 5-dish station's components must land on five DISTINCT dishes.
+
+    Components are `>=` bounds, so one dish satisfying two of them frees a cell
+    for a duplicate. The kebab (`tandoori_murgh_lababdar`) also carries
+    `is_nonveg_gravy`, and egg curries carry it too, so L&T's station came back
+    with two eggs and no chicken gravy. The gravy and dry components exclude both
+    egg and the tandoor flags so each covers one role only.
+    """
+
+    def _rule(self):
+        rules = MenuRuleLoader('data/configs/city_rules/bangalore.json').load_from_file()
+        return next(r for r in rules if r.name == 'nonveg_main_five_dish')
+
+    def test_five_components(self):
+        assert len(self._rule().components) == 5
+
+    def test_gravy_and_dry_exclude_egg_and_kebab(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        comps = {}
+        for matcher, _c in self._rule().components:
+            kind, val = matcher
+            inc = val[0] if kind == '_and_not' else matcher
+            comps[str(inc[1])] = matcher
+
+        kebab = {'item': 'tandoori_murgh_lababdar', 'is_tandoor': 1,
+                 'is_nonveg_gravy': 1, 'is_egg_dish': 0}
+        egg_gravy = {'item': 'anda_mirch_masala', 'is_egg_dish': 1,
+                     'is_nonveg_gravy': 1, 'is_tandoor': 0}
+        chicken_gravy = {'item': 'murgh_korma', 'is_nonveg_gravy': 1,
+                         'is_egg_dish': 0, 'is_tandoor': 0}
+
+        gravy = comps['is_nonveg_gravy']
+        assert not _component_matches(kebab, gravy), 'kebab must not fill gravy'
+        assert not _component_matches(egg_gravy, gravy), 'egg must not fill gravy'
+        assert _component_matches(chicken_gravy, gravy)
+
+    def test_egg_component_still_accepts_egg(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        egg_matcher = next(
+            m for m, _c in self._rule().components
+            if m[0] == 'flag' and m[1] == 'is_egg_dish')
+        assert _component_matches({'item': 'anda_tarriwala', 'is_egg_dish': 1},
+                                  egg_matcher)
+
+    def test_every_component_covers_a_distinct_role(self):
+        """No two components may be satisfiable by the same single dish."""
+        from src.menu_rules.slot_composition_rule import _component_matches
+        matchers = [m for m, _c in self._rule().components]
+        kebab = {'item': 'k', 'is_tandoor': 1, 'is_nonveg_gravy': 1,
+                 'is_nonveg_dry': 1, 'is_egg_dish': 0, 'is_nonveg_biryani': 0}
+        hits = [i for i, m in enumerate(matchers) if _component_matches(kebab, m)]
+        assert len(hits) == 1, (
+            f'the kebab satisfies {len(hits)} components; it must satisfy only '
+            f'its own or it frees a cell for a duplicate dish'
+        )
