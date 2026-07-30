@@ -765,6 +765,29 @@ class MenuSolver:
             model.Add(sum(picked) <= len(picked) - 1)
         return out
 
+    def _declared_repeatable(self):
+        """Collect ``repeatable_item_flags()`` from every rule that declares one.
+
+        A rule that deliberately repeats a dish (see FixedDailyItemRule) declares
+        the selector it needs exempted from ``unique_items``, so the rule creating
+        the repetition and the rule forbidding one cannot disagree. Scoped to the
+        client whose config carries the rule, unlike the ontology-wide
+        REPEATABLE_ITEM_FLAGS_BY_SLOT.
+        """
+        out: Dict[str, List[Any]] = {}
+        for rule in (self.menu_rules or []):
+            fn = getattr(rule, 'repeatable_item_flags', None)
+            if not callable(fn):
+                continue
+            try:
+                for slot, matchers in (fn() or {}).items():
+                    out.setdefault(slot, []).append(matchers)
+            except Exception as exc:  # noqa: BLE001 — a bad rule must not block
+                logger.warning(
+                    "%s.repeatable_item_flags() raised: %s",
+                    getattr(rule, 'name', type(rule).__name__), exc)
+        return out
+
     def _build_context(
         self, cells, dates, day_types,
         item_to_vars, day_color_vars, day_rice_color_vars,
@@ -794,6 +817,11 @@ class MenuSolver:
             'known_colors': known_colors,
             'known_welcome_colors': known_welcome_colors,
             'cfg': self.cfg,
+            # Slot -> [(include_matcher, exclude_matcher)] declared by rules that
+            # deliberately repeat a dish (see FixedDailyItemRule). unique_items
+            # folds these into its repeatable set, so the rule that creates a
+            # repetition and the rule that forbids one cannot disagree.
+            'extra_repeatable': self._declared_repeatable(),
             'recent_sigs': self.recent_sigs,
             'find_cells_fn': _make_find_cells(cells),
             'link_any_fn': _link_any,

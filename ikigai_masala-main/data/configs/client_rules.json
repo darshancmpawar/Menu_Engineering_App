@@ -997,6 +997,17 @@
         "_comment": "This counter is themed biryani on all five days, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot. This is also the 5-dish station: with nonveg_main set to 5, 'nonveg_main_five_dish' composes biryani + gravy + dry + kebab + egg each day.",
         "disable": [
           "nonveg_biryani_once_per_week"
+        ],
+        "rules": [
+          {
+            "_comment": "The printed menu serves the same EGG CURRY on all five days, alongside the same CHICKEN KABAB - both are fixtures on this station, not variety slots. The kebab is fixed by accident (one eligible tandoor item); the egg needs saying, because 21 egg dishes are eligible and the solver would otherwise serve five different ones. This rule also declares its items repeatable so unique_items does not forbid the repetition.",
+            "name": "lt_egg_same_every_day",
+            "type": "fixed_daily_item",
+            "base_slot": "nonveg_main",
+            "selector": {
+              "flag": "is_egg_dish"
+            }
+          }
         ]
       }
     }

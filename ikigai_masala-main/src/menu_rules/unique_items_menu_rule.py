@@ -27,7 +27,22 @@ from ..preprocessor.column_mapper import _norm_str
 logger = logging.getLogger(__name__)
 
 
-def starved_slots(cells) -> Dict[str, int]:
+def _matches_declared(row, base_slot, declared) -> bool:
+    """True when *row* is covered by a rule-declared repeatable selector.
+
+    ``declared`` is ``{base_slot: [(include, exclude), ...]}`` as collected from
+    every rule exposing ``repeatable_item_flags()`` — see FixedDailyItemRule.
+    Scoped per client, unlike the ontology-wide REPEATABLE_ITEM_FLAGS_BY_SLOT.
+    """
+    from .selector_frequency_rule import SelectorFrequencyRule
+    for include, exclude in (declared or {}).get(base_slot, ()):
+        if (SelectorFrequencyRule._matches(row, include)
+                and not SelectorFrequencyRule._matches(row, exclude)):
+            return True
+    return False
+
+
+def starved_slots(cells, declared=None) -> Dict[str, int]:
     """Return ``{base_slot: max_repeats}`` for slots that cannot be unique.
 
     A slot is *starved* when the number of distinct items across its cells'
@@ -57,7 +72,8 @@ def starved_slots(cells) -> Dict[str, int]:
             cell.base_slot, {'cells': 0, 'items': set(), 'staple': False})
         entry['cells'] += 1
         for row in cell.cand_rows:
-            if repeatable_row(row, cell.base_slot):
+            if (repeatable_row(row, cell.base_slot)
+                    or _matches_declared(row, cell.base_slot, declared)):
                 # A staple can cover any number of cells on its own, so its
                 # presence means this slot can never be arithmetically starved.
                 entry['staple'] = True
@@ -98,15 +114,17 @@ class UniqueItemsMenuRule(BaseMenuRule):
         item_to_vars = context.get('item_to_vars', {})
         if not item_to_vars:
             return
+        declared = context.get('extra_repeatable') or {}
         repeatable = {
             _norm_str(row.get('item', ''))
             for cell in cells for row in cell.cand_rows
-            if repeatable_row(row, cell.base_slot)
+            if (repeatable_row(row, cell.base_slot)
+                or _matches_declared(row, cell.base_slot, declared))
         }
         repeatable.discard('')
 
         self._repeat_penalty_vars = []
-        relaxed = starved_slots(cells) if cells else {}
+        relaxed = starved_slots(cells, declared) if cells else {}
         if not relaxed:
             # Fast path — identical to the original global constraint.
             for item_base, vars_ in item_to_vars.items():

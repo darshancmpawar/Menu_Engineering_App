@@ -151,32 +151,19 @@ All three were settled by the client; the config now matches the decision.
 
 ---
 
-## Meal periods — the tool models lunch only
+## Scope: lunch only
 
-**This is the largest scope gap in the set, and it is structural rather than a
-missing rule.**
+**Decided.** The tool generates the **lunch** menu. Breakfast and dinner are out
+of scope.
 
-Tessolve's printed menu has three meal periods on one sheet — **BREAKFAST**,
-**LUNCH** and **DINNER** — each with its own category list. Tekion's rules name
-the period explicitly: *"Paneer Gravy to be served every Wednesday (Lunch &
-Dinner)"*, *"Chinese Rice & Chinese gravy to be served on Tuesday (Lunch)"*,
-*"One Protein … item for both Lunch and Dinner"*.
+Tessolve's printed sheet carries three periods and Tekion qualifies some rules
+"(Lunch)" or "(Lunch & Dinner)". Under this decision a period-qualified rule is
+read as its lunch part: the lunch half is implemented in full and the dinner half
+is dropped rather than tracked as an outstanding gap. Nothing in the engine needs
+a `meal_period` dimension.
 
-The engine has no concept of a meal period. A counter produces one menu per day,
-which is the lunch menu. Breakfast and dinner are neither generated nor
-constrained, so:
-
-- A rule qualified "(Lunch)" is applied unconditionally, because there is nothing
-  else for it to apply to. Harmless today, wrong the moment dinner exists.
-- A rule qualified "(Lunch & Dinner)" is half-implemented by definition.
-- Cooldown and uniqueness cannot see across periods, so nothing stops the same
-  dish appearing at lunch and dinner on the same day.
-
-Deciding how to model this is a prerequisite for Tessolve and Tekion, and it
-affects every client that serves more than lunch. Two plausible shapes — a
-`meal_period` dimension on the counter, or a period-per-counter convention — are
-a design decision, not an implementation detail. **Flagged for a decision; see
-[Open questions](#open-questions).**
+The breakfast and dinner rows transcribed below are kept as reference — they
+document what the client serves, not what the tool produces.
 
 ### Tessolve — transcribed from the printed menu (20th–24th July)
 
@@ -352,11 +339,11 @@ mutton week and a fish week. Neither protein exists in the ontology.
   Friday, as Siemens Technology's do.
 - **Siemens Healthineers** — `Jain Dal` served four of five days (Thursday blank),
   so "daily" is 4/5 in practice.
-- **Booking.com** — the sheet named `Sheet6` is almost certainly Booking.com: a
-  `Veg Kati roll` row every day, separate veg and non-veg soup rows, chapati
-  daily, raita on the Wednesday biryani day. Its Tuesday is labelled
-  **"Tuesday(Punjabi)"** — a regional theme the engine does not have.
-  **Confirmation requested.**
+- **Booking.com** — the sheet named `Sheet6` **is Booking.com** (confirmed by the
+  client). It has a `Veg Kati roll` row every day, separate veg and non-veg soup
+  rows, chapati daily, and raita on the Wednesday biryani day — all four of its
+  stated requirements, confirmed. Its Tuesday is labelled **"Tuesday(Punjabi)"**,
+  a regional theme the engine does not have (gap 11).
 
 ### More categories with no slot in the tool
 
@@ -505,20 +492,23 @@ config one, and every one of them also needs ontology rows to draw from.
 | `is_paneer_fry` | Zscaler | The flag exists as a column but matches 0 rows, so `zscaler_paneer_fry_1` is inert. Populate it or change the selector. |
 | Kebab flag | L&T | No kebab flag exists; the 5-dish station's kebab component matches on `is_tandoor` / `is_tandoor_nonveg_dry` instead. Works, but it is a proxy. |
 
-### 9. Meal periods — breakfast and dinner
-*Tessolve, Tekion, and every client serving more than lunch*
+### 9. Meal periods — breakfast and dinner — **OUT OF SCOPE (decided)**
+*Tessolve, Tekion*
 
 > "Paneer Gravy to be served every wednesday (**Lunch & Dinner**)" — Tekion
 
-The engine produces one menu per counter per day, and that menu is lunch.
-Tessolve's printed sheet has three periods; Tekion qualifies its rules by period.
-Nothing models this, so a "(Lunch)" rule is applied unconditionally and a
-"(Lunch & Dinner)" rule is half-implemented by construction. Cooldown and
-uniqueness also cannot see across periods, so nothing prevents the same dish at
-lunch and dinner on one day.
+**Decision: the tool generates lunch only.** Breakfast and dinner are not
+modelled and will not be. Recorded because it changes how period-qualified rules
+are read, not because it is pending:
 
-This is the largest scope item in the document and needs a design decision before
-implementation — see [Open questions](#open-questions).
+- A rule marked "(Lunch)" is the whole of that rule as far as the tool is
+  concerned — Tekion's chinese-Tuesday, khichdi-Thursday and non-veg-day rules
+  are all lunch rules and are implementable in full.
+- A rule marked "(Lunch & Dinner)" is implemented for lunch and its dinner half
+  is deliberately dropped. Tekion's "Paneer Gravy every Wednesday (Lunch &
+  Dinner)" is therefore complete, not partial, under this decision.
+- Tessolve's breakfast and dinner sections in the transcription below are
+  reference only. The lunch section is what the tool targets.
 
 ### 10. Cross-slot cuisine complementarity within a day
 *Tekion*
@@ -693,7 +683,7 @@ No `client_rules.json` entry.
 ### L&T
 | Requirement | Status | Mechanism |
 |---|---|---|
-| Non-Veg Lunch counter: 5 items daily — biryani, non-veg gravy, non-veg dry, chicken kebab (common daily), egg | PARTIAL | `nonveg_main_five_dish` + the kebab as a staple. **Requires the counter's `nonveg_main` frequency set to 5 in the editor** — the live row still says 1. **The sample confirms two staples, not one**: `CHICKEN KABAB` *and* `EGG CURRY` are each the same item on all five days, so the egg row needs the staple treatment as well or `unique_items` will demand five different egg dishes. |
+| Non-Veg Lunch counter: 5 items daily — biryani, non-veg gravy, non-veg dry, chicken kebab (common daily), egg | PARTIAL | `nonveg_main_five_dish` composes the five roles; the gravy and dry components exclude egg and the tandoor flags so each covers one role only. The kebab is a staple; the egg is fixed by `lt_egg_same_every_day` (`fixed_daily_item`) — **client confirmed it is a fixed dish daily, like the kebab**. Verified: one biryani, one chicken gravy, one chicken dry, one kebab and the same egg on every day, across three start dates. **Still requires the counter's `nonveg_main` frequency set to 5 in the editor** — the live row says 1. |
 | Salad is green salad daily | TODO | `constant_items.salad`, as Amadeus has |
 | Indian bread: chapati and phulka alternately in the south lunch counter | TODO | **Corrected by the sample**: the alternation is *within* the week (`Chapati / Phulka / Chapati / Phulka / Chapati`), not week-over-week, so it needs no new capability — a weekday pattern on `bread`. Previously filed under gap 5. |
 | Non-veg counter: chapati and phulka alternately, raita daily | TODO | Same within-week alternation as above; the daily raita is a constant. Sample confirms `Raitha` on all five days of the non-veg counter. |
@@ -863,14 +853,12 @@ Each one changes the implementation, not just the wording.
 
 | # | Question | Why it blocks | Default if unanswered |
 |---|---|---|---|
-| 1 | **Should the tool generate breakfast and dinner, or only lunch?** If yes: are they separate counters on the same client, or a `meal_period` dimension within a counter? | Gap 9. Determines whether Tessolve and Tekion can be served at all, and whether cooldown/uniqueness must span periods. | Lunch only; period-qualified rules apply to lunch and the rest is ignored. |
-| 2 | **Plum:** the tracker says "weekly twice only non veg, other days blank"; the sheet note says "chicken once in a week". Is the second non-veg day an egg day? | Plum currently serves non-veg all five days because I would not guess which two days. | Leave unrestricted (current behaviour). |
-| 3 | **Is `Sheet6` Booking.com?** The Veg Kati Roll, two soup rows and Wednesday raita all match. | The sample is unattributed, so its evidence is unused until confirmed. | Treated as Booking.com but not acted on. |
-| 4 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
-| 5 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
-| 6 | **Tekion non-veg days:** the rule says gravy on Monday and Wednesday, and the sample also serves a non-veg **biryani on Friday**. Is Friday a third non-veg day? | `tekion_nonveg_mwf` currently allows Mon/Wed/Fri without distinguishing gravy from biryani. | Mon/Wed gravy, Fri biryani — as the sample shows. |
-| 7 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
-| 8 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
+| 1 | **Plum:** the tracker says "weekly twice only non veg, other days blank"; the sheet note says "chicken once in a week". Is the second non-veg day an egg day? | Plum currently serves non-veg all five days because I would not guess which two days. | Leave unrestricted (current behaviour). |
+| 2 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
+| 3 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
+| 4 | **Tekion non-veg days:** the rule says gravy on Monday and Wednesday, and the sample also serves a non-veg **biryani on Friday**. Is Friday a third non-veg day? | `tekion_nonveg_mwf` currently allows Mon/Wed/Fri without distinguishing gravy from biryani. | Mon/Wed gravy, Fri biryani — as the sample shows. |
+| 5 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
+| 6 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
 
 ### Already answered — recorded so they are not re-asked
 
@@ -882,6 +870,9 @@ Each one changes the implementation, not just the wording.
 | L&T non-veg counter shape | 5 dishes: biryani, gravy, dry, kebab (daily staple), egg. Implemented; needs the counter's frequency set to 5 in the editor. |
 | Siemens Technology two biryani days | Weekly cap dropped for that counter. Implemented. |
 | Live counter / branded popup | Out of scope. |
+| Breakfast and dinner | **Out of scope — lunch only.** A period-qualified rule is read as its lunch part. |
+| Is `Sheet6` Booking.com? | **Yes.** Its four stated requirements are all confirmed by that sheet. |
+| L&T's egg | **A fixed dish daily, like the kebab.** Implemented as `fixed_daily_item`. |
 
 ---
 
