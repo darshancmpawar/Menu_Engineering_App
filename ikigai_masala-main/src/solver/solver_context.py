@@ -18,7 +18,7 @@ in sync.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Callable, Dict, List, Set, Tuple, TYPE_CHECKING, TypedDict
+from typing import Any, Callable, Dict, List, Set, TYPE_CHECKING, Tuple, TypedDict
 
 from ortools.sat.python import cp_model
 
@@ -44,6 +44,9 @@ class SolverContext(TypedDict):
     known_colors: List[str]
     known_welcome_colors: List[str]
     cfg: "SolverConfig"
+    # slot -> [(include_matcher, exclude_matcher)] declared by rules that
+    # deliberately repeat a dish; folded into unique_items' repeatable set.
+    extra_repeatable: Dict[str, Any]
     recent_sigs: Set[str]
     find_cells_fn: Callable
     link_any_fn: Callable

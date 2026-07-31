@@ -1462,3 +1462,159 @@ class TestResolvedSampleConflicts:
     def test_cloudera_keeps_curd_rice_daily(self):
         assert self._entry('Cloudera')['constant_items']['healthy_rice'] == \
             'curd rice'
+
+
+class TestFiveDishRolesAreDistinct:
+    """The 5-dish station's components must land on five DISTINCT dishes.
+
+    Components are `>=` bounds, so one dish satisfying two of them frees a cell
+    for a duplicate. The kebab (`tandoori_murgh_lababdar`) also carries
+    `is_nonveg_gravy`, and egg curries carry it too, so L&T's station came back
+    with two eggs and no chicken gravy. The gravy and dry components exclude both
+    egg and the tandoor flags so each covers one role only.
+    """
+
+    def _rule(self):
+        rules = MenuRuleLoader('data/configs/city_rules/bangalore.json').load_from_file()
+        return next(r for r in rules if r.name == 'nonveg_main_five_dish')
+
+    def test_five_components(self):
+        assert len(self._rule().components) == 5
+
+    def test_gravy_and_dry_exclude_egg_and_kebab(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        comps = {}
+        for matcher, _c in self._rule().components:
+            kind, val = matcher
+            inc = val[0] if kind == '_and_not' else matcher
+            comps[str(inc[1])] = matcher
+
+        kebab = {'item': 'tandoori_murgh_lababdar', 'is_tandoor': 1,
+                 'is_nonveg_gravy': 1, 'is_egg_dish': 0}
+        egg_gravy = {'item': 'anda_mirch_masala', 'is_egg_dish': 1,
+                     'is_nonveg_gravy': 1, 'is_tandoor': 0}
+        chicken_gravy = {'item': 'murgh_korma', 'is_nonveg_gravy': 1,
+                         'is_egg_dish': 0, 'is_tandoor': 0}
+
+        gravy = comps['is_nonveg_gravy']
+        assert not _component_matches(kebab, gravy), 'kebab must not fill gravy'
+        assert not _component_matches(egg_gravy, gravy), 'egg must not fill gravy'
+        assert _component_matches(chicken_gravy, gravy)
+
+    def test_egg_component_still_accepts_egg(self):
+        from src.menu_rules.slot_composition_rule import _component_matches
+        egg_matcher = next(
+            m for m, _c in self._rule().components
+            if m[0] == 'flag' and m[1] == 'is_egg_dish')
+        assert _component_matches({'item': 'anda_tarriwala', 'is_egg_dish': 1},
+                                  egg_matcher)
+
+    def test_every_component_covers_a_distinct_role(self):
+        """No two components may be satisfiable by the same single dish."""
+        from src.menu_rules.slot_composition_rule import _component_matches
+        matchers = [m for m, _c in self._rule().components]
+        kebab = {'item': 'k', 'is_tandoor': 1, 'is_nonveg_gravy': 1,
+                 'is_nonveg_dry': 1, 'is_egg_dish': 0, 'is_nonveg_biryani': 0}
+        hits = [i for i, m in enumerate(matchers) if _component_matches(kebab, m)]
+        assert len(hits) == 1, (
+            f'the kebab satisfies {len(hits)} components; it must satisfy only '
+            f'its own or it frees a cell for a duplicate dish'
+        )
+
+
+class TestFixedDailyItem:
+    """One slot's dish is the SAME every day (L&T's egg, like its kebab).
+
+    Exempting egg from `unique_items` only *permits* a repeat; with 21 eligible
+    egg dishes the solver would still serve five different ones. This rule makes
+    it deliberate, and declares its items repeatable so uniqueness does not
+    forbid the repetition it creates.
+    """
+
+    def _rule(self, **extra):
+        from src.menu_rules.fixed_daily_item_rule import FixedDailyItemRule
+        cfg = {'type': 'fixed_daily_item', 'name': 'egg_fixed',
+               'base_slot': 'nonveg_main', 'selector': {'flag': 'is_egg_dish'}}
+        cfg.update(extra)
+        return FixedDailyItemRule(cfg)
+
+    def test_declares_its_items_repeatable(self):
+        decl = self._rule().repeatable_item_flags()
+        assert 'nonveg_main' in decl
+        include, exclude = decl['nonveg_main']
+        assert include == ('flag', 'is_egg_dish')
+        assert exclude is None
+
+    def test_requires_slot_and_selector(self):
+        from src.menu_rules.fixed_daily_item_rule import FixedDailyItemRule
+        bad = FixedDailyItemRule({'type': 'fixed_daily_item', 'name': 'x'})
+        errs = bad.validation_errors()
+        assert any('base_slot' in e for e in errs)
+        assert any('selector' in e for e in errs)
+        assert bad.repeatable_item_flags() == {}
+
+    def test_forces_one_item_across_all_days(self):
+        """Two eggs available on all days -> the same one must fill every day."""
+        m = cp_model.CpModel()
+        cells = _build(m, 3, 'nonveg_main', ['egg_a', 'egg_b'])
+        for c in cells:
+            for r in c.cand_rows:
+                r['is_egg_dish'] = 1
+        rule = self._rule()
+        rule.apply(m, {}, None, {'cells': cells,
+                                 'dates': [MON + dt.timedelta(days=i) for i in range(3)]})
+        # Force day 0 to egg_a and day 1 to egg_b -> must be rejected.
+        m.Add(cells[0].x_vars[0] == 1)
+        m.Add(cells[1].x_vars[1] == 1)
+        assert _status(m) == 'INFEASIBLE'
+
+    def test_a_consistent_choice_is_feasible(self):
+        m = cp_model.CpModel()
+        cells = _build(m, 3, 'nonveg_main', ['egg_a', 'egg_b'])
+        for c in cells:
+            for r in c.cand_rows:
+                r['is_egg_dish'] = 1
+        rule = self._rule()
+        rule.apply(m, {}, None, {'cells': cells,
+                                 'dates': [MON + dt.timedelta(days=i) for i in range(3)]})
+        for c in cells:
+            m.Add(c.x_vars[0] == 1)          # egg_a everywhere
+        assert _status(m) in ('OPTIMAL', 'FEASIBLE')
+
+    def test_non_matching_items_are_untouched(self):
+        """A rule on egg must not constrain the chicken dishes."""
+        m = cp_model.CpModel()
+        cells = _build(m, 2, 'nonveg_main', ['chicken_a', 'chicken_b'])
+        for c in cells:
+            for r in c.cand_rows:
+                r['is_egg_dish'] = 0
+        self._rule().apply(m, {}, None, {
+            'cells': cells, 'dates': [MON, MON + dt.timedelta(days=1)]})
+        m.Add(cells[0].x_vars[0] == 1)
+        m.Add(cells[1].x_vars[1] == 1)       # different chicken each day
+        assert _status(m) in ('OPTIMAL', 'FEASIBLE')
+
+    def test_item_missing_on_some_day_is_excluded_not_infeasible(self):
+        """An item that cannot appear every day is dropped, not fatal."""
+        m = cp_model.CpModel()
+        cells = _build(m, 2, 'nonveg_main', ['egg_a', 'egg_b'])
+        for c in cells:
+            for r in c.cand_rows:
+                r['is_egg_dish'] = 1
+        # Remove egg_b from day 1 entirely.
+        cells[1].cand_rows = cells[1].cand_rows[:1]
+        cells[1].x_vars = cells[1].x_vars[:1]
+        self._rule().apply(m, {}, None, {
+            'cells': cells, 'dates': [MON, MON + dt.timedelta(days=1)]})
+        assert _status(m) in ('OPTIMAL', 'FEASIBLE')
+
+    def test_lt_egg_rule_is_configured_on_the_right_counter(self):
+        from src.menu_rules.fixed_daily_item_rule import FixedDailyItemRule
+        loader = MenuRuleLoader()
+        city = loader.load_for_city('bangalore')
+        nonveg = loader.load_for_client('L&T', city, 'Non Veg Lunch')
+        assert any(isinstance(r, FixedDailyItemRule) for r in nonveg), \
+            'L&T Non Veg Lunch should hold the fixed-egg rule'
+        # And it must NOT leak to the client's other counters.
+        south = loader.load_for_client('L&T', city, 'South Lunch')
+        assert not any(isinstance(r, FixedDailyItemRule) for r in south)

@@ -53,6 +53,40 @@ def live_clients(monkeypatch):
     return api_app
 
 
+@pytest.fixture
+def live_clients_lt_five(monkeypatch):
+    """Like ``live_clients`` but with L&T's non-veg counter set to five dishes.
+
+    The live row still says 1, so the five-dish station is the client's stated
+    requirement rather than its current config. The test raises the count itself
+    instead of baking it into the snapshot, so ``client_fixtures`` stays a true
+    mirror of the database and this test does not silently start passing (or
+    failing) when the live row changes.
+    """
+    import copy
+    import src.db as db_mod
+
+    clients = copy.deepcopy(CLIENTS)
+    for c in clients:
+        if c['name'] == 'L&T':
+            for ctr in c['counters']:
+                if ctr['name'] == 'Non Veg Lunch':
+                    ctr['slot_counts']['nonveg_main'] = 5
+    fake = FakeSupabase(seed={
+        'clients': clients,
+        'app_settings': [dict(s) for s in APP_SETTINGS],
+        'menu_history': [], 'week_signatures': [],
+    })
+    monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
+    import api.app as api_app
+    for attr in ('_client_loader', '_pools', '_df', '_nonveg_items'):
+        monkeypatch.setattr(api_app, attr, None, raising=False)
+    monkeypatch.setattr(api_app, '_menu_rules_by_city', {}, raising=False)
+    monkeypatch.setattr(api_app, '_filtered_cache', {}, raising=False)
+    api_app.app.config['TESTING'] = True
+    return api_app
+
+
 def _counters(api_app, name):
     return api_app._get_client_loader().get_client_configs(name)
 
@@ -307,7 +341,7 @@ def test_biryani_lands_on_biryani_days_for_a_three_slot_counter(live_clients):
 
 
 @pytest.mark.slow
-def test_five_dish_station_serves_a_kebab_every_day(live_clients):
+def test_five_dish_station_serves_a_kebab_every_day(live_clients_lt_five):
     """L&T's 5-dish non-veg station: 5 dishes daily, kebab included.
 
     Only one kebab is eligible for a common-only client, so a variety dish would
@@ -315,15 +349,14 @@ def test_five_dish_station_serves_a_kebab_every_day(live_clients):
     same dish every day, like steamed rice — so it recurs, while the rest of the
     counter still varies.
     """
-    resp, body = _plan(live_clients, 'L&T', 2, start_date='2026-07-29',
+    resp, body = _plan(live_clients_lt_five, 'L&T', 2, start_date='2026-07-29',
                        time_limit_seconds=120)
     assert resp.status_code == 200, body.get('error') or body.get('message')
 
-    _name, cfg = _counters(live_clients, 'L&T')[2]
-    expected = int(cfg.slot_counts.get('nonveg_main', 1))
-    assert expected == 5, 'fixture no longer configures the 5-dish station'
+    _name, cfg = _counters(live_clients_lt_five, 'L&T')[2]
+    assert int(cfg.slot_counts.get('nonveg_main', 1)) == 5
 
-    df = live_clients._get_menu_data()[0]
+    df = live_clients_lt_five._get_menu_data()[0]
     truthy = df['is_tandoor'].fillna(0).astype(str).str.strip().str.lower()
     staples = {
         str(v).strip().lower()

@@ -28,6 +28,122 @@
           "wed",
           "fri"
         ]
+      },
+      {
+        "_comment": "Non-veg gravy Monday and Wednesday, chicken biryani Friday - Friday is this counter's biryani day (client confirmed, and both sample weeks serve a veg biryani there too). Tuesday and Thursday are blank via tekion_nonveg_mwf. Mon/Wed exclude is_egg_dish because two egg dishes are mis-flagged is_south_chicken_gravy in the ontology.",
+        "name": "tekion_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Chinese Rice & Chinese gravy to be served on Tuesday.' Both sample weeks honour it (Chilli Garlic Fried Rice, Herbed Fried Rice).",
+        "name": "tekion_chinese_rice_tuesday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_chinese_fried_rice",
+                  "is_chinese_carb"
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "The veg-gravy half of the same Tuesday rule.",
+        "name": "tekion_chinese_gravy_tuesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_chinese_veg_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Paneer Gravy every wednesday.' Written '(Lunch & Dinner)'; dinner is out of scope, so this is the whole rule. Both sample weeks serve paneer then.",
+        "name": "tekion_paneer_gravy_wednesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_paneer_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Khichdi every Thursday.' There is no is_khichdi flag; every khichdi in the ontology carries is_liquid_rice, and tekion_liquid_rice_once already caps liquid rice at one a week, so pinning Thursday lands that one there. Both sample weeks serve a khichdi on Thursday.",
+        "name": "tekion_khichdi_thursday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_liquid_rice"
+              },
+              "count": 1
+            }
+          ]
+        }
       }
     ],
     "constant_items": {}
@@ -651,6 +767,15 @@
             }
           ]
         }
+      },
+      {
+        "_comment": "Client confirmed: ONE non-veg a week. The requirement names Friday ('every Friday chicken gravy/dry'), so the other four days are blank and plum_nonveg_by_weekday decides what Friday serves.",
+        "name": "plum_nonveg_fri_only",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "fri"
+        ]
       }
     ],
     "constant_items": {
@@ -997,6 +1122,17 @@
         "_comment": "This counter is themed biryani on all five days, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot. This is also the 5-dish station: with nonveg_main set to 5, 'nonveg_main_five_dish' composes biryani + gravy + dry + kebab + egg each day.",
         "disable": [
           "nonveg_biryani_once_per_week"
+        ],
+        "rules": [
+          {
+            "_comment": "The printed menu serves the same EGG CURRY on all five days, alongside the same CHICKEN KABAB - both are fixtures on this station, not variety slots. The kebab is fixed by accident (one eligible tandoor item); the egg needs saying, because 21 egg dishes are eligible and the solver would otherwise serve five different ones. This rule also declares its items repeatable so unique_items does not forbid the repetition.",
+            "name": "lt_egg_same_every_day",
+            "type": "fixed_daily_item",
+            "base_slot": "nonveg_main",
+            "selector": {
+              "flag": "is_egg_dish"
+            }
+          }
         ]
       }
     }

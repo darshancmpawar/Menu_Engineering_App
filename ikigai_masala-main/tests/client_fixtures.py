@@ -12,10 +12,15 @@ needs no parser. Regenerate it when the live table changes shape; the sweep is
 marked ``slow``, so it runs on push-to-main and on demand rather than on every
 pull request.
 
-Caveat worth knowing when reading a green run: the snapshot's ``version``,
-``city`` and pool assignments are the live values, but ``working_days`` is not
-in the live table yet — Quince's three-day week below is the one synthetic
-field, kept because it is the only coverage of the horizon filter.
+Caveats worth knowing when reading a green run. Everything here is the live
+value except:
+
+* ``working_days`` is not in the live table yet, so Quince's three-day week is
+  synthetic — kept because it is the only coverage of the horizon filter.
+* L&T's ``Non Veg Lunch`` counter serves ``nonveg_main: 1`` live, while the
+  client's requirement is the five-dish station (biryani + gravy + dry + kebab +
+  egg). The snapshot mirrors live; the test that proves the five-dish behaviour
+  raises the count itself, so it does not depend on the live row being changed.
 """
 
 from typing import Any, Dict, List
@@ -57,6 +62,13 @@ _THEMES_4 = {
     'wednesday': 'biryani',
     'thursday': 'mix',
     'friday': 'north',
+}
+_THEMES_5 = {
+    'monday': 'mix',
+    'tuesday': 'chinese',
+    'wednesday': 'north',
+    'thursday': 'mix',
+    'friday': 'biryani',
 }
 _ALL_CHINESE_CONTINENTAL = {d: 'chinese_continental' for d in _MIX}
 _ALL_CHINESE = {d: 'chinese' for d in _MIX}
@@ -308,17 +320,17 @@ CLIENTS: List[Dict[str, Any]] = [
         ],
     },
     {
-        'name': 'H&M', 'version': 2, 'city': 'Bangalore',
+        'name': 'H&M', 'version': 4, 'city': 'Bangalore',
         'serve_weekends': False, 'item_cooldown_days': 20,
         'source_pools': [],
         'counters': [
             _c('Counter 1',
                ['salad', 'bread', 'rice', 'white_rice', 'veg_dry', 'veg_gravy',
-                'dal', 'sambar', 'rasam', 'dessert', 'papad', 'nonveg_main',
-                'curd'],
+                'dal', 'sambar', 'rasam', 'dessert', 'curd', 'papad',
+                'nonveg_main', 'starter'],
                {'bread': 1, 'curd': 1, 'dal': 1, 'dessert': 1, 'nonveg_main': 1,
-                'rasam': 1, 'rice': 1, 'salad': 1, 'sambar': 1, 'veg_dry': 1,
-                'veg_gravy': 1},
+                'rasam': 1, 'rice': 1, 'salad': 1, 'sambar': 1, 'starter': 1,
+                'veg_dry': 1, 'veg_gravy': 1},
                {
                    'monday': 'mix',
                    'tuesday': 'mix',
@@ -402,29 +414,25 @@ CLIENTS: List[Dict[str, Any]] = [
         ],
     },
     {
-        'name': 'L&T', 'version': 2, 'city': 'Bangalore',
+        'name': 'L&T', 'version': 3, 'city': 'Bangalore',
         'serve_weekends': False, 'item_cooldown_days': 20,
         'source_pools': [],
         'counters': [
             _c('South Lunch',
-               ['bread', 'salad', 'rice', 'white_rice', 'veg_dry', 'veg_gravy',
-                'sambar', 'rasam', 'dessert', 'papad', 'curd_side'],
+               ['salad', 'bread', 'rice', 'white_rice', 'veg_dry', 'veg_gravy',
+                'sambar', 'rasam', 'dessert', 'curd_side', 'papad'],
                {'bread': 1, 'curd_side': 1, 'dessert': 1, 'rasam': 1, 'rice': 1,
                 'salad': 1, 'sambar': 1, 'veg_dry': 1, 'veg_gravy': 1},
                _ALL_SOUTH),
             _c('North Lunch',
-               ['soup', 'salad', 'bread', 'rice', 'veg_gravy', 'dal', 'dessert',
-                'curd_side', 'papad', 'white_rice'],
+               ['soup', 'salad', 'bread', 'rice', 'white_rice', 'veg_gravy', 'dal',
+                'dessert', 'curd_side', 'papad'],
                {'bread': 1, 'curd_side': 1, 'dal': 1, 'dessert': 1, 'rice': 1,
                 'salad': 1, 'soup': 1, 'veg_gravy': 1},
                _MIX),
-            # The 5-dish non-veg station: biryani + gravy + dry + kebab + egg
-            # every day (see nonveg_main_five_dish in the city ruleset). The
-            # live row still says 1; set this counter's frequency to 5 in the
-            # editor to match.
             _c('Non Veg Lunch',
                ['bread', 'curd_side', 'nonveg_main'],
-               {'bread': 1, 'curd_side': 1, 'nonveg_main': 5},
+               {'bread': 1, 'curd_side': 1, 'nonveg_main': 1},
                _ALL_BIRYANI),
         ],
     },
@@ -542,13 +550,7 @@ CLIENTS: List[Dict[str, Any]] = [
                {'bread': 1, 'curd': 1, 'dal': 1, 'dessert': 1, 'healthy_rice': 1,
                 'nonveg_main': 2, 'rice': 1, 'sambar_rasam': 1, 'starter': 1,
                 'veg_dry': 1, 'veg_gravy': 1, 'welcome_drink': 1},
-               {
-                   'monday': 'mix',
-                   'tuesday': 'chinese',
-                   'wednesday': 'north',
-                   'thursday': 'mix',
-                   'friday': 'biryani',
-               }),
+               _THEMES_5),
         ],
     },
     {
@@ -716,16 +718,18 @@ CLIENTS: List[Dict[str, Any]] = [
         ],
     },
     {
-        'name': 'Tekion', 'version': 1, 'city': None,
-        'serve_weekends': False, 'item_cooldown_days': None,
-        'source_pools': None,
+        'name': 'Tekion', 'version': 2, 'city': 'Bangalore',
+        'serve_weekends': False, 'item_cooldown_days': 20,
+        'source_pools': [],
         'counters': [
             _c('Counter 1',
-               ['bread', 'veg_dry', 'rice', 'veg_gravy', 'nonveg_main', 'dal',
-                'sambar', 'rasam', 'white_rice', 'papad', 'pickle', 'curd_side',
-                'dessert', 'salad'],
-               {},
-               _NO_THEME_MAP),
+               ['salad', 'bread', 'rice', 'white_rice', 'veg_dry', 'veg_gravy',
+                'dal', 'sambar', 'rasam', 'dessert', 'curd_side', 'papad',
+                'pickle', 'nonveg_main'],
+               {'bread': 1, 'curd_side': 1, 'dal': 1, 'dessert': 1,
+                'nonveg_main': 1, 'rasam': 1, 'rice': 1, 'salad': 1, 'sambar': 1,
+                'veg_dry': 1, 'veg_gravy': 1},
+               _THEMES_5),
         ],
     },
     {

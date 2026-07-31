@@ -114,16 +114,28 @@ class TestLoadForClient:
         result = loader.load_for_client('UnknownClientXYZ', generic)
         assert result == generic
 
-    def test_tekion_seed_loads_3_rules(self):
+    def test_tekion_seed_loads_its_configured_rules(self):
+        """Asserts the rule *types* present, not a count.
+
+        A count assertion breaks every time a client gains a requirement, which
+        says nothing about whether the loader works. Tekion's block grew from 3
+        rules to 8 when its sheet-embedded requirements were configured.
+        """
         from src.menu_rules.ingredient_ban_rule import IngredientBanRule
         from src.menu_rules.item_frequency_rule import ItemFrequencyRule
         from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
+        from src.menu_rules.slot_composition_rule import SlotCompositionRule
         loader = MenuRuleLoader()
         result = loader.load_for_client('Tekion', [])
-        assert len(result) == 3
-        assert isinstance(result[0], IngredientBanRule)
-        assert isinstance(result[1], ItemFrequencyRule)
-        assert isinstance(result[2], SlotDayRestrictionRule)
+        assert result, 'Tekion has a client_rules block; it must load'
+        kinds = {type(r) for r in result}
+        for expected in (IngredientBanRule, ItemFrequencyRule,
+                         SlotDayRestrictionRule, SlotCompositionRule):
+            assert expected in kinds, (expected.__name__, sorted(
+                k.__name__ for k in kinds))
+        assert all(r.validate_config() for r in result), [
+            (r.name, r.validation_errors()) for r in result
+            if not r.validate_config()]
 
     def test_invalid_rule_is_skipped(self, tmp_path):
         import json
