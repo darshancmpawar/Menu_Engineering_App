@@ -118,7 +118,14 @@ nothing else has to change.
 | R69 | Comply with FSSAI and hygiene standards | OPS | outside the tool |
 | R70 | Consider vendor inventory and capacity | OPS | outside the tool |
 
-Totals: **26 DONE**, 5 DATA, 8 N/A, 5 CLIENT, 4 GAP, 22 OPS.
+Totals over all 70 rules, by the leading status word: **31 DONE** (of which 4
+are qualified — 2 soft, 1 projected onto the horizon, 1 partial), 16 OPS
+(5 of those out of scope while the tool is lunch-only), 9 N/A, 6 DATA, 4 CLIENT,
+4 GAP.
+
+So 31 of 70 are enforced today; 21 (OPS + N/A) have nothing for the solver to
+decide; and 14 are genuinely open — 6 waiting on Pune ontology data, 4 on a
+per-client premium tier, 4 on engine capabilities.
 
 ## Judgement calls
 
