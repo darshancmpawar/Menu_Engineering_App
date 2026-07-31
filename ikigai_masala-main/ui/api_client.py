@@ -293,13 +293,22 @@ class MenuApiClient:
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Save failed")
 
-    def pool_preview(self, source_pools: List[str]) -> Dict[str, Any]:
+    def pool_preview(
+        self, source_pools: List[str], city: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Preview the eligible item pool (count + category breakdown) for a
-        set of source pools (F5 config UI). ``common`` is always included."""
+        set of source pools (F5 config UI). ``common`` is always included.
+
+        *city* selects which city's item list is counted — without it the editor
+        would show a Pune client the default city's counts.
+        """
+        body: Dict[str, Any] = {"source_pools": list(source_pools or [])}
+        if city:
+            body["city"] = city
+
         def _do():
             return self.session.post(
-                f"{self.base_url}/api/v1/pool-preview",
-                json={"source_pools": list(source_pools or [])}, timeout=10,
+                f"{self.base_url}/api/v1/pool-preview", json=body, timeout=10,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Pool preview failed")

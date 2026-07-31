@@ -1,11 +1,12 @@
 """Every production client configuration, for the all-clients sweep.
 
-A snapshot of the live ``clients`` table — all 42 clients / 56
+A snapshot of the live ``clients`` table — all 43 clients / 57
 counters — so ``test_all_clients_generate.py`` proves that *every* client the
 tool actually serves still produces a menu, not just a representative subset.
 It covers the shapes that ship: multi-counter clients, ``nonveg_main`` counts of
 1-3, combo slots, single-theme counters, restricted ``source_pools``,
-per-client ``item_cooldown_days`` and ``working_days``.
+per-client ``item_cooldown_days`` and ``working_days``, and — since Amadeus
+Pune — a client in a city with its own item list and its own ruleset.
 
 Kept as a Python literal rather than a SQL dump so it is reviewable in diffs and
 needs no parser. Regenerate it when the live table changes shape; the sweep is
@@ -106,6 +107,22 @@ CLIENTS: List[Dict[str, Any]] = [
                ['rice', 'veg_gravy'],
                {'rice': 1, 'veg_gravy': 1},
                _ALL_CHINESE_CONTINENTAL),
+        ],
+    },
+    {
+        # The first non-Bangalore client: its city selects the Pune item list
+        # (data/raw/city_items/pune.xlsx) and the Pune ruleset. Also the only
+        # client with serve_weekends set, so the sweep covers a 7-day horizon.
+        'name': 'Amadeus Pune', 'version': 1, 'city': 'Pune',
+        'serve_weekends': True, 'item_cooldown_days': 20,
+        'source_pools': [],
+        'counters': [
+            _c('Counter 1',
+               ['welcome_drink', 'salad', 'bread', 'rice', 'veg_dry', 'veg_gravy',
+                'dal', 'dessert', 'white_rice', 'papad'],
+               {'bread': 1, 'dal': 1, 'dessert': 1, 'rice': 1, 'salad': 1,
+                'veg_dry': 1, 'veg_gravy': 1, 'welcome_drink': 1},
+               _ALL_NORTH),
         ],
     },
     {

@@ -591,12 +591,16 @@ class MenuSolver:
     ) -> Dict:
         cache = {}
 
-        # Build shared filter context for rule pre_filter_pool calls
+        # Build shared filter context for rule pre_filter_pool calls.
+        # `extra_repeatable` carries the rule-declared staples so the cooldown
+        # pre-filter exempts the same dishes unique_items does — one
+        # declaration, both consumers.
         base_filter_ctx: Dict[str, Any] = {
             'cfg': self.cfg,
             'banned_by_date': self.banned_by_date,
             'ricebread_ban_day': self.ricebread_ban_day,
             'pools': self.pools,
+            'extra_repeatable': self._declared_repeatable(),
         }
 
         for di, d in enumerate(dates):

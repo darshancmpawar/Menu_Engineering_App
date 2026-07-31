@@ -262,9 +262,30 @@ class TestCityRules:
     def test_city_name_is_case_insensitive(self):
         assert len(MenuRuleLoader().load_for_city('bangalore')) == _CITY_RULE_COUNT
 
-    def test_other_city_inherits_bangalore(self):
-        # Pune's file extends bangalore with no overrides yet → same ruleset.
-        assert len(MenuRuleLoader().load_for_city('Pune')) == _CITY_RULE_COUNT
+    @pytest.mark.parametrize('city', ['Chennai', 'Hyderabad', 'NCR'])
+    def test_city_without_its_own_rules_inherits_bangalore(self, city):
+        # These files extend bangalore with no overrides yet → same ruleset.
+        assert len(MenuRuleLoader().load_for_city(city)) == _CITY_RULE_COUNT
+
+    def test_pune_is_standalone_not_a_bangalore_extension(self):
+        """Pune has its own rulebook, so its ruleset must NOT be Bangalore's.
+
+        Pinned because pune.json used to be an extends-bangalore stub, and the
+        two rulebooks genuinely disagree — Bangalore mandates exactly one
+        premium gravy a week, Pune caps it at one.
+        """
+        rules = MenuRuleLoader().load_for_city('Pune')
+        assert 0 < len(rules) < _CITY_RULE_COUNT
+        assert all(r.validate_config() for r in rules), [
+            r.name for r in rules if not r.validate_config()
+        ]
+        names = {r.name for r in rules}
+        # Bangalore-only rules that must not leak in.
+        assert 'nonveg_biryani_once_per_week' not in names
+        assert 'premium_veg_gravy_exactly_one' not in names
+        # Pune-specific rules that must be there.
+        assert 'colour_three_distinct_max_two_alike' in names
+        assert 'plain_chapati_may_repeat' in names
 
     def test_unknown_or_blank_city_falls_back_to_default(self):
         assert len(MenuRuleLoader().load_for_city('Atlantis')) == _CITY_RULE_COUNT

@@ -27,8 +27,8 @@ def project_root_path():
 
 @pytest.fixture(scope="session")
 def sample_data_path(project_root_path):
-    """Return path to sample data file"""
-    return project_root_path / "data" / "raw" / "menu_items.xlsx"
+    """Return path to sample data file (the reference/Bangalore ontology)."""
+    return project_root_path / "data" / "raw" / "city_items" / "bangalore.xlsx"
 
 
 @pytest.fixture(scope="session")
@@ -95,13 +95,13 @@ def fake_supabase(monkeypatch, seeded_fake_supabase):
     try:
         import api.app as api_app
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-        monkeypatch.setattr(api_app, '_pools', None, raising=False)
-        monkeypatch.setattr(api_app, '_df', None, raising=False)
-        monkeypatch.setattr(api_app, '_nonveg_items', None, raising=False)
-        # These two are dicts, not None-sentinels, and the rule cache was
-        # renamed to _menu_rules_by_city — resetting the old `_menu_rules`
-        # name silently created a junk attribute and left the real per-city
-        # rule cache and the F5 per-pool-set pool cache leaking across tests.
+        # All four are dicts, not None-sentinels — the ontology, non-veg-name
+        # and F5 pool caches are keyed by resolved ontology path and the rule
+        # cache by city. Resetting a stale name (`_pools`, `_df`,
+        # `_nonveg_items`, `_menu_rules`) silently created a junk attribute and
+        # left the real caches leaking across tests.
+        monkeypatch.setattr(api_app, '_menu_data_by_path', {}, raising=False)
+        monkeypatch.setattr(api_app, '_nonveg_items_by_path', {}, raising=False)
         monkeypatch.setattr(api_app, '_menu_rules_by_city', {}, raising=False)
         monkeypatch.setattr(api_app, '_filtered_cache', {}, raising=False)
     except ImportError:

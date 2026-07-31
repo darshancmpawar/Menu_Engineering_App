@@ -33,6 +33,7 @@ from .base_menu_rule import (
     MenuRuleType,
     MenuRuleSeverity,
 )
+from .unique_items_menu_rule import matches_declared
 
 # Re-export for tests / legacy callers; the canonical implementation is
 # HistoryManager.parse_signature_to_expected_map.
@@ -54,6 +55,13 @@ class ItemCooldownMenuRule(BaseMenuRule):
     }
     """
 
+    # Populated by diagnostics.run_diagnostics so diagnose() can read the
+    # staple declarations its peers publish (`repeatable_item_flags`). Without
+    # them diagnose() reports bans the solver does not apply — a 2-item bread
+    # slot whose dishes are declared staples would be gated as an ERROR while
+    # the solver happily serves them.
+    _peer_rules: List[Any] = []
+
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.ITEM_COOLDOWN
@@ -61,6 +69,31 @@ class ItemCooldownMenuRule(BaseMenuRule):
 
     def validate_config(self) -> bool:
         return self.cooldown_days >= 0
+
+    def _declared_repeatable(self) -> Dict[str, List[Any]]:
+        """``{base_slot: [(include, exclude), ...]}`` from every peer rule."""
+        out: Dict[str, List[Any]] = {}
+        for rule in (self._peer_rules or ()):
+            fn = getattr(rule, 'repeatable_item_flags', None)
+            if not callable(fn):
+                continue
+            try:
+                for slot, matcher in (fn() or {}).items():
+                    out.setdefault(slot, []).append(matcher)
+            except Exception:  # noqa: BLE001 — a bad peer must not break diagnose
+                continue
+        return out
+
+    def _staple_mask(self, pool: pd.DataFrame, base_slot: str,
+                     declared: Dict[str, Any]) -> pd.Series:
+        """Rows the cooldown never bans: ontology-wide staples + declared ones."""
+        return pool.apply(
+            lambda row: (
+                repeatable_row(row, base_slot)
+                or matches_declared(row, base_slot, declared)
+            ),
+            axis=1,
+        )
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
@@ -73,10 +106,16 @@ class ItemCooldownMenuRule(BaseMenuRule):
         banned = banned_by_date.get(date, set())
         if banned and len(pool) > 0:
             drop = pool['item'].isin(banned)
-            # A staple item (flag-marked, e.g. the chicken kebab) recurs by
-            # design, so the 20-day window never bans it — same exemption the
-            # plain-curd slot gets above, applied per item instead of per slot.
-            staple = pool.apply(repeatable_row, axis=1, base_slot=base_slot)
+            # A staple item recurs by design, so the 20-day window never bans it
+            # — same exemption the plain-curd slot gets above, applied per item
+            # instead of per slot. Two sources, both honoured: the ontology-wide
+            # flags in constants (the chicken kebab) and the per-city/per-client
+            # `repeatable_items` declarations the solver collects (Pune's plain
+            # chapati). Skipping the declared set would leave a "may repeat"
+            # exemption that unique_items honours and the cooldown quietly
+            # doesn't — which starves the slot a week later instead of now.
+            declared = filter_context.get('extra_repeatable') or {}
+            staple = self._staple_mask(pool, base_slot, declared)
             pool = pool[~(drop & ~staple)]
         return pool
 
@@ -107,6 +146,10 @@ class ItemCooldownMenuRule(BaseMenuRule):
         slot_counts = (
             ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
         )
+        # Same exemption the pre-filter applies, so the report and the solve
+        # agree on which dishes the cooldown can actually take away.
+        declared = self._declared_repeatable()
+        staple_cache: Dict[str, Any] = {}
 
         for d in ctx.dates:
             banned = ctx.banned_by_date.get(d, set())
@@ -126,7 +169,9 @@ class ItemCooldownMenuRule(BaseMenuRule):
                 if len(pool) == 0 or 'item' not in pool.columns:
                     continue
 
-                ban_mask = pool['item'].isin(banned)
+                if base not in staple_cache:
+                    staple_cache[base] = self._staple_mask(pool, base, declared)
+                ban_mask = pool['item'].isin(banned) & ~staple_cache[base]
                 ban_count = int(ban_mask.sum())
                 if ban_count == 0:
                     continue

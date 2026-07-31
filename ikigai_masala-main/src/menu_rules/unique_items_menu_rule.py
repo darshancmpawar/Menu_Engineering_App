@@ -27,12 +27,17 @@ from ..preprocessor.column_mapper import _norm_str
 logger = logging.getLogger(__name__)
 
 
-def _matches_declared(row, base_slot, declared) -> bool:
+def matches_declared(row, base_slot, declared) -> bool:
     """True when *row* is covered by a rule-declared repeatable selector.
 
     ``declared`` is ``{base_slot: [(include, exclude), ...]}`` as collected from
-    every rule exposing ``repeatable_item_flags()`` — see FixedDailyItemRule.
-    Scoped per client, unlike the ontology-wide REPEATABLE_ITEM_FLAGS_BY_SLOT.
+    every rule exposing ``repeatable_item_flags()`` — see FixedDailyItemRule and
+    RepeatableItemsRule. Scoped per city/client, unlike the ontology-wide
+    REPEATABLE_ITEM_FLAGS_BY_SLOT.
+
+    Public because the item-cooldown pre-filter reads the same declarations: a
+    staple exempted from unique_items but still banned by history is not a
+    staple, it is a slot that starves one week later.
     """
     from .selector_frequency_rule import SelectorFrequencyRule
     for include, exclude in (declared or {}).get(base_slot, ()):
@@ -73,7 +78,7 @@ def starved_slots(cells, declared=None) -> Dict[str, int]:
         entry['cells'] += 1
         for row in cell.cand_rows:
             if (repeatable_row(row, cell.base_slot)
-                    or _matches_declared(row, cell.base_slot, declared)):
+                    or matches_declared(row, cell.base_slot, declared)):
                 # A staple can cover any number of cells on its own, so its
                 # presence means this slot can never be arithmetically starved.
                 entry['staple'] = True
@@ -119,7 +124,7 @@ class UniqueItemsMenuRule(BaseMenuRule):
             _norm_str(row.get('item', ''))
             for cell in cells for row in cell.cand_rows
             if (repeatable_row(row, cell.base_slot)
-                or _matches_declared(row, cell.base_slot, declared))
+                or matches_declared(row, cell.base_slot, declared))
         }
         repeatable.discard('')
 
