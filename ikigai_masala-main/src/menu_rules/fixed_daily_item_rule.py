@@ -117,7 +117,17 @@ class FixedDailyItemRule(BaseMenuRule):
         # An item is used on every day or on none. Days on which the item has no
         # candidate at all cannot host it, so it is excluded from the fixed
         # choice entirely rather than making the model INFEASIBLE.
-        n_days = len(dates)
+        #
+        # "Every day" means every day THIS SLOT IS SERVED, not every day in the
+        # horizon. Using the horizon length breaks the moment the slot also has a
+        # `slot_day_restriction`: Amadeus Pune serves bread Mon-Sat, so over a
+        # 7-day horizon chapati appeared on 6 of 7 days, was judged ineligible,
+        # and was pinned to zero — leaving the six bread cells with no candidate
+        # at all. Every candidate failing that way is an INFEASIBLE plan.
+        slot_days = {
+            cell.d_idx for cell in cells if cell.base_slot == self.base_slot
+        }
+        n_days = len(slot_days) or len(dates)
         eligible = 0
         for name, per_day in sorted(by_item.items()):
             if len(per_day) < n_days:

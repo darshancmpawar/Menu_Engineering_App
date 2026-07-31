@@ -3,6 +3,11 @@
 Source: `Pune_menu_rulebook_101.xlsx` (sheet `Rulebook`, R1–R70) plus its
 annexure. Implementation: `data/configs/city_rules/pune.json`.
 
+Per-client requirements are in [`pune_client_logic.md`](pune_client_logic.md);
+where a client answers a question this rulebook leaves open, that document wins
+(R59's daily buttermilk and R54's weekend shape are both settled there for
+Amadeus Pune).
+
 Pune's ruleset is **standalone** — it does not `extends: bangalore`. The two
 rulebooks genuinely disagree (Bangalore mandates exactly one premium gravy a
 week, Pune caps it at one; Bangalore schedules theme days, Pune does not), and

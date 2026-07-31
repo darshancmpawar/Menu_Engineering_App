@@ -64,6 +64,7 @@ from .base_menu_rule import (
 from src.constants import repeatable_row
 from .selector_frequency_rule import SelectorFrequencyRule
 from .slot_day_restriction_rule import _WEEKDAY_TOKENS
+from .unique_items_menu_rule import matches_declared
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +423,11 @@ class SlotCompositionRule(BaseMenuRule):
         """
         cfg = context.get('cfg')
         slot_counts = getattr(cfg, 'slot_counts', None) or {}
+        # Staples declared by a peer rule count too, not just the ontology-wide
+        # flags. "Chapati every day" is one distinct item across six days, which
+        # reads as a horizon shortfall and degrades the daily mandate to a floor
+        # of one — turning "chapati daily" into "chapati once".
+        declared = context.get('extra_repeatable') or {}
         out: Dict[Any, Dict[str, Any]] = {}
         seen: Dict[Any, Dict[str, Any]] = {}
 
@@ -446,7 +452,9 @@ class SlotCompositionRule(BaseMenuRule):
                 for c in day_cells:
                     for r in c.cand_rows:
                         if _component_matches(r, matcher):
-                            if repeatable_row(r, self.base_slot):
+                            if (repeatable_row(r, self.base_slot)
+                                    or matches_declared(
+                                        r, self.base_slot, declared)):
                                 # A staple satisfies the component on every day
                                 # by itself, so distinct count is irrelevant.
                                 entry['staple'] = True

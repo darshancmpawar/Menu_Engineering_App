@@ -1,10 +1,13 @@
-"""End-to-end: a Pune client plans from the Pune item list under Pune's rules.
+"""End-to-end: the Pune CITY ruleset, on a counter with no client overrides.
 
 The unit tests next door prove the ruleset loads and the rule types work. This
 one proves the wiring: `clients.city = 'Pune'` must reach both the ontology and
 the ruleset, and the menu that comes back must obey the rules that bite. It runs
 a real solve — a 5-day, 8-slot Pune counter takes well under a second, so it
 stays in the fast suite where a regression fails on the pull request.
+
+Per-client rules are tested in `test_pune_client_logic.py`; this file deliberately
+uses a name with no `client_rules.json` entry so the two do not mask each other.
 """
 
 import datetime as dt
@@ -17,8 +20,13 @@ from tests.fake_supabase import FakeSupabase
 MONDAY = '2026-08-03'   # Monday, ISO week 32
 TIME_LIMIT = 30
 
-AMADEUS_PUNE = {
-    'name': 'Amadeus Pune',
+# Deliberately NOT a real client name: this file tests the CITY ruleset, so the
+# counter must carry no `client_rules.json` overrides. Amadeus Pune has a full set
+# of them (rice on two weekdays only, four slots off on Sunday), which would mask
+# what the city rules do on their own — and did: the rice-cuisine assertion below
+# started passing on two rice days instead of seven.
+REFERENCE_PUNE = {
+    'name': 'Pune Reference Counter',
     'version': 1,
     'city': 'Pune',
     'serve_weekends': True,
@@ -40,7 +48,7 @@ AMADEUS_PUNE = {
 def pune_client(monkeypatch):
     import src.db as db_mod
     fake = FakeSupabase(seed={
-        'clients': [dict(AMADEUS_PUNE)],
+        'clients': [dict(REFERENCE_PUNE)],
         'app_settings': [],
         'menu_history': [],
         'week_signatures': [],
@@ -59,7 +67,7 @@ def _plan(api_app, start=MONDAY, days=5):
     from api.rate_limit import reset_for_tests
     reset_for_tests()
     resp = api_app.app.test_client().post('/api/v1/plan', json={
-        'client_name': 'Amadeus Pune',
+        'client_name': 'Pune Reference Counter',
         'start_date': start,
         'num_days': days,
         'time_limit_seconds': TIME_LIMIT,
@@ -105,7 +113,7 @@ class TestPuneEndToEnd:
         from api.rate_limit import reset_for_tests
         reset_for_tests()
         resp = pune_client.app.test_client().post('/api/v1/diagnose', json={
-            'client_name': 'Amadeus Pune', 'start_date': MONDAY, 'num_days': 5,
+            'client_name': 'Pune Reference Counter', 'start_date': MONDAY, 'num_days': 5,
         })
         body = resp.get_json()
         assert resp.status_code == 200
@@ -135,7 +143,7 @@ class TestPuneEndToEnd:
                 assert not entry.get('is_nonveg'), (slot, entry['item_base'])
 
     def test_weekends_are_covered(self, pune_client):
-        """Amadeus Pune has serve_weekends set — a 7-day ask must include Sat/Sun
+        """This counter has serve_weekends set — a 7-day ask must include Sat/Sun
         rather than silently skipping to the next week."""
         resp, body = _plan(pune_client, days=7)
         assert resp.status_code == 200, body.get('error')
@@ -150,7 +158,7 @@ class TestPuneMenuObeysTheRulebook:
         import src.db as db_mod
         import api.app as api_app
         fake = FakeSupabase(seed={
-            'clients': [dict(AMADEUS_PUNE)], 'app_settings': [],
+            'clients': [dict(REFERENCE_PUNE)], 'app_settings': [],
             'menu_history': [], 'week_signatures': [],
         })
         old_sb = getattr(db_mod, '_sb_client', None)
@@ -268,7 +276,7 @@ class TestPuneSecondWeek:
         import src.db as db_mod
         history = [
             {
-                'client_name': 'Amadeus Pune',
+                'client_name': 'Pune Reference Counter',
                 'service_date': d,
                 'menu': {'bread': bread, 'dal': dal},
             }
@@ -281,7 +289,7 @@ class TestPuneSecondWeek:
             ]
         ]
         fake = FakeSupabase(seed={
-            'clients': [dict(AMADEUS_PUNE)], 'app_settings': [],
+            'clients': [dict(REFERENCE_PUNE)], 'app_settings': [],
             'menu_history': history, 'week_signatures': [],
         })
         monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)

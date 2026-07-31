@@ -478,6 +478,13 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
     if not constant_items:
         return resolved, whole_slot_bases
 
+    # `_`-prefixed keys are documentation, the same convention the rules list
+    # uses for `_comment`. Without this a comment inside a `constant_items`
+    # block logs "not a known slot" on every single plan.
+    constant_items = {
+        k: v for k, v in constant_items.items() if not str(k).startswith('_')
+    }
+
     known_slots = set(BASE_SLOT_NAMES) | set(CONST_SLOTS)
     active_slots = getattr(client_cfg, 'active_slots', None)
 
@@ -546,7 +553,9 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
     return resolved, whole_slot_bases
 
 
-def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
+def _rules_and_skip_for_client(
+    client_name, dates, city=None, client_cfg=None, pools=None,
+):
     """Return ``(rules, skip_cells, constant_items, whole_slot_bases, forced_items)``.
 
     Merges the city ruleset with per-client overrides (by name + disable) and
@@ -576,20 +585,30 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
     from src.solver._helpers import weekday_name as _weekday_name_fn
 
     # A pin is honoured one of two ways, and which one depends on whether the
-    # dish exists in the ontology:
+    # dish is a candidate for THAT SLOT:
     #
-    #   * it does  -> the cell stays in the model with its candidates narrowed to
+    #   * it is     -> the cell stays in the model with its candidates narrowed to
     #                 that dish (`forced_items`), so every other rule sees it and
     #                 the day is composed around it.
-    #   * it does not -> the cell is skipped and the text is stamped verbatim
+    #   * it is not -> the cell is skipped and the text is stamped verbatim
     #                 after the solve, which is how off-ontology dishes ("Mutton
     #                 Biryani", "Fish Tikka Masala") print today. Add the dish to
-    #                 menu_items.xlsx and the same pin starts going through the
-    #                 solver with no config change.
-    known_items = _ontology_item_names(city)
+    #                 the city's item list and the same pin starts going through
+    #                 the solver with no config change.
+    #
+    # Slot-scoped, not ontology-scoped, because "in the ontology" is the wrong
+    # test: a dish the ontology carries under a DIFFERENT course type has no
+    # candidate in this slot to narrow to, so the solver logs the miss and solves
+    # the cell normally — while the stamping pass skips it for being in
+    # `forced_items`. The pin then vanished from the menu with only an INFO line
+    # to show for it. Amadeus Pune's Sunday raita is exactly that shape: `raita`
+    # is a real Pune dish, filed under `curd_side`, pinned into `salad`.
     forced_items: Dict[Any, str] = {}
     for slot_id, spec in constant_items.items():
-        siblings = _exclusive_siblings(_base_slot(slot_id))
+        base = _base_slot(slot_id)
+        slot_items = _slot_item_names(pools, base) if pools is not None \
+            else _ontology_item_names(city)
+        siblings = _exclusive_siblings(base)
         for d in dates:
             value = _resolve_client_constant(spec, _weekday_name_fn(d))
             if value is None:
@@ -598,19 +617,34 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
             # the excluded slot goes away for that day. This holds either way —
             # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
-            canonical = _canonical_item_name(value, known_items)
+            canonical = _canonical_item_name(value, slot_items)
             # A pin that replaces the slot for the WHOLE horizon must still be
             # stamped, even when it names a real dish. Its base slot is dropped
             # from the model (`whole_slot_bases`), so there is no cell to narrow
             # — and solving one anyway would be INFEASIBLE under unique_items,
             # which is why the slot is dropped in the first place: the same dish
             # cannot occupy five days unless it is a staple.
-            if canonical is not None \
-                    and _base_slot(slot_id) not in whole_slot_bases:
+            if canonical is not None and base not in whole_slot_bases:
                 forced_items[(d, slot_id)] = canonical
             else:
                 skip_cells.add((d, slot_id))
     return rules, skip_cells, constant_items, whole_slot_bases, forced_items
+
+
+def _slot_item_names(pools, base_slot):
+    """Lowercased item names eligible for *base_slot*, from the built pools.
+
+    The pre-filter chain (theme, cooldown, …) can still drop a dish later; the
+    solver handles that case by solving the cell normally. This is the coarse
+    "could this dish ever appear in this slot" test that decides force vs stamp.
+    """
+    pool = (pools or {}).get(base_slot)
+    if pool is None or 'item' not in getattr(pool, 'columns', []):
+        return frozenset()
+    try:
+        return frozenset(str(v).strip().lower() for v in pool['item'].tolist())
+    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
+        return frozenset()
 
 
 def _ontology_item_names(city=None):
@@ -1053,7 +1087,7 @@ def _prepare_solver_inputs(
         weekday_dates, getattr(client_cfg, 'working_days', None),
     )
     rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
-        client_name, weekday_dates, city=city, client_cfg=client_cfg,
+        client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
     )
     _validate_constant_values(client_name, constant_items, df)
     # Per-client item-cooldown override (None = shipped default). Rebuild the

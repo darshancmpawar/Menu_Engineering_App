@@ -720,7 +720,7 @@ class MenuSolver:
         # Built-in color constraints (uniqueness is handled by UniqueItemsMenuRule)
         self._add_color_constraints(model, dates, day_types, known_colors,
                                     day_color_vars, day_rice_color_vars,
-                                    day_gravy_color_vars)
+                                    day_gravy_color_vars, cells)
 
         self._apply_rules_and_objective(model, cells, rng, similarity, context)
         return model
@@ -990,7 +990,7 @@ class MenuSolver:
 
     def _add_color_constraints(self, model, dates, day_types, known_colors,
                                day_color_vars, day_rice_color_vars,
-                               day_gravy_color_vars):
+                               day_gravy_color_vars, cells=None):
         cfg = self.cfg
         # Upper bound on achievable distinct colours in a day = the number of
         # colour-bearing slots the counter actually serves. A small counter
@@ -1004,9 +1004,28 @@ class MenuSolver:
             1 for s in _expand_slots_in_order(active, counts)
             if _base_slot(s) in color_bases
         )
+        # …and clamp PER DAY, because a day can have fewer colour cells than the
+        # counter's config implies: skip_cells removes them. Amadeus Pune serves
+        # five colour slots but on Sunday only rice and dessert (the veg gravy,
+        # veg dry and dal are restricted off that day) — a config-derived clamp
+        # of 3 asked two cells for three distinct colours, which is INFEASIBLE
+        # with nothing pointing at the colour rule. The "colours present in the
+        # day's pools" cap below cannot catch it: colours available and cells
+        # available are different numbers.
+        cells_per_day: Dict[int, int] = {}
+        for cell in (cells or ()):
+            if cell.base_slot in color_bases:
+                cells_per_day[cell.d_idx] = cells_per_day.get(cell.d_idx, 0) + 1
         for di, _ in enumerate(dates):
             day_type = day_types[di]
-            min_dist = min(_min_distinct_for_day(cfg, day_type), n_color_slots)
+            day_color_cells = (
+                cells_per_day.get(di, 0) if cells is not None else n_color_slots
+            )
+            min_dist = min(
+                _min_distinct_for_day(cfg, day_type),
+                n_color_slots,
+                day_color_cells,
+            )
 
             # Per-colour occurrence caps (rulebook 89-91): every colour may
             # appear at most `soft_cap` times (rule 90), EXCEPT up to

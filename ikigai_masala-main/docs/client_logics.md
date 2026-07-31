@@ -15,8 +15,8 @@ wired to this client, or missing ontology data.
 **Scope:** Bangalore only. Every client here draws from
 `data/raw/city_items/bangalore.xlsx` under `data/configs/city_rules/bangalore.json`.
 Pune is a separate item list and a separate ruleset —
-see [`pune_rulebook.md`](pune_rulebook.md); its per-client requirements are not
-yet supplied.
+see [`pune_rulebook.md`](pune_rulebook.md) for the city rules and
+[`pune_client_logic.md`](pune_client_logic.md) for its clients.
 
 **Status is a first-pass reading of the config, not a verified outcome.** A row
 marked DONE means a matching rule exists in `data/configs/client_rules.json` (or

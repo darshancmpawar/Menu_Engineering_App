@@ -218,6 +218,12 @@ class UniqueItemsMenuRule(BaseMenuRule):
             return diags
         slot_counts = ctx.client_cfg.slot_counts if ctx.client_cfg is not None else {}
         skip: Set[Tuple[Any, str]] = ctx.skip_cells or set()
+        # Slots whose staples a peer rule declared (repeatable_items,
+        # fixed_daily_item). "Items will repeat" is what those rules were added
+        # to do, so reporting it as a shortfall is noise that buries the real
+        # warnings — Amadeus Pune's chapati-daily bread and buttermilk-daily
+        # welcome drink each produced one every single plan.
+        declared = self._declared_repeatable()
 
         for base in base_slots:
             if base in REPEATABLE_SLOTS or base not in ctx.pools:
@@ -247,6 +253,16 @@ class UniqueItemsMenuRule(BaseMenuRule):
                     available.update(
                         _norm_str(v) for v in pool['item'].tolist()
                     )
+                    if any(
+                        repeatable_row(row, base)
+                        or matches_declared(row, base, declared)
+                        for _i, row in pool.iterrows()
+                    ):
+                        # A staple can cover any number of cells on its own, so
+                        # this slot can never run short. Same predicate apply()
+                        # uses, so the report and the solve agree.
+                        needed = 0
+                        break
 
             distinct = len({i for i in available if i})
             if needed and distinct and distinct < needed:
@@ -278,3 +294,22 @@ class UniqueItemsMenuRule(BaseMenuRule):
     # shrinkage is exactly what starves a slot — see L&T's south-only
     # counter, where curd_side drops from 13 items to 3).
     _peer_rules: List[Any] = []
+
+    def _declared_repeatable(self) -> Dict[str, List[Any]]:
+        """``{base_slot: [(include, exclude), ...]}`` from every peer rule.
+
+        The same collection ``MenuSolver._declared_repeatable()`` hands ``apply()``
+        via ``context['extra_repeatable']``; diagnose() has no context, so it
+        reads the peers directly.
+        """
+        out: Dict[str, List[Any]] = {}
+        for rule in (self._peer_rules or ()):
+            fn = getattr(rule, 'repeatable_item_flags', None)
+            if not callable(fn):
+                continue
+            try:
+                for slot, matcher in (fn() or {}).items():
+                    out.setdefault(slot, []).append(matcher)
+            except Exception:  # noqa: BLE001 — a bad peer must not break diagnose
+                continue
+        return out
