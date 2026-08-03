@@ -85,16 +85,35 @@ class SameDayExclusionRule(BaseMenuRule):
         ]
 
     @staticmethod
-    def _lits(day_cells, matcher):
+    def _hits(row, matcher, not_matcher) -> bool:
+        """Does *row* count for *matcher*, ignoring rows that are also
+        *not_matcher*?
+
+        A dish can satisfy both sides at once — `chole_paneer` is
+        `key_ingredient: paneer` AND `is_chana_gravy`. It is ONE dish, so it
+        cannot "be served alongside itself", and counting it on both sides makes
+        `a + b <= 1` read `1 + 1 <= 1`: the dish becomes unservable anywhere, on
+        every counter, silently. Such a dish belongs to the selector (a chole
+        paneer curry is a paneer dish), so it is dropped from the exclude side.
+        """
+        if not SelectorFrequencyRule._matches(row, matcher):
+            return False
+        return not (
+            not_matcher is not None
+            and SelectorFrequencyRule._matches(row, not_matcher)
+        )
+
+    @classmethod
+    def _lits(cls, day_cells, matcher, not_matcher=None):
         out = []
         for c in day_cells:
             for v, r in zip(c.x_vars, c.cand_rows):
-                if SelectorFrequencyRule._matches(r, matcher):
+                if cls._hits(r, matcher, not_matcher):
                     out.append(v)
         return out
 
-    @staticmethod
-    def _forced(day_cells, matcher) -> bool:
+    @classmethod
+    def _forced(cls, day_cells, matcher, not_matcher=None) -> bool:
         """True when some cell has NO candidate outside *matcher*.
 
         That cell must take a matching dish whatever the solver does, so the
@@ -102,9 +121,7 @@ class SameDayExclusionRule(BaseMenuRule):
         """
         for c in day_cells:
             rows = list(c.cand_rows)
-            if rows and all(
-                SelectorFrequencyRule._matches(r, matcher) for r in rows
-            ):
+            if rows and all(cls._hits(r, matcher, not_matcher) for r in rows):
                 return True
         return False
 
@@ -122,11 +139,11 @@ class SameDayExclusionRule(BaseMenuRule):
             sel_cells = self._day_cells(cells, di, self.base_slot)
             exc_cells = self._day_cells(cells, di, self.exclude_base_slot)
             sel_lits = self._lits(sel_cells, self._sel)
-            exc_lits = self._lits(exc_cells, self._exc)
+            exc_lits = self._lits(exc_cells, self._exc, self._sel)
             if not sel_lits or not exc_lits:
                 continue    # one side cannot occur today; nothing to exclude
             if self._forced(sel_cells, self._sel) and \
-                    self._forced(exc_cells, self._exc):
+                    self._forced(exc_cells, self._exc, self._sel):
                 logger.info(
                     "%s: day %d has a slot with only %s candidates AND a slot "
                     "with only %s candidates, so both sides are unavoidable; "
@@ -149,7 +166,7 @@ class SameDayExclusionRule(BaseMenuRule):
             return diags
         slots = list(ctx.active_base_slots or ctx.pools.keys())
 
-        def count(matcher, only_slot):
+        def count(matcher, only_slot, not_matcher=None):
             total = 0
             for base in slots:
                 if only_slot is not None and base != only_slot:
@@ -159,12 +176,14 @@ class SameDayExclusionRule(BaseMenuRule):
                     continue
                 total += sum(
                     1 for _i, row in pool.iterrows()
-                    if SelectorFrequencyRule._matches(row, matcher)
+                    if self._hits(row, matcher, not_matcher)
                 )
             return total
 
         n_sel = count(self._sel, self.base_slot)
-        n_exc = count(self._exc, self.exclude_base_slot)
+        # Same overlap rule as apply(), so the report and the solve agree: a dish
+        # matching both sides counts only as the selector.
+        n_exc = count(self._exc, self.exclude_base_slot, self._sel)
         if n_sel and n_exc:
             return diags
         empty = 'selector' if not n_sel else 'exclude'

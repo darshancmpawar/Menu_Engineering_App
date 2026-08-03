@@ -132,17 +132,44 @@ is what `any_of` was added for — they span both a text column and a flag:
 
 | Family | Selector | Bangalore | Pune |
 |---|---|---|---|
-| soya | `key_ingredient: soy` | present | present |
-| baby corn | `key_ingredient: baby_corn` | present | present (in salads) |
+| soya | `key_ingredient: soy` | 82 items | 6 items (2 needed a tag fix — below) |
+| baby corn | `name_contains: [babycorn, baby_corn]` | 34 items | **absent** |
 | chole | `flag: is_chana_gravy` | 92 items | 20 items |
-| mushroom | `key_ingredient: mushroom` | present | **absent** — inert there, and `diagnose()` says so |
+| mushroom | `key_ingredient: mushroom` | 76 items | **absent** — inert there, and `diagnose()` says so |
 
 `is_chana_gravy` is how both ontologies file chole. It also covers the other
 whole-legume gravies (chawli, for instance), which fits the intent of not pairing
 a heavy legume curry with paneer — say so if chole should be narrower.
 
+**Why baby corn is matched on the name.** `key_ingredient: baby_corn` looks like
+the obvious selector and is the wrong one. It tags 67 Bangalore rows, of which
+**3** are baby-corn dishes — it is the de-facto default for a mixed salad, and the
+list includes `iceberg_lettuce`, `black_olives` and `garden_salad`. Meanwhile the
+**34** dishes actually named after baby corn are tagged `corn`, `bell_pepper`,
+`cauliflower`, `green_peas`, even `spinach`. A hard rule on that column would have
+banned nearly every salad from every paneer day, fleet-wide, while still missing
+31 of the 34 real dishes. All 8 Pune rows tagged `baby_corn` are salads and Pune
+carries no baby-corn dish at all. The column is worth cleaning up when someone
+owns the ontology; the rule should not wait on it.
+
+**Two Pune soya dishes needed a tag fix.** `aloo_soya_sukha` and
+`soya_capsicum_chatpata` sat on their vegetable's `key_ingredient` (`potato`,
+`bell_pepper`), so the rule could not see them while the list's other four soya
+dishes carried `soy`. Corrected in `scripts/pune_flag_corrections.py`, and
+`tests/test_same_day_exclusion.py` now asserts every soya-named Pune dish carries
+the tag.
+
+**A dish that is both is a paneer dish.** `chole_paneer` and
+`chole_paneer_masala` match `key_ingredient: paneer` *and* `is_chana_gravy`.
+Counted on both sides, `a + b <= 1` reads `1 + 1 <= 1` and the dish silently
+becomes unservable on every counter in every city. `SameDayExclusionRule._hits`
+drops such a dish from the exclude side only, so a chole-paneer curry stays
+servable and still blocks a *separate* soya dish that day.
+
 Fleet check: all 57 counters still generate and no paneer day anywhere carries an
-excluded dish.
+excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
+excluded pairing before these rules — which is expected, since the client asked
+for them in all cities.
 
 ### Open questions
 

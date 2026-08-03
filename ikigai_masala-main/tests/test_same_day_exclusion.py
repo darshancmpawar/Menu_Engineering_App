@@ -5,12 +5,17 @@ day, in every city. Two things had to exist for it —
 
 * ``any_of``, so one selector can name several ingredients across both flag and
   text columns (``key_ingredient: soy`` OR ``flag: is_chana_gravy`` OR …).
+* ``name_contains``, because ``key_ingredient`` is unusable for baby corn — see
+  ``TestNameContainsMatcher``.
 * the rule itself, HARD, because "don't serve them together" is a constraint and
   a soft penalty can always be outbid.
 
 The one relaxation is arithmetic, not a fallback: a day where BOTH sides are
 forced is skipped, since no choice satisfies the rule and enforcing it would turn
 a reportable impossibility into a bare INFEASIBLE.
+
+The subtle case is a dish satisfying BOTH sides (``chole_paneer``) — see
+``TestBothSidesOverlap``. It must stay servable.
 """
 
 import datetime as dt
@@ -294,3 +299,187 @@ class TestShippedInBothCities:
                     if SelectorFrequencyRule._matches(r, rule._exc))
         assert n_sel > 0, f"{city}: nothing matches the paneer selector"
         assert n_exc > 0, f"{city}: nothing matches the exclude selector"
+
+
+class TestNameContainsMatcher:
+    """`name_contains` matches on the dish NAME.
+
+    It exists because `key_ingredient` is not trustworthy for every family: the
+    column tags 67 Bangalore rows `baby_corn`, of which 3 are baby-corn dishes
+    (it is the de-facto default for a mixed salad), while the 34 dishes actually
+    named after baby corn carry `corn` / `bell_pepper` / `cauliflower`.
+    """
+
+    def test_matches_a_substring_of_the_item_name(self):
+        m = SelectorFrequencyRule._parse_matcher({'name_contains': 'babycorn'})
+        assert SelectorFrequencyRule._matches(
+            pd.Series({'item': 'veg_hot_garlic_babycorn'}), m)
+        assert not SelectorFrequencyRule._matches(
+            pd.Series({'item': 'garden_salad'}), m)
+
+    def test_accepts_a_list_and_matches_any(self):
+        m = SelectorFrequencyRule._parse_matcher(
+            {'name_contains': ['babycorn', 'baby_corn']})
+        for name in ('babycorn_salt_and_pepper', 'baby_corn_biryani'):
+            assert SelectorFrequencyRule._matches(pd.Series({'item': name}), m), name
+
+    def test_is_case_insensitive_and_ignores_surrounding_space(self):
+        m = SelectorFrequencyRule._parse_matcher({'name_contains': ' BabyCorn '})
+        assert SelectorFrequencyRule._matches(
+            pd.Series({'item': 'Chilli BabyCorn Fry'}), m)
+
+    def test_a_blank_name_or_blank_needle_matches_nothing(self):
+        m = SelectorFrequencyRule._parse_matcher({'name_contains': 'babycorn'})
+        assert not SelectorFrequencyRule._matches(pd.Series({'item': ''}), m)
+        assert SelectorFrequencyRule._parse_matcher({'name_contains': ['', '  ']}) is None
+
+    def test_composes_inside_any_of(self):
+        m = SelectorFrequencyRule._parse_matcher({'any_of': [
+            {'key_ingredient': 'mushroom'},
+            {'name_contains': 'babycorn'},
+        ]})
+        assert SelectorFrequencyRule._matches(
+            pd.Series({'item': 'babycorn_salt_and_pepper', 'key_ingredient': 'corn'}), m)
+        assert SelectorFrequencyRule._matches(
+            pd.Series({'item': 'mushroom_masala', 'key_ingredient': 'mushroom'}), m)
+        assert not SelectorFrequencyRule._matches(
+            pd.Series({'item': 'aloo_jeera', 'key_ingredient': 'potato'}), m)
+
+
+class TestBothSidesOverlap:
+    """A dish satisfying BOTH sides is one dish, not a violation.
+
+    `chole_paneer` is `key_ingredient: paneer` AND `is_chana_gravy`. Counting it
+    on both sides makes `a + b <= 1` read `1 + 1 <= 1`, so the dish becomes
+    unservable on every counter — silently. It belongs to the selector.
+    """
+
+    def test_a_dish_matching_both_sides_is_still_servable(self):
+        model = cp_model.CpModel()
+        cells = [_cell(model, 0, 'veg_gravy', [
+            {'item': 'chole_paneer', 'key_ingredient': 'paneer', 'is_chana_gravy': 1},
+        ])]
+        _rule().apply(model, {}, None, _ctx(cells, 1))
+        _solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
+            "a chole-paneer curry must remain servable"
+
+    def test_it_counts_as_the_selector_not_the_exclusion(self):
+        """So it still blocks a *separate* soya dish on the same day.
+
+        The veg dry gets a neutral alternative on purpose: without one both sides
+        are forced and the arithmetic relaxation (rightly) skips the day, which
+        would test nothing about the overlap.
+        """
+        model = cp_model.CpModel()
+        gravy = _cell(model, 0, 'veg_gravy', [
+            {'item': 'chole_paneer', 'key_ingredient': 'paneer', 'is_chana_gravy': 1},
+        ])
+        dry = _cell(model, 0, 'veg_dry', [
+            {'item': 'soya_keema', 'key_ingredient': 'soy'},
+            {'item': 'aloo_jeera', 'key_ingredient': 'potato'},
+        ])
+        _rule().apply(model, {}, None, _ctx([gravy, dry], 1))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(dry.x_vars[0]) == 0, \
+            "chole_paneer is a paneer day, so the soya veg dry must be blocked"
+        assert solver.Value(dry.x_vars[1]) == 1
+
+    def test_hits_drops_the_overlap_from_the_exclude_side_only(self):
+        row = pd.Series({'item': 'chole_paneer', 'key_ingredient': 'paneer',
+                         'is_chana_gravy': 1})
+        rule = _rule()
+        assert SameDayExclusionRule._hits(row, rule._sel, None) is True
+        assert SameDayExclusionRule._hits(row, rule._exc, rule._sel) is False
+        # …and a plain chole gravy is unaffected.
+        chole = pd.Series({'item': 'chole_masala', 'key_ingredient': 'chickpea',
+                           'is_chana_gravy': 1})
+        assert SameDayExclusionRule._hits(chole, rule._exc, rule._sel) is True
+
+    def test_a_cell_of_only_overlap_dishes_is_not_forced_to_exclude(self):
+        """`_forced` must use the same overlap rule, or the both-forced
+        relaxation fires on a day that was never contradictory."""
+        model = cp_model.CpModel()
+        gravy = _cell(model, 0, 'veg_gravy', [
+            {'item': 'chole_paneer', 'key_ingredient': 'paneer', 'is_chana_gravy': 1},
+        ])
+        dry = _cell(model, 0, 'veg_dry', [
+            {'item': 'mushroom_pepper', 'key_ingredient': 'mushroom'},
+            {'item': 'aloo_jeera', 'key_ingredient': 'potato'},
+        ])
+        rule = _rule()
+        # The gravy cell holds nothing but an overlap dish. Judged naively it is a
+        # cell "forced to serve chole", which would make the day look
+        # contradictory and skip the exclusion.
+        assert rule._forced([gravy], rule._exc, rule._sel) is False
+        assert rule._forced([gravy], rule._sel) is True
+        rule.apply(model, {}, None, _ctx([gravy, dry], 1))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(dry.x_vars[0]) == 0, "mushroom must still be blocked"
+
+
+class TestShippedSelectorsMatchTheRightItems:
+    """Guards on the *shipped* config, against the real ontologies."""
+
+    @staticmethod
+    def _df(city):
+        from api.config import city_excel_path
+        from src.preprocessor.data_cleanser import DataCleanser
+        from src.preprocessor.excel_reader import ExcelReader
+        return DataCleanser(ExcelReader(city_excel_path(city)).read()).clean()
+
+    @staticmethod
+    def _rule(city):
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        return next(r for r in MenuRuleLoader().load_for_city(city)
+                    if r.name == 'paneer_not_with_soya_babycorn_chole_mushroom')
+
+    @pytest.mark.parametrize('city', ['Bangalore', 'Pune'])
+    def test_the_exclusion_does_not_select_on_key_ingredient_baby_corn(self, city):
+        """The regression this guards: that column is the de-facto default for a
+        mixed salad, so a HARD rule on it banned ~64 salads from paneer days
+        while missing 31 of the 34 real baby-corn dishes."""
+        import json
+        from pathlib import Path
+        from src.menu_rules.menu_rule_loader import CITY_RULES_DIR
+        raw = json.loads(
+            (Path(CITY_RULES_DIR) / f'{city.lower()}.json').read_text(encoding='utf-8'))
+        rule = next(r for r in raw['rules']
+                    if r['name'] == 'paneer_not_with_soya_babycorn_chole_mushroom')
+        parts = rule['exclude']['any_of']
+        assert {'key_ingredient': 'baby_corn'} not in parts
+        assert any('name_contains' in p for p in parts), \
+            "baby corn must be matched on the dish name"
+
+    def test_baby_corn_dishes_are_caught_in_bangalore(self):
+        df, rule = self._df('Bangalore'), self._rule('Bangalore')
+        named = df[df['item'].str.contains('babycorn|baby_corn', case=False, na=False)]
+        assert len(named) >= 30, len(named)
+        missed = [r['item'] for _i, r in named.iterrows()
+                  if not SameDayExclusionRule._hits(r, rule._exc, rule._sel)]
+        assert not missed, f"baby-corn dishes not excluded: {missed}"
+
+    @pytest.mark.parametrize('city', ['Bangalore', 'Pune'])
+    def test_generic_salads_are_not_treated_as_baby_corn_dishes(self, city):
+        df, rule = self._df(city), self._rule(city)
+        caught = [
+            r['item'] for _i, r in df.iterrows()
+            if r.get('course_type') == 'salad'
+            and SameDayExclusionRule._hits(r, rule._exc, rule._sel)
+        ]
+        # Only salads genuinely named after an excluded family may be caught.
+        stray = [n for n in caught
+                 if not any(k in n for k in
+                            ('babycorn', 'baby_corn', 'soya', 'mushroom', 'chole'))]
+        assert not stray, f"{city}: generic salads excluded from paneer days: {stray}"
+
+    def test_pune_soya_dishes_all_carry_the_soy_tag(self):
+        """Two were left on their vegetable's key_ingredient, so the rule could
+        not see them; `scripts/pune_flag_corrections.py` fixes that."""
+        df = self._df('Pune')
+        named = df[df['item'].str.contains('soya', case=False, na=False)]
+        assert len(named) >= 6, len(named)
+        assert set(named['key_ingredient']) == {'soy'}, \
+            named[['item', 'key_ingredient']].to_string(index=False)

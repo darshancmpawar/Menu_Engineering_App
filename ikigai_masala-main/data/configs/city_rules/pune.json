@@ -338,7 +338,7 @@
       ]
     },
     {
-      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there.",
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only \u2014 see SameDayExclusionRule._hits.",
       "name": "paneer_not_with_soya_babycorn_chole_mushroom",
       "type": "same_day_exclusion",
       "selector": {
@@ -350,7 +350,10 @@
             "key_ingredient": "soy"
           },
           {
-            "key_ingredient": "baby_corn"
+            "name_contains": [
+              "babycorn",
+              "baby_corn"
+            ]
           },
           {
             "flag": "is_chana_gravy"

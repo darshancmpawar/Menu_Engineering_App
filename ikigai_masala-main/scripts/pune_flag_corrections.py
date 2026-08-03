@@ -41,6 +41,13 @@ COLUMN_CORRECTIONS = {
     # against a client's "one paneer a week" rule whenever it was chosen —
     # a paneer budget spent on a potato dish. Client-confirmed correction.
     'potato_chilli': {'key_ingredient': 'potato'},
+
+    # Two soya dishes were left on their vegetable's key_ingredient, so the
+    # "no soya on a paneer day" rule could not see them (it selects
+    # `key_ingredient: soy`, the tag the list's other four soya dishes carry).
+    # Both are named after the soya, which is what makes the fix unambiguous.
+    'aloo_soya_sukha': {'key_ingredient': 'soy'},
+    'soya_capsicum_chatpata': {'key_ingredient': 'soy'},
 }
 
 # item -> {flag: value}. Every entry carries its reason in the comment above it.
