@@ -43,6 +43,15 @@
       "ignore_rice_gravy_color_diff_on_chinese_day": true
     },
     {
+      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them \u2014 uniqueness is already lifted for that by the arithmetic starved-slot exception. The 20-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot \u2014 plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
+      "name": "raita_is_a_staple",
+      "type": "repeatable_items",
+      "base_slot": "curd_side",
+      "selector": {
+        "course_type": "curd_side"
+      }
+    },
+    {
       "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. Pune's bread slot is chapati/phulka only, so they are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",
@@ -62,7 +71,7 @@
       "max": 2
     },
     {
-      "_comment": "R14 — black chana gravies max once a week. NOTE: is_black_chana_gravy is not populated in the Pune item list yet (black_chana_malwani carries only is_chana_gravy), so this rule is currently inert. Kept because it is a stated rule; populate the flag and it starts biting.",
+      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; scripts/pune_flag_corrections.py sets it on black_chana_malwani.",
       "name": "black_chana_gravy_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -170,7 +179,7 @@
       "max": 1
     },
     {
-      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week.",
+      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; scripts/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
       "name": "leafy_veg_dry_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -321,6 +330,48 @@
       "priority": "medium",
       "base_slot": "veg_dry",
       "group_by": "key_ingredient"
+    },
+    {
+      "_comment": "Paneer belongs on a mix / south / north day; chinese and biryani days are the fallback, not the default (client rule, all cities). SOFT on purpose: the hard equivalent is selector_frequency.allowed_day_types, which forbids paneer on the other days outright — and a counter themed chinese or biryani every weekday would then never serve paneer at all. `holiday` (a weekend day on a serve_weekends counter) is not in the preferred list either, so paneer lands on a working day.",
+      "name": "paneer_prefers_mix_south_north_days",
+      "type": "soft_preference",
+      "mode": "prefer_day_types",
+      "priority": "high",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "day_types": [
+        "mix",
+        "south",
+        "north"
+      ]
+    },
+    {
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only \u2014 see SameDayExclusionRule._hits.",
+      "name": "paneer_not_with_soya_babycorn_chole_mushroom",
+      "type": "same_day_exclusion",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "exclude": {
+        "any_of": [
+          {
+            "key_ingredient": "soy"
+          },
+          {
+            "name_contains": [
+              "babycorn",
+              "baby_corn"
+            ]
+          },
+          {
+            "flag": "is_chana_gravy"
+          },
+          {
+            "key_ingredient": "mushroom"
+          }
+        ]
+      }
     }
   ]
 }

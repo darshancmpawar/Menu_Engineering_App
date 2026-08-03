@@ -116,6 +116,77 @@ the sample raises, neither of which blocks anything:
   That makes it the only paneer-tagged `veg_dry`, so it counts against the "weekly
   1 paneer" rule if it is ever chosen. Looks like a tagging slip.
 
+### Cross-city client rules
+
+Two requirements the client stated for **every** city, so they live in each city
+ruleset rather than a client block. Both are new capabilities; both are asserted
+by `tests/test_same_day_exclusion.py` and `tests/test_soft_preference.py`.
+
+| Stated | Where | Notes |
+|---|---|---|
+| Paneer should be served on a mix / south / north day; if not, then chinese or biryani | `paneer_prefers_mix_south_north_days` — `soft_preference` `mode: prefer_day_types`, high priority | **Soft on purpose.** The hard equivalent is `selector_frequency.allowed_day_types`, which forbids the dish on other days — and a counter themed chinese every weekday would then never serve paneer at all. "Prefer these, fall back to the others" needs the others to stay legal. `holiday` (a weekend day on a `serve_weekends` counter) is not in the preferred list either, so paneer lands on a working day |
+| No soya, baby corn, chole or mushroom on the same day as paneer | `paneer_not_with_soya_babycorn_chole_mushroom` — the new `same_day_exclusion` rule type | **Hard.** `soft_preference`'s `different_day` mode is the soft cousin and can be outbid by gains elsewhere; "don't serve them together" is a constraint. Counted across every slot, since the point is the day's plate — a paneer gravy beside a soya veg dry is the pairing being avoided |
+
+The four excluded families are one `any_of` selector rather than four rules, which
+is what `any_of` was added for — they span both a text column and a flag:
+
+| Family | Selector | Bangalore | Pune |
+|---|---|---|---|
+| soya | `key_ingredient: soy` | 82 items | 6 items (2 needed a tag fix — below) |
+| baby corn | `name_contains: [babycorn, baby_corn]` | 34 items | **absent** |
+| chole | `flag: is_chana_gravy` | 92 items | 20 items |
+| mushroom | `key_ingredient: mushroom` | 76 items | **absent** — inert there, and `diagnose()` says so |
+
+`is_chana_gravy` is how both ontologies file chole. It also covers the other
+whole-legume gravies (chawli, for instance), which fits the intent of not pairing
+a heavy legume curry with paneer — say so if chole should be narrower.
+
+**Why baby corn is matched on the name.** `key_ingredient: baby_corn` looks like
+the obvious selector and is the wrong one. It tags 67 Bangalore rows, of which
+**3** are baby-corn dishes — it is the de-facto default for a mixed salad, and the
+list includes `iceberg_lettuce`, `black_olives` and `garden_salad`. Meanwhile the
+**34** dishes actually named after baby corn are tagged `corn`, `bell_pepper`,
+`cauliflower`, `green_peas`, even `spinach`. A hard rule on that column would have
+banned nearly every salad from every paneer day, fleet-wide, while still missing
+31 of the 34 real dishes. All 8 Pune rows tagged `baby_corn` are salads and Pune
+carries no baby-corn dish at all. The column is worth cleaning up when someone
+owns the ontology; the rule should not wait on it.
+
+**Two Pune soya dishes needed a tag fix.** `aloo_soya_sukha` and
+`soya_capsicum_chatpata` sat on their vegetable's `key_ingredient` (`potato`,
+`bell_pepper`), so the rule could not see them while the list's other four soya
+dishes carried `soy`. Corrected in `scripts/pune_flag_corrections.py`, and
+`tests/test_same_day_exclusion.py` now asserts every soya-named Pune dish carries
+the tag.
+
+**A dish that is both is a paneer dish.** `chole_paneer` and
+`chole_paneer_masala` match `key_ingredient: paneer` *and* `is_chana_gravy`.
+Counted on both sides, `a + b <= 1` reads `1 + 1 <= 1` and the dish silently
+becomes unservable on every counter in every city. `SameDayExclusionRule._hits`
+drops such a dish from the exclude side only, so a chole-paneer curry stays
+servable and still blocks a *separate* soya dish that day.
+
+Fleet check: all 57 counters still generate and no paneer day anywhere carries an
+excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
+excluded pairing before these rules — which is expected, since the client asked
+for them in all cities.
+
+### The Curd / Raita slot is a staple
+
+Pune's list carries exactly **two** `curd_side` dishes (`raita`, `boondi_raita`)
+and this client serves the slot on Sunday only. Under the 20-day item cooldown
+that retires both within three weeks, leaving the slot with no candidate at all —
+`/plan` answered 422 *"cooldown banned all 2 curd side candidates on Sunday"*.
+Uniqueness was never the problem (the arithmetic starved-slot exception already
+lifts it); the history ban was.
+
+`pune.json` now declares `raita_is_a_staple` (`repeatable_items` on
+`curd_side`), so both dishes are exempt from `unique_items` and from the cooldown
+— exactly what R36 does for chapati/phulka in the bread slot, and consistent with
+plain `curd`, which is globally repeatable for the same reason. Pinned by
+`tests/test_pune_client_logic.py::TestRaitaSurvivesASavedWeek`, which fails on all
+four assertions without the declaration.
+
 ### Open questions
 
 1. **R45 (city) — fruit welcome drinks are for premium clients.** Moot for this

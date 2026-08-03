@@ -575,6 +575,11 @@ if generate_clicked:
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
         st.session_state.changes_log = []
+        # Drop the previous plan BEFORE solving. Without this a failed generation
+        # left the last client's table on screen under the new client's name and
+        # city — an Amadeus Pune header above a Bangalore counter's chicken and
+        # egg dishes, with stale Days / Slots / Total items cards to match.
+        st.session_state.plan_blocks = []
         st.session_state.plan_source = None
         st.session_state.rule_diagnostics = []
         st.session_state.diagnostics_summary = None
@@ -623,7 +628,24 @@ if generate_clicked:
                         st.session_state.diagnostics_summary = e.summary or None
                         st.rerun()
                     except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                        st.error(f"Generation failed: {e}")
+                        # Record the failure as a block and rerun, exactly as the
+                        # multi-counter path does. `st.error` alone left the page
+                        # mid-render with whatever `plan_blocks` held.
+                        st.session_state.plan_blocks = [{
+                            "name": counter_names[0], "plan": {}, "plan_dates": [],
+                            "day_types": {}, "pool_warnings": [],
+                            "source": "error",
+                            "error": str(e) or "Generation failed",
+                        }]
+                        st.session_state.plan_source = "error"
+                        # A solve that fails AFTER a clean pre-flight ships the
+                        # pre-flight report with the 500; its warnings name the
+                        # slots and rules under pressure.
+                        st.session_state.rule_diagnostics = (
+                            getattr(e, "diagnostics", None) or [])
+                        st.session_state.diagnostics_summary = (
+                            getattr(e, "summary", None) or None)
+                        st.rerun()
         else:
             # Multi-cuisine: solve each counter independently. Divide the
             # time budget across counters so total wall-clock stays bounded.
@@ -649,6 +671,10 @@ if generate_clicked:
                         blk = {"name": cname, "plan": {}, "plan_dates": [],
                                "day_types": {}, "pool_warnings": [],
                                "source": "error", "error": str(e)}
+                        if getattr(e, "diagnostics", None):
+                            st.session_state.rule_diagnostics = e.diagnostics
+                            st.session_state.diagnostics_summary = (
+                                getattr(e, "summary", None) or None)
                     blocks.append(blk)
             st.session_state.plan_blocks = blocks
             st.session_state.plan_source = "solver"
@@ -674,6 +700,16 @@ if (
     st.warning(
         "Pre-flight diagnostics found a guaranteed failure for these dates. "
         "Fix the issues above (or change the dates / client) and try again.")
+    st.stop()
+
+# Single-counter solve failure: show why and stop. Falling through would render an
+# empty table plus Save / Download buttons for a plan that does not exist.
+if (
+    _plan_mode != "multi" and _blocks
+    and _blocks[0].get("source") == "error"
+    and not _blocks[0].get("plan")
+):
+    st.error(f"Generation failed: {_blocks[0].get('error') or 'unknown error'}")
     st.stop()
 
 if _blocks and any(b.get("plan") for b in _blocks):

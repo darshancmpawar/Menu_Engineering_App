@@ -16,6 +16,8 @@ real user takes and that none of those cover:
 Kept out of `-m slow` because the Pune counter solves in well under a second.
 """
 
+import os
+
 import pytest
 
 from tests.fake_supabase import FakeSupabase
@@ -281,3 +283,109 @@ class TestPerCityIsolation:
         pune = pune_api._ontology_item_names('Pune')
         assert 'chicken_biryani' in blr and 'chicken_biryani' not in pune
         assert 'phodnicha_bhat' in pune and 'phodnicha_bhat' not in blr
+
+class TestNoCrossCityWorkbookReads:
+    """The strongest form of "city integration is done properly": instrument the
+    ONE place a workbook is opened and assert a Pune request never touches
+    Bangalore's file, nor the reverse.
+
+    Inspecting call sites proves the code I looked at; this proves the code that
+    runs. A helper that quietly defaults to the Bangalore path shows up here and
+    nowhere else.
+    """
+
+    @pytest.fixture
+    def traced(self, monkeypatch):
+        import src.preprocessor.excel_reader as er
+        reads = []
+        original = er.ExcelReader.read
+
+        def record(self):
+            reads.append(os.path.basename(str(self.file_path)))
+            return original(self)
+
+        monkeypatch.setattr(er.ExcelReader, 'read', record)
+        return reads
+
+    @pytest.fixture
+    def fleet_api(self, monkeypatch):
+        """Every client, so a request can pick either city."""
+        import src.db as db_mod
+        import api.app as api_app
+        from tests.client_fixtures import APP_SETTINGS, CLIENTS
+
+        fake = FakeSupabase(seed={
+            'clients': [dict(c) for c in CLIENTS],
+            'app_settings': [dict(s) for s in APP_SETTINGS],
+            'menu_history': [], 'week_signatures': [],
+        })
+        monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
+        monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
+        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
+                     '_menu_rules_by_city', '_filtered_cache'):
+            monkeypatch.setattr(api_app, attr, {}, raising=False)
+        api_app.app.config['TESTING'] = True
+        return api_app
+
+    @pytest.mark.parametrize('path,body', [
+        ('/api/v1/plan', {'client_name': CLIENT, 'start_date': MONDAY,
+                          'num_days': 7, 'time_limit_seconds': TIME_LIMIT}),
+        ('/api/v1/diagnose', {'client_name': CLIENT, 'start_date': MONDAY,
+                              'num_days': 7}),
+        ('/api/v1/pool-preview', {'source_pools': [], 'city': 'Pune'}),
+    ])
+    def test_pune_post_never_reads_bangalore(self, fleet_api, traced, path, body):
+        r = _post(fleet_api, path, body)
+        assert r.status_code == 200, r.get_json()
+        assert 'bangalore.xlsx' not in traced, traced
+        assert 'pune.xlsx' in traced, traced
+
+    def test_pune_saved_plan_never_reads_bangalore(self, fleet_api, traced):
+        r = _get(fleet_api,
+                 f'/api/v1/saved-plan?client_name={CLIENT.replace(" ", "%20")}'
+                 f'&start_date={MONDAY}&num_days=7')
+        assert r.status_code == 200
+        assert 'bangalore.xlsx' not in traced, traced
+
+    def test_a_bangalore_request_never_reads_pune(self, fleet_api, traced):
+        r = _post(fleet_api, '/api/v1/plan', {
+            'client_name': 'Ather', 'start_date': MONDAY,
+            'num_days': 5, 'time_limit_seconds': TIME_LIMIT})
+        assert r.status_code == 200, r.get_json()
+        assert 'pune.xlsx' not in traced, traced
+        assert 'bangalore.xlsx' in traced, traced
+
+    def test_editor_metadata_reads_both_by_design(self, fleet_api, traced):
+        """The one endpoint that legitimately loads every city: it reports which
+        pool tokens belong to which."""
+        r = _get(fleet_api, '/api/v1/editor-metadata')
+        assert r.status_code == 200
+        assert {'bangalore.xlsx', 'pune.xlsx'} <= set(traced), traced
+
+
+class TestItemPoolsAreCityScoped:
+    """The editor must never offer another city's pool tokens."""
+
+    def test_endpoint_scopes_by_city(self, pune_api):
+        pune = _get(pune_api, '/api/v1/editor-metadata?city=Pune').get_json()
+        blr = _get(pune_api, '/api/v1/editor-metadata?city=Bangalore').get_json()
+        assert pune['available_client_pools'] == []
+        assert blr['available_client_pools'], blr['available_client_pools']
+
+    def test_editor_offers_nothing_for_pune_and_never_the_union(self, pune_api):
+        """`pools_for_city` deliberately has no union fallback: offering a
+        Bangalore pool to a Pune client is worse than offering none, because the
+        API rejects it on save and it would match nothing in Pune's list anyway.
+        """
+        from customisation.main import pools_for_city
+        metadata = _get(pune_api, '/api/v1/editor-metadata').get_json()
+        assert metadata['available_client_pools'], "the union is still returned"
+        assert pools_for_city(metadata, 'Pune') == []
+        assert pools_for_city(metadata, 'Bangalore') == \
+            metadata['client_pools_by_city']['Bangalore']
+
+    def test_no_city_and_old_api_both_yield_nothing(self):
+        from customisation.main import pools_for_city
+        assert pools_for_city({'client_pools_by_city': {'Pune': []}}, None) == []
+        # An API build predating client_pools_by_city: empty, not the union.
+        assert pools_for_city({'available_client_pools': ['infineon']}, 'Pune') == []

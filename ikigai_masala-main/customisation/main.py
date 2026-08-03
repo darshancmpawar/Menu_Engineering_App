@@ -23,6 +23,21 @@ from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
 
 
+def pools_for_city(metadata: Dict, city) -> List[str]:
+    """Item-pool tokens offerable for *city*, and nothing else.
+
+    A pool token names a pool inside ONE city's item list, so a Bangalore token on
+    a Pune client would match nothing there — and the API rejects it on save. This
+    deliberately does NOT fall back to ``available_client_pools`` (the cross-city
+    union the endpoint returns when no city is given): offering the wrong city's
+    pools is worse than offering none, so an API build without
+    ``client_pools_by_city`` yields an empty list rather than a misleading one.
+    """
+    if not city:
+        return []
+    return list((metadata.get('client_pools_by_city') or {}).get(city, []))
+
+
 def _default_counter(idx: int, all_base_slots: List[str], const_slots: List[str],
                      default_theme_map: Dict[str, str],
                      default_off_slots: List[str] = ()) -> Dict:
@@ -183,23 +198,19 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     # Item Pools (F5) — which client item-pools feed this client
     # ============================================================
-    # Pool tokens live inside ONE city's item list, so offer only the selected
-    # city's — the API validates per city, and a Bangalore token on a Pune client
-    # would be rejected on save with nothing in the editor having hinted at it.
-    # `available_client_pools` (the union) is the fallback for an API build that
-    # predates the per-city breakdown.
-    available_client_pools = (
-        metadata.get('client_pools_by_city', {}).get(selected_city)
-        if selected_city else None
-    )
-    if available_client_pools is None:
-        available_client_pools = metadata.get('available_client_pools', [])
+    # Pool tokens live inside ONE city's item list, so ONLY the selected city's
+    # are offered. There is deliberately no fall back to the cross-city union
+    # (`available_client_pools`): offering a Bangalore pool to a Pune client is
+    # worse than offering none — the API rejects it on save, and the pool would
+    # match nothing in Pune's list even if it didn't. An API build that predates
+    # `client_pools_by_city` therefore shows an empty list, not the wrong one.
+    available_client_pools = pools_for_city(metadata, selected_city)
     loaded_source_pools = (
         list((config or {}).get('source_pools') or [])
         if not is_create_mode else []
     )
     selected_source_pools = loaded_source_pools
-    if available_client_pools:
+    if selected_city:
         with st.container(border=True):
             st.markdown(
                 '<p class="pulse-step-title">Item Pools</p>'
@@ -210,15 +221,29 @@ def render_customisation_editor(api: MenuApiClient):
                 unsafe_allow_html=True,
             )
             st.caption("✓ Common — always included")
-            selected_source_pools = st.multiselect(
-                "Additional item pools",
-                options=available_client_pools,
-                default=[p for p in loaded_source_pools if p in available_client_pools],
-                key=f"editor_pools_{'new' if is_create_mode else selected_client}",
-                format_func=lambda s: s.title(),
-                help="An item is eligible if it belongs to Common or any "
-                     "selected pool (exact match).",
-            )
+            if not available_client_pools:
+                # Say so rather than rendering an empty control: a city whose item
+                # list tags every dish `common` has no pools to pick, and silence
+                # reads like a bug.
+                st.caption(
+                    f"{selected_city}'s item list has no per-client pools — every "
+                    f"dish in it is shared, so this client already draws from all "
+                    f"of it. Pools from other cities are not offered: they name "
+                    f"pools inside those cities' lists and would match nothing "
+                    f"here."
+                )
+                selected_source_pools = []
+            else:
+                selected_source_pools = st.multiselect(
+                    "Additional item pools",
+                    options=available_client_pools,
+                    default=[p for p in loaded_source_pools
+                             if p in available_client_pools],
+                    key=f"editor_pools_{'new' if is_create_mode else selected_client}",
+                    format_func=lambda s: s.title(),
+                    help="An item is eligible if it belongs to Common or any "
+                         "selected pool (exact match).",
+                )
             try:
                 preview = api.pool_preview(selected_source_pools, city=selected_city)
                 cats = preview.get('category_counts', {})

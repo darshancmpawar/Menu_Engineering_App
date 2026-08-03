@@ -94,9 +94,34 @@ class SelectorFrequencyRule(BaseMenuRule):
 
     @staticmethod
     def _parse_matcher(sel):
-        """Parse a selector dict into a matcher tuple, or None."""
+        """Parse a selector dict into a matcher tuple, or None.
+
+        ``any_of`` takes a LIST of selectors and matches a row satisfying any of
+        them. ``any_flag`` already covers "any of these flags", but a rule naming
+        several *ingredients* — "not soya, baby corn, chole or mushroom" — mixes
+        flags and text columns and needs the general form.
+
+        ``name_contains`` takes a substring (or list of them) and matches on the
+        dish NAME. It is the escape hatch for a family the ontology's columns file
+        unreliably: `key_ingredient == 'baby_corn'` tags 67 Bangalore rows of
+        which 3 are baby-corn dishes (it is the de-facto default for a mixed
+        salad) while the 34 dishes actually named after baby corn are tagged
+        `corn` / `bell_pepper` / `cauliflower`. Prefer a column when one is
+        trustworthy — a substring match is blunt and cannot see intent.
+        """
         if not sel:
             return None
+        if 'name_contains' in sel:
+            raw = sel['name_contains']
+            raw = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            needles = [_norm_str(str(s)) for s in raw if str(s).strip()]
+            return ('name_contains', needles) if needles else None
+        if 'any_of' in sel:
+            raw = sel['any_of']
+            raw = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
+            parts = [p for p in parts if p is not None]
+            return ('any_of', parts) if parts else None
         if 'any_flag' in sel:
             flags = sel['any_flag']
             flags = list(flags) if isinstance(flags, (list, tuple)) else [flags]
@@ -117,6 +142,11 @@ class SelectorFrequencyRule(BaseMenuRule):
             return int(row.get(val, 0) or 0) == 1
         if kind == 'any_flag':
             return any(int(row.get(f, 0) or 0) == 1 for f in val)
+        if kind == 'any_of':
+            return any(SelectorFrequencyRule._matches(row, m) for m in val)
+        if kind == 'name_contains':
+            name = _norm_str(str(row.get('item', '')))
+            return bool(name) and any(nd in name for nd in val)
         col = _TEXT_COLS.get(kind, '')
         return _norm_str(str(row.get(col, ''))) == val
 

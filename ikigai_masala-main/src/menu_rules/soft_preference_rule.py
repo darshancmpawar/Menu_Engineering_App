@@ -32,7 +32,7 @@ then these weights are a documented approximation.
 
 import logging
 from collections import defaultdict
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from ortools.sat.python import cp_model
 
@@ -43,7 +43,10 @@ from ..preprocessor.column_mapper import _norm_str
 
 logger = logging.getLogger(__name__)
 
-_MODES = frozenset({'different_day', 'avoid_consecutive', 'avoid_attribute_repeat'})
+_MODES = frozenset({
+    'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
+    'prefer_day_types',
+})
 
 
 class SoftPreferenceRule(BaseMenuRule):
@@ -68,6 +71,13 @@ class SoftPreferenceRule(BaseMenuRule):
         self._sel_b = SelectorFrequencyRule._parse_matcher(rule_config.get('selector_b'))
         # avoid_attribute_repeat
         self.group_by: Optional[str] = rule_config.get('group_by')
+        # prefer_day_types — the themes this selector BELONGS on. Every other day
+        # is penalised, so the others become the fallback rather than being
+        # forbidden (which is what `selector_frequency.allowed_day_types` does).
+        pdt = rule_config.get('day_types')
+        self.day_types: Optional[Set[str]] = (
+            {str(t).strip().lower() for t in pdt} if pdt else None
+        )
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -90,6 +100,11 @@ class SoftPreferenceRule(BaseMenuRule):
             errs.append("avoid_consecutive requires selector")
         if self.mode == 'avoid_attribute_repeat' and not self.group_by:
             errs.append("avoid_attribute_repeat requires group_by")
+        if self.mode == 'prefer_day_types':
+            if not self._sel:
+                errs.append("prefer_day_types requires selector")
+            if not self.day_types:
+                errs.append("prefer_day_types requires a non-empty day_types")
         return errs
 
     # ----- helpers -----
@@ -132,6 +147,25 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(both <= b)
                 both_bools.append(both)
             return [sum(both_bools) * (-abs(w))] if both_bools else []
+
+        if self.mode == 'prefer_day_types':
+            # One penalty per off-theme day the selector lands on. Soft on
+            # purpose: a hard version is `selector_frequency.allowed_day_types`,
+            # and that forbids the dish outright — the ask here is "prefer these
+            # days, fall back to the others", so the others must stay legal.
+            day_types = context.get('day_types') or []
+            off = []
+            for di in range(n):
+                dtype = str(day_types[di] if di < len(day_types) else '').lower()
+                if dtype in self.day_types:
+                    continue
+                lits = self._day_slot_lits(cells, di, self.base_slot, self._sel)
+                if not lits:
+                    continue
+                h = model.NewBoolVar(f'{self.name}_off_{di}')
+                link_any(model, lits, h)
+                off.append(h)
+            return [sum(off) * (-abs(w))] if off else []
 
         if self.mode == 'avoid_consecutive':
             day_has = {}

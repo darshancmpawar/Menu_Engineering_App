@@ -238,3 +238,56 @@ class TestClientIntegration:
         result = client.diagnose("X", "2026-03-23", num_days=1)
         assert result["summary"]["would_succeed"] is True
         assert len(log["post"]) == 2
+
+
+class TestSolverFailedCarriesDiagnostics:
+    """A 500 whose body has `rule_diagnostics` must reach the UI as a typed
+    error, not a bare RuntimeError.
+
+    A counter that clears the pre-flight gate and then goes INFEASIBLE was
+    reported as one sentence naming no rule and no slot — the hardest failure to
+    act on. The pre-flight warnings ride along on the 500 now, so the planner can
+    show them.
+    """
+
+    def test_500_with_diagnostics_raises_solver_failed(self):
+        from ui.api_client import SolverFailedError, _parse_response
+        diags = [{'rule': 'item_cooldown_20d', 'severity': 'warning',
+                  'message': 'curd side is down to 1 candidate'}]
+        resp = _fake_response(500, {
+            'success': False, 'error': 'No feasible plan found: …',
+            'rule_diagnostics': diags, 'summary': {'errors': 0, 'warnings': 1},
+        })
+        with pytest.raises(SolverFailedError) as ei:
+            _parse_response(resp, 'Planning failed')
+        assert ei.value.diagnostics == diags
+        assert ei.value.summary == {'errors': 0, 'warnings': 1}
+        assert 'No feasible plan found' in str(ei.value)
+
+    def test_it_is_still_a_runtime_error(self):
+        """Existing `except RuntimeError` handlers must keep catching it."""
+        from ui.api_client import SolverFailedError, _parse_response
+        resp = _fake_response(500, {
+            'success': False, 'error': 'boom',
+            'rule_diagnostics': [{'rule': 'r', 'severity': 'warning'}],
+        })
+        with pytest.raises(RuntimeError):
+            _parse_response(resp, 'Planning failed')
+        assert issubclass(SolverFailedError, RuntimeError)
+
+    def test_500_without_diagnostics_stays_a_plain_runtime_error(self):
+        from ui.api_client import SolverFailedError, _parse_response
+        resp = _fake_response(500, {'success': False, 'error': 'boom'})
+        with pytest.raises(RuntimeError) as ei:
+            _parse_response(resp, 'Planning failed')
+        assert not isinstance(ei.value, SolverFailedError)
+
+    def test_422_preflight_path_is_unchanged(self):
+        from ui.api_client import RuleDiagnosticsBlockedError, _parse_response
+        resp = _fake_response(422, {
+            'success': False, 'error': 'rule_diagnostics_blocked',
+            'message': 'blocked', 'rule_diagnostics': [{'rule': 'r'}],
+            'summary': {'errors': 1},
+        })
+        with pytest.raises(RuleDiagnosticsBlockedError):
+            _parse_response(resp, 'Planning failed')
