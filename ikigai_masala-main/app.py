@@ -24,6 +24,32 @@ import time
 
 import streamlit as st
 
+
+def _bridge_streamlit_secrets() -> None:
+    """Copy Supabase credentials out of ``st.secrets`` into the environment.
+
+    Streamlit-hosted deployments supply credentials via
+    ``.streamlit/secrets.toml``, and ``src/db.py`` used to read ``st.secrets``
+    itself — which made the database singleton import a UI framework, so the
+    domain could not be used without Streamlit installed. Reading them here
+    instead keeps that deployment working with the dependency pointing the right
+    way: the interface knows about its own host, and ``src/`` only reads env.
+
+    Secrets win over pre-existing environment variables, preserving the old
+    precedence (``st.secrets`` was tried first). Must run before anything touches
+    the database — hence at import, above the modules that do.
+    """
+    for name in ('SUPABASE_URL', 'SUPABASE_KEY'):
+        try:
+            value = st.secrets[name]
+        except Exception:
+            continue          # no secrets.toml, or key absent → env is the source
+        if value:
+            os.environ[name] = str(value)
+
+
+_bridge_streamlit_secrets()
+
 from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
 from ui.formatters import (
     display_label_for_slot_id,

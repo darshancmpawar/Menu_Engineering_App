@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Set
 from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 
-from api.concurrency import solver_gate, get_stats as _solver_stats
+from api.concurrency import solver_gate, get_worker_count, get_stats as _solver_stats
 from api.rate_limit import rate_limit
 from api import metrics
 
@@ -995,6 +995,11 @@ def _build_solver_config(
         days=num_days,
         start_date=start_date,
         time_limit_sec=time_limit,
+        # Injected, not imported by the solver: the worker count is a *web*
+        # concern (how many solves this process is serving) and the solver has no
+        # business reaching up for it. Passed as a callable so it is still
+        # re-read per restart attempt, which is what the old inline import did.
+        worker_count_provider=get_worker_count,
         slot_counts=client_cfg.slot_counts,
         active_base_slots=active_base or None,
         const_slots=const_selected,

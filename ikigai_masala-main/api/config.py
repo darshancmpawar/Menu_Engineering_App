@@ -165,13 +165,12 @@ DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 APP_VERSION = os.getenv('APP_VERSION', 'dev')
 
 
-# Bound the time we wait on a Supabase response. Without this the
-# httpx client used by supabase-py defaults to no timeout in some
-# versions, which means a slow / unhealthy Supabase pins a Flask
-# thread indefinitely and eventually the threadpool starves. 5
-# seconds covers normal operation (the slowest reads we make are
-# ~200ms) while still failing fast when something is genuinely wrong.
-SUPABASE_TIMEOUT_SECONDS = float(os.getenv('SUPABASE_TIMEOUT_SECONDS', '5'))
+# Re-exported from src.settings, which is where settings the data layer needs
+# now live. Defined there rather than here because src/db.py must not import
+# from the web package to read it — it used to, via a lazy in-function import
+# with a comment admitting the cycle it was dodging. Kept as a name on
+# api.config so existing importers (and the health endpoint) are unchanged.
+from src.settings import SUPABASE_TIMEOUT_SECONDS  # noqa: E402,F401
 
 
 # Timezone used to resolve "today" when the client doesn't pass an

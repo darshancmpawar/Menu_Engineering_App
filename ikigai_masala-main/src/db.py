@@ -5,17 +5,25 @@ from this module so they all reuse the same ``supabase.Client`` instance
 rather than each maintaining their own singleton.
 
 The client is built with a bounded timeout (see
-``api.config.SUPABASE_TIMEOUT_SECONDS``) so a slow/unhealthy Supabase
+``src.settings.SUPABASE_TIMEOUT_SECONDS``) so a slow/unhealthy Supabase
 fails fast instead of pinning Flask threads. supabase-py's defaults
 are 120s for PostgREST and 20s for storage — both far too long for an
 interactive admin UI.
+
+Credentials and the timeout come from ``src.settings``, not ``api.config``:
+this module sits below the interfaces and must not import from one. It also no
+longer imports ``streamlit`` to read ``st.secrets`` — the Streamlit entrypoint
+bridges those into the environment before any database access, so a
+``.streamlit/secrets.toml`` deployment keeps working with the dependency
+pointing the right way.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import threading
+
+from src.settings import SUPABASE_TIMEOUT_SECONDS, resolve_supabase_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +67,7 @@ def get_supabase():
         with _sb_lock:
             if _sb_client is None:
                 from supabase import create_client
-                try:
-                    import streamlit as st
-                    url = st.secrets["SUPABASE_URL"]
-                    key = st.secrets["SUPABASE_KEY"]
-                except Exception:
-                    url = os.environ["SUPABASE_URL"]
-                    key = os.environ["SUPABASE_KEY"]
-                # Read the timeout lazily so api.config doesn't have to
-                # be importable at module load (keeps the dep graph
-                # acyclic for tests that import src.db without api).
-                from api.config import SUPABASE_TIMEOUT_SECONDS
+                url, key = resolve_supabase_credentials()
                 options = _build_client_options(SUPABASE_TIMEOUT_SECONDS)
                 if options is not None:
                     _sb_client = create_client(url, key, options=options)
