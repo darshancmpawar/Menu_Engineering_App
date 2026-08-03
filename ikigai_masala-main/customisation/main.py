@@ -183,7 +183,17 @@ def render_customisation_editor(api: MenuApiClient):
     # ============================================================
     # Item Pools (F5) — which client item-pools feed this client
     # ============================================================
-    available_client_pools = metadata.get('available_client_pools', [])
+    # Pool tokens live inside ONE city's item list, so offer only the selected
+    # city's — the API validates per city, and a Bangalore token on a Pune client
+    # would be rejected on save with nothing in the editor having hinted at it.
+    # `available_client_pools` (the union) is the fallback for an API build that
+    # predates the per-city breakdown.
+    available_client_pools = (
+        metadata.get('client_pools_by_city', {}).get(selected_city)
+        if selected_city else None
+    )
+    if available_client_pools is None:
+        available_client_pools = metadata.get('available_client_pools', [])
     loaded_source_pools = (
         list((config or {}).get('source_pools') or [])
         if not is_create_mode else []
@@ -210,7 +220,7 @@ def render_customisation_editor(api: MenuApiClient):
                      "selected pool (exact match).",
             )
             try:
-                preview = api.pool_preview(selected_source_pools)
+                preview = api.pool_preview(selected_source_pools, city=selected_city)
                 cats = preview.get('category_counts', {})
                 st.markdown(
                     f"**Eligible distinct items:** "

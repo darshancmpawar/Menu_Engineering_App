@@ -43,6 +43,7 @@ from .theme_rules import (
 )
 from .color_rules import (
     ColorPairingMenuRule,
+    ColorVarietyMenuRule,
     WelcomeDrinkColorMenuRule,
 )
 from .cooldown_rules import (
@@ -62,6 +63,7 @@ from .soft_preference_rule import SoftPreferenceRule
 from .slot_composition_rule import SlotCompositionRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .fixed_daily_item_rule import FixedDailyItemRule
+from .repeatable_items_rule import RepeatableItemsRule
 from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
 
@@ -96,6 +98,7 @@ class MenuRuleLoader:
     RULE_CLASSES = {
         'cuisine': CuisineMenuRule,
         'color_pairing': ColorPairingMenuRule,
+        'color_variety': ColorVarietyMenuRule,
         'unique_items': UniqueItemsMenuRule,
         'theme_day': ThemeDayMenuRule,
         'coupling': CouplingMenuRule,
@@ -119,6 +122,7 @@ class MenuRuleLoader:
         'slot_composition': SlotCompositionRule,
         'slot_day_restriction': SlotDayRestrictionRule,
         'fixed_daily_item': FixedDailyItemRule,
+        'repeatable_items': RepeatableItemsRule,
     }
 
     def __init__(self, config_path: Optional[str] = None):

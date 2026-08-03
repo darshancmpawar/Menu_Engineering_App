@@ -30,7 +30,8 @@ from api import metrics
 from api.config import (
     API_WRITE_TOKEN,
     MAX_CONTENT_LENGTH_BYTES,
-    DEFAULT_EXCEL_PATH,
+    city_excel_path,
+    city_required_slots,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     MAX_ALTERNATES, validate_required_env, today_in_app_tz,
@@ -249,9 +250,14 @@ def _trace_request_teardown(_exc):
 # Thread-safe lazy singletons
 _init_lock = threading.Lock()
 _client_loader = None
-_pools = None
-_df = None
 _menu_rules_by_city = {}
+
+# Per-ontology caches. Every city with its own workbook gets its own entry;
+# cities that share the default workbook share ONE entry, because the cache is
+# keyed by the RESOLVED PATH rather than the city name — otherwise Chennai,
+# Hyderabad and NCR would each hold a second copy of the 4,300-row Bangalore
+# ontology in memory for nothing.
+_menu_data_by_path: Dict[str, tuple] = {}
 
 
 def _get_client_loader():
@@ -263,26 +269,44 @@ def _get_client_loader():
     return _client_loader
 
 
-def _get_menu_data():
-    global _pools, _df
-    if _pools is None:
+def _get_menu_data(city=None):
+    """Return ``(df, pools)`` for *city*'s ontology.
+
+    The item list is per-city (``data/raw/city_items/<city>.xlsx``), selected
+    from the client's ``clients.city``. A city without its own file falls back
+    to the default (Bangalore) list, so ``city=None`` — every caller that has
+    no city in hand — behaves exactly as it did before.
+    """
+    path = city_excel_path(city)
+    cached = _menu_data_by_path.get(path)
+    if cached is None:
         with _init_lock:
-            if _pools is None:
-                reader = ExcelReader(DEFAULT_EXCEL_PATH)
-                raw_df = reader.read()
-                cleanser = DataCleanser(raw_df)
-                _df = cleanser.clean()
-                _pools = PoolBuilder.build_pools(_df)
-    return _df, _pools
+            cached = _menu_data_by_path.get(path)
+            if cached is None:
+                raw_df = ExcelReader(path).read()
+                df = DataCleanser(raw_df).clean()
+                # A city ontology covers only the categories that city serves,
+                # so the mandatory-slot check is held to that city's declared
+                # set (see data/raw/city_items/ontology_categories.json).
+                pools = PoolBuilder.build_pools(
+                    df, required_slots=city_required_slots(city),
+                )
+                cached = (df, pools)
+                _menu_data_by_path[path] = cached
+                logger.info(
+                    "Loaded ontology for city=%r from %s (%d items)",
+                    city, path, len(df),
+                )
+    return cached
 
 
-# Per-client eligible-pool cache (F5). Keyed by the frozenset of active pool
-# tokens (common ∪ the client's source_pools). The full ontology is filtered
-# once per distinct pool combination and reused across requests.
-_filtered_cache: Dict[frozenset, tuple] = {}
+# Per-client eligible-pool cache (F5). Keyed by (ontology path, frozenset of
+# active pool tokens) — the tokens alone would collide across cities, handing a
+# Pune client Bangalore's `common` pool.
+_filtered_cache: Dict[tuple, tuple] = {}
 
 
-def _menu_data_for_client(client_name):
+def _menu_data_for_client(client_name, city=None):
     """Return (df, pools) for a client, applying F5 client-pool filtering.
 
     * ``source_pools is None`` (column missing / pre-migration) → full ontology,
@@ -290,52 +314,69 @@ def _menu_data_for_client(client_name):
     * otherwise → items eligible for ``common ∪ source_pools`` only, with the
       per-slot pools rebuilt from that subset. ``common`` is always included so
       every mandatory slot stays populated (build_pools never empties).
+
+    *city* selects which city's ontology is filtered; when omitted it is read
+    from the same client row the source pools come from, so a caller that only
+    knows the client name still gets the right list.
     """
-    df, pools = _get_menu_data()
-    if has_request_context():
-        source_pools = _client_row(client_name)['source_pools']
-    else:
-        source_pools = _get_client_loader().get_client_source_pools(client_name)
+    # One row read either way — `city` and `source_pools` are two columns of the
+    # same row, so reading them with separate helpers would double the round
+    # trips on a path that runs once per plan.
+    row = (
+        _client_row(client_name) if has_request_context()
+        else _get_client_loader().get_client_row(client_name)
+    )
+    source_pools = row['source_pools']
+    if city is None:
+        city = row['city']
+    df, pools = _get_menu_data(city)
     if source_pools is None:
         return df, pools
     active = get_active_pools(source_pools)
-    key = frozenset(active)
+    key = (city_excel_path(city), frozenset(active))
     cached = _filtered_cache.get(key)
     if cached is None:
         with _init_lock:
             cached = _filtered_cache.get(key)
             if cached is None:
                 fdf = filter_eligible(df, active)
-                cached = (fdf, PoolBuilder.build_pools(fdf))
+                cached = (
+                    fdf,
+                    PoolBuilder.build_pools(
+                        fdf, required_slots=city_required_slots(city),
+                    ),
+                )
                 _filtered_cache[key] = cached
     return cached
 
 
-_nonveg_items = None
+_nonveg_items_by_path: Dict[str, set] = {}
 
 
-def _get_nonveg_items():
+def _get_nonveg_items(city=None):
     """Return a cached set of lower-cased non-vegetarian item base-names.
 
-    Built once from the ontology. An item is non-veg when its
+    Built once per city ontology. An item is non-veg when its
     ``primary_protein`` is a non-veg protein OR its ``is_egg_dish`` flag is
     set — the latter catches egg dishes the data mislabels with a veg protein
     (e.g. ``anda_mirch_masala`` tagged ``chana``). Used to tag solver output
     so non-veg dishes render red in the app and the download.
     """
-    global _nonveg_items
-    if _nonveg_items is None:
-        df, _ = _get_menu_data()
+    path = city_excel_path(city)
+    cached = _nonveg_items_by_path.get(path)
+    if cached is None:
+        df, _ = _get_menu_data(city)
         if 'item' not in df.columns:
-            _nonveg_items = set()
-            return _nonveg_items
-        # Same predicate the pool builder uses to drop non-veg items from
-        # veg slots — one source of truth for "is this dish non-veg".
-        mask = _nonveg_mask(df)
-        _nonveg_items = {
-            str(name).strip().lower() for name in df.loc[mask, 'item']
-        }
-    return _nonveg_items
+            cached = set()
+        else:
+            # Same predicate the pool builder uses to drop non-veg items from
+            # veg slots — one source of truth for "is this dish non-veg".
+            mask = _nonveg_mask(df)
+            cached = {
+                str(name).strip().lower() for name in df.loc[mask, 'item']
+            }
+        _nonveg_items_by_path[path] = cached
+    return cached
 
 
 def _get_menu_rules_for_city(city):
@@ -437,6 +478,13 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
     if not constant_items:
         return resolved, whole_slot_bases
 
+    # `_`-prefixed keys are documentation, the same convention the rules list
+    # uses for `_comment`. Without this a comment inside a `constant_items`
+    # block logs "not a known slot" on every single plan.
+    constant_items = {
+        k: v for k, v in constant_items.items() if not str(k).startswith('_')
+    }
+
     known_slots = set(BASE_SLOT_NAMES) | set(CONST_SLOTS)
     active_slots = getattr(client_cfg, 'active_slots', None)
 
@@ -505,7 +553,9 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
     return resolved, whole_slot_bases
 
 
-def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
+def _rules_and_skip_for_client(
+    client_name, dates, city=None, client_cfg=None, pools=None,
+):
     """Return ``(rules, skip_cells, constant_items, whole_slot_bases, forced_items)``.
 
     Merges the city ruleset with per-client overrides (by name + disable) and
@@ -535,20 +585,30 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
     from src.solver._helpers import weekday_name as _weekday_name_fn
 
     # A pin is honoured one of two ways, and which one depends on whether the
-    # dish exists in the ontology:
+    # dish is a candidate for THAT SLOT:
     #
-    #   * it does  -> the cell stays in the model with its candidates narrowed to
+    #   * it is     -> the cell stays in the model with its candidates narrowed to
     #                 that dish (`forced_items`), so every other rule sees it and
     #                 the day is composed around it.
-    #   * it does not -> the cell is skipped and the text is stamped verbatim
+    #   * it is not -> the cell is skipped and the text is stamped verbatim
     #                 after the solve, which is how off-ontology dishes ("Mutton
     #                 Biryani", "Fish Tikka Masala") print today. Add the dish to
-    #                 menu_items.xlsx and the same pin starts going through the
-    #                 solver with no config change.
-    known_items = _ontology_item_names()
+    #                 the city's item list and the same pin starts going through
+    #                 the solver with no config change.
+    #
+    # Slot-scoped, not ontology-scoped, because "in the ontology" is the wrong
+    # test: a dish the ontology carries under a DIFFERENT course type has no
+    # candidate in this slot to narrow to, so the solver logs the miss and solves
+    # the cell normally — while the stamping pass skips it for being in
+    # `forced_items`. The pin then vanished from the menu with only an INFO line
+    # to show for it. Amadeus Pune's Sunday raita is exactly that shape: `raita`
+    # is a real Pune dish, filed under `curd_side`, pinned into `salad`.
     forced_items: Dict[Any, str] = {}
     for slot_id, spec in constant_items.items():
-        siblings = _exclusive_siblings(_base_slot(slot_id))
+        base = _base_slot(slot_id)
+        slot_items = _slot_item_names(pools, base) if pools is not None \
+            else _ontology_item_names(city)
+        siblings = _exclusive_siblings(base)
         for d in dates:
             value = _resolve_client_constant(spec, _weekday_name_fn(d))
             if value is None:
@@ -557,24 +617,45 @@ def _rules_and_skip_for_client(client_name, dates, city=None, client_cfg=None):
             # the excluded slot goes away for that day. This holds either way —
             # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
-            canonical = _canonical_item_name(value, known_items)
+            canonical = _canonical_item_name(value, slot_items)
             # A pin that replaces the slot for the WHOLE horizon must still be
             # stamped, even when it names a real dish. Its base slot is dropped
             # from the model (`whole_slot_bases`), so there is no cell to narrow
             # — and solving one anyway would be INFEASIBLE under unique_items,
             # which is why the slot is dropped in the first place: the same dish
             # cannot occupy five days unless it is a staple.
-            if canonical is not None \
-                    and _base_slot(slot_id) not in whole_slot_bases:
+            if canonical is not None and base not in whole_slot_bases:
                 forced_items[(d, slot_id)] = canonical
             else:
                 skip_cells.add((d, slot_id))
     return rules, skip_cells, constant_items, whole_slot_bases, forced_items
 
 
-def _ontology_item_names():
-    """Lowercased ontology item names, for resolving a pin to a real dish."""
-    df = _get_menu_data()[0]
+def _slot_item_names(pools, base_slot):
+    """Lowercased item names eligible for *base_slot*, from the built pools.
+
+    The pre-filter chain (theme, cooldown, …) can still drop a dish later; the
+    solver handles that case by solving the cell normally. This is the coarse
+    "could this dish ever appear in this slot" test that decides force vs stamp.
+    """
+    pool = (pools or {}).get(base_slot)
+    if pool is None or 'item' not in getattr(pool, 'columns', []):
+        return frozenset()
+    try:
+        return frozenset(str(v).strip().lower() for v in pool['item'].tolist())
+    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
+        return frozenset()
+
+
+def _ontology_item_names(city=None):
+    """Lowercased ontology item names, for resolving a pin to a real dish.
+
+    City-scoped: a pin is resolved against the list the client's city actually
+    serves, so a dish that exists only in another city's ontology stays a
+    stamped constant instead of being handed to the solver as a candidate it
+    has no pool row for.
+    """
+    df = _get_menu_data(city)[0]
     if df is None or 'item' not in getattr(df, 'columns', []):
         return frozenset()
     try:
@@ -843,9 +924,57 @@ def _client_base_slots(client_cfg):
     return result
 
 
+# SolverConfig fields a rule may override via solver_overrides(). Restricted to
+# the colour parameters on purpose: the ruleset is the per-city config surface
+# for menu policy, not a back door for rewriting the horizon or the time limit.
+_RULE_OVERRIDABLE_CFG_FIELDS = frozenset({
+    'min_distinct_colors_per_day',
+    'min_distinct_colors_per_day_chinese',
+    'min_distinct_colors_per_day_biryani',
+    'max_same_color_per_day',
+    'max_same_color_reach',
+    'max_colors_at_reach',
+    'ignore_rice_gravy_color_diff_on_chinese_day',
+})
+
+
+def _rule_solver_overrides(rules):
+    """Collect ``solver_overrides()`` from *rules*, allow-listed.
+
+    How a city ruleset sets its own colour numbers (Pune's rulebook wants 3
+    distinct colours and a flat cap of 2 where Bangalore wants 4 and one colour
+    allowed to reach 3). A field outside the allow-list is dropped with a
+    warning rather than silently applied.
+    """
+    out: Dict[str, Any] = {}
+    for rule in (rules or ()):
+        fn = getattr(rule, 'solver_overrides', None)
+        if not callable(fn):
+            continue
+        try:
+            proposed = fn() or {}
+        except Exception as exc:  # noqa: BLE001 — a bad rule must not stop planning
+            logger.warning(
+                "Rule %r solver_overrides() raised: %s",
+                getattr(rule, 'name', type(rule).__name__), exc,
+            )
+            continue
+        for field_name, value in proposed.items():
+            if field_name not in _RULE_OVERRIDABLE_CFG_FIELDS:
+                logger.warning(
+                    "Rule %r tried to override SolverConfig.%s, which is not "
+                    "rule-overridable; ignoring.",
+                    getattr(rule, 'name', type(rule).__name__), field_name,
+                )
+                continue
+            out[field_name] = value
+    return out
+
+
 def _build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
     constant_items=None, whole_slot_bases=None, forced_items=None,
+    rules=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -853,7 +982,8 @@ def _build_solver_config(
     ``_resolve_constant_items``); *whole_slot_bases* are the base slots the
     overlay replaces for the entire horizon, dropped from the model because
     solving them would burn items against unique_items / colour variety and
-    then discard the result.
+    then discard the result. *rules* is the resolved ruleset, read only for the
+    colour parameters a city may override (see ``_rule_solver_overrides``).
     """
     active_base = _client_base_slots(client_cfg)
     if whole_slot_bases:
@@ -874,6 +1004,7 @@ def _build_solver_config(
         explicit_dates=weekday_dates,
         premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
         theme_map=client_cfg.theme_map or None,
+        **_rule_solver_overrides(rules),
     )
 
 
@@ -894,6 +1025,10 @@ class SolverInputs:
     rb_ban: Dict[Any, Any]
     recent_sigs: List[Any]
     cfg: SolverConfig
+    # The client's city — selects which ontology `df`/`pools` came from, so
+    # anything derived from the ontology downstream (the non-veg name set that
+    # colours the rendered menu) reads the same list the solver did.
+    city: Optional[str] = None
 
 
 def _resolve_counter(client_name: str, data: Dict[str, Any]):
@@ -941,7 +1076,8 @@ def _prepare_solver_inputs(
         client_cfg = _get_client_loader().get_client_configs_from_row(
             client_name, row,
         )[0][1]
-    df, pools = _menu_data_for_client(client_name)
+    city = row['city']
+    df, pools = _menu_data_for_client(client_name, city=city)
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
     weekday_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
@@ -950,9 +1086,8 @@ def _prepare_solver_inputs(
     weekday_dates = _filter_dates_by_working_days(
         weekday_dates, getattr(client_cfg, 'working_days', None),
     )
-    city = row['city']
     rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
-        client_name, weekday_dates, city=city, client_cfg=client_cfg,
+        client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
     )
     _validate_constant_values(client_name, constant_items, df)
     # Per-client item-cooldown override (None = shipped default). Rebuild the
@@ -967,7 +1102,7 @@ def _prepare_solver_inputs(
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
-        forced_items=forced_items,
+        forced_items=forced_items, rules=rules,
     )
 
     return SolverInputs(
@@ -985,6 +1120,7 @@ def _prepare_solver_inputs(
         rb_ban=rb_ban,
         recent_sigs=recent_sigs,
         cfg=cfg,
+        city=city,
     )
 
 
@@ -1122,7 +1258,7 @@ def plan_menu():
         # random diversification. Clamped so a caller can't ask the solver to
         # enumerate an unbounded number of near-optimal menus.
         n_alt = max(0, min(int(data.get('alternates', 0) or 0), MAX_ALTERNATES))
-        nonveg_items = _get_nonveg_items()
+        nonveg_items = _get_nonveg_items(inputs.city)
 
         def _format(plan):
             return SolutionFormatter(
@@ -1219,7 +1355,7 @@ def regenerate_cells():
 
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
-            nonveg_items=_get_nonveg_items(),
+            nonveg_items=_get_nonveg_items(inputs.city),
         )
         response = {
             'success': True,
@@ -1425,7 +1561,9 @@ def saved_plan():
             if start_date_str else today_in_app_tz()
         )
         loader = _get_client_loader()
-        client_cfg = loader.get_client(client_name)
+        row = _client_row(client_name)
+        client_cfg = loader.get_client_configs_from_row(client_name, row)[0][1]
+        city = row['city']
         weekday_dates = _weekdays_from(
             start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
         )
@@ -1439,14 +1577,15 @@ def saved_plan():
             sb, client_name, weekday_dates,
         )
 
-        # Enrich with color suffix so the UI's renderer matches /plan.
-        df, _pools = _get_menu_data()
+        # Enrich with color suffix so the UI's renderer matches /plan — from the
+        # client's own city list, so a Pune dish is matched against Pune items.
+        df, _pools = _get_menu_data(city)
         enriched = _enrich_history_plan(raw_saved, df)
 
         formatter = SolutionFormatter(
             enriched, weekday_dates,
             theme_map=client_cfg.theme_map or None,
-            nonveg_items=_get_nonveg_items(),
+            nonveg_items=_get_nonveg_items(city),
         )
         covered = sorted(d.isoformat() for d in enriched.keys())
         exists = len(enriched) == len(weekday_dates) and len(enriched) > 0
@@ -1465,10 +1604,40 @@ def saved_plan():
         return _internal_error_response(500)
 
 
+def _city_pool_tokens():
+    """``{city: [pool tokens]}`` across every city, plus the union under ``''``.
+
+    Pool tokens are per-city (they name pools inside one city's item list), so
+    the editor needs to know which city a token belongs to. The union is what a
+    caller that hasn't picked a city yet should see.
+    """
+    by_city: Dict[str, list] = {}
+    union: Set[str] = set()
+    for city in AVAILABLE_CITIES:
+        try:
+            tokens = available_pool_tokens(_get_menu_data(city)[0])
+        except Exception as exc:  # noqa: BLE001 — one unreadable city must not 500
+            logger.warning("Could not read pool tokens for %s: %s", city, exc)
+            continue
+        by_city[city] = sorted(tokens)
+        union |= tokens
+    by_city[''] = sorted(union)
+    return by_city
+
+
 @app.route('/api/v1/editor-metadata', methods=['GET'])
 def editor_metadata():
-    """Return metadata needed by the customisation editor UI."""
+    """Return metadata needed by the customisation editor UI.
+
+    ``?city=<name>`` scopes ``available_client_pools`` to that city's ontology;
+    without it the list is the union across cities (a superset, so no valid
+    token is ever hidden from the editor). ``client_pools_by_city`` always
+    carries the per-city breakdown.
+    """
     try:
+        pools_by_city = _city_pool_tokens()
+        city = (request.args.get('city') or '').strip()
+        available = pools_by_city.get(city, pools_by_city[''])
         return jsonify({
             'success': True,
             'base_slot_names': list(BASE_SLOT_NAMES),
@@ -1477,7 +1646,10 @@ def editor_metadata():
             'default_theme_map': DEFAULT_THEME_MAP,
             'available_themes': AVAILABLE_THEMES,
             'available_cities': list(AVAILABLE_CITIES),
-            'available_client_pools': sorted(available_pool_tokens(_get_menu_data()[0])),
+            'available_client_pools': available,
+            'client_pools_by_city': {
+                k: v for k, v in pools_by_city.items() if k
+            },
             'default_item_cooldown_days': DEFAULT_ITEM_COOLDOWN_DAYS,
             'clients': _request_client_names(),
             'max_counters': MAX_COUNTERS,
@@ -1492,10 +1664,11 @@ def editor_metadata():
 def pool_preview():
     """Preview the eligible item pool for a set of source pools (F5 config UI).
 
-    Body: ``{"source_pools": ["infineon", ...]}``. ``common`` is always
-    included. Returns the distinct eligible item count and a category-wise
-    (course_type) breakdown so the editor can show live counts as the admin
-    toggles pools.
+    Body: ``{"source_pools": ["infineon", ...], "city": "Pune"}``. ``common`` is
+    always included. Returns the distinct eligible item count and a
+    category-wise (course_type) breakdown so the editor can show live counts as
+    the admin toggles pools. ``city`` selects which city's item list is
+    counted — omit it for the default city.
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -1503,7 +1676,8 @@ def pool_preview():
         if not isinstance(sp, list):
             return jsonify(
                 {'success': False, 'error': 'source_pools must be a list'}), 400
-        df, _ = _get_menu_data()
+        city = (data.get('city') or '').strip() or None
+        df, _ = _get_menu_data(city)
         available = available_pool_tokens(df)
         requested = {normalize_name(t) for t in sp if normalize_name(t)}
         requested.discard('common')
@@ -1511,7 +1685,10 @@ def pool_preview():
         if unknown:
             return jsonify({
                 'success': False,
-                'error': f'Unknown client pool(s): {sorted(unknown)}',
+                'error': (
+                    f'Unknown client pool(s) for '
+                    f'{city or "the default city"}: {sorted(unknown)}'
+                ),
             }), 400
         active = get_active_pools(requested)
         eligible = filter_eligible(df, active)
@@ -1521,6 +1698,7 @@ def pool_preview():
         )
         return jsonify({
             'success': True,
+            'city': city,
             'active_pools': sorted(active),
             'eligible_item_count': int(len(eligible)),
             'category_counts': {k: int(v) for k, v in by_cat.items()},
@@ -1630,19 +1808,24 @@ def _validated_cooldown_days(raw):
     return days
 
 
-def _validated_source_pools(raw):
-    """Normalise ``source_pools`` against the ontology or raise ValueError."""
+def _validated_source_pools(raw, city=None):
+    """Normalise ``source_pools`` against *city*'s ontology or raise ValueError.
+
+    Validated per city on purpose: pool tokens live in one city's item list, so
+    a Pune client configured with a Bangalore-only token would match nothing
+    and silently serve the ``common`` pool alone.
+    """
     sp = raw or []
     if not isinstance(sp, list):
         raise ValueError("source_pools must be a list of pool tokens")
-    available = available_pool_tokens(_get_menu_data()[0])
+    available = available_pool_tokens(_get_menu_data(city)[0])
     requested = {normalize_name(t) for t in sp if normalize_name(t)}
     requested.discard('common')
     unknown = requested - available
     if unknown:
         raise ValueError(
-            f"Unknown client pool(s): {sorted(unknown)}. "
-            f"Valid pools: {sorted(available)}"
+            f"Unknown client pool(s) for {city or 'the default city'}: "
+            f"{sorted(unknown)}. Valid pools: {sorted(available)}"
         )
     return sorted(requested)
 
@@ -1718,8 +1901,13 @@ def update_client_config(client_name):
             fields['item_cooldown_days'] = _validated_cooldown_days(
                 data.get('item_cooldown_days'))
         if 'source_pools' in data:
+            # Validate against the city the client will HAVE after this update
+            # (the payload's, else the stored one) — a city change and a pool
+            # change can arrive in the same PUT.
             fields['source_pools'] = _validated_source_pools(
-                data.get('source_pools'))
+                data.get('source_pools'),
+                city=fields.get('city', _client_row(client_name)['city']),
+            )
 
         new_version = loader.update_client_atomic(client_name, expected, fields)
 
@@ -1779,7 +1967,7 @@ def create_client():
         )
         # F5: optional client item-pool config (validated against the ontology).
         source_pools = (
-            _validated_source_pools(data.get('source_pools'))
+            _validated_source_pools(data.get('source_pools'), city=city)
             if 'source_pools' in data else None
         )
 

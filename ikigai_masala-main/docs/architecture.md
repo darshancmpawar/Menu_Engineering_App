@@ -23,7 +23,7 @@ graph TD
     end
 
     subgraph Data ["Data layer"]
-        XLS[(data/raw/menu_items.xlsx)]
+        XLS[("data/raw/city_items/&lt;city&gt;.xlsx")]
         CFG[(data/configs/*.json)]
         SUPA[(Supabase)]
     end

@@ -96,12 +96,24 @@ class PoolBuilder:
     """
 
     @staticmethod
-    def build_pools(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    def build_pools(
+        df: pd.DataFrame, required_slots: Optional[Set[str]] = None,
+    ) -> Dict[str, pd.DataFrame]:
         """
         Build pools dict mapping each base slot name to the eligible items.
 
         Handles sambar/rasam splitting where course_type='sambar/rasam' is
         split by item name containing 'rasam'.
+
+        *required_slots* are the base slots that MUST come out non-empty; an
+        empty one raises, because a slot the ontology is expected to cover and
+        does not is a column-mapping regression, not a menu decision. ``None``
+        means "every mandatory base slot" — the right expectation for an
+        ontology covering the whole product. A **city** ontology legitimately
+        covers only the categories that city serves (Pune has no non-veg
+        station and no sambar/rasam at all), so its caller passes the declared
+        set from ``data/raw/city_items/ontology_categories.json``. Pass an
+        empty set to skip the check entirely.
         """
         pools: Dict[str, pd.DataFrame] = {}
 
@@ -160,12 +172,14 @@ class PoolBuilder:
                 continue
             pools[slot] = pool[~_nonveg_mask(pool)].copy()
 
-        # Validate mandatory base slots have items. Optional (default-off)
+        # Validate the required base slots have items. Optional (default-off)
         # stations like curd_rice may legitimately be empty in a minimal
         # ontology — they only matter when a client explicitly selects them.
-        for slot in BASE_SLOT_NAMES:
-            if slot in DEFAULT_OFF_SLOTS:
-                continue
+        if required_slots is None:
+            required = [s for s in BASE_SLOT_NAMES if s not in DEFAULT_OFF_SLOTS]
+        else:
+            required = [s for s in BASE_SLOT_NAMES if s in required_slots]
+        for slot in required:
             if slot not in pools or len(pools[slot]) == 0:
                 raise ValueError(f"Slot '{slot}' has 0 items after mapping.")
 

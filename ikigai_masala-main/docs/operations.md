@@ -112,6 +112,42 @@ add a `st.cache_data.clear()` call there or just wait 60s.
 
 ---
 
+## Adding a city
+
+A city has two files, both named after the city slug, both optional — a city
+without them falls back to the default city (`bangalore`) for that half.
+
+1. **Item list** → `data/raw/city_items/<slug>.xlsx`. Never hand-edit a raw
+   workbook into place; run the normaliser, which forces the reference column
+   set, coerces flags to 0/1 and reports what the list does not cover:
+
+   ```bash
+   python scripts/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx --dry-run
+   python scripts/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
+   ```
+
+   Then declare the categories the list covers in
+   `data/raw/city_items/ontology_categories.json`. That declaration is what the
+   mandatory-slot check is held to: a city absent from the file must cover
+   *every* mandatory slot, which is right for a whole-product list and wrong for
+   a city that serves no non-veg station.
+
+2. **Ruleset** → `data/configs/city_rules/<slug>.json`. Either standalone or
+   `"extends": "<other city>"` with `disable` + same-name overrides.
+
+3. Set `clients.city` on the client (the editor's step 1). Nothing else changes:
+   `/plan` resolves both files from that column.
+
+`MENU_EXCEL_PATH` still pins ONE workbook for every city — useful for a
+single-city deployment or a test fixture, and it also switches off the per-city
+mandatory-slot declarations (the file's contents no longer follow from the city
+name).
+
+Worked example: `docs/pune_rulebook.md` maps `Pune_menu_rulebook_101.xlsx`
+R1–R70 onto `pune.json` and lists what is not encodable.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -128,6 +164,8 @@ add a `st.cache_data.clear()` call there or just wait 60s.
 | `Failed to load config for X: Internal server error` in the customisation editor | Logs say `clients.version column missing — falling back to version=1` (or a `clients.counters` / `clients.city` column-missing warning) | Re-run `scripts/setup_all.sql` in the Supabase SQL editor — it adds the `version`, `counters`, and `city` columns. The editor stays usable in fallback mode, but optimistic-concurrency on PUT (and saved cities) are disabled until the columns exist. |
 | Any `Internal server error` toast in the UI | Generic catch-all wrapped a real exception | Read the response body — every 500 carries a `request_id`. Grep the access log (`logger="api.app", msg="http_request"`) for that id; the matching ERROR line a few rows earlier is the real exception with a traceback. |
 | `Widening history lookback from 45 to N days` in logs | A per-client rule's `cooldown_days` > 30 triggered the dynamic widening | Informational. Keeps the Supabase window ≥ the longest rule cooldown. |
+| `Slot 'X' has 0 items after mapping` at startup | A city ontology does not cover a category the mandatory check requires | If the city genuinely does not serve it, remove it from that city's list in `data/raw/city_items/ontology_categories.json`; if it should be there, the workbook's `course_type` mapping is broken (which is what this check exists to catch) |
+| A client's menu draws dishes from the wrong city | `clients.city` unset or not in `AVAILABLE_CITIES`, so the default list is used | Set the city in the editor; `normalize_city` returns None for anything it does not recognise |
 
 ---
 
@@ -153,8 +191,8 @@ ikigai_masala-main/
 ├── ui/                       API client (with retry) + formatters
 ├── customisation/            Streamlit editor UIs
 ├── data/
-│   ├── raw/menu_items.xlsx
-│   └── configs/*.json
+│   ├── raw/city_items/<city>.xlsx   one item list per city + ontology_categories.json
+│   └── configs/city_rules/<city>.json  one ruleset per city (+ client_rules.json)
 ├── scripts/                  Supabase seeders + SQL schema
 ├── tests/                    Pytest suite
 ├── docs/                     setup, architecture, api, operations

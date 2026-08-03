@@ -1,5 +1,326 @@
 {
-  "description": "pune menu rules — inherits the Bangalore ruleset until pune-specific rules are defined.",
-  "extends": "bangalore",
-  "rules": []
+  "description": "Pune regional ruleset — transcribed from Pune_menu_rulebook_101.xlsx (R1-R70). Standalone: it does NOT extend Bangalore, because most Bangalore rules describe Bangalore's rulebook (theme days, the deep-fried coupling family, the non-veg station) and Pune's rulebook states its own set. docs/pune_rulebook.md maps every R-number to the rule below that implements it, and lists the ones that are not machine-encodable.",
+  "rules": [
+    {
+      "_comment": "General 20-day no-repeat window for any single dish; also covers the same-item side of R30/R31/R37's 15-day gaps.",
+      "name": "item_cooldown_20d",
+      "type": "item_cooldown",
+      "cooldown_days": 20
+    },
+    {
+      "_comment": "No dish twice in one horizon. Pune's whole Gaps section (R28-R38) presumes it.",
+      "name": "unique_items_session",
+      "type": "unique_items",
+      "scope": "session"
+    },
+    {
+      "_comment": "R27 — a full week's combination must not repeat within a month.",
+      "name": "no_repeat_weeks",
+      "type": "week_signature_cooldown",
+      "cooldown_days": 30
+    },
+    {
+      "_comment": "The Pune rulebook defines no theme days (its only mention of one is R3's 'except on Chinese day'), so this is here for cuisine hygiene, not for a rotating theme: it keeps chinese and continental mains off a day that is not their theme, and holds the gravy/veg-dry/bread to the counter's configured cuisine. `rice` is EXEMPT on purpose — Pune's rice slot is where the region lives (masala_bhat, phodnicha_bhat, and the lemon/jeera/ghee rice baths are all tagged south_indian), and narrowing a north-themed counter to the 10 north rices would both delete the Maharashtrian dishes and leave 8 of those 10 under mixedveg_pulao_biryani_weekly's cap of 1 — five rice days from two uncapped items, which is force-violated, not tight. Salads are exempt via EXEMPT_FROM_CUISINE, which matters here because every salad in the Pune list is tagged continental.",
+      "name": "theme_cuisine_filter",
+      "type": "theme_slot_filter",
+      "exempt_slots": [
+        "welcome_drink",
+        "dal",
+        "salad",
+        "healthy_rice",
+        "rice"
+      ]
+    },
+    {
+      "_comment": "R1 (min 3 distinct colours/day) + R2 (max two items may look alike) + R3 (rice and gravy differ, except on a chinese day). Pune is flatter than Bangalore on both counts: 3 distinct rather than 4, and NO colour may reach 3 (max_colors_at_reach 0), because R2 states the cap without an exception.",
+      "name": "colour_three_distinct_max_two_alike",
+      "type": "color_variety",
+      "min_distinct_per_day": 3,
+      "min_distinct_per_day_chinese": 3,
+      "min_distinct_per_day_biryani": 3,
+      "max_same_color_per_day": 2,
+      "max_colors_at_reach": 0,
+      "ignore_rice_gravy_color_diff_on_chinese_day": true
+    },
+    {
+      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. Pune's bread slot is chapati/phulka only, so they are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left.",
+      "name": "plain_chapati_may_repeat",
+      "type": "repeatable_items",
+      "base_slot": "bread",
+      "selector": {
+        "flag": "is_plain_phulka_chapathi"
+      }
+    },
+    {
+      "_comment": "R12 — aloo-based gravies max twice a week.",
+      "name": "aloo_gravy_twice_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_aloo_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 2
+    },
+    {
+      "_comment": "R14 — black chana gravies max once a week. NOTE: is_black_chana_gravy is not populated in the Pune item list yet (black_chana_malwani carries only is_chana_gravy), so this rule is currently inert. Kept because it is a stated rule; populate the flag and it starts biting.",
+      "name": "black_chana_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_black_chana_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R16 — kabuli chana gravies max once a week.",
+      "name": "kabuli_chana_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_kabuli_chana_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R20 (mixed-veg part) — mixed-veg gravies max once a week.",
+      "name": "mixed_veg_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_mixedveg_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R20 (kurma part) — veg kurma gravies max once a week.",
+      "name": "veg_kurma_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_kurma_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R20 (kofta part) + R18 (malai kofta) + R32 (kofta needs a 7-day gap) — one kofta gravy per week covers all three inside a weekly horizon. R6 (malai kofta excludes other premium gravies that week) follows from premium_gravy_weekly below.",
+      "name": "veg_kofta_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_veg_kofta_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R30 — kadhi-style dal once in 15 days; projected onto the horizon as once a week (the 20-day item cooldown carries the rest of the window for the same dish). Kadhi sits under veg_gravy in the ontology.",
+      "name": "kadhi_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_kadhi_dal"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R22 — premium-ingredient gravies max once a week.",
+      "name": "premium_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "R23 — premium-ingredient veg dry max once a week.",
+      "name": "premium_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_veg_dry"
+      },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "_comment": "R13 — at most one premium veg item on a day, counted across every slot (a paneer gravy and a soya dry on the same day is two).",
+      "name": "premium_veg_daily_max_1",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_veg"
+      },
+      "daily_max": 1
+    },
+    {
+      "_comment": "R5 + annexure (Premium Ingredients: baby corn, kofta) — baby-corn dishes max once a week. In the Pune list baby corn appears in salads.",
+      "name": "baby_corn_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "key_ingredient": "baby_corn"
+      },
+      "max": 1
+    },
+    {
+      "_comment": "R15 — deep-fried veg dry once per 7 days.",
+      "name": "deep_fried_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_deep_fried_veg_dry"
+      },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week.",
+      "name": "leafy_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_leafy_based_dish"
+      },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "_comment": "R43 — only one leafy-based dish per day's menu, across all slots.",
+      "name": "leafy_daily_max_1",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_leafy_based_dish"
+      },
+      "daily_max": 1
+    },
+    {
+      "_comment": "R21 — pappu dal once a week.",
+      "name": "pappu_dal_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_pappu_dal"
+      },
+      "base_slot": "dal",
+      "max": 1
+    },
+    {
+      "_comment": "R25 — the remaining dal days should be mostly yellow dal ('roughly one every 3 days'). Read as a floor over the horizon: at least 2 of a 5-day week. min targets auto-cap to what is placeable, so a shorter horizon or a thinner pool lowers it rather than failing.",
+      "name": "yellow_dal_at_least_twice",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_yellow_dal"
+      },
+      "base_slot": "dal",
+      "min": 2
+    },
+    {
+      "_comment": "R19 — mixed veg pulao / biryani max once a week.",
+      "name": "mixedveg_pulao_biryani_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "any_flag": [
+          "is_mixedveg_pulao",
+          "is_mixedveg_biryani"
+        ]
+      },
+      "base_slot": "rice",
+      "max": 1
+    },
+    {
+      "_comment": "R17 — maida-based breads max once a week. Inert in the current Pune list (no maida breads); kept as a stated rule.",
+      "name": "maida_bread_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_maida_bread"
+      },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "_comment": "R47 — oil-based breads (lachha parota, poori) are monthly. A month is longer than any horizon, so this caps them at one per horizon; the 20-day item cooldown extends it for the same dish. Inert in the current Pune list.",
+      "name": "oil_based_bread_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_oil_based_bread"
+      },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "_comment": "R34 — multigrain breads must not run on consecutive days. Inert in the current Pune list.",
+      "name": "multigrain_bread_non_consecutive",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_multigrain_bread"
+      },
+      "base_slot": "bread",
+      "non_consecutive": true
+    },
+    {
+      "_comment": "R33 — dal colour must not repeat on consecutive days.",
+      "name": "dal_colour_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dal",
+      "group_by": "item_color",
+      "non_consecutive": true
+    },
+    {
+      "_comment": "R28 — dessert form (dry / semi-dry / wet) must not repeat on consecutive days.",
+      "name": "dessert_form_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dessert",
+      "group_by": "dessert_form",
+      "non_consecutive": true
+    },
+    {
+      "_comment": "R35 — north-Indian flavoured rice should not run on consecutive days. SOFT, at high priority: a counter themed north every weekday cannot satisfy a hard version (every day's rice is north by construction), and a hard rule that is provably force-violated is a config error rather than a menu constraint — so the honest encoding is a strong preference. Same for the south rule below.",
+      "name": "avoid_consecutive_north_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "high",
+      "base_slot": "rice",
+      "selector": {
+        "cuisine_family": "north_indian"
+      }
+    },
+    {
+      "_comment": "R38 — south-Indian flavoured rice should not run on consecutive days (soft, see above).",
+      "name": "avoid_consecutive_south_rice",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "high",
+      "base_slot": "rice",
+      "selector": {
+        "cuisine_family": "south_indian"
+      }
+    },
+    {
+      "_comment": "R13 support — keep the week's premium gravy and premium veg dry on different days rather than merely capping them per day.",
+      "name": "premiums_different_days",
+      "type": "soft_preference",
+      "mode": "different_day",
+      "priority": "medium",
+      "selector_a": {
+        "flag": "is_premium_gravy"
+      },
+      "base_slot_a": "veg_gravy",
+      "selector_b": {
+        "flag": "is_premium_veg_dry"
+      },
+      "base_slot_b": "veg_dry"
+    },
+    {
+      "_comment": "R64/R65 support (balance and variety across the meal) — vary the gravy's key ingredient across the week instead of five paneer variants. Soft.",
+      "name": "veg_gravy_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "priority": "high",
+      "base_slot": "veg_gravy",
+      "group_by": "key_ingredient"
+    },
+    {
+      "_comment": "R64/R65 support — same for veg dry.",
+      "name": "veg_dry_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "priority": "medium",
+      "base_slot": "veg_dry",
+      "group_by": "key_ingredient"
+    }
+  ]
 }

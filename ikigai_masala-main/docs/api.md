@@ -20,8 +20,8 @@ accept or supply it to correlate traces across logs.
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
-| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`, `available_client_pools`) |
-| POST   | `/pool-preview` | F5: eligible distinct item count + category-wise counts for a set of `source_pools` (`common` always included) |
+| GET    | `/editor-metadata` | Slot / theme / city metadata for the editor UI (`available_cities`, `default_off_slots`, `default_item_cooldown_days`, `available_client_pools`, `client_pools_by_city`). `?city=<name>` scopes `available_client_pools` to that city's item list; omitted, it is the union across cities |
+| POST   | `/pool-preview` | F5: eligible distinct item count + category-wise counts for a set of `source_pools` (`common` always included). Optional `"city"` selects which city's item list is counted |
 | GET    | `/client-config/<name>` | Read a client's config incl. `city`, `serve_weekends`, `item_cooldown_days`, `counters` (returns `ETag: "<version>"`) |
 | PUT    | `/client-config/<name>` | Update a client's config incl. `city` / `serve_weekends` / `item_cooldown_days` / `counters` (requires `version` body field or `If-Match` header) |
 | POST   | `/client` | Create a client (accepts `city`, `serve_weekends`, `item_cooldown_days`, `counters`) |
