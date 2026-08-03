@@ -1205,6 +1205,12 @@ def list_clients():
 @rate_limit("plan")
 @solver_gate
 def plan_menu():
+    # Pre-flight results, kept out of the try so the 500 handler can attach them
+    # even when the solve fails. A counter that passes pre-flight and then goes
+    # INFEASIBLE used to answer with a bare sentence naming no rule, which is the
+    # hardest failure to act on — the non-blocking warnings are usually the clue.
+    diag_dicts: list = []
+    summary = None
     try:
         data = request.get_json() or {}
         _require_known_client(data.get('client_name'))
@@ -1303,7 +1309,15 @@ def plan_menu():
         # input error).
         metrics.incr('plan_requests_total', outcome='solver_error')
         metrics.incr('solver_failures_total')
-        return jsonify({'success': False, 'error': str(e)}), 500
+        body = {'success': False, 'error': str(e)}
+        # Ship the pre-flight report with the failure. It passed the blocking
+        # gate, but its warnings name the slots and rules under pressure, which
+        # is what an admin needs to fix the config.
+        if diag_dicts:
+            body['rule_diagnostics'] = diag_dicts
+        if summary:
+            body['summary'] = summary
+        return jsonify(body), 500
     except (FileNotFoundError, OSError) as e:
         logger.error("Data loading error: %s", e, exc_info=True)
         return _internal_error_response(500)

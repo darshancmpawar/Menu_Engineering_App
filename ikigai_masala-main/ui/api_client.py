@@ -39,6 +39,23 @@ class RuleDiagnosticsBlockedError(RuntimeError):
         self.summary = summary
 
 
+class SolverFailedError(RuntimeError):
+    """The request passed pre-flight and the solve then failed.
+
+    Same shape as :class:`RuleDiagnosticsBlockedError` and for the same reason:
+    the response body carries the pre-flight ``rule_diagnostics``, and those
+    warnings are the only clue to *which* rules are in conflict. Without this the
+    UI showed one sentence naming nothing. Subclasses RuntimeError, so existing
+    ``except RuntimeError`` handlers are unaffected.
+    """
+
+    def __init__(self, message: str, diagnostics: List[Dict[str, Any]],
+                 summary: Dict[str, Any]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
+        self.summary = summary
+
+
 def _parse_response(resp: requests.Response, default_error: str) -> Dict[str, Any]:
     """Decode a JSON API response and raise on any non-success.
 
@@ -69,7 +86,14 @@ def _parse_response(resp: requests.Response, default_error: str) -> Dict[str, An
             summary=data.get("summary") or {},
         )
     if not resp.ok or not data.get("success"):
-        raise RuntimeError(data.get("error", f"{default_error} ({resp.status_code})"))
+        message = data.get("error", f"{default_error} ({resp.status_code})")
+        if data.get("rule_diagnostics"):
+            raise SolverFailedError(
+                message,
+                diagnostics=data.get("rule_diagnostics") or [],
+                summary=data.get("summary") or {},
+            )
+        raise RuntimeError(message)
     return data
 
 

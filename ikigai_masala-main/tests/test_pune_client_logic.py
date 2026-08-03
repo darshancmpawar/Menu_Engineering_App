@@ -465,6 +465,108 @@ class TestEngineFixesThisClientNeeded:
         assert rule.diagnose(ctx) == []
 
 
+class TestRaitaSurvivesASavedWeek:
+    """The Curd / Raita slot must not die once a week is in history.
+
+    Pune's list carries exactly TWO curd_side dishes and this client serves the
+    slot on Sunday only, so the 20-day item cooldown retires both within three
+    weeks and the slot is left with no candidate at all — `/plan` answered 422
+    "cooldown banned all 2 curd side candidates". A yogurt side is a staple
+    accompaniment (plain `curd` is already globally repeatable), so `pune.json`
+    declares it one. Exactly the bug R36 fixed for bread, one slot later.
+    """
+
+    @staticmethod
+    def _plan(row, history):
+        import api.app as api_app
+        import src.db as db_mod
+        from api.rate_limit import reset_for_tests
+        fake = FakeSupabase(seed={
+            'clients': [dict(row)], 'app_settings': [],
+            'menu_history': history, 'week_signatures': [],
+        })
+        old = getattr(db_mod, '_sb_client', None)
+        db_mod._sb_client = fake
+        api_app._client_loader = None
+        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
+                     '_menu_rules_by_city', '_filtered_cache'):
+            setattr(api_app, attr, {})
+        api_app.app.config['TESTING'] = True
+        try:
+            reset_for_tests()
+            resp = api_app.app.test_client().post('/api/v1/plan', json={
+                'client_name': 'Amadeus Pune', 'start_date': MONDAY,
+                'num_days': 7, 'time_limit_seconds': TIME_LIMIT,
+            })
+            return resp.status_code, (resp.get_json() or {})
+        finally:
+            db_mod._sb_client = old
+            api_app._client_loader = None
+
+    @staticmethod
+    def _history_with_both_raitas():
+        """Both curd_side dishes inside the cooldown window."""
+        return [
+            {'client_name': 'Amadeus Pune',
+             'service_date': (dt.date(2026, 8, 3) - dt.timedelta(days=i)).isoformat(),
+             'menu': {'curd_side': 'boondi_raita' if i % 2 else 'raita'}}
+            for i in range(1, 8)
+        ]
+
+    def test_the_declaration_is_shipped_for_pune(self):
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        rule = next(
+            (r for r in MenuRuleLoader().load_for_city('Pune')
+             if r.name == 'raita_is_a_staple'), None)
+        assert rule is not None, "pune.json must declare the raita staple"
+        assert rule.validate_config(), rule.validation_errors()
+        assert rule.base_slot == 'curd_side'
+
+    def test_plan_succeeds_with_both_raitas_in_history(self, amadeus_pune_row):
+        status, body = self._plan(
+            amadeus_pune_row, self._history_with_both_raitas())
+        assert status == 200, body.get('error') or body.get('message')
+
+    def test_a_raita_is_still_served_on_sunday(self, amadeus_pune_row, pune_df):
+        """Not merely feasible — the dish is still there, and it is a real
+        curd_side dish from Pune's list."""
+        _status, body = self._plan(
+            amadeus_pune_row, self._history_with_both_raitas())
+        served = _by_weekday(body, 'curd_side')
+        assert SUN in served, f"Sunday lost its raita: {served}"
+        assert served[SUN] in set(pune_df[pune_df.course_type == 'curd_side']['item'])
+
+    def test_diagnose_agrees_that_it_is_fine(self, amadeus_pune_row):
+        """The pre-flight gate and the solve must not disagree — before the
+        declaration this was a blocking ERROR."""
+        import api.app as api_app
+        import src.db as db_mod
+        from api.rate_limit import reset_for_tests
+        fake = FakeSupabase(seed={
+            'clients': [dict(amadeus_pune_row)], 'app_settings': [],
+            'menu_history': self._history_with_both_raitas(),
+            'week_signatures': [],
+        })
+        old = getattr(db_mod, '_sb_client', None)
+        db_mod._sb_client = fake
+        api_app._client_loader = None
+        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
+                     '_menu_rules_by_city', '_filtered_cache'):
+            setattr(api_app, attr, {})
+        try:
+            reset_for_tests()
+            body = api_app.app.test_client().post('/api/v1/diagnose', json={
+                'client_name': 'Amadeus Pune', 'start_date': MONDAY,
+                'num_days': 7,
+            }).get_json()
+            errors = [d for d in body['rule_diagnostics']
+                      if d['severity'] == 'error']
+            assert not errors, errors
+        finally:
+            db_mod._sb_client = old
+            api_app._client_loader = None
+
+
 class ClientCfgStub:
     slot_counts = {'bread': 1}
     active_slots = ['bread']

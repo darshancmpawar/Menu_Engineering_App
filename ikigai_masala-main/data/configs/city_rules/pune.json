@@ -43,6 +43,15 @@
       "ignore_rice_gravy_color_diff_on_chinese_day": true
     },
     {
+      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them \u2014 uniqueness is already lifted for that by the arithmetic starved-slot exception. The 20-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot \u2014 plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
+      "name": "raita_is_a_staple",
+      "type": "repeatable_items",
+      "base_slot": "curd_side",
+      "selector": {
+        "course_type": "curd_side"
+      }
+    },
+    {
       "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. Pune's bread slot is chapati/phulka only, so they are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",

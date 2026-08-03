@@ -171,6 +171,22 @@ excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
 excluded pairing before these rules — which is expected, since the client asked
 for them in all cities.
 
+### The Curd / Raita slot is a staple
+
+Pune's list carries exactly **two** `curd_side` dishes (`raita`, `boondi_raita`)
+and this client serves the slot on Sunday only. Under the 20-day item cooldown
+that retires both within three weeks, leaving the slot with no candidate at all —
+`/plan` answered 422 *"cooldown banned all 2 curd side candidates on Sunday"*.
+Uniqueness was never the problem (the arithmetic starved-slot exception already
+lifts it); the history ban was.
+
+`pune.json` now declares `raita_is_a_staple` (`repeatable_items` on
+`curd_side`), so both dishes are exempt from `unique_items` and from the cooldown
+— exactly what R36 does for chapati/phulka in the bread slot, and consistent with
+plain `curd`, which is globally repeatable for the same reason. Pinned by
+`tests/test_pune_client_logic.py::TestRaitaSurvivesASavedWeek`, which fails on all
+four assertions without the declaration.
+
 ### Open questions
 
 1. **R45 (city) — fruit welcome drinks are for premium clients.** Moot for this
