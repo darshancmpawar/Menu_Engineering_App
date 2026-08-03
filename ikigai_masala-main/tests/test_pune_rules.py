@@ -138,7 +138,9 @@ class TestPuneRulesBiteOnPuneData:
         from the ops team drops them again, so assert them by name rather than
         relying on the inert-rule set above to notice.
         """
-        from scripts.pune_flag_corrections import CORRECTIONS
+        from scripts.pune_flag_corrections import (
+            COLUMN_CORRECTIONS, CORRECTIONS,
+        )
         df, _pools = pune_pools
         for item, flags in CORRECTIONS.items():
             row = df[df['item'] == item]
@@ -150,6 +152,14 @@ class TestPuneRulesBiteOnPuneData:
                 assert int(actual) == value, (
                     f"{item}.{flag} is {actual}, expected {value} — re-run "
                     f"scripts/pune_flag_corrections.py"
+                )
+        for item, columns in COLUMN_CORRECTIONS.items():
+            row = df[df['item'] == item]
+            assert len(row) == 1, f"{item} is not in the Pune list any more"
+            for column, value in columns.items():
+                assert str(row.iloc[0][column]).strip() == value, (
+                    f"{item}.{column} is {row.iloc[0][column]!r}, expected "
+                    f"{value!r} — re-run scripts/pune_flag_corrections.py"
                 )
 
     def test_chapati_exemption_matches_the_whole_bread_pool(self, pune_pools):

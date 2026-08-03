@@ -33,6 +33,16 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUNE_XLSX = REPO_ROOT / 'data' / 'raw' / 'city_items' / 'pune.xlsx'
 
+# item -> {column: value} for non-flag corrections (text columns).
+# Kept separate from CORRECTIONS because these are taxonomy fixes, not 0/1 flags.
+COLUMN_CORRECTIONS = {
+    # `potato_chilli` was tagged `key_ingredient: paneer` while being a potato
+    # dish. That made it the only paneer-tagged veg dry in the list, so it counted
+    # against a client's "one paneer a week" rule whenever it was chosen —
+    # a paneer budget spent on a potato dish. Client-confirmed correction.
+    'potato_chilli': {'key_ingredient': 'potato'},
+}
+
 # item -> {flag: value}. Every entry carries its reason in the comment above it.
 CORRECTIONS = {
     # R14. The only black-chana *gravy* in the list. `black_chana_dry` is a veg
@@ -71,6 +81,19 @@ def apply(df: pd.DataFrame) -> tuple:
             if int(pd.to_numeric(before, errors='coerce') or 0) != value:
                 df.loc[rows[0], flag] = value
                 changes.append((item, flag, before, value))
+    for item, columns in COLUMN_CORRECTIONS.items():
+        rows = df.index[df['item'] == item]
+        if not len(rows):
+            missing.append(item)
+            continue
+        for column, value in columns.items():
+            if column not in df.columns:
+                missing.append(f'{item}.{column}')
+                continue
+            before = df.loc[rows[0], column]
+            if str(before).strip() != str(value):
+                df.loc[rows[0], column] = value
+                changes.append((item, column, before, value))
     return df, (changes, missing)
 
 

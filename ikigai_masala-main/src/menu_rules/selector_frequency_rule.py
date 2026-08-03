@@ -94,9 +94,21 @@ class SelectorFrequencyRule(BaseMenuRule):
 
     @staticmethod
     def _parse_matcher(sel):
-        """Parse a selector dict into a matcher tuple, or None."""
+        """Parse a selector dict into a matcher tuple, or None.
+
+        ``any_of`` takes a LIST of selectors and matches a row satisfying any of
+        them. ``any_flag`` already covers "any of these flags", but a rule naming
+        several *ingredients* — "not soya, baby corn, chole or mushroom" — mixes
+        flags and text columns and needs the general form.
+        """
         if not sel:
             return None
+        if 'any_of' in sel:
+            raw = sel['any_of']
+            raw = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
+            parts = [p for p in parts if p is not None]
+            return ('any_of', parts) if parts else None
         if 'any_flag' in sel:
             flags = sel['any_flag']
             flags = list(flags) if isinstance(flags, (list, tuple)) else [flags]
@@ -117,6 +129,8 @@ class SelectorFrequencyRule(BaseMenuRule):
             return int(row.get(val, 0) or 0) == 1
         if kind == 'any_flag':
             return any(int(row.get(f, 0) or 0) == 1 for f in val)
+        if kind == 'any_of':
+            return any(SelectorFrequencyRule._matches(row, m) for m in val)
         col = _TEXT_COLS.get(kind, '')
         return _norm_str(str(row.get(col, ''))) == val
 

@@ -62,7 +62,7 @@
       "max": 2
     },
     {
-      "_comment": "R14 — black chana gravies max once a week. NOTE: is_black_chana_gravy is not populated in the Pune item list yet (black_chana_malwani carries only is_chana_gravy), so this rule is currently inert. Kept because it is a stated rule; populate the flag and it starts biting.",
+      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; scripts/pune_flag_corrections.py sets it on black_chana_malwani.",
       "name": "black_chana_gravy_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -170,7 +170,7 @@
       "max": 1
     },
     {
-      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week.",
+      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; scripts/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
       "name": "leafy_veg_dry_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -321,6 +321,45 @@
       "priority": "medium",
       "base_slot": "veg_dry",
       "group_by": "key_ingredient"
+    },
+    {
+      "_comment": "Paneer belongs on a mix / south / north day; chinese and biryani days are the fallback, not the default (client rule, all cities). SOFT on purpose: the hard equivalent is selector_frequency.allowed_day_types, which forbids paneer on the other days outright — and a counter themed chinese or biryani every weekday would then never serve paneer at all. `holiday` (a weekend day on a serve_weekends counter) is not in the preferred list either, so paneer lands on a working day.",
+      "name": "paneer_prefers_mix_south_north_days",
+      "type": "soft_preference",
+      "mode": "prefer_day_types",
+      "priority": "high",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "day_types": [
+        "mix",
+        "south",
+        "north"
+      ]
+    },
+    {
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there.",
+      "name": "paneer_not_with_soya_babycorn_chole_mushroom",
+      "type": "same_day_exclusion",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "exclude": {
+        "any_of": [
+          {
+            "key_ingredient": "soy"
+          },
+          {
+            "key_ingredient": "baby_corn"
+          },
+          {
+            "flag": "is_chana_gravy"
+          },
+          {
+            "key_ingredient": "mushroom"
+          }
+        ]
+      }
     }
   ]
 }

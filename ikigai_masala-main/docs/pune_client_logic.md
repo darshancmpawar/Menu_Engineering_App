@@ -116,6 +116,34 @@ the sample raises, neither of which blocks anything:
   That makes it the only paneer-tagged `veg_dry`, so it counts against the "weekly
   1 paneer" rule if it is ever chosen. Looks like a tagging slip.
 
+### Cross-city client rules
+
+Two requirements the client stated for **every** city, so they live in each city
+ruleset rather than a client block. Both are new capabilities; both are asserted
+by `tests/test_same_day_exclusion.py` and `tests/test_soft_preference.py`.
+
+| Stated | Where | Notes |
+|---|---|---|
+| Paneer should be served on a mix / south / north day; if not, then chinese or biryani | `paneer_prefers_mix_south_north_days` — `soft_preference` `mode: prefer_day_types`, high priority | **Soft on purpose.** The hard equivalent is `selector_frequency.allowed_day_types`, which forbids the dish on other days — and a counter themed chinese every weekday would then never serve paneer at all. "Prefer these, fall back to the others" needs the others to stay legal. `holiday` (a weekend day on a `serve_weekends` counter) is not in the preferred list either, so paneer lands on a working day |
+| No soya, baby corn, chole or mushroom on the same day as paneer | `paneer_not_with_soya_babycorn_chole_mushroom` — the new `same_day_exclusion` rule type | **Hard.** `soft_preference`'s `different_day` mode is the soft cousin and can be outbid by gains elsewhere; "don't serve them together" is a constraint. Counted across every slot, since the point is the day's plate — a paneer gravy beside a soya veg dry is the pairing being avoided |
+
+The four excluded families are one `any_of` selector rather than four rules, which
+is what `any_of` was added for — they span both a text column and a flag:
+
+| Family | Selector | Bangalore | Pune |
+|---|---|---|---|
+| soya | `key_ingredient: soy` | present | present |
+| baby corn | `key_ingredient: baby_corn` | present | present (in salads) |
+| chole | `flag: is_chana_gravy` | 92 items | 20 items |
+| mushroom | `key_ingredient: mushroom` | present | **absent** — inert there, and `diagnose()` says so |
+
+`is_chana_gravy` is how both ontologies file chole. It also covers the other
+whole-legume gravies (chawli, for instance), which fits the intent of not pairing
+a heavy legume curry with paneer — say so if chole should be narrower.
+
+Fleet check: all 57 counters still generate and no paneer day anywhere carries an
+excluded dish.
+
 ### Open questions
 
 1. **R45 (city) — fruit welcome drinks are for premium clients.** Moot for this

@@ -180,3 +180,83 @@ class TestBehaviour:
         solver, status = _maximize(model, terms)
         assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
         assert solver.Value(v1.x_vars[1]) == 1   # day1 picks tomato, not another potato
+
+
+class TestPreferDayTypes:
+    """`prefer_day_types` — the selector belongs on these themes; other days are
+    penalised, not forbidden.
+
+    The hard equivalent is `selector_frequency.allowed_day_types`, and it would
+    forbid the dish outright — a counter themed chinese every weekday would then
+    never serve paneer at all. The client's ask is "prefer mix/south/north, fall
+    back to the others", so the others must stay legal.
+    """
+
+    def _ctx_with_themes(self, cells, themes):
+        ctx = _ctx(cells, len(themes))
+        ctx['day_types'] = list(themes)
+        return ctx
+
+    def test_requires_selector_and_day_types(self):
+        assert not SoftPreferenceRule({
+            'name': 'x', 'mode': 'prefer_day_types',
+            'day_types': ['north']}).validate_config()
+        assert not SoftPreferenceRule({
+            'name': 'x', 'mode': 'prefer_day_types',
+            'selector': {'key_ingredient': 'paneer'}}).validate_config()
+        rule = SoftPreferenceRule({
+            'name': 'x', 'mode': 'prefer_day_types',
+            'selector': {'key_ingredient': 'paneer'}, 'day_types': ['north']})
+        assert rule.validate_config(), rule.validation_errors()
+
+    def test_day_types_are_case_insensitive(self):
+        rule = SoftPreferenceRule({
+            'name': 'x', 'mode': 'prefer_day_types',
+            'selector': {'key_ingredient': 'paneer'},
+            'day_types': ['MIX', ' South ', 'north']})
+        assert rule.day_types == {'mix', 'south', 'north'}
+
+    def test_paneer_moves_onto_a_preferred_day(self):
+        """Two days, one paneer to place: it must land on the north day, not the
+        biryani day."""
+        model = cp_model.CpModel()
+        # Each day's gravy is paneer or not; exactly one paneer across the two.
+        d0 = _cell(model, 0, 'veg_gravy',
+                   [{'key_ingredient': 'paneer'}, {'key_ingredient': 'potato'}])
+        d1 = _cell(model, 1, 'veg_gravy',
+                   [{'key_ingredient': 'paneer'}, {'key_ingredient': 'potato'}])
+        model.Add(d0.x_vars[0] + d1.x_vars[0] == 1)
+        rule = SoftPreferenceRule({
+            'name': 'pref', 'mode': 'prefer_day_types', 'weight': 1000,
+            'base_slot': 'veg_gravy', 'selector': {'key_ingredient': 'paneer'},
+            'day_types': ['mix', 'south', 'north']})
+        ctx = self._ctx_with_themes([d0, d1], ['biryani', 'north'])
+        solver, status = _maximize(model, rule.get_objective_terms(model, ctx))
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(d1.x_vars[0]) == 1, "paneer should be on the north day"
+        assert solver.Value(d0.x_vars[0]) == 0
+
+    def test_off_theme_is_allowed_when_it_is_the_only_option(self):
+        """Soft, not hard: with every day off-theme the dish still gets placed."""
+        model = cp_model.CpModel()
+        d0 = _cell(model, 0, 'veg_gravy', [{'key_ingredient': 'paneer'}])
+        rule = SoftPreferenceRule({
+            'name': 'pref', 'mode': 'prefer_day_types', 'weight': 1000,
+            'base_slot': 'veg_gravy', 'selector': {'key_ingredient': 'paneer'},
+            'day_types': ['mix', 'south', 'north']})
+        ctx = self._ctx_with_themes([d0], ['chinese'])
+        terms = rule.get_objective_terms(model, ctx)
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(d0.x_vars[0]) == 1
+        assert terms, "an off-theme day must contribute a penalty term"
+
+    def test_no_penalty_term_when_every_day_is_preferred(self):
+        model = cp_model.CpModel()
+        d0 = _cell(model, 0, 'veg_gravy', [{'key_ingredient': 'paneer'}])
+        rule = SoftPreferenceRule({
+            'name': 'pref', 'mode': 'prefer_day_types',
+            'base_slot': 'veg_gravy', 'selector': {'key_ingredient': 'paneer'},
+            'day_types': ['north']})
+        ctx = self._ctx_with_themes([d0], ['north'])
+        assert rule.get_objective_terms(model, ctx) == []

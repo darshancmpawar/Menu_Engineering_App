@@ -65,6 +65,7 @@ class MenuRuleType(Enum):
     SLOT_DAY_RESTRICTION = "slot_day_restriction"
     FIXED_DAILY_ITEM = "fixed_daily_item"
     REPEATABLE_ITEMS = "repeatable_items"
+    SAME_DAY_EXCLUSION = "same_day_exclusion"
     # Synthetic — produced by pool_size_diagnostics(), not by a real
     # rule class. Folds the pre-flight pool-size warnings into the
     # same response surface as everything else so the UI only renders
