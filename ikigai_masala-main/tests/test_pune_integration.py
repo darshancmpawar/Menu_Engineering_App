@@ -16,8 +16,6 @@ real user takes and that none of those cover:
 Kept out of `-m slow` because the Pune counter solves in well under a second.
 """
 
-import datetime as dt
-
 import pytest
 
 from tests.fake_supabase import FakeSupabase
