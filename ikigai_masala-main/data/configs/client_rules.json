@@ -1151,14 +1151,8 @@
     }
   },
   "Amadeus Pune": {
-    "_comment": "Amadeus Pune — from the client's sample week (docs/pune_client_logic.md). Seven service days: Mon-Fri full, Saturday drops the veg dry, Sunday is flavoured rice (a veg biryani) with raita, papad, buttermilk and a sweet and nothing else.",
+    "_comment": "Amadeus Pune — from the client's sample week (docs/pune_client_logic.md). Seven service days: Mon-Fri full, Saturday drops the veg dry, Sunday is flavoured rice (a veg biryani) with raita, papad, buttermilk and a sweet and nothing else. The raita comes from the Curd / Raita category the client configured, restricted to Sunday — the day the biryani wants it.",
     "disable": [],
-    "constant_items": {
-      "_comment": "Sunday's salad row is a raita. `raita` and `boondi_raita` are real Pune dishes but the ontology files them under `curd_side`, so they are not candidates for the `salad` slot and the pin is stamped as text. Add `curd_side` to this counter and restrict it to Sunday if you would rather the solver choose between the two raitas.",
-      "salad": {
-        "sunday": "Raita"
-      }
-    },
     "rules": [
       {
         "_comment": "'flavour rice on Tue and sun' — the flavoured-rice slot runs on those two days only. Every other day's rice row is the white_rice constant.",
@@ -1240,6 +1234,29 @@
         ]
       },
       {
+        "_comment": "The sample's Sunday salad column is the raita, not a salad, so the salad slot stops at Saturday and `curd_side` covers Sunday.",
+        "name": "amadeus_pune_salad_mon_sat",
+        "type": "slot_day_restriction",
+        "base_slot": "salad",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat"
+        ]
+      },
+      {
+        "_comment": "Curd / Raita runs on Sunday only — the biryani day, which is the classic pairing and the only day the sample shows it. The Pune curd_side pool is two raitas (raita, boondi_raita) and the solver picks one, so this is a real ontology dish with a colour and a history entry rather than the stamped 'Raita' string it replaced. Widen allowed_weekdays if the client wants curd or raita on more days.",
+        "name": "amadeus_pune_curd_side_sunday_only",
+        "type": "slot_day_restriction",
+        "base_slot": "curd_side",
+        "allowed_weekdays": [
+          "sun"
+        ]
+      },
+      {
         "_comment": "'chapati daily in indain bread' — a per-day MANDATE, not merely permission to repeat. On a one-slot family a slot_composition component with count 1 means 'this slot must be a matching dish', so bread is chapati on every day it is served. fixed_daily_item was the wrong tool: it only makes the matching dish CONSISTENT across days and leaves the solver free to serve phulka instead, which it did. The city ruleset's plain_chapati_may_repeat supplies the unique_items / cooldown exemption the repetition needs.",
         "name": "amadeus_pune_chapati_daily",
         "type": "slot_composition",
@@ -1288,13 +1305,23 @@
         "exact": 1
       },
       {
-        "_comment": "'weekly 1 soya' — exactly one, across slots: three soya veg dries and one soya gravy.",
-        "name": "amadeus_pune_soya_weekly",
+        "_comment": "'weekly 1 soya' — the sample's soya is a veg DRY (Monday's Soya Chatpata Dry), and all three of Pune's is_premium_veg_dry items are the soya dries, so this is also what makes the city ruleset's premium_veg_dry_weekly cap non-vacuous. Scoped to veg_dry on that reading; drop the base_slot if the client is happy with a soya gravy instead.",
+        "name": "amadeus_pune_soya_veg_dry_weekly",
         "type": "selector_frequency",
         "selector": {
           "key_ingredient": "soy"
         },
+        "base_slot": "veg_dry",
         "exact": 1
+      },
+      {
+        "_comment": "…and no SECOND soya dish anywhere else that week (the Pune list has one soya gravy, soya_masala). The pair together mean 'exactly one soya a week, and it is the veg dry'.",
+        "name": "amadeus_pune_soya_total_weekly",
+        "type": "selector_frequency",
+        "selector": {
+          "key_ingredient": "soy"
+        },
+        "max": 1
       },
       {
         "_comment": "'in sun we server only flvour rice(any veg biryani)' — Sunday's rice must be a veg biryani, and 'any' is why this is a composition over the biryani flag rather than a pinned dish: the solver picks between veg_biryani and handi_biryani. Only `sun` is listed, so no other day gets a mandated component. One biryani day also satisfies the city ruleset's mixedveg_pulao_biryani_weekly cap of one.",

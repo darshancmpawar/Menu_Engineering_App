@@ -105,7 +105,8 @@ class TestServiceDaysMatchTheSample:
         assert len(plan['solution']) == 7
 
     @pytest.mark.parametrize('slot,expected', [
-        ('salad', {MON, TUE, WED, THU, FRI, SAT, SUN}),   # Sunday's is the raita
+        ('salad', {MON, TUE, WED, THU, FRI, SAT}),        # Sunday's row is a raita
+        ('curd_side', {SUN}),                             # …which is this slot
         ('veg_gravy', {MON, TUE, WED, THU, FRI, SAT}),
         ('veg_dry', WEEKDAYS),                            # blank Sat AND Sun
         ('dal', {MON, TUE, WED, THU, FRI, SAT}),
@@ -124,7 +125,7 @@ class TestServiceDaysMatchTheSample:
         Pune's 274 items also exist in Bangalore, so a spot check would not catch
         a plan built off the wrong ontology."""
         pune_items = set(pune_df['item'])
-        stamped = {'steamed rice', 'Papad', 'Raita'}
+        stamped = {'steamed rice', 'Papad'}   # nothing else is stamped now
         for key, day in plan['solution'].items():
             for slot, entry in day['items'].items():
                 name = entry['item_base']
@@ -138,7 +139,7 @@ class TestServiceDaysMatchTheSample:
             if dt.date.fromisoformat(key).weekday() == SUN
         )
         assert set(sunday['items']) == {
-            'rice', 'salad', 'papad', 'welcome_drink', 'dessert',
+            'rice', 'curd_side', 'papad', 'welcome_drink', 'dessert',
         }
 
 
@@ -173,15 +174,18 @@ class TestWeeklyRhythm:
         ]
         assert len(hits) == 1, hits
 
-    def test_exactly_one_soya_dish_a_week(self, plan, pune_df):
-        """'weekly 1 soya'."""
+    def test_exactly_one_soya_and_it_is_the_veg_dry(self, plan, pune_df):
+        """'weekly 1 soya'. The sample's soya is Monday's Soya Chatpata *Dry*, and
+        all three of Pune's premium veg dries are soya — which is also what makes
+        the city's premium_veg_dry_weekly cap non-vacuous."""
         hits = [
-            (key, e['item_base'])
+            (key, slot, e['item_base'])
             for key, day in plan['solution'].items()
-            for e in day['items'].values()
+            for slot, e in day['items'].items()
             if str(_attr(pune_df, e['item_base'], 'key_ingredient')).lower() == 'soy'
         ]
         assert len(hits) == 1, hits
+        assert hits[0][1] == 'veg_dry', hits
 
     def test_sunday_rice_is_a_veg_biryani(self, plan, pune_df):
         """'in sun we server only flvour rice(any veg biryani)' — any, so the
@@ -196,11 +200,15 @@ class TestWeeklyRhythm:
         assert not _is(pune_df, tuesday_rice, 'is_mixedveg_biryani')
         assert not _is(pune_df, tuesday_rice, 'is_mixedveg_pulao')
 
-    def test_sunday_salad_row_is_the_raita(self, plan):
-        """The sample's Sunday salad column is RAITA. `raita` is a real Pune dish
-        filed under `curd_side`, so it is not a `salad` candidate and the pin is
-        stamped as text rather than solved."""
-        assert _by_weekday(plan, 'salad')[SUN] == 'Raita'
+    def test_sunday_raita_is_a_solved_curd_side_dish(self, plan, pune_df):
+        """The sample's Sunday salad column is RAITA. The client added the
+        Curd / Raita category, so it is a real ontology dish the solver picked out
+        of Pune's two raitas — not the stamped "Raita" string it replaced. Being
+        solved is what gives it a colour suffix and a history entry.
+        """
+        raita = _by_weekday(plan, 'curd_side')[SUN]
+        assert raita in set(pune_df[pune_df.course_type == 'curd_side']['item'])
+        assert 'raita' in raita
 
 
 class TestNoDiagnosticNoise:

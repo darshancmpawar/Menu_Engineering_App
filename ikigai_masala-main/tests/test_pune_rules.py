@@ -77,14 +77,15 @@ class TestPuneRulesBiteOnPuneData:
     match items in it — and name the ones knowingly inert."""
 
     KNOWN_INERT = {
-        # Flags the Pune workbook does not populate yet. Each is a stated rule
-        # kept for when the data lands; see the _comment in pune.json.
-        'black_chana_gravy_weekly',
-        # is_leafy_based_dish is set on a rice, a dal and a salad in the Pune
-        # list but on no veg_dry, so R31 has nothing to cap. Three Pune veg
-        # dries look leafy by name (lasooni_aloo_palak_dry, mix_veg_hariyali,
-        # moong_methi_dry) and carry the flag as 0 — a data gap, not a rule bug.
-        'leafy_veg_dry_weekly',
+        # These three are inert because the Pune list carries NO SUCH DISH — its
+        # bread pool is chapati and phulka. That is a fact about the menu, not a
+        # data gap: the rules are kept so they bite the day a maida, multigrain or
+        # oil-based bread is added.
+        #
+        # (`black_chana_gravy_weekly` and `leafy_veg_dry_weekly` were inert too,
+        # for the opposite reason — the dishes existed but the flags were 0.
+        # scripts/pune_flag_corrections.py fixed that, and this set is what stops
+        # a re-import from silently undoing it.)
         'maida_bread_weekly',
         'oil_based_bread_weekly',
         'multigrain_bread_non_consecutive',
@@ -130,6 +131,26 @@ class TestPuneRulesBiteOnPuneData:
         rule = next(r for r in pune_rules if r.name == 'yellow_dal_at_least_twice')
         matching = _flag(pools['dal'], 'is_yellow_dal')
         assert len(matching) >= rule.min
+
+    def test_flag_corrections_are_applied(self, pune_pools):
+        """scripts/pune_flag_corrections.py fills two flags the raw workbook left
+        at 0, which made R14 and R31 silently inert. Re-importing a fresh workbook
+        from the ops team drops them again, so assert them by name rather than
+        relying on the inert-rule set above to notice.
+        """
+        from scripts.pune_flag_corrections import CORRECTIONS
+        df, _pools = pune_pools
+        for item, flags in CORRECTIONS.items():
+            row = df[df['item'] == item]
+            assert len(row) == 1, f"{item} is not in the Pune list any more"
+            for flag, value in flags.items():
+                actual = pd.to_numeric(
+                    pd.Series([row.iloc[0][flag]]), errors='coerce'
+                ).fillna(0).iloc[0]
+                assert int(actual) == value, (
+                    f"{item}.{flag} is {actual}, expected {value} — re-run "
+                    f"scripts/pune_flag_corrections.py"
+                )
 
     def test_chapati_exemption_matches_the_whole_bread_pool(self, pune_pools):
         """Pune's bread slot is chapati + phulka only. If the exemption stopped

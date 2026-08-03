@@ -42,8 +42,7 @@ nothing else has to change.
 | | |
 |---|---|
 | **DONE** | encoded in `pune.json` and enforced |
-| **DATA** | encoded, but the flag it selects on is not populated in the Pune list yet, so it is currently inert |
-| **N/A** | the category the rule governs does not exist in the Pune list |
+| **N/A** | the dish or category the rule governs does not exist in the Pune list, so the rule is configured but has nothing to act on |
 | **CLIENT** | a per-client/per-site decision — belongs in `client_rules.json`, not the city ruleset |
 | **OPS** | a kitchen/procurement/food-safety instruction with nothing for the solver to decide |
 | **GAP** | wants a capability the engine does not have; listed under "Open gaps" |
@@ -65,27 +64,27 @@ nothing else has to change.
 | R11 | South rice ⇒ prefer south gravy | GAP | as R10 |
 | R12 | Aloo gravies max twice/week | DONE | `aloo_gravy_twice_weekly` |
 | R13 | Max 1 premium veg item per day | DONE | `premium_veg_daily_max_1` (+ `premiums_different_days` soft) |
-| R14 | Black chana gravies max once/week | DATA | `black_chana_gravy_weekly` — `is_black_chana_gravy` is 0 for all 274 rows; `black_chana_malwani` carries only `is_chana_gravy` |
+| R14 | Black chana gravies max once/week | DONE | `black_chana_gravy_weekly`. `is_black_chana_gravy` was 0 for all 274 rows; `scripts/pune_flag_corrections.py` sets it on `black_chana_malwani` |
 | R15 | Deep-fried veg dry once per 7 days | DONE | `deep_fried_veg_dry_weekly` |
 | R16 | Kabuli chana gravies max once/week | DONE | `kabuli_chana_gravy_weekly` |
-| R17 | Maida breads max once/week | DATA | `maida_bread_weekly` — no maida breads in the Pune list |
+| R17 | Maida breads max once/week | N/A (no such dish) | `maida_bread_weekly` is configured but the Pune bread pool is chapati + phulka, so it has nothing to cap |
 | R18 | Malai kofta max once/week | DONE | covered by `veg_kofta_gravy_weekly` |
 | R19 | Mixed veg pulao/biryani max once/week | DONE | `mixedveg_pulao_biryani_weekly` |
 | R20 | Mixed-veg / kurma / kofta gravies max once/week | DONE | `mixed_veg_gravy_weekly`, `veg_kurma_gravy_weekly`, `veg_kofta_gravy_weekly` (read as each once, matching R12/R14/R16's phrasing) |
 | R21 | Pappu dal once/week | DONE | `pappu_dal_weekly` |
 | R22 | Premium-ingredient gravies max once/week | DONE | `premium_gravy_weekly` |
 | R23 | Premium-ingredient veg dry max once/week | DONE | `premium_veg_dry_weekly` |
-| R24 | Puri only once a month | DATA | no puri / `is_fried_bread` item in the Pune list. A month is longer than any horizon, so the monthly window would project to one-per-horizon plus the 20-day item cooldown |
+| R24 | Puri only once a month | N/A (no such dish) | no puri / `is_fried_bread` item in the Pune list. A month is longer than any horizon, so the monthly window would project to one-per-horizon plus the 20-day item cooldown |
 | R25 | Remaining dal days mostly yellow dal (~1 in 3) | DONE | `yellow_dal_at_least_twice` (a floor of 2 over a 5-day week — see "Judgement calls") |
 | R26 | Special sambar max once/week | N/A | no sambar |
 | R27 | A week's combination must not repeat within a month | DONE | `no_repeat_weeks` (`week_signature_cooldown`, 30 days) |
 | R28 | Dessert form must not repeat on consecutive days | DONE | `dessert_form_non_consecutive` |
 | R29 | Curd is exempt from repeat bans | DONE | built in: `curd` is in `REPEATABLE_SLOTS`, exempt from `unique_items` and the cooldown |
 | R30 | Kadhi-style dal once in 15 days | DONE (projected) | `kadhi_weekly` — once per horizon; the 20-day item cooldown carries the rest of the window for the same dish |
-| R31 | Leafy veg dry once in 15 days | DATA | `leafy_veg_dry_weekly` — `is_leafy_based_dish` is set on a rice, a dal and a salad but on no veg dry; `lasooni_aloo_palak_dry`, `mix_veg_hariyali` and `moong_methi_dry` all carry 0 |
+| R31 | Leafy veg dry once in 15 days | DONE | `leafy_veg_dry_weekly`. `is_leafy_based_dish` covered no veg dry at all; `scripts/pune_flag_corrections.py` adds the palak / methi / hariyali dishes |
 | R32 | Kofta needs a 7-day gap, not on consecutive weeks | DONE / partial | the 7-day gap is `veg_kofta_gravy_weekly`; "not on consecutive weeks" needs cross-horizon state the weekly signature does not model |
 | R33 | Dal colour must not repeat on consecutive days | DONE | `dal_colour_non_consecutive` |
-| R34 | Multigrain breads not on consecutive days | DATA | `multigrain_bread_non_consecutive` — none in the Pune list |
+| R34 | Multigrain breads not on consecutive days | N/A (no such dish) | `multigrain_bread_non_consecutive` is configured; no multigrain bread in the list |
 | R35 | North flavoured rice not on consecutive days | DONE (soft) | `avoid_consecutive_north_rice`, high priority — see "Judgement calls" |
 | R36 | Plain atta phulka/chapathi may run on consecutive days | DONE | `plain_chapati_may_repeat` (`repeatable_items`) — needed a new rule type |
 | R37 | Same sambar key ingredient not within 15 days | N/A | no sambar |
@@ -98,7 +97,7 @@ nothing else has to change.
 | R44 | Bakery desserts primarily for premium clients | CLIENT | `is_bakery_dessert` is 0 in the Pune list; gate per client when it lands |
 | R45 | Fruit welcome drinks are for premium clients | CLIENT | 3 of Pune's 4 welcome drinks are `is_fruit_drink`; a city-wide ban would leave only buttermilk. Needs a per-client premium flag |
 | R46 | Mocktails for events only | N/A | no mocktail items |
-| R47 | Oil-based breads monthly, for premium | DATA + CLIENT | `oil_based_bread_weekly` caps them per horizon; none in the list, and "for premium" is per client |
+| R47 | Oil-based breads monthly, for premium | N/A (no such dish) + CLIENT | `oil_based_bread_weekly` caps them per horizon; none in the list, and "for premium" is per client |
 | R48 | Omelette/egg curry only at enabled sites | N/A | no egg items |
 | R49 | Sites with selling price ≥150 may relax premium gravy frequency | CLIENT | a per-client `disable: ["premium_gravy_weekly"]` in `client_rules.json` |
 | R50 | All slots mandatory each day | DONE | how the solver works: every active slot gets a cell per day |
@@ -123,14 +122,14 @@ nothing else has to change.
 | R69 | Comply with FSSAI and hygiene standards | OPS | outside the tool |
 | R70 | Consider vendor inventory and capacity | OPS | outside the tool |
 
-Totals over all 70 rules, by the leading status word: **31 DONE** (of which 4
+Totals over all 70 rules, by the leading status word: **33 DONE** (of which 4
 are qualified — 2 soft, 1 projected onto the horizon, 1 partial), 16 OPS
-(5 of those out of scope while the tool is lunch-only), 9 N/A, 6 DATA, 4 CLIENT,
-4 GAP.
+(5 of those out of scope while the tool is lunch-only), 13 N/A, 4 CLIENT, 4 GAP.
 
-So 31 of 70 are enforced today; 21 (OPS + N/A) have nothing for the solver to
-decide; and 14 are genuinely open — 6 waiting on Pune ontology data, 4 on a
-per-client premium tier, 4 on engine capabilities.
+So 33 of 70 are enforced today; 29 (OPS + N/A) have nothing for the solver to
+decide, either because they are kitchen instructions or because Pune serves no
+such dish; and 8 are genuinely open — 4 on a per-client premium tier, 4 on engine
+capabilities.
 
 ## Judgement calls
 
@@ -224,22 +223,48 @@ if Pune wants it:
 
 4. **R20** — three caps of one, or one cap across the group? (judgement call 5)
 
-## Data gaps in the Pune item list
+## Data corrections applied
 
-Fixing any of these turns a DATA row above into DONE. None blocks generation.
+`scripts/pune_flag_corrections.py` sets nine flags the raw workbook left at 0.
+Both affected rules were silently inert without them, and re-importing a fresh
+workbook drops the corrections again — so the script is committed and
+`tests/test_pune_rules.py::test_flag_corrections_are_applied` fails if they are
+missing.
 
-1. `is_black_chana_gravy` is 0 for every row, though `black_chana_malwani` and
-   `kala_chana_chat` exist (R14).
-2. `is_leafy_based_dish` is 0 for every veg dry, including
-   `lasooni_aloo_palak_dry`, `mix_veg_hariyali` and `moong_methi_dry` (R31).
-3. `welcome_drink` has only 4 items for a 5-day week, so one drink must repeat.
-4. `bread` has only 2 items (chapati, phulka). Handled as staples per R36, but
-   more breads would give the slot real variety.
-5. `healthy_rice` has 1 item (`birista_pulao`); any client selecting it serves
-   the same dish daily.
-6. `curd_side` has 2 items (`raita`, `boondi_raita`).
-7. The `dal_rasam` and `dal_sambar` combo slots resolve to their dal component
-   only (no rasam or sambar items), so selecting either silently collapses to an
-   all-dal week. Both are off by default.
-8. No maida bread, multigrain bread, oil-based bread, puri, bakery dessert,
-   paneer fry, sambar, rasam, soup or starter — see the DATA/N/A rows above.
+| Item | Flag | Rule it unblocks |
+|---|---|---|
+| `black_chana_malwani` | `is_black_chana_gravy` | R14 |
+| `palak_paneer` | `is_leafy_based_dish` | R43 |
+| `palak_peas_curry` | `is_leafy_based_dish` | R43 |
+| `lasooni_aloo_palak_dry` | `is_leafy_based_dish` | R31, R43 |
+| `moong_methi_dry` | `is_leafy_based_dish` | R31, R43 |
+| `mix_veg_hariyali` | `is_leafy_based_dish` | R31, R43 |
+| `dal_methi` | `is_leafy_based_dish` | R43 |
+| `dal_coriander` | `is_leafy_based_dish` | R43 |
+| `mint_rice` | `is_leafy_based_dish` | R43 |
+
+The line drawn for "leafy" is the one already in the data: the defining ingredient
+is a leafy green (palak, methi, coriander, mint, hariyali). Cucumber
+(`khamang_kakadi`) and cabbage are out, matching how `coriander_rice`, `dal_palak`,
+`green_salad` and `methi_mutter_masala` were originally flagged.
+
+## Remaining thin spots in the Pune item list
+
+None of these blocks generation, and none currently bites for Amadeus Pune —
+listed so a second Pune client is not surprised.
+
+1. `welcome_drink` has 4 items. Amadeus Pune serves buttermilk daily so it does
+   not matter there; a client rotating drinks over a 7-day week would repeat one.
+2. `bread` has 2 items (chapati, phulka), handled as staples per R36.
+3. `healthy_rice` has 1 item (`birista_pulao`) — any client selecting it serves the
+   same dish daily.
+4. `curd_side` has 2 items (`raita`, `boondi_raita`).
+5. The `dal_rasam` and `dal_sambar` combo slots resolve to their dal component
+   only (the list has no rasam or sambar), so selecting either silently collapses
+   to an all-dal week. Both are off by default.
+6. No maida bread, multigrain bread, oil-based bread, puri, bakery dessert,
+   paneer fry, sambar, rasam, soup, starter or non-veg — see the N/A rows above.
+7. `mix_kathol` is filed as a `veg_dry` while the client's sample serves it in the
+   Gravy Veg row, and `potato_chilli` carries `key_ingredient: paneer` while being
+   a potato dish. Both look like classification slips; neither is changed here
+   because one printed row is thin evidence for editing an item's taxonomy.

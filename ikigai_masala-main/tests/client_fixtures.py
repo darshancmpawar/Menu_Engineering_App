@@ -113,15 +113,17 @@ CLIENTS: List[Dict[str, Any]] = [
         # The first non-Bangalore client: its city selects the Pune item list
         # (data/raw/city_items/pune.xlsx) and the Pune ruleset. Also the only
         # client with serve_weekends set, so the sweep covers a 7-day horizon.
+        # `curd_side` was added in the editor so Sunday's raita is a solved
+        # ontology dish rather than a stamped string.
         'name': 'Amadeus Pune', 'version': 1, 'city': 'Pune',
         'serve_weekends': True, 'item_cooldown_days': 20,
         'source_pools': [],
         'counters': [
             _c('Counter 1',
                ['welcome_drink', 'salad', 'bread', 'rice', 'veg_dry', 'veg_gravy',
-                'dal', 'dessert', 'white_rice', 'papad'],
-               {'bread': 1, 'dal': 1, 'dessert': 1, 'rice': 1, 'salad': 1,
-                'veg_dry': 1, 'veg_gravy': 1, 'welcome_drink': 1},
+                'dal', 'dessert', 'white_rice', 'papad', 'curd_side'],
+               {'bread': 1, 'curd_side': 1, 'dal': 1, 'dessert': 1, 'rice': 1,
+                'salad': 1, 'veg_dry': 1, 'veg_gravy': 1, 'welcome_drink': 1},
                _ALL_NORTH),
         ],
     },

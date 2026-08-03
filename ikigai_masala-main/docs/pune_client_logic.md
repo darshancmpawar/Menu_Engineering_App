@@ -17,7 +17,9 @@ nine stated rules. Scope is **lunch**.
 
 One counter, seven service days (`serve_weekends` is set), all-north theme map,
 `source_pools: []` (the whole Pune list — every row in
-`data/raw/city_items/pune.xlsx` is tagged `common`).
+`data/raw/city_items/pune.xlsx` is tagged `common`). Categories, as configured in
+the editor: Welcome Drink, Salad, Indian Bread, Flavoured Rice, White Rice, Veg
+Dry, Veg Gravy, Dal, Dessert, Papad, **Curd / Raita**.
 
 ### The sample week
 
@@ -43,30 +45,31 @@ Two readings of the grid worth stating, because the rest follows from them:
   generated menu prints a `white_rice` row every day and a `rice` row on those
   two days.
 * **Sunday's Salad column is a raita.** `raita` and `boondi_raita` are real Pune
-  dishes, but the ontology files them under `curd_side`, so they are not
-  candidates for the `salad` slot. The pin is stamped as text (see the note under
-  R-Sun below).
+  dishes filed under `curd_side` — the **Curd / Raita** category. That category is
+  configured on the counter and restricted to Sunday, so the salad slot runs
+  Mon–Sat and Sunday's row is a solved raita rather than a stamped string.
 
 ### Stated rules → implementation
 
 | # | Stated | Status | Where |
 |---|---|---|---|
 | 1 | weekly 1 panner | DONE | `amadeus_pune_paneer_weekly` — `selector_frequency`, `key_ingredient: paneer`, `exact: 1`. No `base_slot`, so it counts across every slot: the Pune list has 13 paneer gravies and one paneer-based veg dry |
-| 2 | weekly 1 soya | DONE | `amadeus_pune_soya_weekly` — same shape, `key_ingredient: soy` (3 veg dries + 1 gravy) |
+| 2 | weekly 1 soya | DONE | Two rules: `amadeus_pune_soya_veg_dry_weekly` (`exact: 1`, scoped to `veg_dry`) and `amadeus_pune_soya_total_weekly` (`max: 1` across every slot). Together: exactly one soya a week, and it is the veg dry — where the sample has it (Monday's Soya Chatpata Dry), and what makes the city's `premium_veg_dry_weekly` cap non-vacuous, since all three of Pune's `is_premium_veg_dry` items are the soya dries. Drop the `base_slot` if a soya gravy is acceptable instead |
 | 3 | white rice daily | DONE | `white_rice` is a constant slot the counter already serves; `amadeus_pune_white_rice_mon_sat` takes it off Sunday (rule 9 overrides "daily" there) |
 | 4 | flavour rice on Tue and sun | DONE | `amadeus_pune_flavour_rice_tue_sun` — `slot_day_restriction` on `rice`, `allowed_weekdays: [tue, sun]` |
 | 5 | chapati daily in indain bread | DONE | `amadeus_pune_chapati_daily` — `slot_composition` on `bread` with one `count: 1` component selecting `item: chapati`. On a one-slot family that means "this slot must be a chapati" |
 | 6 | welcome drink will have butter milk daily | DONE | `amadeus_pune_buttermilk_daily` (same one-slot mandate, `is_buttermilk`) + `amadeus_pune_buttermilk_is_a_staple` (`repeatable_items`, so the daily repeat is exempt from `unique_items` and the 20-day cooldown) |
 | 7 | sat and Sunday also working | DONE | `clients.serve_weekends = true` — already set in the live row |
 | 8 | sat no veg dry it should be blank | DONE | `amadeus_pune_veg_dry_weekdays_only` — `veg_dry` runs Mon–Fri (Sunday drops it too, per rule 9) |
-| 9 | in sun we server only flvour rice(any veg biryani), papad, welcom drinl and sweet that's all | DONE | `amadeus_pune_veg_gravy_mon_sat`, `_dal_mon_sat`, `_bread_mon_sat`, `_white_rice_mon_sat` take those four off Sunday; `amadeus_pune_sunday_veg_biryani` (`slot_composition` with `components_by_weekday: {sun: …}`) makes Sunday's rice a veg biryani. "Any" is why it selects on `is_mixedveg_biryani` rather than pinning a dish — the solver picks between `veg_biryani` and `handi_biryani` |
-| Sun | (grid) Sunday's salad row is a raita | DONE, stamped | `constant_items: {"salad": {"sunday": "Raita"}}`. Stamped as text because `raita` is not a `salad` candidate. **Alternative:** add `curd_side` to the counter and restrict it to Sunday — then the solver chooses between the two raitas and the dish is a real ontology item (colour suffix, history). That is a DB config change, so it is left to you |
+| 9 | in sun we server only flvour rice(any veg biryani), papad, welcom drinl and sweet that's all | DONE | `amadeus_pune_veg_gravy_mon_sat`, `_dal_mon_sat`, `_bread_mon_sat`, `_white_rice_mon_sat`, `_salad_mon_sat` take those five off Sunday; `amadeus_pune_sunday_veg_biryani` (`slot_composition` with `components_by_weekday: {sun: …}`) makes Sunday's rice a veg biryani. "Any" is why it selects on `is_mixedveg_biryani` rather than pinning a dish — the solver picks between `veg_biryani` and `handi_biryani` |
+| Sun | (grid) Sunday's salad row is a raita | DONE | `amadeus_pune_curd_side_sunday_only` — the **Curd / Raita** category, restricted to Sunday, the biryani day and the only day the sample shows it. A real ontology dish (the solver picks between `raita` and `boondi_raita`), so it carries a colour and lands in history like any other. Widen `allowed_weekdays` if the client wants curd or raita on more days |
 
 Generated structure, verified against the grid:
 
 | slot | runs on |
 |---|---|
-| salad | Mon–Sun (Sunday's is the stamped raita) |
+| salad | Mon–Sat |
+| curd_side (Curd / Raita) | Sun |
 | veg_gravy | Mon–Sat |
 | veg_dry | Mon–Fri |
 | rice | Tue, Sun |
@@ -79,27 +82,39 @@ Generated structure, verified against the grid:
 
 ### Sample dishes vs the Pune item list
 
-The solver draws from `city_items/pune.xlsx`, so it cannot serve a dish the list
-does not carry. Nearly every dish in the sample is there — 32 of the 35 named
-ones, most under a slightly different spelling:
+**Every dish in the sample is already in the list** — all 34 of them. Most appear
+under a different spelling, which is why an exact-name check finds only 22:
 
 | Sample | Item in the list |
 |---|---|
 | Lachchedar onion | `lachchedar_onion_salad` |
 | Moong chat | `moong_sprouts_chat` |
 | Mix cut salad | `cut_salad` |
-| Aloo jeera | `aloo_jeera_dry` |
-| Bhendi do pyaza | `bhindi_do_pyaza` |
-| Motichur laddoo | `moti_chur_laddu` |
+| Mix katol | `mix_kathol` |
 | Gatte nu sak | `gatte_ki_sabzi` |
 | Aloo mutter | `aloo_mutter_masala`, `aloo_mutter_homestyle` |
+| Green gujrat | `green_gujarat` |
+| Aloo jeera | `aloo_jeera_dry` |
+| Bhendi do pyaza | `bhindi_do_pyaza` |
+| Steam rice | `steamed_rice` (served via the `white_rice` constant slot) |
+| Coriender rice | `coriander_rice` |
+| Butter milk | `buttermilk` |
+| Motichur laddoo | `moti_chur_laddu` |
 | Seviya kheer | `semiya_kheer` |
 | Banana custerd | `banana_custard` |
+| Besan barfi | `besan_burfi` |
 
-Genuinely absent: **Mix katol**, **Green gujrat**, **Besan barfi**. None of the
-three blocks generation — they change *which* dish fills a row, not whether the
-row is filled. Add them to the Pune workbook to bring the generated week closer
-to the sample dish for dish.
+So nothing needs adding to the workbook for this client, and the generated week
+can in principle be the sample week dish for dish. Two classification questions
+the sample raises, neither of which blocks anything:
+
+* **`mix_kathol` is filed as a `veg_dry`** but the sample serves it in the Gravy
+  Veg row. Kathol dishes are usually a wet pulse curry, so `veg_gravy` may be the
+  right course type — but reclassifying an item on the strength of one printed row
+  is your call, not mine. As filed it can still appear, in the veg dry row.
+* **`potato_chilli` carries `key_ingredient: paneer`** while being a potato dish.
+  That makes it the only paneer-tagged `veg_dry`, so it counts against the "weekly
+  1 paneer" rule if it is ever chosen. Looks like a tagging slip.
 
 ### Open questions
 
