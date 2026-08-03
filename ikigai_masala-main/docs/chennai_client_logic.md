@@ -134,12 +134,14 @@ worth recording because they are the gate doing its job on a new city.
 
 Findings that are not bugs in this client's config but are worth knowing.
 
-* **Fish is filed under `chicken_*` sub-categories.** The master taxonomy has no
-  seafood bucket — only `chicken_dry`, `chicken_gravy`, `egg_items` and
-  `non_veg_biryani` — so Chennai's 8 fish dishes are filed as the closest match,
-  with `is_nonveg_dry` / `is_nonveg_gravy` set correctly. The source workbook
-  flagged this rather than changing the master unilaterally, which was right. Any
-  rule keyed on `sub_category: chicken_*` will also match fish.
+* **Fish now has a real place in the taxonomy** — it used to be filed under
+  `chicken_*`. The master grew up around a chicken-and-egg non-veg list, so the
+  import filed all 8 fish dishes under the nearest chicken bucket:
+  `fish_kuzhambu` came through as `sub_category: chicken_south_coastal`,
+  `key_ingredient: chicken`, carrying `is_south_chicken_gravy`. Only
+  `primary_protein` was right. `scripts/seafood_taxonomy.py` adds `is_seafood` +
+  `is_fish_dish` to every city workbook and repairs the rows — see the seafood
+  section below.
 * **26 of 28 desserts are tagged `cuisine_family: north_indian`**, only badusha
   and mysore_pak south. `payasam`, `semiya_payasam` and all three kesaris are
   South Indian and filed north. `dessert` is exempt from the theme filter, so
@@ -157,6 +159,55 @@ Findings that are not bugs in this client's config but are worth knowing.
   `darbar_soup`, `chicken_chindamani`) — generic source names the workbook could
   not resolve to a known dish. `dry_sweet` and `sweet` appear in the sample, so
   they are real menu rows, just unspecific.
+
+---
+
+## Seafood: a missing branch of the taxonomy
+
+Chennai is the first city list with fish, and the master ontology had only
+chicken and egg — `is_egg_dish` for the protein, `chicken_*` sub-categories for
+everything else. The import therefore filed all 8 fish dishes under the nearest
+chicken bucket. Only `primary_protein` was correct, which is why the dishes still
+rendered red and `NONVEG_PROTEINS` already matched them.
+
+`scripts/seafood_taxonomy.py` (idempotent, re-run after any re-import) fixes it:
+
+| What | Before | After |
+|---|---|---|
+| Flag columns | none | `is_seafood` + `is_fish_dish`, added after `is_egg_dish` in **every** city workbook |
+| `sub_category` | `chicken_south_coastal`, `chicken_chinese_dry`, `chicken_spicy_fry` | `fish_south_coastal`, `fish_chinese_dry`, `fish_spicy_fry` |
+| `key_ingredient` | `chicken` on all 8 | `fish` |
+| Chicken-only flags | `fish_kuzhambu` held `is_south_chicken_gravy` | cleared |
+| `cuisine_family` | `fish_65`, `fish_roast` north_indian | `south_indian` |
+
+Three of those are more than tidiness:
+
+* **`key_ingredient` was a live bug.** `ingredient_ban_rule` matches on
+  `key_ingredient` **and** `primary_protein`, so while the fish rows read
+  `key_ingredient: chicken`, a client banning chicken silently lost the fish too,
+  and a client banning fish caught them only via the second column.
+* **`is_south_chicken_gravy` on a fish** put `fish_kuzhambu` inside
+  `avoid_consecutive_south_chicken` — a rule about chicken — and inside
+  `_augment_nonveg_pair`'s "keep the regional chicken gravy" exemption. That
+  rule's comment now reads 10 rows rather than 11.
+* **`cuisine_family` decides availability.** The theme filter narrows
+  `nonveg_main` by cuisine, so a fish tagged north_indian cannot appear on a
+  south day — and south is three of Toast Tab's five. The master files
+  `chicken_65` as south_indian, so `fish_65` sitting in north contradicted the
+  taxonomy's own convention. `fish_tawa_fry` was deliberately left north: tawa
+  fry is a north/street preparation and the master keeps a bucket for it.
+
+Both new columns exist because they answer different questions: `is_fish_dish` is
+the fish-only subset, `is_seafood` the umbrella, so a future prawn or crab row is
+covered without editing any rule. The columns go into `bangalore.xlsx` (0 rows)
+and `pune.xlsx` (0 rows) as well as Chennai, because `normalize_city_ontology.py`
+forces a new city's column set to match the reference list — a column absent from
+the reference cannot exist in any city.
+
+`chennai.json` gains one rule that reads the new flag, `seafood_weekly`
+(`max: 2`). It is **not** from a rulebook: the sample serves fish once in seven
+days, and 2 leaves a five-day week room to serve it without being forced to.
+Widen or drop it when a real Chennai rulebook arrives.
 
 ---
 

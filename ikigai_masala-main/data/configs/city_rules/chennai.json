@@ -239,7 +239,7 @@
       "group_by": "key_ingredient"
     },
     {
-      "_comment": "Don't run South Indian chicken gravies on consecutive days (11 rows) — soft, so it yields when the non-veg pool for a themed day leaves nothing else.",
+      "_comment": "Don't run South Indian chicken gravies on consecutive days (10 rows) — soft, so it yields when the non-veg pool for a themed day leaves nothing else. Was 11 until fish_kuzhambu stopped being flagged is_south_chicken_gravy: it is a fish, and scripts/seafood_taxonomy.py cleared the chicken flags off the 8 seafood rows.",
       "name": "avoid_consecutive_south_chicken",
       "type": "soft_preference",
       "mode": "avoid_consecutive",
@@ -248,6 +248,16 @@
       "selector": {
         "flag": "is_south_chicken_gravy"
       }
+    },
+    {
+      "_comment": "Seafood at most twice a week. NOT from a rulebook — read off the sample, which serves fish once in seven days (fish kuzhambu, Fri 03 Jul), and set at 2 rather than 1 so a five-day week is not forced to drop fish entirely when the theme filter favours it. Exists mainly so the seafood flags are load-bearing: Chennai is the first city list with fish, and `is_seafood` is the umbrella (`is_fish_dish` is the fish-only subset, so prawn or crab in a future list is covered without touching this rule). Drop or widen this once a Chennai rulebook states the real rate.",
+      "name": "seafood_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_seafood"
+      },
+      "base_slot": "nonveg_main",
+      "max": 2
     },
     {
       "_comment": "Same for North Indian chicken gravies (13 rows).",

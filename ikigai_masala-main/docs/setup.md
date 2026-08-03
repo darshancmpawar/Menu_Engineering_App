@@ -39,15 +39,7 @@ older normalized database (folds the legacy `menu_categories` /
 reshapes the old per-dish `menu_history`):
 
 ```
-scripts/setup_all.sql   master schema + migrations (supersedes the two files below)
-```
-
-For a brand-new database you can instead run the two component files
-(same result, no migration steps):
-
-```
-scripts/create_tables.sql          clients, app_settings
-scripts/create_history_tables.sql  menu_history, week_signatures
+scripts/setup_all.sql   master schema + migrations
 ```
 
 ---
@@ -90,18 +82,7 @@ windows and weekday themes by up to a day.
 
 ---
 
-## 5. Seed data
-
-```bash
-export SUPABASE_URL=...
-export SUPABASE_KEY=...
-
-python scripts/seed_supabase.py   # migrate data/configs/clients.json into Supabase
-```
-
----
-
-## 6. Run
+## 5. Run
 
 ```bash
 streamlit run app.py
@@ -115,30 +96,3 @@ To run the API standalone (e.g. under gunicorn):
 ```bash
 flask --app api.app run              # or python -m api.app
 ```
-
----
-
-## 7. Docker
-
-A single-process container (Streamlit on `:8501`, auto-spawned Flask on
-loopback `:5000`) lives at the repo root.
-
-```bash
-cp .env.example .env       # fill in real SUPABASE_URL / SUPABASE_KEY
-docker compose up --build  # → http://localhost:8501
-```
-
-The container:
-
-- Runs as non-root (`uid 10001`) — defence-in-depth.
-- Uses `tini` as PID 1 so `docker stop` / Ctrl-C are clean.
-- Exposes only `8501`. Flask is *not* published — the Streamlit
-  frontend talks to it over loopback inside the container.
-- Has a `HEALTHCHECK` against `/api/v1/health` so `docker compose ps`
-  shows `healthy`/`unhealthy` correctly. Set `APP_VERSION` in `.env` to
-  the build SHA so `/health` and `/` surface what's running.
-
-The schema migrations and the client seed still need a one-time run
-against Supabase from your laptop (sections 3 + 5 above) — they're
-deliberately out of the container so a forgotten `docker run` can't
-mutate the database.

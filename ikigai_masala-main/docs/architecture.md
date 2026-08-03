@@ -124,13 +124,12 @@ The schema is four tables (`clients`, `app_settings`, `menu_history`,
   backfills `clients.counters` from an older normalized database, adds the
   `clients.city` column, and reshapes an old per-dish `menu_history` into the
   one-row-per-day JSON form. Run this once in the Supabase SQL editor.
-- `create_tables.sql` — component file: `clients` (config in `counters` JSONB
-  + `city` + optimistic-concurrency `version`) and `app_settings`, with RLS
-  policies.
-- `create_history_tables.sql` — component file: `menu_history` (PK
+  It creates `clients` (config in `counters` JSONB + `city` +
+  optimistic-concurrency `version`), `app_settings`, `menu_history` (PK
   `(client_name, service_date)`, `menu` JSONB) and `week_signatures`, with RLS
-  policies.
+  policies on each.
 
-All are idempotent (`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`).
-`setup_all.sql` supersedes running the two component files separately; use the
-component files only for a brand-new database that needs no migration.
+It is idempotent (`CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`),
+so re-running it on a live database is safe. It is the only schema script — the
+`create_tables.sql` / `create_history_tables.sql` component files it superseded
+have been removed, so there is one path to a correct schema rather than two.

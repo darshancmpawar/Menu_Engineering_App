@@ -2135,7 +2135,7 @@ def _probe_supabase():
             if not _drift_logged:
                 logger.error(
                     "Schema drift: clients.version column missing. "
-                    "Re-run scripts/create_tables.sql in the Supabase "
+                    "Re-run scripts/setup_all.sql in the Supabase "
                     "SQL editor (the ALTER TABLE ... ADD COLUMN IF NOT "
                     "EXISTS is idempotent). The editor + concurrency "
                     "code degrade gracefully until the column is "
