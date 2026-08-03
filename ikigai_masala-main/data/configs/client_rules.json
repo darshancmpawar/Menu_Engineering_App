@@ -1165,19 +1165,18 @@
         ]
       },
       {
-        "_comment": "'white rice daily', except Sunday — 'in sun we serve only flavour rice (any veg biryani), papad, welcome drink and sweet'. Constant slots are stamped rather than solved, and skip_cells suppresses them too.",
-        "name": "amadeus_pune_white_rice_mon_sat",
-        "type": "slot_day_restriction",
-        "base_slot": "white_rice",
-        "allowed_weekdays": [
-          "mon",
-          "tue",
-          "wed",
-          "thu",
-          "fri",
-          "sat"
-        ]
-      },
+        "_comment": "'white rice daily', but the sample week's single rice row shows ONE rice per day: Tue is Coriander rice and Sun is Veg biryani, with steamed rice on the other five. So white rice runs on exactly the days the flavoured-rice slot does NOT (Mon, Wed, Thu, Fri, Sat) — it used to include Tue, which put Tawa Pulao AND steamed rice on the same day. Kept as a weekday list rather than a rule keyed off the flavoured-rice slot because both slots are day-restricted to fixed weekdays; if 'flavour rice on Tue and sun' ever changes, this list changes with it.",
+      "name": "amadeus_pune_white_rice_off_on_flavour_rice_days",
+      "type": "slot_day_restriction",
+      "base_slot": "white_rice",
+      "allowed_weekdays": [
+        "mon",
+        "wed",
+        "thu",
+        "fri",
+        "sat"
+      ]
+    },
       {
         "_comment": "'sat no veg dry it should be blank' — and Sunday serves no veg dry either.",
         "name": "amadeus_pune_veg_dry_weekdays_only",
