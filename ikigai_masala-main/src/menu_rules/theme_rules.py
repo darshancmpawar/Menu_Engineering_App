@@ -400,8 +400,14 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
         target = south_val if day_type == 'south' else north_val
 
-        # Bread cuisine lock: south bread on south days, non-south on others
-        if base_slot == 'bread':
+        # Bread cuisine lock: south bread on south days, non-south on others.
+        # `exempt_slots` wins when it names bread — the lock used to run ahead of
+        # the exemption check below and could not be switched off at all, so a
+        # ruleset listing `bread` was silently ignored. Chennai needs it off: its
+        # non-dosai breads are the wheat flatbreads a Tamil lunch actually serves
+        # alongside the rice, and locking bread to south_indian on a south day
+        # narrowed the slot to the dosai/idly family.
+        if base_slot == 'bread' and base_slot not in self.exempt_slots:
             if cuisine_col in pool.columns:
                 if day_type == 'south':
                     filtered = pool[pool[cuisine_col].map(_norm_str) == south_val]
@@ -470,7 +476,10 @@ class ThemeSlotFilterRule(BaseMenuRule):
             for base in base_slots:
                 if (d, base) in ctx.skip_cells:
                     continue
-                if base in self.exempt_slots and base != 'bread':
+                # No `and base != 'bread'` here any more: the bread cuisine lock
+                # now honours the exemption, so diagnose() must agree with
+                # pre_filter_pool() or it reports narrowing that never happens.
+                if base in self.exempt_slots:
                     continue
                 pool = ctx.pools.get(base)
                 if pool is None or len(pool) == 0:
@@ -585,14 +594,15 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return None
 
         # south / north
-        if base_slot == 'bread' and cuisine_col in pool.columns:
+        if (base_slot == 'bread' and base_slot not in self.exempt_slots
+                and cuisine_col in pool.columns):
             cuisines = pool[cuisine_col].map(_norm_str)
             if day_type == 'south':
                 return int((cuisines == south_val).sum())
             return int((cuisines != south_val).sum())
 
         if base_slot in self.exempt_slots:
-            return None  # No cuisine filter on exempt non-bread slots
+            return None  # No cuisine filter on an exempt slot, bread included
 
         if cuisine_col not in pool.columns:
             return None

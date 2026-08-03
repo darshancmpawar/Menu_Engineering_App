@@ -1150,6 +1150,96 @@
       }
     }
   },
+  "Toast Tab CHN": {
+    "_comment": "Chennai. Derived from a 7-day SERVICE HISTORY (Wed 01 Jul – Thu 09 Jul 2026, weekdays only), not a written rulebook — see docs/chennai_client_logic.md for the grid and how each rule was read off it. THE ONE ASSUMPTION: the sample spans two part-weeks whose weekday→theme mapping conflicts (Wed is south on 01 Jul but biryani on 08 Jul; Thu is north on 02 Jul but south on 09 Jul), so the theme map is inferred from the later, more complete run 06–09 Jul — Mon/Thu/Fri south, Tue north, Wed biryani. That fits 5 of the 7 observed days and reproduces the sample's 4 south : 2 north : 1 biryani ratio scaled to a 5-day week. The weekday lists below FOLLOW from that map: if the real theme map differs, these lists must move with it, because what the sample actually determines is the THEME each slot belongs to, not the weekday.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "White rice on the SOUTH days only. The sample is 7/7 on this: white rice appears on every south day and on no north or biryani day, where a flavoured rice takes its place — one rice per day, never two (the same structure Amadeus Pune has).",
+        "name": "toast_tab_chn_white_rice_south_days",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "mon",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Flavoured rice on the NORTH and BIRYANI days only — peas pulao (north), ghee bisibelebath (north), veg biryani (biryani) in the sample. Complement of the white-rice list, so exactly one rice fills every day.",
+        "name": "toast_tab_chn_flavour_rice_north_biryani_days",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "tue",
+          "wed"
+        ]
+      },
+      {
+        "_comment": "Rasam on the SOUTH days only — the 'RASAM / CURD' cell, which the source workbook auto-split into two servings. It appears on all four south days and none of the others: with no plain rice to eat it with, a north or biryani day serves curd rice instead.",
+        "name": "toast_tab_chn_rasam_south_days",
+        "type": "slot_day_restriction",
+        "base_slot": "rasam",
+        "allowed_weekdays": [
+          "mon",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "The curd half of 'RASAM / CURD', same four south days. The biryani day's RAITHA is a curd_side too, which is why `wed` is included here but not in the rasam list — a biryani gets a raita, not a rasam.",
+        "name": "toast_tab_chn_curd_side_south_and_biryani_days",
+        "type": "slot_day_restriction",
+        "base_slot": "curd_side",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Curd rice on the NORTH and BIRYANI days — the sour/yogurt component when there is no white rice + rasam. 3/3 in the sample.",
+        "name": "toast_tab_chn_curd_rice_north_biryani_days",
+        "type": "slot_day_restriction",
+        "base_slot": "curd_rice",
+        "allowed_weekdays": [
+          "tue",
+          "wed"
+        ]
+      },
+      {
+        "_comment": "Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1). Chennai's cap of one maida bread a week is simply wrong for this client: the sample serves a maida bread on 4 of 7 days (aloo paratha, butter kulcha, kothu parotta, paratha) and only 3 of the 5 non-maida wheat breads in the whole 29-dish pool are chapati variants. Left as a cap rather than disabled, because 'unlimited refined-flour bread' is not what the sample shows either — 3 of 5 weekdays is the observed rate. Without this the pre-flight gate correctly answered 422: the wheat-flatbread composition below forces a maida bread on days the cap forbids.",
+        "name": "maida_bread_weekly",
+        "type": "selector_frequency",
+        "selector": {
+          "flag": "is_maida_bread"
+        },
+        "base_slot": "bread",
+        "max": 3
+      },
+      {
+        "_comment": "The bread is always a wheat or maida flat bread, never the dosai/idly family. Every one of the seven sampled breads is chapati, paratha, kulcha or kothu parotta; Chennai's 29-dish bread pool also holds 9 rice-breads (dosai, idly, appam) and the solver picked 'podi idly' as a bread row until this was added. A one-slot composition component with count 1 IS 'this slot must be a matching dish' (note 20) — `fixed_daily_item` would be the wrong tool, it only makes the choice consistent.",
+        "name": "toast_tab_chn_bread_is_a_wheat_flatbread",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "any_flag": [
+                "is_plain_phulka_chapathi",
+                "is_paratha",
+                "is_maida_bread",
+                "is_tandoori_roti"
+              ]
+            },
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
   "Amadeus Pune": {
     "_comment": "Amadeus Pune — from the client's sample week (docs/pune_client_logic.md). Seven service days: Mon-Fri full, Saturday drops the veg dry, Sunday is flavoured rice (a veg biryani) with raita, papad, buttermilk and a sweet and nothing else. The raita comes from the Curd / Raita category the client configured, restricted to Sunday — the day the biryani wants it.",
     "disable": [],
@@ -1166,17 +1256,17 @@
       },
       {
         "_comment": "'white rice daily', but the sample week's single rice row shows ONE rice per day: Tue is Coriander rice and Sun is Veg biryani, with steamed rice on the other five. So white rice runs on exactly the days the flavoured-rice slot does NOT (Mon, Wed, Thu, Fri, Sat) — it used to include Tue, which put Tawa Pulao AND steamed rice on the same day. Kept as a weekday list rather than a rule keyed off the flavoured-rice slot because both slots are day-restricted to fixed weekdays; if 'flavour rice on Tue and sun' ever changes, this list changes with it.",
-      "name": "amadeus_pune_white_rice_off_on_flavour_rice_days",
-      "type": "slot_day_restriction",
-      "base_slot": "white_rice",
-      "allowed_weekdays": [
-        "mon",
-        "wed",
-        "thu",
-        "fri",
-        "sat"
-      ]
-    },
+        "name": "amadeus_pune_white_rice_off_on_flavour_rice_days",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "thu",
+          "fri",
+          "sat"
+        ]
+      },
       {
         "_comment": "'sat no veg dry it should be blank' — and Sunday serves no veg dry either.",
         "name": "amadeus_pune_veg_dry_weekdays_only",

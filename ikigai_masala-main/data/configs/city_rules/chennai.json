@@ -1,5 +1,321 @@
 {
-  "description": "chennai menu rules — inherits the Bangalore ruleset until chennai-specific rules are defined.",
-  "extends": "bangalore",
-  "rules": []
+  "description": "chennai menu rules — standalone (no `extends`), because inheriting Bangalore's ruleset keyed a third of its rules on flags Chennai's list leaves at 0. Chennai has NO welcome drinks at all (no `welcome_drink` course_type, `is_welcome_drink` = 0 across 361 rows), so every drink rule Bangalore ships was silently inert here. NOTE ON SCOPE: this is the engine skeleton plus the caps that are provable from the item list — it is NOT a transcription of a Chennai rulebook, because none has been supplied. Pune's 36 rules came from `Pune_menu_rulebook_101.xlsx`; the equivalent regional rules for Chennai (which kuzhambu on which day, poriyal/kootu rotation, rasam cadence) still need that document. Everything below is either universal engine behaviour or a cap whose selector was verified to match real Chennai items — see tests/test_chennai_rules.py, which fails if any rule stops matching.",
+  "rules": [
+    {
+      "_comment": "20-day item cooldown, same window as every other city.",
+      "name": "item_cooldown_20d",
+      "type": "item_cooldown",
+      "cooldown_days": 20
+    },
+    {
+      "_comment": "No dish twice inside one plan.",
+      "name": "unique_items_session",
+      "type": "unique_items",
+      "scope": "session"
+    },
+    {
+      "_comment": "Don't reissue a week's whole signature within 30 days.",
+      "name": "no_repeat_weeks",
+      "type": "week_signature_cooldown",
+      "cooldown_days": 30
+    },
+    {
+      "_comment": "Theme filter. `welcome_drink` is not in the exempt list because Chennai has no welcome drinks to exempt. `sambar`, `rasam`, `curd`, `curd_side` and `curd_rice` ARE exempt: they are the South Indian spine of every Chennai lunch and must survive a north or biryani themed day — without the exemption a north day filters the sambar pool to nothing and the slot silently drops. `dessert` is exempt for a measured reason: 26 of Chennai's 28 desserts are tagged cuisine_family=north_indian and only 2 (badusha, mysore_pak) south_indian, so a south day narrowed the dessert pool to TWO dishes and any week with 3+ south days was INFEASIBLE on uniqueness alone. The tagging is also wrong — payasam, semiya_payasam and all three kesaris are South Indian and filed north — but exempting the slot is the right fix regardless: a canteen dessert is not what makes a day South Indian, and the ruleset should not depend on 5 dishes being re-tagged to stay feasible. `bread` is exempt because the sample week contradicts theming it: Toast Tab serves CHAPPATHI / CHAPATHI / PARATHA on its South Indian days, but the filter narrows bread to the 10 south-tagged rows, which are the dosai and idly family — so a themed bread slot produced 'podi idly' as the bread row on a south day. A Chennai canteen serves chapati alongside a Tamil meal every day; bread is not what makes the day South Indian.",
+      "name": "theme_cuisine_filter",
+      "type": "theme_slot_filter",
+      "exempt_slots": [
+        "dal",
+        "salad",
+        "soup",
+        "healthy_rice",
+        "rice",
+        "sambar",
+        "rasam",
+        "curd",
+        "curd_side",
+        "curd_rice",
+        "dessert",
+        "bread"
+      ]
+    },
+    {
+      "_comment": "Colour variety. Chennai's list is brown-heavy — 194 of 361 rows (54%) are brown, against 67 red and 34 yellow — so Pune's flat cap of 2 per colour is too tight here: a day drawing 6 colour slots from a 54%-brown pool needs somewhere to put the third brown dish. This uses Bangalore's asymmetric shape instead: every colour capped at 2, with ONE colour allowed to reach 3.",
+      "name": "colour_three_distinct_one_colour_may_reach_three",
+      "type": "color_variety",
+      "min_distinct_per_day": 3,
+      "min_distinct_per_day_chinese": 3,
+      "min_distinct_per_day_biryani": 3,
+      "max_same_color_per_day": 2,
+      "max_same_color_reach": 3,
+      "max_colors_at_reach": 1
+    },
+    {
+      "_comment": "Plain chapati/phulka may run on consecutive days — the same reasoning as Pune's R36. Chennai has 5 plain-chapati rows against a 29-dish bread pool, so this is less load-bearing here than in Pune (where the bread pool WAS the two chapatis), but a counter serving chapati daily still needs the cooldown exemption or week 2 has no chapati.",
+      "name": "plain_chapati_may_repeat",
+      "type": "repeatable_items",
+      "base_slot": "bread",
+      "selector": {
+        "flag": "is_plain_phulka_chapathi"
+      }
+    },
+    {
+      "_comment": "Rasam is a staple, and this one is load-bearing: the list holds exactly TWO rasam dishes (rasam, jeera_rasam) and a Chennai counter serves rasam most days. Under unique_items + the 20-day cooldown the slot is empty by day 3 of the first plan, never mind week 2. Rasam is the daily tamarind broth, not a variety slot — the same call as steamed rice.",
+      "name": "rasam_is_a_staple",
+      "type": "repeatable_items",
+      "base_slot": "rasam",
+      "selector": {
+        "course_type": "rasam"
+      }
+    },
+    {
+      "_comment": "Curd and raita are staples, for the reason Pune's raita_is_a_staple documents: 4 curd_side rows (plus 1 plain curd) against a slot served daily. A yogurt side is an accompaniment, not variety.",
+      "name": "curd_and_raita_are_staples",
+      "type": "repeatable_items",
+      "base_slot": "curd_side",
+      "selector": {
+        "course_type": "curd_side"
+      }
+    },
+    {
+      "_comment": "Curd rice likewise — the list holds 2 (curd_rice, dry_fruits_curd_rice) and Toast Tab serves it on every flavoured-rice day.",
+      "name": "curd_rice_is_a_staple",
+      "type": "repeatable_items",
+      "base_slot": "curd_rice",
+      "selector": {
+        "flag": "is_curd_rice"
+      }
+    },
+    {
+      "_comment": "One premium veg gravy a week (25 eligible rows). Cost rule, same as Pune's.",
+      "name": "premium_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "One premium veg dry a week (7 eligible rows).",
+      "name": "premium_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_veg_dry"
+      },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "_comment": "At most one premium veg dish on any single day, so the two weekly premiums cannot stack onto one plate.",
+      "name": "premium_veg_daily_max_1",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_premium_veg"
+      },
+      "daily_max": 1
+    },
+    {
+      "_comment": "One mixed-veg pulao or veg biryani a week in the rice slot (8 + 4 rows).",
+      "name": "mixedveg_pulao_biryani_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "any_flag": [
+          "is_mixedveg_pulao",
+          "is_mixedveg_biryani"
+        ]
+      },
+      "base_slot": "rice",
+      "max": 1
+    },
+    {
+      "_comment": "One non-veg biryani a week (5 rows). Chennai's non-veg pool is 63 dishes, so this leaves plenty for the other days.",
+      "name": "nonveg_biryani_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_nonveg_biryani"
+      },
+      "base_slot": "nonveg_main",
+      "max": 1
+    },
+    {
+      "_comment": "At most one non-veg biryani on a day, so a multi-slot non-veg counter cannot satisfy the weekly cap by stacking two onto one day (the trap note 9e documents).",
+      "name": "nonveg_biryani_daily_max_1",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_nonveg_biryani"
+      },
+      "daily_max": 1
+    },
+    {
+      "_comment": "One maida (refined-flour) bread a week — 15 rows, so this is a real constraint on a 29-dish bread pool.",
+      "name": "maida_bread_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_maida_bread"
+      },
+      "base_slot": "bread",
+      "max": 1
+    },
+    {
+      "_comment": "Baby corn once a week. Matched on the dish NAME, not `key_ingredient` — in Chennai all 4 baby-corn rows agree on both, but Bangalore's list showed key_ingredient='baby_corn' is the de-facto default for a mixed salad (67 rows, 3 of them actually baby corn), so the name is the trustworthy column across cities.",
+      "name": "baby_corn_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "name_contains": [
+          "baby_corn",
+          "babycorn"
+        ]
+      },
+      "max": 1
+    },
+    {
+      "_comment": "One leafy veg dry a week (4 rows: keerai and mint dishes).",
+      "name": "leafy_veg_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_leafy_based_dish"
+      },
+      "base_slot": "veg_dry",
+      "max": 1
+    },
+    {
+      "_comment": "Kootu at most twice a week. Chennai-specific and only expressible because `kootu` is its own sub_category (7 rows) — `course_type` files kootu under veg_gravy alongside the kurmas, so a course_type selector could not separate them. Two rather than one because kootu is an everyday Tamil dish, not a treat.",
+      "name": "kootu_twice_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "sub_category": "kootu"
+      },
+      "max": 2
+    },
+    {
+      "_comment": "One chana gravy a week (4 rows).",
+      "name": "chana_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_chana_gravy"
+      },
+      "max": 1
+    },
+    {
+      "_comment": "Dal colour must not repeat on adjacent days.",
+      "name": "dal_colour_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dal",
+      "group_by": "item_color",
+      "non_consecutive": true
+    },
+    {
+      "_comment": "Each sambar key ingredient at most twice per horizon — the 7-dish sambar pool would otherwise rotate two vegetables all week.",
+      "name": "sambar_key_ingredient_max_two",
+      "type": "attribute_grouping",
+      "base_slot": "sambar",
+      "group_by": "key_ingredient",
+      "max_per_group": 2
+    },
+    {
+      "_comment": "Vary the dessert form across adjacent days (halwa / payasam / kheer / laddu).",
+      "name": "dessert_form_non_consecutive",
+      "type": "attribute_grouping",
+      "base_slot": "dessert",
+      "group_by": "dessert_form",
+      "non_consecutive": true
+    },
+    {
+      "_comment": "Vary the veg gravy's key ingredient across the week.",
+      "name": "veg_gravy_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "priority": "high",
+      "base_slot": "veg_gravy",
+      "group_by": "key_ingredient"
+    },
+    {
+      "_comment": "Same for the veg dry.",
+      "name": "veg_dry_key_ingredient_variety",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "priority": "high",
+      "base_slot": "veg_dry",
+      "group_by": "key_ingredient"
+    },
+    {
+      "_comment": "Don't run South Indian chicken gravies on consecutive days (11 rows) — soft, so it yields when the non-veg pool for a themed day leaves nothing else.",
+      "name": "avoid_consecutive_south_chicken",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "nonveg_main",
+      "selector": {
+        "flag": "is_south_chicken_gravy"
+      }
+    },
+    {
+      "_comment": "Same for North Indian chicken gravies (13 rows).",
+      "name": "avoid_consecutive_north_chicken",
+      "type": "soft_preference",
+      "mode": "avoid_consecutive",
+      "priority": "medium",
+      "base_slot": "nonveg_main",
+      "selector": {
+        "flag": "is_north_chicken_gravy"
+      }
+    },
+    {
+      "_comment": "Keep the week's two premiums on different days.",
+      "name": "premiums_different_days",
+      "type": "soft_preference",
+      "mode": "different_day",
+      "priority": "medium",
+      "selector_a": {
+        "flag": "is_premium_gravy"
+      },
+      "base_slot_a": "veg_gravy",
+      "selector_b": {
+        "flag": "is_premium_veg_dry"
+      },
+      "base_slot_b": "veg_dry"
+    },
+    {
+      "_comment": "Paneer belongs on a mix / south / north day; chinese and biryani days are the fallback, not the default (client rule, all cities). SOFT on purpose: the hard equivalent is selector_frequency.allowed_day_types, which forbids paneer on the other days outright — and a counter themed chinese or biryani every weekday would then never serve paneer at all.",
+      "name": "paneer_prefers_mix_south_north_days",
+      "type": "soft_preference",
+      "mode": "prefer_day_types",
+      "priority": "high",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "day_types": [
+        "mix",
+        "south",
+        "north"
+      ]
+    },
+    {
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate. Baby corn matches on the dish NAME for the reason baby_corn_weekly explains. A dish satisfying BOTH sides (a paneer chana gravy) counts as paneer only, otherwise `a + b <= 1` reads `1 + 1 <= 1` and the dish becomes unservable.",
+      "name": "paneer_not_with_soya_babycorn_chole_mushroom",
+      "type": "same_day_exclusion",
+      "selector": {
+        "key_ingredient": "paneer"
+      },
+      "exclude": {
+        "any_of": [
+          {
+            "key_ingredient": "soy"
+          },
+          {
+            "name_contains": [
+              "baby_corn",
+              "babycorn"
+            ]
+          },
+          {
+            "flag": "is_chana_gravy"
+          },
+          {
+            "key_ingredient": "mushroom"
+          }
+        ]
+      }
+    }
+  ]
 }
