@@ -250,9 +250,11 @@ class TestPerCityIsolation:
     def test_ontology_caches_are_shared_by_path_not_city(self, pune_api):
         pune_api._menu_data_by_path.clear()
         blr, _ = pune_api._get_menu_data('Bangalore')
-        chennai, _ = pune_api._get_menu_data('Chennai')
+        # Hyderabad, not Chennai: Chennai has its own workbook now, so it is a
+        # separate entry rather than a second reference to Bangalore's.
+        hyd, _ = pune_api._get_menu_data('Hyderabad')
         pune, _ = pune_api._get_menu_data('Pune')
-        assert blr is chennai                       # same file, one load
+        assert blr is hyd                           # same file, one load
         assert pune is not blr and len(pune) == 274
         assert len(pune_api._menu_data_by_path) == 2
 

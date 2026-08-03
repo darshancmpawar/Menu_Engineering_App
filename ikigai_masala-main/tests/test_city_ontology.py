@@ -34,7 +34,9 @@ class TestCityExcelPath:
     def test_default_city_resolves_to_the_default_path(self):
         assert city_excel_path(DEFAULT_ONTOLOGY_CITY) == DEFAULT_EXCEL_PATH
 
-    @pytest.mark.parametrize('city', [None, '', 'Chennai', 'Hyderabad', 'NCR'])
+    # Chennai dropped from this list once it got its own workbook — the point
+    # is cities that have NOT had one dropped in yet.
+    @pytest.mark.parametrize('city', [None, '', 'Hyderabad', 'NCR'])
     def test_city_without_a_file_falls_back_to_default(self, city):
         """Adding a city to AVAILABLE_CITIES must not break planning — it keeps
         using the default list until someone drops in city_items/<slug>.xlsx."""
@@ -63,7 +65,8 @@ class TestCityRequiredSlots:
         """Bangalore must still fail loudly if a mapping regression empties a
         slot — that is the whole point of the check."""
         assert city_required_slots(DEFAULT_ONTOLOGY_CITY) is None
-        assert city_required_slots('Chennai') is None
+        # Hyderabad, not Chennai: Chennai declares its 16 categories now.
+        assert city_required_slots('Hyderabad') is None
 
     def test_manifest_only_names_real_base_slots(self):
         """A typo'd slot name in the manifest would silently drop that slot from
@@ -154,20 +157,27 @@ class TestPuneOntologyFile:
 
 class TestPerCityCaches:
     def test_menu_data_is_keyed_by_resolved_path(self, fake_supabase):
-        """Cities sharing the default workbook share ONE cache entry; Pune gets
-        its own. Keyed by path, not city name, so Chennai/Hyderabad/NCR don't
-        each hold a copy of the 4,300-row default list."""
+        """Cities sharing the default workbook share ONE cache entry; a city with
+        its own file gets its own. Keyed by path, not city name, so Hyderabad and
+        NCR don't each hold a copy of the 4,300-row default list.
+
+        Hyderabad stands in for Chennai here — Chennai shared the default path
+        until it got `city_items/chennai.xlsx`, and now it is a third entry."""
         import api.app as api_app
         api_app._menu_data_by_path.clear()
 
         blr_df, _ = api_app._get_menu_data('Bangalore')
-        chennai_df, _ = api_app._get_menu_data('Chennai')
+        hyd_df, _ = api_app._get_menu_data('Hyderabad')
         pune_df, _ = api_app._get_menu_data('Pune')
+        chn_df, _ = api_app._get_menu_data('Chennai')
 
-        assert blr_df is chennai_df
+        assert blr_df is hyd_df
         assert pune_df is not blr_df
+        assert chn_df is not blr_df
         assert len(pune_df) < len(blr_df)
-        assert len(api_app._menu_data_by_path) == 2
+        assert len(chn_df) < len(blr_df)
+        # bangalore (shared with hyderabad) + pune + chennai
+        assert len(api_app._menu_data_by_path) == 3
 
     def test_nonveg_items_are_per_city(self, fake_supabase):
         import api.app as api_app

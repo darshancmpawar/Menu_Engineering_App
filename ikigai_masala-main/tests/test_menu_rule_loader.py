@@ -262,10 +262,26 @@ class TestCityRules:
     def test_city_name_is_case_insensitive(self):
         assert len(MenuRuleLoader().load_for_city('bangalore')) == _CITY_RULE_COUNT
 
-    @pytest.mark.parametrize('city', ['Chennai', 'Hyderabad', 'NCR'])
+    # Chennai left this list once it became standalone; hyderabad.json and
+    # ncr.json are still extends-bangalore stubs.
+    @pytest.mark.parametrize('city', ['Hyderabad', 'NCR'])
     def test_city_without_its_own_rules_inherits_bangalore(self, city):
         # These files extend bangalore with no overrides yet → same ruleset.
         assert len(MenuRuleLoader().load_for_city(city)) == _CITY_RULE_COUNT
+
+    @pytest.mark.parametrize('city', ['Pune', 'Chennai'])
+    def test_cities_with_their_own_ruleset_are_standalone(self, city):
+        """Both have their own list and must not be Bangalore's. Chennai's is
+        standalone for a different reason than Pune's: not a rival rulebook but
+        an item list that leaves a third of Bangalore's selectors matching
+        nothing — every welcome-drink rule among them."""
+        import json
+        raw = json.load(open(f'data/configs/city_rules/{city.lower()}.json'))
+        assert 'extends' not in raw
+        rules = MenuRuleLoader().load_for_city(city)
+        assert 0 < len(rules) < _CITY_RULE_COUNT
+        assert all(r.validate_config() for r in rules), [
+            r.name for r in rules if not r.validate_config()]
 
     def test_pune_is_standalone_not_a_bangalore_extension(self):
         """Pune has its own rulebook, so its ruleset must NOT be Bangalore's.
