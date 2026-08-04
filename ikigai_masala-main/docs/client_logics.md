@@ -41,6 +41,22 @@ against it. Confirm against a real week per client, then promote the row.
 | Entry exists but is empty | 1 | Piramel Finance |
 | No entry at all | 7 | Icon, Nike, Take 2, Eli Lilly, Continental, Waters, Siemens Healthineers |
 
+**Key entries by the DB name, byte-for-byte.** `client_rules.json` is looked up by
+exact match against `clients.name` with no normalisation, and a mismatch is silent:
+every rule for that client loads as zero, `/diagnose` still reports clean, and a
+plausible plan comes back having ignored all of them. This already happened once —
+`ToastTab CHN` was configured while the file said `Toast Tab CHN`. The names differ
+from this document's spellings in ways that are easy to miss:
+
+| This doc / the rulebook says | `clients.name` actually is |
+|---|---|
+| Icon | **`Icon Blr`** |
+| Computacenter | `Computa Centre` |
+| Kongsberg | `Konsberg` |
+
+Verified: all 28 current keys match a live client, so there is no other silently
+dead config. Re-check after adding any entry.
+
 The seven clients with no entry account for 30 stated requirements with nothing
 behind them. Two clients are configured far below what they ask for: Siemens
 Technology (12 requirements, 1 config item) and L&T (5 requirements, 1 config
@@ -857,12 +873,18 @@ No `client_rules.json` entry.
 Things that need an answer from operations before they can be built correctly.
 Each one changes the implementation, not just the wording.
 
+Three of these block a specific client outright and are listed first; the rest
+would change what gets built but have a workable default.
+
 | # | Question | Why it blocks | Default if unanswered |
 |---|---|---|---|
-| 1 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
-| 2 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
-| 3 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
-| 4 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
+| 1 | **Waters — how should four combos be modelled?** Its sample is four counters (Roti Veg, Roti Non Veg, Rice Veg, Non Veg Rice) where dal, salad, both starters and the sweet are the **same dish across all four**; only the carb and the veg/non-veg split differ. Is this one menu presented four ways, or four counters that must agree? | Gap 1, and the largest architectural decision left. The answer decides whether cross-counter sharing is a **post-pass** (solve the shared slots once, pin them into each counter) or a **joint solve**. Counters are solved independently today, so Waters cannot be served at all until this is settled. | **None — this one genuinely stalls.** Waters stays unconfigured rather than being built on a guess that has to be thrown away. |
+| 2 | **Eli Lilly — which weekdays are north and which are south?** Its rules differ by region (north: no sambar/rasam/white rice; south: no dal/flavoured rice) but nothing states the mapping. | Without it the day restrictions are keyed to the wrong weekdays — the same failure ToastTab CHN would have had if its theme map were guessed wrong. | The sample shows rasam present Mon/Wed and `-` on Tue/Thu, so **Tue/Thu are north**, Mon/Wed/Fri south. Needs confirming. |
+| 3 | **Icon — "on biryani day add '+ boiled egg'"**: append to the biryani dish's text, or a separate row? | Text append is a formatting change; a separate row is a slot. Different implementations. | A **separate row**, matching how Plan View pins its egg (`nonveg_main__2`), since that is already a supported shape. |
+| 4 | **Booking.com's "Tuesday(Punjabi)"** — a real theme, or just "north Indian on Tuesday"? | Gap 11. A new theme is a vocabulary change; a weekday cuisine rule is config. | Weekday cuisine rule, no new theme. |
+| 5 | **Tekion bread:** the rule says "only infused or flavoured chapthi", but the sample's first Monday serves Plain Chapati. Which holds? | Determines whether plain chapati is banned or merely uncommon. | Rule holds; the sample row is treated as a deviation. |
+| 6 | **Siemens Healthineers Jain Dal** — served 4 of 5 days in the sample, stated "daily". Is Thursday intentionally blank? | Decides whether the rule is "daily" or "4 days". | Daily, per the requirement. |
+| 7 | **Tessolve's Tue/Thu health counter** (salad + soup + bread + cut fruit + grain + boiled egg + steamed paneer + steamed chicken) — should the tool generate this, or is it fixed? | It is a different offering from a non-veg main; modelling it needs new slots. | Out of scope; not generated. |
 
 ### Already answered — recorded so they are not re-asked
 
