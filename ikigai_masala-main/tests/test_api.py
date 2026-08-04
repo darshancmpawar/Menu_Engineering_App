@@ -143,7 +143,7 @@ class TestHealthEndpoint:
         assert "clients.version" in schema_info["missing"]
         # Loud error logged once per drift episode.
         assert any(
-            "Schema drift" in rec.message and "scripts/create_tables.sql" in rec.message
+            "Schema drift" in rec.message and "scripts/setup_all.sql" in rec.message
             for rec in caplog.records
         )
 

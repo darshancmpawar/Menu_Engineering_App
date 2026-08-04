@@ -39,11 +39,15 @@ Read as Monday → Sunday. `—` is a deliberately blank row.
 
 Two readings of the grid worth stating, because the rest follows from them:
 
-* **The single "Rice item" row is two slots.** "white rice daily" + "flavour rice
-  on Tue and sun" means the row shows the day's headline rice: the `white_rice`
-  constant most days, the flavoured `rice` slot on Tuesday and Sunday. So the
-  generated menu prints a `white_rice` row every day and a `rice` row on those
-  two days.
+* **The single "Rice item" row is two slots, and only ONE fills per day.** "white
+  rice daily" + "flavour rice on Tue and sun" describe the same row: it shows the
+  day's headline rice — the `white_rice` constant on Mon/Wed/Thu/Fri/Sat, the
+  flavoured `rice` slot on Tuesday and Sunday. The grid is what settles it: Tue is
+  *Coriender rice* and Sun is *Veg biryani*, with no steamed rice beside either.
+  So "daily" in rule 3 means "on every day that has no flavoured rice", and a
+  flavoured rice **replaces** the white rice rather than joining it. Read the other
+  way round the plan served Tawa Pulao and steamed rice together on Tuesday, while
+  Sunday came out right — two rules disagreeing on exactly one day.
 * **Sunday's Salad column is a raita.** `raita` and `boondi_raita` are real Pune
   dishes filed under `curd_side` — the **Curd / Raita** category. That category is
   configured on the counter and restricted to Sunday, so the salad slot runs
@@ -55,7 +59,7 @@ Two readings of the grid worth stating, because the rest follows from them:
 |---|---|---|---|
 | 1 | weekly 1 panner | DONE | `amadeus_pune_paneer_weekly` — `selector_frequency`, `key_ingredient: paneer`, `exact: 1`. No `base_slot`, so it counts across every slot: the Pune list has 13 paneer gravies and one paneer-based veg dry |
 | 2 | weekly 1 soya | DONE | Two rules: `amadeus_pune_soya_veg_dry_weekly` (`exact: 1`, scoped to `veg_dry`) and `amadeus_pune_soya_total_weekly` (`max: 1` across every slot). Together: exactly one soya a week, and it is the veg dry — where the sample has it (Monday's Soya Chatpata Dry), and what makes the city's `premium_veg_dry_weekly` cap non-vacuous, since all three of Pune's `is_premium_veg_dry` items are the soya dries. Drop the `base_slot` if a soya gravy is acceptable instead |
-| 3 | white rice daily | DONE | `white_rice` is a constant slot the counter already serves; `amadeus_pune_white_rice_mon_sat` takes it off Sunday (rule 9 overrides "daily" there) |
+| 3 | white rice daily | DONE | `white_rice` is a constant slot the counter already serves; `amadeus_pune_white_rice_off_on_flavour_rice_days` runs it Mon/Wed/Thu/Fri/Sat — off Sunday (rule 9) and off Tuesday, because a flavoured rice replaces it (see the reading above) |
 | 4 | flavour rice on Tue and sun | DONE | `amadeus_pune_flavour_rice_tue_sun` — `slot_day_restriction` on `rice`, `allowed_weekdays: [tue, sun]` |
 | 5 | chapati daily in indain bread | DONE | `amadeus_pune_chapati_daily` — `slot_composition` on `bread` with one `count: 1` component selecting `item: chapati`. On a one-slot family that means "this slot must be a chapati" |
 | 6 | welcome drink will have butter milk daily | DONE | `amadeus_pune_buttermilk_daily` (same one-slot mandate, `is_buttermilk`) + `amadeus_pune_buttermilk_is_a_staple` (`repeatable_items`, so the daily repeat is exempt from `unique_items` and the 20-day cooldown) |

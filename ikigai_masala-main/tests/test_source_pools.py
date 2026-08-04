@@ -97,7 +97,7 @@ class TestPlanFlowFilter:
             parse_client_pools, get_active_pools,
         )
         ClientConfigLoader().set_client_source_pools('Rippling', ['infineon'])
-        api_app._filtered_cache.clear()
+        api_app.reset_caches()
         df, pools = api_app._menu_data_for_client('Rippling')
         active = get_active_pools(['infineon'])
         # every row in the filtered df must be eligible for common ∪ infineon
@@ -110,7 +110,7 @@ class TestPlanFlowFilter:
     def test_common_only_when_unset(self, fake_supabase):
         import api.app as api_app
         from src.preprocessor.client_pool_filter import parse_client_pools
-        api_app._filtered_cache.clear()
+        api_app.reset_caches()
         # Rippling unset -> [] -> common-only
         df, pools = api_app._menu_data_for_client('Rippling')
         for cell in df['client']:

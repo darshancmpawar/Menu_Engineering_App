@@ -143,7 +143,7 @@ single-city deployment or a test fixture, and it also switches off the per-city
 mandatory-slot declarations (the file's contents no longer follow from the city
 name).
 
-Worked example: `docs/pune_rulebook.md` maps `Pune_menu_rulebook_101.xlsx`
+Worked example: `docs/pune_rulebook.md` maps `data/raw/source_workbooks/pune_menu_rulebook_101.xlsx`
 R1–R70 onto `pune.json` and lists what is not encodable.
 
 ---

@@ -11,19 +11,10 @@ per-client customizations, and history.
 
 ---
 
-## Quick start (Docker — recommended)
-
-```bash
-cp .env.example .env       # edit and fill in SUPABASE_URL / SUPABASE_KEY
-docker compose up --build
-```
-
-Open `http://localhost:8501`, pick a client, generate a plan.
+## Quick start
 
 > First-time setup: run `scripts/setup_all.sql` once in the Supabase SQL
 > editor (the master idempotent schema) — see [docs/setup.md](docs/setup.md).
-
-## Quick start (local Python)
 
 ```bash
 cd ikigai_masala-main

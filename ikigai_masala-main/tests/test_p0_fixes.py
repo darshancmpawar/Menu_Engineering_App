@@ -422,35 +422,69 @@ class TestPinnedConstantNonvegTagging:
 # --------------------------------------------------------------------------
 
 class TestConstantValueValidation:
+    """These captured `api.app` by name until `_validate_constant_values` moved to
+    src/application/constant_items.py, at which point three failed loudly — and
+    `test_known_value_is_quiet` started passing VACUOUSLY, because "no records
+    from api.app" and "no warning was emitted" look identical to an
+    `assert msgs == []`.
+
+    So the logger is now taken from the module under test rather than written out,
+    which cannot go stale if the code moves again, and the quiet case first proves
+    the capture is wired up before asserting silence.
+    """
+
     @pytest.fixture
     def df(self):
         return pd.DataFrame({'item': ['boiled_egg', 'green_salad']})
 
-    def test_unknown_value_warns(self, df):
-        from api.app import _validate_constant_values
-        with capture_logs('api.app') as msgs:
-            _validate_constant_values('X', {'salad': 'nonexistent dish'}, df)
+    @pytest.fixture
+    def validate(self):
+        """Logger taken from the module's own logger OBJECT, not from `__name__`.
+
+        The name is deliberately pinned to `api.app` (src/log_names.py) so operator
+        log filters survive refactors, so `__name__` would be wrong here — and
+        hard-coding either string is what went stale last time.
+        """
+        from src.application import constant_items
+        return constant_items._validate_constant_values, constant_items.logger.name
+
+    def test_unknown_value_warns(self, df, validate):
+        fn, logger_name = validate
+        with capture_logs(logger_name) as msgs:
+            fn('X', {'salad': 'nonexistent dish'}, df)
         assert any('nonexistent dish' in m for m in msgs), msgs
 
-    def test_known_value_is_quiet(self, df):
-        from api.app import _validate_constant_values
-        with capture_logs('api.app') as msgs:
-            _validate_constant_values('X', {'salad': 'green salad'}, df)
+    def test_known_value_is_quiet(self, df, validate):
+        """Silence for a real dish — but only meaningful if the capture works, so
+        assert the positive case through the same channel first."""
+        fn, logger_name = validate
+        with capture_logs(logger_name) as msgs:
+            fn('X', {'salad': 'nonexistent dish'}, df)
+        assert msgs, 'capture is not wired to the emitting logger'
+
+        with capture_logs(logger_name) as msgs:
+            fn('X', {'salad': 'green salad'}, df)
         assert msgs == []
 
-    def test_non_string_value_warns(self, df):
-        from api.app import _validate_constant_values
-        with capture_logs('api.app') as msgs:
-            _validate_constant_values('X', {'salad': 5}, df)
+    def test_non_string_value_warns(self, df, validate):
+        fn, logger_name = validate
+        with capture_logs(logger_name) as msgs:
+            fn('X', {'salad': 5}, df)
         assert any('not a string' in m for m in msgs), msgs
 
-    def test_weekday_map_values_are_checked(self, df):
-        from api.app import _validate_constant_values
-        with capture_logs('api.app') as msgs:
-            _validate_constant_values(
-                'X', {'curd': {'monday': 'green salad', 'friday': 'bogus'}}, df)
+    def test_weekday_map_values_are_checked(self, df, validate):
+        fn, logger_name = validate
+        with capture_logs(logger_name) as msgs:
+            fn('X', {'curd': {'monday': 'green salad', 'friday': 'bogus'}}, df)
         joined = ' '.join(msgs)
         assert 'bogus' in joined and 'green salad' not in joined
+
+    def test_api_app_still_re_exports_it(self):
+        """The route code calls it through api.app, so the name must stay there."""
+        from api.app import _validate_constant_values
+        from src.application.constant_items import (
+            _validate_constant_values as moved)
+        assert _validate_constant_values is moved
 
 
 # --------------------------------------------------------------------------

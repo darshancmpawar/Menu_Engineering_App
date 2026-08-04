@@ -50,9 +50,7 @@ def plan(amadeus_pune_row):
     old_sb = getattr(db_mod, '_sb_client', None)
     db_mod._sb_client = fake
     api_app._client_loader = None
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        setattr(api_app, attr, {})
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     try:
         reset_for_tests()
@@ -111,7 +109,9 @@ class TestServiceDaysMatchTheSample:
         ('veg_dry', WEEKDAYS),                            # blank Sat AND Sun
         ('dal', {MON, TUE, WED, THU, FRI, SAT}),
         ('bread', {MON, TUE, WED, THU, FRI, SAT}),
-        ('white_rice', {MON, TUE, WED, THU, FRI, SAT}),
+        # Not Tue: that is a flavoured-rice day, and the sample week serves
+        # ONE rice per day (Tue = Coriander rice, no steamed rice beside it).
+        ('white_rice', {MON, WED, THU, FRI, SAT}),
         ('rice', {TUE, SUN}),                             # 'flavour rice on Tue and sun'
         ('papad', {MON, TUE, WED, THU, FRI, SAT, SUN}),
         ('welcome_drink', {MON, TUE, WED, THU, FRI, SAT, SUN}),
@@ -160,9 +160,33 @@ class TestWeeklyRhythm:
         assert set(drinks.values()) == {'buttermilk'}, drinks
 
     def test_white_rice_is_the_daily_steamed_rice(self, plan):
-        """'white rice daily' — except Sunday, which is biryani-only."""
+        """'white rice daily' — on the days it runs, it is always steamed rice."""
         rices = _by_weekday(plan, 'white_rice')
         assert set(rices.values()) == {'steamed rice'}, rices
+
+    def test_never_two_rices_on_one_day(self, plan):
+        """A flavoured rice REPLACES the white rice; it does not sit beside it.
+
+        The client's sample week has a single "Rice item" row — Coriander rice on
+        Tue, Veg biryani on Sun, steamed rice on the other five. Sunday already
+        came out right (biryani only) while Tuesday served Tawa Pulao AND steamed
+        rice, so the two rules disagreed on exactly one day.
+        """
+        flavoured = _by_weekday(plan, 'rice')
+        white = _by_weekday(plan, 'white_rice')
+        both = sorted(set(flavoured) & set(white))
+        assert not both, (
+            f"weekday(s) {both} serve a flavoured rice and white rice together: "
+            f"flavoured={flavoured}, white={white}")
+
+    def test_every_day_has_exactly_one_rice(self, plan):
+        """The flip side: dropping white rice from Tue must not leave a day with
+        no rice at all."""
+        flavoured = _by_weekday(plan, 'rice')
+        white = _by_weekday(plan, 'white_rice')
+        for wd in range(7):
+            assert (wd in flavoured) or (wd in white), (
+                f"weekday {wd} has no rice: flavoured={flavoured}, white={white}")
 
     def test_exactly_one_paneer_dish_a_week(self, plan, pune_df):
         """'weekly 1 panner' — counted across every slot, not just the gravy."""
@@ -230,9 +254,7 @@ class TestNoDiagnosticNoise:
         })
         monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            monkeypatch.setattr(api_app, attr, {}, raising=False)
+        api_app.reset_caches()
         reset_for_tests()
         resp = api_app.app.test_client().post('/api/v1/diagnose', json={
             'client_name': 'Amadeus Pune', 'start_date': MONDAY, 'num_days': 7,
@@ -488,9 +510,7 @@ class TestRaitaSurvivesASavedWeek:
         old = getattr(db_mod, '_sb_client', None)
         db_mod._sb_client = fake
         api_app._client_loader = None
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            setattr(api_app, attr, {})
+        api_app.reset_caches()
         api_app.app.config['TESTING'] = True
         try:
             reset_for_tests()
@@ -550,9 +570,7 @@ class TestRaitaSurvivesASavedWeek:
         old = getattr(db_mod, '_sb_client', None)
         db_mod._sb_client = fake
         api_app._client_loader = None
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            setattr(api_app, attr, {})
+        api_app.reset_caches()
         try:
             reset_for_tests()
             body = api_app.app.test_client().post('/api/v1/diagnose', json={

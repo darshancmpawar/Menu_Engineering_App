@@ -12,7 +12,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,13 @@ class SolverConfig:
     cap_multipliers: Tuple[int, ...] = DEFAULT_CAP_MULTIPLIERS
     restarts_per_multiplier: int = DEFAULT_RESTARTS_PER_MULTIPLIER
     deterministic: bool = True
+    #: How many CP-SAT search workers to use, as a *callable* so the value is
+    #: re-read on every restart attempt (the API scales it down while another
+    #: solve is active). Injected rather than imported: this module used to do
+    #: `from api.concurrency import get_worker_count` inside the solve loop,
+    #: which made the domain depend on the web layer and needed a try/except
+    #: ImportError to stay runnable on its own. None = CP-SAT's own default.
+    worker_count_provider: Optional[Callable[[], int]] = None
     # Per-client theme map (overrides global weekday_type)
     theme_map: Optional[Dict[str, str]] = None
 
@@ -863,12 +870,11 @@ class MenuSolver:
         solver.parameters.random_seed = int(self.cfg.seed)
         if self.cfg.deterministic:
             solver.parameters.num_search_workers = 1
+        elif self.cfg.worker_count_provider is not None:
+            solver.parameters.num_search_workers = int(
+                self.cfg.worker_count_provider())
         else:
-            try:
-                from api.concurrency import get_worker_count
-                solver.parameters.num_search_workers = get_worker_count()
-            except ImportError:
-                solver.parameters.num_search_workers = 8
+            solver.parameters.num_search_workers = 8
         solver.parameters.cp_model_presolve = True
 
         status = solver.Solve(model)

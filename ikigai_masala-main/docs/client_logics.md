@@ -55,7 +55,7 @@ not as a score.
 
 ## Verified against real menu samples
 
-**Source:** `menu_samples_history.xlsx` (committed alongside) — printed menus for
+**Source:** `data/raw/source_workbooks/bangalore_menu_samples_history.xlsx` — printed menus for
 **32 clients**, one week each except Tekion which has two. Supersedes the earlier
 14-client file. Tessolve arrived as an image and is transcribed below.
 
@@ -246,7 +246,7 @@ What this settles for Tessolve:
 
 ## Rules written inside the sample sheets
 
-Requirements that appear as notes in `menu_samples_history.xlsx` rather than in
+Requirements that appear as notes in `data/raw/source_workbooks/bangalore_menu_samples_history.xlsx` rather than in
 the tracker. Transferred here so the rulebook is the single source.
 
 ### Tekion — eight rules, none currently configured beyond three

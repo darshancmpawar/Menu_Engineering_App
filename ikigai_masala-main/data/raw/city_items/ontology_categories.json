@@ -15,6 +15,24 @@
     "Adding a category to a city's ontology? Add it here too, otherwise nothing",
     "notices when a later workbook drops it again."
   ],
+  "chennai": [
+    "soup",
+    "salad",
+    "bread",
+    "rice",
+    "veg_dry",
+    "veg_gravy",
+    "starter",
+    "dal",
+    "sambar",
+    "rasam",
+    "dessert",
+    "healthy_rice",
+    "curd",
+    "curd_side",
+    "curd_rice",
+    "nonveg_main"
+  ],
   "pune": [
     "welcome_drink",
     "salad",

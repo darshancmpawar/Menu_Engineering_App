@@ -42,9 +42,7 @@ def pune_api(monkeypatch):
     })
     monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
     monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        monkeypatch.setattr(api_app, attr, {}, raising=False)
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     return api_app
 
@@ -248,13 +246,15 @@ class TestPerCityIsolation:
     """The two cities must not leak into each other at any layer."""
 
     def test_ontology_caches_are_shared_by_path_not_city(self, pune_api):
-        pune_api._menu_data_by_path.clear()
+        pune_api.reset_caches()
         blr, _ = pune_api._get_menu_data('Bangalore')
-        chennai, _ = pune_api._get_menu_data('Chennai')
+        # Hyderabad, not Chennai: Chennai has its own workbook now, so it is a
+        # separate entry rather than a second reference to Bangalore's.
+        hyd, _ = pune_api._get_menu_data('Hyderabad')
         pune, _ = pune_api._get_menu_data('Pune')
-        assert blr is chennai                       # same file, one load
+        assert blr is hyd                           # same file, one load
         assert pune is not blr and len(pune) == 274
-        assert len(pune_api._menu_data_by_path) == 2
+        assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):
         from src.menu_rules.menu_rule_loader import MenuRuleLoader
@@ -321,9 +321,7 @@ class TestNoCrossCityWorkbookReads:
         })
         monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            monkeypatch.setattr(api_app, attr, {}, raising=False)
+        api_app.reset_caches()
         api_app.app.config['TESTING'] = True
         return api_app
 
@@ -355,12 +353,40 @@ class TestNoCrossCityWorkbookReads:
         assert 'pune.xlsx' not in traced, traced
         assert 'bangalore.xlsx' in traced, traced
 
-    def test_editor_metadata_reads_both_by_design(self, fleet_api, traced):
-        """The one endpoint that legitimately loads every city: it reports which
-        pool tokens belong to which."""
+    def test_editor_metadata_now_reads_no_workbook_at_all(self, fleet_api, traced):
+        """This used to assert the opposite — that /editor-metadata legitimately
+        loads EVERY city, because it reports which pool tokens belong to which.
+        That was true and cost 4.8 s of cold start to produce about eight short
+        strings.
+
+        The answer is now precomputed into `city_items/pool_tokens.json`
+        (scripts/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
+        cross-city test rather than deleted: reading zero workbooks is a strictly
+        stronger statement of "no cross-city read" than reading both was.
+        """
         r = _get(fleet_api, '/api/v1/editor-metadata')
         assert r.status_code == 200
-        assert {'bangalore.xlsx', 'pune.xlsx'} <= set(traced), traced
+        assert traced == [], (
+            'expected no workbook reads — is pool_tokens.json missing? The '
+            'endpoint falls back to parsing every workbook when it is, which is '
+            'slow but not wrong: run scripts/build_pool_token_map.py')
+
+    def test_it_still_reports_pool_tokens_for_both_cities(self, fleet_api):
+        """The speed change must not have cost the information. Bangalore has real
+        client pools; Pune's rows are all `common`, so an empty list is correct."""
+        meta = _get(fleet_api, '/api/v1/editor-metadata').get_json()
+        by_city = meta['client_pools_by_city']
+        assert by_city['Bangalore'], by_city
+        assert by_city['Pune'] == []
+
+    def test_falling_back_to_the_workbooks_gives_the_same_answer(
+            self, fleet_api, monkeypatch):
+        """The map is a cache, so prove it agrees with the thing it caches."""
+        with_map = _get(fleet_api, '/api/v1/editor-metadata').get_json()
+        monkeypatch.setattr(fleet_api, '_pool_tokens_from_map', lambda _c: None)
+        fleet_api.reset_caches()
+        without = _get(fleet_api, '/api/v1/editor-metadata').get_json()
+        assert with_map['client_pools_by_city'] == without['client_pools_by_city']
 
 
 class TestItemPoolsAreCityScoped:
