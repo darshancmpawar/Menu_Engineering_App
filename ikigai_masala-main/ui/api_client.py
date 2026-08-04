@@ -289,10 +289,19 @@ class MenuApiClient:
 
     # ----- Customisation editor endpoints -----
 
-    def get_editor_metadata(self) -> Dict[str, Any]:
+    def get_editor_metadata(self, city=None) -> Dict[str, Any]:
+        """Editor metadata. Pass ``city`` once one is known.
+
+        Without it the API computes pool tokens for EVERY city, which parses every
+        city's workbook — 4.8 s of cold start to answer a question about a handful
+        of strings. With it, one workbook.
+        """
+        params = {'city': city} if city else None
+
         def _do():
             return self.session.get(
                 f"{self.base_url}/api/v1/editor-metadata", timeout=10,
+                params=params,
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Failed to load metadata")

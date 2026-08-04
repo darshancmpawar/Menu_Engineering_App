@@ -1183,16 +1183,48 @@ def saved_plan():
         return _internal_error_response(500)
 
 
-def _city_pool_tokens():
-    """``{city: [pool tokens]}`` across every city, plus the union under ``''``.
+def _pool_tokens_from_map(city):
+    """Pool tokens for *city* from the committed map, or None if unavailable.
+
+    Kept as a thin wrapper so the import stays local: scripts/ is not a runtime
+    dependency of the API, and a missing script must degrade to the slow path
+    rather than break the endpoint.
+    """
+    try:
+        from scripts.build_pool_token_map import tokens_for_city
+        return tokens_for_city(city)
+    except Exception:  # noqa: BLE001 — any failure means "use the workbooks"
+        return None
+
+
+def _city_pool_tokens(only_city=None):
+    """``{city: [pool tokens]}``, plus the union under ``''``.
 
     Pool tokens are per-city (they name pools inside one city's item list), so
-    the editor needs to know which city a token belongs to. The union is what a
-    caller that hasn't picked a city yet should see.
+    the editor needs to know which city a token belongs to.
+
+    ``only_city`` restricts the work to ONE city, which is the whole point:
+    computing the map for every city means parsing every city's workbook, and
+    that is where `/editor-metadata` spent 4.8 s of cold start — three workbooks,
+    4,956 rows, to answer a question about eight short strings. A caller that has
+    already chosen a city needs exactly one of them. Passing an unknown city name
+    yields an empty map rather than falling back to "all", so a typo cannot
+    silently reintroduce the full load.
     """
     by_city: Dict[str, list] = {}
     union: Set[str] = set()
-    for city in AVAILABLE_CITIES:
+    wanted = ([c for c in AVAILABLE_CITIES if c == only_city] if only_city
+              else list(AVAILABLE_CITIES))
+    # Precomputed map first: answering "which pool tokens exist" by parsing every
+    # workbook cost 4.8 s of cold start for ~8 short strings. `None` from the
+    # helper means the file is absent or unreadable, in which case we fall back to
+    # the workbooks — a fresh checkout is slow, never wrong.
+    for city in wanted:
+        cached = _pool_tokens_from_map(city)
+        if cached is not None:
+            by_city[city] = sorted(cached)
+            union |= set(cached)
+            continue
         try:
             tokens = available_pool_tokens(_get_menu_data(city)[0])
         except Exception as exc:  # noqa: BLE001 — one unreadable city must not 500
@@ -1214,8 +1246,12 @@ def editor_metadata():
     carries the per-city breakdown.
     """
     try:
-        pools_by_city = _city_pool_tokens()
         city = (request.args.get('city') or '').strip()
+        # Scoped when a city is given: see _city_pool_tokens. Without one the
+        # caller gets the cross-city union, which still costs every workbook —
+        # the editor's first fetch happens before a city is chosen, so that path
+        # is unavoidable until the UI is split further.
+        pools_by_city = _city_pool_tokens(only_city=city or None)
         available = pools_by_city.get(city, pools_by_city[''])
         return jsonify({
             'success': True,

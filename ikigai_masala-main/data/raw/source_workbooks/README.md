@@ -26,7 +26,7 @@ attachments and would have been lost.
 | `pune_menu_rulebook_101.xlsx` | Pune | **the 70-rule rulebook** | `docs/pune_rulebook.md`, `configs/city_rules/pune.json` |
 | `chennai_menu_items_raw.xlsx` | Chennai | raw item list, incl. its own `Mapping_Log` sheet | `city_items/chennai.xlsx` |
 | `chennai_sample_menu.xlsx` | Chennai | Toast Tab's 7-day service history (sheet `Toasttab`) | `docs/chennai_client_logic.md`, the `ToastTab CHN` client rules |
-| `menu_implementation_tracker.xlsx` | — | cross-city delivery tracker | — |
+| `bangalore_client_logics.xlsx` | Bangalore | **the Bangalore rulebook** — 158 logic statements across 32 clients, hard and soft mixed together, in one sheet named `Banglore`. This is the main regional ruleset; it is per-CLIENT logics rather than city-level rules | `docs/client_logics.md`, the Bangalore entries in `configs/client_rules.json` |
 
 ## Adding a city
 
@@ -39,4 +39,4 @@ attachments and would have been lost.
    `scripts/pune_flag_corrections.py`, `scripts/chennai_course_corrections.py`.
    Each is idempotent, and each has a test that fails if its corrections are
    missing.
-4. Declare the city's categories in `city_items/ontology_categories.json`.
+5. Declare the city's categories in `city_items/ontology_categories.json`.
