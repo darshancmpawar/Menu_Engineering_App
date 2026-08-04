@@ -20,9 +20,13 @@ from typing import Any, Dict, List, Set
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
 )
+from src.log_names import APP_LOGGER_NAME
 from src.preprocessor.pool_builder import _base_slot
 
-logger = logging.getLogger(__name__)
+#: Not `__name__`. These warnings tell an operator their client config has a typo,
+#: and they were emitted under `api.app` before this code moved out of the web
+#: module — see src/log_names.py.
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def _exclusive_siblings(base_slot: str) -> Set[str]:

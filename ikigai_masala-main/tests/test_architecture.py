@@ -245,3 +245,30 @@ class TestOntologyCachesAreNotPokedByName:
         api_app._get_menu_data('Chennai')
         assert api_app._ontology.cache_sizes()['menu_data'] == 2
         api_app.reset_caches()
+
+
+class TestOperatorFacingLogsKeepOneName:
+    """Moving code must not change where a warning appears to come from.
+
+    `_validate_constant_values` logged under `api.app` until it moved to
+    `src/application/constant_items.py`, at which point the same warning started
+    arriving as `src.application.constant_items`. Log records are observable
+    output: anything filtering or alerting on `api.app` silently stopped matching.
+    """
+
+    def test_moved_warnings_still_emit_under_the_stable_name(self):
+        from src.application import constant_items
+        from src.log_names import APP_LOGGER_NAME
+        assert constant_items.logger.name == APP_LOGGER_NAME
+
+    def test_the_stable_name_is_the_one_already_deployed(self):
+        """Changing this string breaks somebody's alerting — pinned so that is a
+        deliberate act with a failing test, not a side effect of a refactor."""
+        from src.log_names import APP_LOGGER_NAME
+        assert APP_LOGGER_NAME == 'api.app'
+
+    def test_pinning_a_name_is_not_an_upward_import(self):
+        """It is a string, not a dependency: src/log_names.py must stay a leaf."""
+        roots = _imported_roots(os.path.join(SRC, 'log_names.py'))
+        assert not (roots & INTERFACE_PACKAGES)
+        assert 'src' not in roots

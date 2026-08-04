@@ -439,8 +439,14 @@ class TestConstantValueValidation:
 
     @pytest.fixture
     def validate(self):
+        """Logger taken from the module's own logger OBJECT, not from `__name__`.
+
+        The name is deliberately pinned to `api.app` (src/log_names.py) so operator
+        log filters survive refactors, so `__name__` would be wrong here — and
+        hard-coding either string is what went stale last time.
+        """
         from src.application import constant_items
-        return constant_items._validate_constant_values, constant_items.__name__
+        return constant_items._validate_constant_values, constant_items.logger.name
 
     def test_unknown_value_warns(self, df, validate):
         fn, logger_name = validate
