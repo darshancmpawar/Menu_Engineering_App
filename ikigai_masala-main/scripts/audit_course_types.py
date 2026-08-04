@@ -72,6 +72,14 @@ NAME_SIGNALS = {
     'soup': {'soup', 'shorba', 'broth', 'chowder'},
     'salad': {'salad', 'kosambari', 'koshimbir'},
     'curd_side': {'raita', 'majjige'},
+    #: Drinks. `butter_milk`, `masala_butter_milk` and `boondi_butter_milk` sat in
+    #: `veg_gravy / mixed_veg_curry` while eight sibling buttermilks were correctly
+    #: `welcome_drink`. Note `majjige`/`huli` is NOT here — majjige huli is a
+    #: buttermilk curry and belongs in veg_gravy, which is why the token list is
+    #: `buttermilk`-shaped rather than `majjige`-shaped.
+    'welcome_drink': {'buttermilk', 'lassi', 'juice', 'sharbath', 'sherbat',
+                      'sherbet', 'panna', 'jaljeera', 'kokum', 'sambaram',
+                      'mojito', 'cooler', 'smoothie', 'milkshake'},
 }
 
 #: ``(filed course_type, name-implied course_type)`` pairs that are correct by
@@ -114,6 +122,27 @@ ADJUDICATED = {
 }
 
 
+def unservable_rows(df: pd.DataFrame):
+    """Rows that no slot can ever serve, found structurally rather than by name.
+
+    `PoolBuilder._nonveg_mask` drops any row with a non-veg `primary_protein` from
+    every slot except `nonveg_main`. So a row carrying a non-veg protein while its
+    `course_type` is something else is dropped from its own pool and never joins
+    nonveg_main either — it simply cannot appear on a menu.
+
+    `egg_fried_rice` was exactly this: course_type `rice`, primary_protein `egg`,
+    silently unservable. Every chicken biryani in the master is `nonveg_main` for
+    this reason; that one row missed the convention. No name check would find it —
+    the name is perfectly descriptive — which is why this check is structural.
+    """
+    from src.constants import NONVEG_PROTEINS, NONVEG_SLOT
+    prot = df['primary_protein'].astype(str).str.strip().str.lower()
+    course = df['course_type'].astype(str).str.strip().str.lower()
+    bad = df[prot.isin(NONVEG_PROTEINS) & (course != NONVEG_SLOT)]
+    return [(str(r['item']), str(r['course_type']), str(r['primary_protein']))
+            for _i, r in bad.iterrows()]
+
+
 def audit_city(df: pd.DataFrame, city: str):
     """Return ``(unadjudicated, allowed)`` lists of ``(item, filed, implied)``."""
     ct = df['course_type'].astype(str).str.strip().str.lower()
@@ -145,8 +174,14 @@ def main(argv=None) -> int:
         city = os.path.splitext(fname)[0]
         df = pd.read_excel(os.path.join(CITY_ITEMS, fname))
         bad, ok = audit_city(df, city)
-        total += len(bad)
-        print(f'{city}: {len(bad)} unadjudicated, {len(ok)} allowed')
+        orphans = unservable_rows(df)
+        total += len(bad) + len(orphans)
+        print(f'{city}: {len(bad)} unadjudicated, {len(ok)} allowed, '
+              f'{len(orphans)} unservable')
+        for item, course, protein in orphans:
+            print(f'  UNSERVABLE {item:36s} course={course:14s} '
+                  f'protein={protein} — non-veg outside nonveg_main is dropped '
+                  f'from every pool')
         for item, filed, implied in bad:
             print(f'  MISMATCH {item:38s} filed {filed:14s} name says {implied}')
         if args.verbose:
