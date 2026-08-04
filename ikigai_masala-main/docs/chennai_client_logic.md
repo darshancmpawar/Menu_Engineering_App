@@ -9,7 +9,7 @@ clients are in [`client_logics.md`](client_logics.md) and Pune's in
 `data/raw/city_items/chennai.xlsx`) and `chennai_sample_menu.xlsx`, sheet
 `Toasttab`. Scope is **lunch**.
 
-**Implementation:** the `"Toast Tab CHN"` entry in
+**Implementation:** the `"ToastTab CHN"` entry in
 `data/configs/client_rules.json`. Asserted end to end by
 `tests/test_chennai_client_logic.py`; the city ruleset by
 `tests/test_chennai_rules.py`.
@@ -30,7 +30,7 @@ Friday is fixed — are not inferable from seven days.
 
 ---
 
-## Toast Tab CHN
+## ToastTab CHN
 
 One counter, five service days (`serve_weekends` is false — the sample skips
 Sat 04 and Sun 05 Jul), `source_pools: []` (the whole Chennai list; every row is

@@ -1150,7 +1150,7 @@
       }
     }
   },
-  "Toast Tab CHN": {
+  "ToastTab CHN": {
     "_comment": "Chennai. Derived from a 7-day SERVICE HISTORY (Wed 01 Jul – Thu 09 Jul 2026, weekdays only), not a written rulebook — see docs/chennai_client_logic.md for the grid and how each rule was read off it. THE ONE ASSUMPTION: the sample spans two part-weeks whose weekday→theme mapping conflicts (Wed is south on 01 Jul but biryani on 08 Jul; Thu is north on 02 Jul but south on 09 Jul), so the theme map is inferred from the later, more complete run 06–09 Jul — Mon/Thu/Fri south, Tue north, Wed biryani. That fits 5 of the 7 observed days and reproduces the sample's 4 south : 2 north : 1 biryani ratio scaled to a 5-day week. The weekday lists below FOLLOW from that map: if the real theme map differs, these lists must move with it, because what the sample actually determines is the THEME each slot belongs to, not the weekday.",
     "disable": [],
     "rules": [

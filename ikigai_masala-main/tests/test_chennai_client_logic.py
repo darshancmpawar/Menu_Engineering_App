@@ -46,7 +46,7 @@ COUNTER = {
                   'thursday': 'south', 'friday': 'south'},
 }
 ROW = {
-    'name': 'Toast Tab CHN', 'city': 'Chennai', 'serve_weekends': False,
+    'name': 'ToastTab CHN', 'city': 'Chennai', 'serve_weekends': False,
     'working_days': None, 'item_cooldown_days': None, 'source_pools': [],
     'version': 1, 'counters': [COUNTER],
 }
@@ -71,7 +71,7 @@ def plan():
     try:
         reset_for_tests()
         resp = api_app.app.test_client().post('/api/v1/plan', json={
-            'client_name': 'Toast Tab CHN', 'start_date': MONDAY,
+            'client_name': 'ToastTab CHN', 'start_date': MONDAY,
             'num_days': 5, 'time_limit_seconds': TIME_LIMIT,
         })
         body = resp.get_json() or {}
@@ -226,7 +226,7 @@ class TestNoDiagnosticNoise:
         try:
             reset_for_tests()
             body = api_app.app.test_client().post('/api/v1/diagnose', json={
-                'client_name': 'Toast Tab CHN', 'start_date': MONDAY,
+                'client_name': 'ToastTab CHN', 'start_date': MONDAY,
                 'num_days': 5,
             }).get_json()
             noisy = [d for d in body['rule_diagnostics']
