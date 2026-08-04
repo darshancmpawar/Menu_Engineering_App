@@ -16,7 +16,6 @@ editor offering tokens that no longer exist.
 
 from __future__ import annotations
 
-import json
 import os
 
 import pytest
