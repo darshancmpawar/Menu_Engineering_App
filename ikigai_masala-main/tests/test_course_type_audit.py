@@ -124,3 +124,94 @@ class TestTheAdjudicationsAreHonest:
         matcher can actually imply, or the pair silences nothing."""
         implied = {p[1] for p in LEGITIMATE_PAIRS}
         assert implied <= set(NAME_SIGNALS), implied - set(NAME_SIGNALS)
+
+
+class TestUnservableRowsAreCaughtStructurally:
+    """A row can be filed in a plausible category and still be impossible to serve.
+
+    `PoolBuilder._nonveg_mask` drops any non-veg `primary_protein` from every slot
+    except `nonveg_main`. So a non-veg protein on a row whose `course_type` is
+    something else leaves its own pool and joins nothing. No name check finds this —
+    both examples had perfectly descriptive names — so the check is structural.
+    """
+
+    @pytest.mark.parametrize('city', CITIES)
+    def test_no_city_has_an_unservable_row(self, city):
+        from scripts.audit_course_types import unservable_rows
+        assert unservable_rows(_read(city)) == []
+
+    def test_the_check_catches_a_planted_orphan(self):
+        from scripts.audit_course_types import unservable_rows
+        df = pd.DataFrame({'item': ['egg_pulao'], 'course_type': ['rice'],
+                           'primary_protein': ['egg']})
+        assert unservable_rows(df) == [('egg_pulao', 'rice', 'egg')]
+
+    def test_a_nonveg_row_in_nonveg_main_is_fine(self):
+        from scripts.audit_course_types import unservable_rows
+        df = pd.DataFrame({'item': ['chicken_biryani'],
+                           'course_type': ['nonveg_main'],
+                           'primary_protein': ['chicken']})
+        assert unservable_rows(df) == []
+
+    def test_egg_fried_rice_is_now_reachable(self):
+        """It was course_type `rice` + protein `egg`, so it was dropped from the
+        rice pool and never entered nonveg_main. Now it can actually be served."""
+        from api.config import city_excel_path, city_required_slots
+        from src.preprocessor.data_cleanser import DataCleanser
+        from src.preprocessor.excel_reader import ExcelReader
+        from src.preprocessor.pool_builder import PoolBuilder
+        df = DataCleanser(ExcelReader(city_excel_path('Bangalore')).read()).clean()
+        pools = PoolBuilder().build_pools(
+            df, required_slots=city_required_slots('Bangalore'))
+        assert 'egg_fried_rice' in set(pools['nonveg_main']['item'])
+
+    def test_urandai_kuzhambu_stayed_vegetarian(self):
+        """The fix ran the other way: the dish was correctly a veg_gravy and its
+        PROTEIN was wrong. Moving it to nonveg_main would have made a
+        lentil-dumpling gravy non-veg to silence the checker."""
+        d = _read('chennai').set_index('item')
+        prot = str(d.at['urandai_kuzhambu', 'primary_protein']).strip().lower()
+        assert prot in ('', 'nan', 'none'), prot
+        assert d.at['urandai_kuzhambu', 'course_type'] == 'veg_gravy'
+
+
+class TestDrinksAreNotGravies:
+    def test_plain_buttermilks_are_welcome_drinks(self):
+        d = _read('bangalore').set_index('item')
+        for item in ('butter_milk', 'masala_butter_milk', 'boondi_butter_milk'):
+            assert d.at[item, 'course_type'] == 'welcome_drink', item
+
+    def test_majjige_huli_is_still_a_gravy(self):
+        """The counter-case that keeps the fix honest: majjige huli IS a buttermilk
+        CURRY. Had the token list keyed on `majjige` instead of `buttermilk`, these
+        three would have been dragged into welcome_drink."""
+        d = _read('bangalore').set_index('item')
+        for item in ('majjige_huli', 'bendekai_majjige_huli', 'sorekai_majjige_huli'):
+            assert d.at[item, 'course_type'] == 'veg_gravy', item
+
+
+class TestTheThreeCitySheetsAgree:
+    """What the user asked to have verified, as an assertion rather than a report."""
+
+    def test_all_three_have_the_same_columns_in_the_same_order(self):
+        ref = list(_read('bangalore').columns)
+        for city in CITIES[1:]:
+            assert list(_read(city).columns) == ref, city
+        assert len(ref) == 135
+
+    def test_sub_categories_are_mostly_shared_with_the_master(self):
+        """Not identical — a city with dishes the master lacks legitimately needs
+        new values. Unlike columns, sub_category is free text per row, not an enum,
+        so divergence is allowed; it is the RATE that matters."""
+        def subs(city):
+            s = _read(city)['sub_category'].astype(str).str.strip().str.lower()
+            return set(s) - {'', 'nan', 'none'}
+        master = subs('bangalore')
+        assert subs('pune') <= master, sorted(subs('pune') - master)
+        chennai_only = subs('chennai') - master
+        # Only the seafood + sweet-pongal buckets this work introduced, which
+        # Bangalore cannot share because it has zero fish and no sweet pongal.
+        assert chennai_only == {
+            'fish_chinese_dry', 'fish_south_coastal', 'fish_spicy_fry',
+            'sweet_pongal',
+        }, sorted(chennai_only)

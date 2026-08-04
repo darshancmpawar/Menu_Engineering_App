@@ -59,6 +59,21 @@ CORRECTIONS = {
         'mapillai_samba_sweet_pongal': ('dessert', 'sweet_pongal', 'semi_dry'),
     },
     'bangalore': {
+        # Drinks filed as a mixed-veg curry. Eight other buttermilks in the same
+        # workbook are `welcome_drink / indian_regional_drink`, so the file
+        # disagrees with itself. NOT touched: majjige_huli and its two variants,
+        # which really are buttermilk CURRIES and correctly `veg_gravy / kadhi`.
+        'butter_milk':        ('welcome_drink', 'indian_regional_drink', None),
+        'masala_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
+        'boondi_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
+        # UNSERVABLE, not merely misfiled: course_type `rice` with
+        # primary_protein `egg`. PoolBuilder._nonveg_mask drops non-veg rows from
+        # every slot except nonveg_main, so this was dropped from the rice pool —
+        # and being course_type `rice` it never entered nonveg_main either. It
+        # could not be served at all. Every chicken biryani in the master is
+        # nonveg_main for exactly this reason; the egg rice was the one that
+        # missed the convention.
+        'egg_fried_rice': ('nonveg_main', 'chicken_chinese_dry', None),
         # A moong dal DOSA filed as the day's dal, with sub_category `leafy_dal`
         # (wrong twice — it is not leafy either). 37 other dosas are `bread`; this
         # was the only one that was not, so a client with a dal slot could be
@@ -68,10 +83,41 @@ CORRECTIONS = {
     },
 }
 
+#: ``city -> {item: primary_protein}``. A separate map because the fix runs the
+#: OTHER way: the dish is filed in the right category and its *protein* is wrong.
+#:
+#: `urandai_kuzhambu` was `veg_gravy` with `primary_protein: egg`, which made it
+#: unservable — `_nonveg_mask` drops non-veg rows from every slot except
+#: nonveg_main, so it left the veg_gravy pool and joined nothing. Urundai kuzhambu
+#: is a lentil-dumpling gravy; `is_egg_dish` is 0 on the row and all 11 sibling veg
+#: kuzhambus carry no protein at all, so the column was simply wrong. Moving it to
+#: nonveg_main would have "fixed" the symptom by making a veg dish non-veg.
+PROTEIN_CORRECTIONS = {
+    'chennai': {
+        'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
+    },
+}
+
+
 def apply_corrections(df: pd.DataFrame, city: str):
     """Return ``(df, changes)`` for one city. Pure, so tests can call it."""
     df = df.copy()
     changes = []
+    for item, want in PROTEIN_CORRECTIONS.get(city, {}).items():
+        hits = df.index[df['item'].astype(str).str.strip() == item]
+        if len(hits) == 0:
+            changes.append((item, 'MISSING', '', ''))
+            continue
+        for idx in hits:
+            before = str(df.at[idx, 'primary_protein']).strip()
+            if before in ('', 'nan', 'None') and want == '':
+                continue
+            if before == want:
+                continue
+            df.at[idx, 'primary_protein'] = want
+            changes.append((item, f'protein={before}',
+                            f'protein={want or "(veg)"}', ''))
+
     for item, (course, sub, form) in CORRECTIONS.get(city, {}).items():
         hits = df.index[df['item'].astype(str).str.strip() == item]
         if len(hits) == 0:
@@ -97,7 +143,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     total, missing_any = 0, False
-    for city in sorted(CORRECTIONS):
+    for city in sorted(set(CORRECTIONS) | set(PROTEIN_CORRECTIONS)):
         path = os.path.join(CITY_ITEMS, f'{city}.xlsx')
         if not os.path.exists(path):
             print(f'{city}: no workbook at {path}', file=sys.stderr)
