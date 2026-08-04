@@ -11,6 +11,10 @@ read off the grid in `chennai_sample_menu.xlsx`. Without the sources in the repo
 the reasoning behind a rule is unverifiable — you can see *that* a cap is 3 but not
 *why* — and re-deriving it means asking the client for the file again.
 
+`bangalore_menu_samples_1.xlsx` was briefly here too and has been removed: all 14
+of its sheets are byte-identical to sheets in `bangalore_menu_samples_history.xlsx`
+(which has 32), so it was a strict subset and a second copy to keep in sync.
+
 Only Bangalore's sample history was committed before; Pune's and Chennai's raw
 lists, the Pune rulebook and Chennai's sample menu existed only as chat
 attachments and would have been lost.
@@ -18,7 +22,6 @@ attachments and would have been lost.
 | File | City | What it is | Used to produce |
 |---|---|---|---|
 | `bangalore_menu_samples_history.xlsx` | Bangalore | printed menus as served | `docs/client_logics.md` |
-| `bangalore_menu_samples_1.xlsx` | Bangalore | earlier sample extract | `docs/client_logics.md` |
 | `pune_menu_items_raw.xlsx` | Pune | raw item list before normalisation | `city_items/pune.xlsx` |
 | `pune_menu_rulebook_101.xlsx` | Pune | **the 70-rule rulebook** | `docs/pune_rulebook.md`, `configs/city_rules/pune.json` |
 | `chennai_menu_items_raw.xlsx` | Chennai | raw item list, incl. its own `Mapping_Log` sheet | `city_items/chennai.xlsx` |
