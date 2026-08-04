@@ -25,6 +25,10 @@ from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_worker_count, get_stats as _solver_stats
 from src.ontology import repository as ontology_repository
+from src.application.constant_items import _canonical_item_name, _exclusive_siblings, _resolve_constant_items, _slot_item_names, _validate_constant_values
+from src.application.history import _build_history_context
+from src.application.horizon import _client_base_slots, _filter_dates_by_working_days, _weekdays_from
+from src.application.presentation import _enrich_history_plan
 from api.rate_limit import rate_limit
 from api import metrics
 
@@ -54,8 +58,7 @@ from src.preprocessor.client_pool_filter import (
     get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
 )
 from src.constants import (
-    BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS, REPEATABLE_ITEM_BASES,
-    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
+    BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS,
 )
 from src.client import ClientConfigLoader
 from src.client.client_config import normalize_city
@@ -308,163 +311,10 @@ def _get_menu_rules_for_city(city):
     return _ontology.rules_for_city(city)
 
 
-def _exclusive_siblings(base_slot: str) -> Set[str]:
-    """Base slots that cannot coexist with *base_slot* on one counter.
-
-    ``curd`` and ``curd_side`` are the two yogurt-side categories: a counter
-    serves one or the other, never both (see MUTUALLY_EXCLUSIVE_SLOT_GROUPS).
-    """
-    out: Set[str] = set()
-    for group in MUTUALLY_EXCLUSIVE_SLOT_GROUPS:
-        if base_slot in group:
-            out |= set(group) - {base_slot}
-    return out
 
 
-def _validate_constant_values(client_name, resolved, df) -> None:
-    """Warn about ``constant_items`` values that are not real dishes.
-
-    A pinned value is free text written by hand, so a typo ships straight to
-    the printed menu with nothing to catch it. Anything that does not resolve
-    to an ontology item is logged once per (slot, value) — the pin is still
-    honoured, because plenty of legitimate pins (``"Fish Masala"``,
-    ``"Mutton Biryani"``) intentionally name dishes the veg-only ontology does
-    not carry.
-
-    Non-string values are reported too: ``_resolve_client_constant`` falls back
-    to ``str(spec)``, so a stray number or nested object would otherwise print
-    as ``"5"`` or a Python repr in the slot.
-    """
-    if df is None or 'item' not in getattr(df, 'columns', []):
-        return
-    try:
-        known = {str(v).strip().lower() for v in df['item'].tolist()}
-    except Exception:  # noqa: BLE001 — validation must never break planning
-        return
-
-    for slot, spec in (resolved or {}).items():
-        values = [spec] if not isinstance(spec, dict) else list(spec.values())
-        for value in values:
-            if value is None:
-                continue
-            if not isinstance(value, str):
-                logger.warning(
-                    "constant_items[%r] for %s is %s, not a string; it will "
-                    "print as %r. Quote the value in client_rules.json.",
-                    slot, client_name, type(value).__name__, str(value),
-                )
-                continue
-            name = value.strip().lower()
-            if name and name not in known and name.replace(' ', '_') not in known:
-                logger.warning(
-                    "constant_items[%r] for %s pins %r, which is not an item in "
-                    "the ontology. It will be printed verbatim — check for a "
-                    "typo, or confirm this is an intentional off-ontology dish.",
-                    slot, client_name, value,
-                )
 
 
-def _resolve_constant_items(client_name, constant_items, client_cfg):
-    """Resolve a client's raw ``constant_items`` block against ONE counter.
-
-    Returns ``(resolved, whole_slot_bases)``. *resolved* maps a real slot id
-    to its raw spec (daily string or weekday map); *whole_slot_bases* are base
-    slots the overlay replaces outright, which the caller drops from the model
-    rather than solving a cell whose value is immediately overwritten.
-
-    Three things happen here, each a silent wrong-menu bug when skipped:
-
-    * A slot this counter does not serve is dropped — ``constant_items`` is
-      client-scoped but a client may have several counters, and a two-slot
-      Chinese station should not grow a salad row. The exception is a slot
-      whose mutually-exclusive sibling *is* served: ``curd``/``curd_side`` are
-      one logical yogurt slot and pinning "curd Mon, raita Wed" across the
-      pair is the entire point of the weekday-map form.
-    * A key outside the slot registry is dropped with a warning instead of
-      being stamped as an ad-hoc slot that has no display label and no rank
-      in DISPLAY_SLOT_ORDER.
-    * A bare base name on a multi-expansion slot resolves to the LAST
-      expansion, so ``nonveg_main`` at count 2 keeps one solved dish and pins
-      the other instead of losing both.
-    """
-    resolved: Dict[str, Any] = {}
-    whole_slot_bases: Set[str] = set()
-    if not constant_items:
-        return resolved, whole_slot_bases
-
-    # `_`-prefixed keys are documentation, the same convention the rules list
-    # uses for `_comment`. Without this a comment inside a `constant_items`
-    # block logs "not a known slot" on every single plan.
-    constant_items = {
-        k: v for k, v in constant_items.items() if not str(k).startswith('_')
-    }
-
-    known_slots = set(BASE_SLOT_NAMES) | set(CONST_SLOTS)
-    active_slots = getattr(client_cfg, 'active_slots', None)
-
-    if not active_slots:
-        # No counter to resolve against (utility / direct callers). Keep the
-        # registry check but leave keys untouched — dropping every constant
-        # because a caller omitted client_cfg would be a silent data loss.
-        for key, spec in constant_items.items():
-            base = _base_slot(key)
-            if base not in known_slots:
-                logger.warning(
-                    "Ignoring constant_items[%r]: %r is not a known slot.",
-                    key, base,
-                )
-                continue
-            resolved[key] = spec
-            if isinstance(spec, str):
-                whole_slot_bases.add(base)
-        return resolved, whole_slot_bases
-
-    served: Dict[str, List[str]] = {}
-    for slot_id in active_slots:
-        served.setdefault(_base_slot(slot_id), []).append(slot_id)
-
-    for key, spec in constant_items.items():
-        base = _base_slot(key)
-        if base not in known_slots:
-            logger.warning(
-                "Ignoring constant_items[%r] for %s: %r is not a known slot. "
-                "Valid slots are BASE_SLOT_NAMES + CONST_SLOTS.",
-                key, client_name, base,
-            )
-            continue
-
-        expansions = served.get(base, [])
-        if not expansions:
-            # No cell of its own. Legitimate only when a mutually-exclusive
-            # sibling is served (the curd / curd_side pair); otherwise this
-            # constant belongs to a different counter.
-            if not (_exclusive_siblings(base) & set(served)):
-                logger.debug(
-                    "Dropping constant_items[%r] for %s: counter %r does not "
-                    "serve %r.", key, client_name,
-                    getattr(client_cfg, 'name', '?'), base,
-                )
-                continue
-            resolved[base] = spec
-            continue
-
-        if key in expansions:
-            target = key
-        else:
-            target = expansions[-1]
-            if key != base:
-                logger.warning(
-                    "constant_items[%r] for %s: this counter has %d "
-                    "expansion(s) of %r, pinning %r instead.",
-                    key, client_name, len(expansions), base, target,
-                )
-        resolved[target] = spec
-        # A daily string on a single-expansion slot replaces the slot for the
-        # whole horizon, so there is nothing left worth solving.
-        if len(expansions) == 1 and isinstance(spec, str):
-            whole_slot_bases.add(base)
-
-    return resolved, whole_slot_bases
 
 
 def _rules_and_skip_for_client(
@@ -545,20 +395,6 @@ def _rules_and_skip_for_client(
     return rules, skip_cells, constant_items, whole_slot_bases, forced_items
 
 
-def _slot_item_names(pools, base_slot):
-    """Lowercased item names eligible for *base_slot*, from the built pools.
-
-    The pre-filter chain (theme, cooldown, …) can still drop a dish later; the
-    solver handles that case by solving the cell normally. This is the coarse
-    "could this dish ever appear in this slot" test that decides force vs stamp.
-    """
-    pool = (pools or {}).get(base_slot)
-    if pool is None or 'item' not in getattr(pool, 'columns', []):
-        return frozenset()
-    try:
-        return frozenset(str(v).strip().lower() for v in pool['item'].tolist())
-    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
-        return frozenset()
 
 
 def _ontology_item_names(city=None):
@@ -566,20 +402,6 @@ def _ontology_item_names(city=None):
     return _ontology.item_names(city)
 
 
-def _canonical_item_name(value, known_items):
-    """Return the ontology spelling of *value*, or None if it is not a dish.
-
-    Pins are hand-written, so ``"Boiled Egg"`` has to match ``boiled_egg``.
-    """
-    if not isinstance(value, str):
-        return None
-    name = value.strip().lower()
-    if not name:
-        return None
-    for candidate in (name, name.replace(' ', '_')):
-        if candidate in known_items:
-            return candidate
-    return None
 
 
 def _apply_item_cooldown_override(rules, cooldown_days):
@@ -643,67 +465,6 @@ def _effective_history_window(rules) -> int:
     return effective
 
 
-def _build_history_context(
-    df, client_name, start_date, weekday_dates, window_days=None,
-    cooldown_days=None,
-):
-    """Shared helper to build history-based solver inputs from Supabase.
-
-    Pushes ``client_name`` and ``service_date >= cutoff`` filters down to
-    Supabase so the query hits the ``(client_name, service_date DESC)``
-    index on ``menu_history`` (and the analogous index on
-    ``week_signatures``) instead of scanning every row for every tenant.
-
-    *window_days* is the backward-lookback in days. Callers should pass
-    ``_effective_history_window(rules)`` so per-client rule overrides
-    don't silently truncate the window. Falling back to the floor
-    keeps the function usable in tests / scripts that don't assemble
-    rules upfront.
-    """
-    import pandas as pd
-    from src.db import get_supabase
-
-    if window_days is None:
-        window_days = _HISTORY_WINDOW_DAYS
-    earliest = start_date - dt.timedelta(days=window_days)
-    earliest_iso = earliest.isoformat()
-
-    hm = HistoryManager()
-    sb = get_supabase()
-    long_resp = (
-        sb.table('menu_history')
-        .select('*')
-        .eq('client_name', client_name)
-        .gte('service_date', earliest_iso)
-        .execute()
-    )
-    weeks_resp = (
-        sb.table('week_signatures')
-        .select('*')
-        .eq('client_name', client_name)
-        .gte('week_start', earliest_iso)
-        .execute()
-    )
-    # menu_history stores one JSONB row per (client, date); explode it into
-    # the long per-item form the cooldown readers consume.
-    long_df = HistoryManager.explode_history_rows(long_resp.data)
-    weeks_df = pd.DataFrame(weeks_resp.data) if weeks_resp.data else None
-    hm.load_from_dataframes(long_df, weeks_df)
-    # Rows are already scoped to this client at the DB layer, but leave
-    # the in-memory filter in place as belt-and-suspenders for anyone
-    # who seeds the manager from an unfiltered DataFrame.
-    hm = hm.filter_by_client(client_name)
-
-    _cooldown_kw = {} if cooldown_days is None else {'cooldown_days': int(cooldown_days)}
-    banned = hm.banned_items_by_date(weekday_dates, const_slots=CONST_SLOTS,
-                                      repeatable_items=REPEATABLE_ITEM_BASES,
-                                      **_cooldown_kw)
-    ricebread_items = set(
-        df.loc[df.get('is_rice_bread', 0) == 1, 'item'].tolist()
-    ) if 'is_rice_bread' in df.columns else set()
-    rb_ban = hm.ricebread_ban_by_date(weekday_dates, ricebread_items)
-    recent_sigs = hm.recent_week_signatures(start_date)
-    return banned, rb_ban, recent_sigs
 
 
 def _cached_on_g(key: str, compute):
@@ -779,51 +540,10 @@ def _require_known_client(client_name):
         raise ValueError(f"Unknown client: {client_name}")
 
 
-def _weekdays_from(start_date, num_days, serve_weekends=False):
-    """Return ``num_days`` service dates starting from ``start_date``.
-
-    By default Sat/Sun are skipped (weekday-only kitchens). When
-    ``serve_weekends`` is True every calendar day counts, so the plan can
-    cover Saturday and Sunday (e.g. a 6-day plan from Monday = Mon–Sat).
-    """
-    dates = []
-    d = start_date
-    while len(dates) < num_days:
-        if serve_weekends or d.weekday() < 5:  # Mon-Fri, or all days
-            dates.append(d)
-        d += dt.timedelta(days=1)
-    return dates
 
 
-def _filter_dates_by_working_days(dates, working_days):
-    """Keep only dates whose weekday is in *working_days* (None = unchanged)."""
-    if not working_days:
-        return list(dates)
-    from src.solver.menu_solver import _WEEKDAY_ALIASES
-    from src.solver._helpers import weekday_name
-    allowed = {
-        _WEEKDAY_ALIASES.get(str(d).strip().lower(), str(d).strip().lower())
-        for d in working_days
-    }
-    return [d for d in dates if weekday_name(d) in allowed]
 
 
-def _client_base_slots(client_cfg):
-    """Return unique base slot names the client uses (excluding constants).
-
-    Handles expanded slot IDs like veg_dry__1, veg_dry__2 by extracting
-    the base name so the solver gets ['veg_dry'] not ['veg_dry__1', 'veg_dry__2'].
-    """
-    seen = set()
-    result = []
-    for s in client_cfg.active_slots:
-        if s in CONST_SLOTS:
-            continue
-        base = _base_slot(s)
-        if base not in seen:
-            seen.add(base)
-            result.append(base)
-    return result
 
 
 # SolverConfig fields a rule may override via solver_overrides(). Restricted to
@@ -1374,70 +1094,8 @@ def save_plan():
         return _internal_error_response(500)
 
 
-def _build_item_color_lookup(df) -> Dict[str, str]:
-    """Return ``{normalised_item_name: color_initial_letter}``.
-
-    Used by ``saved_plan`` to re-attach a color suffix to history rows.
-    ``menu_history.item_base`` is stored without color (the cooldown
-    rules are color-agnostic), but the UI's table renderer expects
-    ``item(C)``-shaped strings — without this lookup, loaded plans show
-    no color pills.
-
-    Falls back gracefully: items not in *df* (admin-renamed, removed,
-    legacy entries) round-trip without a color suffix instead of
-    crashing.
-    """
-    from src.preprocessor.column_mapper import _norm_str, _norm_color
-
-    out: Dict[str, str] = {}
-    if df is None or 'item' not in df.columns:
-        return out
-    color_col = 'item_color' if 'item_color' in df.columns else None
-    for _, row in df[['item'] + ([color_col] if color_col else [])].iterrows():
-        name = _norm_str(row.get('item', ''))
-        if not name:
-            continue
-        if color_col is None:
-            out.setdefault(name, '')
-            continue
-        col = _norm_color(row.get(color_col, 'unknown'))
-        if col == 'unknown' or '_' not in col:
-            out.setdefault(name, '')
-            continue
-        # _norm_color returns shapes like "light_red", "medium_green";
-        # the UI's display logic uses the last token's first letter
-        # (matches src.solver.menu_solver._color_initial).
-        base = col.split('_')[-1]
-        out.setdefault(name, base[:1].upper() if base else '')
-    return out
 
 
-def _enrich_history_plan(
-    saved: Dict[dt.date, Dict[str, str]], df,
-) -> Dict[dt.date, Dict[str, str]]:
-    """Turn ``{date: {slot: item_base}}`` (history shape) into
-    ``{date: {slot: item_with_color}}`` (UI shape) by looking up each
-    item's color in the loaded Excel *df* and appending ``(C)``.
-
-    Constant slots (white_rice, papad, pickle, chutney) round-trip as-is
-    since they never carried a color suffix in the first place. Items
-    that no longer exist in the ontology fall through without a suffix
-    — the UI handles missing-color gracefully (no color pill).
-    """
-    color_lookup = _build_item_color_lookup(df)
-    out: Dict[dt.date, Dict[str, str]] = {}
-    for d, slots in saved.items():
-        day_out: Dict[str, str] = {}
-        for slot_id, item_base in slots.items():
-            if not item_base:
-                continue
-            if slot_id in CONST_SLOTS:
-                day_out[slot_id] = item_base
-                continue
-            initial = color_lookup.get(item_base, '')
-            day_out[slot_id] = f'{item_base}({initial})' if initial else item_base
-        out[d] = day_out
-    return out
 
 
 @app.route('/api/v1/saved-plan', methods=['GET'])
