@@ -5,8 +5,8 @@ City-level rules live in `data/configs/city_rules/chennai.json`; Bangalore's
 clients are in [`client_logics.md`](client_logics.md) and Pune's in
 [`pune_client_logic.md`](pune_client_logic.md).
 
-**Sources:** `chennai_menu_items.xlsx` (361 items, normalised to
-`data/raw/city_items/chennai.xlsx`) and `chennai_sample_menu.xlsx`, sheet
+**Sources:** `data/raw/source_workbooks/chennai_menu_items_raw.xlsx` (361 items, normalised to
+`data/raw/city_items/chennai.xlsx`) and `data/raw/source_workbooks/chennai_sample_menu.xlsx`, sheet
 `Toasttab`. Scope is **lunch**.
 
 **Implementation:** the `"ToastTab CHN"` entry in

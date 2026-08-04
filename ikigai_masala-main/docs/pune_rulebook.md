@@ -1,6 +1,6 @@
 # Pune rulebook → implementation map
 
-Source: `Pune_menu_rulebook_101.xlsx` (sheet `Rulebook`, R1–R70) plus its
+Source: `data/raw/source_workbooks/pune_menu_rulebook_101.xlsx` (sheet `Rulebook`, R1–R70) plus its
 annexure. Implementation: `data/configs/city_rules/pune.json`.
 
 Per-client requirements are in [`pune_client_logic.md`](pune_client_logic.md);
