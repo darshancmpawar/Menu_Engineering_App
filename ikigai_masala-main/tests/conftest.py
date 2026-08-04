@@ -100,10 +100,7 @@ def fake_supabase(monkeypatch, seeded_fake_supabase):
         # cache by city. Resetting a stale name (`_pools`, `_df`,
         # `_nonveg_items`, `_menu_rules`) silently created a junk attribute and
         # left the real caches leaking across tests.
-        monkeypatch.setattr(api_app, '_menu_data_by_path', {}, raising=False)
-        monkeypatch.setattr(api_app, '_nonveg_items_by_path', {}, raising=False)
-        monkeypatch.setattr(api_app, '_menu_rules_by_city', {}, raising=False)
-        monkeypatch.setattr(api_app, '_filtered_cache', {}, raising=False)
+        api_app.reset_caches()
     except ImportError:
         pass
 

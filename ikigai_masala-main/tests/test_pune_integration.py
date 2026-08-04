@@ -42,9 +42,7 @@ def pune_api(monkeypatch):
     })
     monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
     monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        monkeypatch.setattr(api_app, attr, {}, raising=False)
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     return api_app
 
@@ -248,7 +246,7 @@ class TestPerCityIsolation:
     """The two cities must not leak into each other at any layer."""
 
     def test_ontology_caches_are_shared_by_path_not_city(self, pune_api):
-        pune_api._menu_data_by_path.clear()
+        pune_api.reset_caches()
         blr, _ = pune_api._get_menu_data('Bangalore')
         # Hyderabad, not Chennai: Chennai has its own workbook now, so it is a
         # separate entry rather than a second reference to Bangalore's.
@@ -256,7 +254,7 @@ class TestPerCityIsolation:
         pune, _ = pune_api._get_menu_data('Pune')
         assert blr is hyd                           # same file, one load
         assert pune is not blr and len(pune) == 274
-        assert len(pune_api._menu_data_by_path) == 2
+        assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):
         from src.menu_rules.menu_rule_loader import MenuRuleLoader
@@ -323,9 +321,7 @@ class TestNoCrossCityWorkbookReads:
         })
         monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            monkeypatch.setattr(api_app, attr, {}, raising=False)
+        api_app.reset_caches()
         api_app.app.config['TESTING'] = True
         return api_app
 

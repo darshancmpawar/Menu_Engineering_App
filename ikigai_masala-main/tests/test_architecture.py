@@ -188,3 +188,60 @@ class TestWorkerCountIsInjectedNotImported:
         src = inspect.getsource(api_app._build_solver_config)
         assert 'worker_count_provider=get_worker_count' in src
         assert callable(get_worker_count)
+
+class TestOntologyCachesAreNotPokedByName:
+    """The ontology caches moved into `src/ontology/repository.py` and are reset
+    with `api_app.reset_caches()`.
+
+    This test exists because the failure mode of regressing it is silent. If a
+    test sets `api_app._menu_data_by_path = {}` today, that just creates an
+    unused attribute — nothing reads it — so the test still passes while sharing
+    a cache with every other test in the session. A stale 4,300-row Bangalore
+    frame would then answer a Chennai assertion, and the failure would surface in
+    a different file depending on test order.
+    """
+
+    RETIRED = ('_menu_data_by_path', '_nonveg_items_by_path',
+               '_menu_rules_by_city', '_filtered_cache')
+
+    def test_no_test_file_references_a_retired_cache_global(self):
+        import glob
+        offenders = {}
+        here = os.path.abspath(__file__)
+        for path in sorted(glob.glob(os.path.join(
+                os.path.dirname(here), '*.py'))):
+            # This file necessarily spells the retired names out — it is the one
+            # explaining them.
+            if os.path.abspath(path) == here:
+                continue
+            with open(path, encoding='utf-8') as fh:
+                body = fh.read()
+            # `api_app._filtered_cache` etc. — a bare mention in a test NAME or a
+            # docstring is harmless, so require the attribute-access form.
+            hits = [n for n in self.RETIRED if f'.{n}' in body]
+            if hits:
+                offenders[os.path.basename(path)] = hits
+        assert not offenders, (
+            f'{offenders} — use api_app.reset_caches() instead; setting the old '
+            f'globals silently does nothing and loses test isolation.')
+
+    def test_reset_caches_actually_empties_them(self):
+        import api.app as api_app
+        api_app._get_menu_data('Chennai')
+        assert api_app._ontology.cache_sizes()['menu_data'] > 0
+        api_app.reset_caches()
+        assert all(v == 0 for v in api_app._ontology.cache_sizes().values())
+
+    def test_cities_sharing_a_workbook_share_one_entry(self):
+        """Why the caches are keyed by resolved path, not city name: Hyderabad
+        and NCR fall back to Bangalore's list, and keying by city would hold
+        three copies of a 4,300-row frame."""
+        import api.app as api_app
+        api_app.reset_caches()
+        api_app._get_menu_data('Bangalore')
+        api_app._get_menu_data('Hyderabad')
+        api_app._get_menu_data('NCR')
+        assert api_app._ontology.cache_sizes()['menu_data'] == 1
+        api_app._get_menu_data('Chennai')
+        assert api_app._ontology.cache_sizes()['menu_data'] == 2
+        api_app.reset_caches()

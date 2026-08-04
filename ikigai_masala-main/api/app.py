@@ -24,14 +24,13 @@ from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_worker_count, get_stats as _solver_stats
+from src.ontology import repository as ontology_repository
 from api.rate_limit import rate_limit
 from api import metrics
 
 from api.config import (
     API_WRITE_TOKEN,
     MAX_CONTENT_LENGTH_BYTES,
-    city_excel_path,
-    city_required_slots,
     API_HOST, API_PORT, DEBUG, APP_VERSION,
     MIN_NUM_DAYS, MAX_NUM_DAYS, MIN_TIME_LIMIT_SECONDS, MAX_TIME_LIMIT_SECONDS,
     MAX_ALTERNATES, validate_required_env, today_in_app_tz,
@@ -50,8 +49,7 @@ configure_logging()
 # opaque KeyError or Supabase auth error on the first request — which
 # happens in production long after the process looked healthy.
 validate_required_env()
-from src.preprocessor import ExcelReader, DataCleanser
-from src.preprocessor.pool_builder import PoolBuilder, _base_slot, _nonveg_mask
+from src.preprocessor.pool_builder import _base_slot
 from src.preprocessor.client_pool_filter import (
     get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
 )
@@ -250,14 +248,23 @@ def _trace_request_teardown(_exc):
 # Thread-safe lazy singletons
 _init_lock = threading.Lock()
 _client_loader = None
-_menu_rules_by_city = {}
 
-# Per-ontology caches. Every city with its own workbook gets its own entry;
-# cities that share the default workbook share ONE entry, because the cache is
-# keyed by the RESOLVED PATH rather than the city name — otherwise Chennai,
-# Hyderabad and NCR would each hold a second copy of the 4,300-row Bangalore
-# ontology in memory for nothing.
-_menu_data_by_path: Dict[str, tuple] = {}
+# The ontology caches used to be four module-level dicts right here. They now
+# live in src/ontology/repository.py — loading a workbook and building slot pools
+# is not an HTTP concern, and as module globals they forced every integration
+# test to reset four private attributes by name (54 places across 18 files) to
+# get isolation. `reset_caches()` below is the one call that replaced that.
+_ontology = ontology_repository
+
+
+def reset_caches() -> None:
+    """Drop every cached ontology, pool set and ruleset.
+
+    The supported way for a test to isolate itself, and the hook for picking up
+    an edited workbook without a restart. Prefer this over touching private
+    attributes: it cannot go stale when a cache is added.
+    """
+    _ontology.reset()
 
 
 def _get_client_loader():
@@ -270,128 +277,35 @@ def _get_client_loader():
 
 
 def _get_menu_data(city=None):
-    """Return ``(df, pools)`` for *city*'s ontology.
-
-    The item list is per-city (``data/raw/city_items/<city>.xlsx``), selected
-    from the client's ``clients.city``. A city without its own file falls back
-    to the default (Bangalore) list, so ``city=None`` — every caller that has
-    no city in hand — behaves exactly as it did before.
-    """
-    path = city_excel_path(city)
-    cached = _menu_data_by_path.get(path)
-    if cached is None:
-        with _init_lock:
-            cached = _menu_data_by_path.get(path)
-            if cached is None:
-                raw_df = ExcelReader(path).read()
-                df = DataCleanser(raw_df).clean()
-                # A city ontology covers only the categories that city serves,
-                # so the mandatory-slot check is held to that city's declared
-                # set (see data/raw/city_items/ontology_categories.json).
-                pools = PoolBuilder.build_pools(
-                    df, required_slots=city_required_slots(city),
-                )
-                cached = (df, pools)
-                _menu_data_by_path[path] = cached
-                logger.info(
-                    "Loaded ontology for city=%r from %s (%d items)",
-                    city, path, len(df),
-                )
-    return cached
-
-
-# Per-client eligible-pool cache (F5). Keyed by (ontology path, frozenset of
-# active pool tokens) — the tokens alone would collide across cities, handing a
-# Pune client Bangalore's `common` pool.
-_filtered_cache: Dict[tuple, tuple] = {}
+    """``(df, pools)`` for *city*'s ontology — see OntologyRepository.menu_data."""
+    return _ontology.menu_data(city)
 
 
 def _menu_data_for_client(client_name, city=None):
-    """Return (df, pools) for a client, applying F5 client-pool filtering.
+    """``(df, pools)`` for a client, with F5 client-pool filtering applied.
 
-    * ``source_pools is None`` (column missing / pre-migration) → full ontology,
-      i.e. behaviour is unchanged until the migration is applied.
-    * otherwise → items eligible for ``common ∪ source_pools`` only, with the
-      per-slot pools rebuilt from that subset. ``common`` is always included so
-      every mandatory slot stays populated (build_pools never empties).
-
-    *city* selects which city's ontology is filtered; when omitted it is read
-    from the same client row the source pools come from, so a caller that only
-    knows the client name still gets the right list.
+    Reads the client row here and hands `city` + `source_pools` to the
+    repository, rather than letting the ontology layer query Supabase itself.
+    One row read either way: the two values are columns of the same row, so
+    separate helpers would double the round trips on a path that runs per plan.
     """
-    # One row read either way — `city` and `source_pools` are two columns of the
-    # same row, so reading them with separate helpers would double the round
-    # trips on a path that runs once per plan.
     row = (
         _client_row(client_name) if has_request_context()
         else _get_client_loader().get_client_row(client_name)
     )
-    source_pools = row['source_pools']
     if city is None:
         city = row['city']
-    df, pools = _get_menu_data(city)
-    if source_pools is None:
-        return df, pools
-    active = get_active_pools(source_pools)
-    key = (city_excel_path(city), frozenset(active))
-    cached = _filtered_cache.get(key)
-    if cached is None:
-        with _init_lock:
-            cached = _filtered_cache.get(key)
-            if cached is None:
-                fdf = filter_eligible(df, active)
-                cached = (
-                    fdf,
-                    PoolBuilder.build_pools(
-                        fdf, required_slots=city_required_slots(city),
-                    ),
-                )
-                _filtered_cache[key] = cached
-    return cached
-
-
-_nonveg_items_by_path: Dict[str, set] = {}
+    return _ontology.filtered_menu_data(city, row['source_pools'])
 
 
 def _get_nonveg_items(city=None):
-    """Return a cached set of lower-cased non-vegetarian item base-names.
-
-    Built once per city ontology. An item is non-veg when its
-    ``primary_protein`` is a non-veg protein OR its ``is_egg_dish`` flag is
-    set — the latter catches egg dishes the data mislabels with a veg protein
-    (e.g. ``anda_mirch_masala`` tagged ``chana``). Used to tag solver output
-    so non-veg dishes render red in the app and the download.
-    """
-    path = city_excel_path(city)
-    cached = _nonveg_items_by_path.get(path)
-    if cached is None:
-        df, _ = _get_menu_data(city)
-        if 'item' not in df.columns:
-            cached = set()
-        else:
-            # Same predicate the pool builder uses to drop non-veg items from
-            # veg slots — one source of truth for "is this dish non-veg".
-            mask = _nonveg_mask(df)
-            cached = {
-                str(name).strip().lower() for name in df.loc[mask, 'item']
-            }
-        _nonveg_items_by_path[path] = cached
-    return cached
+    """Lowercased non-veg item names for *city* — used to render dishes red."""
+    return _ontology.nonveg_items(city)
 
 
 def _get_menu_rules_for_city(city):
-    """Cached base ruleset for a city (resolves the city_rules/<city>.json file
-    and its ``extends`` chain; falls back to the default city). Cached per
-    normalized city so clients in the same city share one read-only ruleset."""
-    key = (city or '').strip().lower() or None
-    cached = _menu_rules_by_city.get(key)
-    if cached is None:
-        with _init_lock:
-            cached = _menu_rules_by_city.get(key)
-            if cached is None:
-                cached = MenuRuleLoader().load_for_city(city)
-                _menu_rules_by_city[key] = cached
-    return cached
+    """Cached base ruleset for *city* (resolves the extends chain)."""
+    return _ontology.rules_for_city(city)
 
 
 def _exclusive_siblings(base_slot: str) -> Set[str]:
@@ -648,20 +562,8 @@ def _slot_item_names(pools, base_slot):
 
 
 def _ontology_item_names(city=None):
-    """Lowercased ontology item names, for resolving a pin to a real dish.
-
-    City-scoped: a pin is resolved against the list the client's city actually
-    serves, so a dish that exists only in another city's ontology stays a
-    stamped constant instead of being handed to the solver as a candidate it
-    has no pool row for.
-    """
-    df = _get_menu_data(city)[0]
-    if df is None or 'item' not in getattr(df, 'columns', []):
-        return frozenset()
-    try:
-        return frozenset(str(v).strip().lower() for v in df['item'].tolist())
-    except Exception:  # noqa: BLE001 — never break planning over a pin lookup
-        return frozenset()
+    """Lowercased ontology item names, for resolving a pin to a real dish."""
+    return _ontology.item_names(city)
 
 
 def _canonical_item_name(value, known_items):

@@ -46,9 +46,7 @@ def live_clients(monkeypatch):
 
     import api.app as api_app
     monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        monkeypatch.setattr(api_app, attr, {}, raising=False)
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     return api_app
 
@@ -80,9 +78,7 @@ def live_clients_lt_five(monkeypatch):
     monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
     import api.app as api_app
     monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        monkeypatch.setattr(api_app, attr, {}, raising=False)
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     return api_app
 

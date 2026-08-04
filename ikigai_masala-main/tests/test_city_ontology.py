@@ -164,7 +164,7 @@ class TestPerCityCaches:
         Hyderabad stands in for Chennai here — Chennai shared the default path
         until it got `city_items/chennai.xlsx`, and now it is a third entry."""
         import api.app as api_app
-        api_app._menu_data_by_path.clear()
+        api_app.reset_caches()
 
         blr_df, _ = api_app._get_menu_data('Bangalore')
         hyd_df, _ = api_app._get_menu_data('Hyderabad')
@@ -177,7 +177,7 @@ class TestPerCityCaches:
         assert len(pune_df) < len(blr_df)
         assert len(chn_df) < len(blr_df)
         # bangalore (shared with hyderabad) + pune + chennai
-        assert len(api_app._menu_data_by_path) == 3
+        assert api_app._ontology.cache_sizes()['menu_data'] == 3
 
     def test_nonveg_items_are_per_city(self, fake_supabase):
         import api.app as api_app
@@ -198,10 +198,10 @@ class TestPerCityCaches:
         """The F5 pool cache used to be keyed by pool tokens alone, which would
         hand a Pune client Bangalore's `common` pool."""
         import api.app as api_app
-        api_app._filtered_cache.clear()
+        api_app.reset_caches()
         api_app._get_client_loader().set_client_city('Rippling', 'Pune')
         pune_df, _ = api_app._menu_data_for_client('Rippling')
         api_app._get_client_loader().set_client_city('Rippling', 'Bangalore')
         blr_df, _ = api_app._menu_data_for_client('Rippling')
         assert len(pune_df) != len(blr_df)
-        assert len(api_app._filtered_cache) == 2
+        assert api_app._ontology.cache_sizes()['filtered'] == 2

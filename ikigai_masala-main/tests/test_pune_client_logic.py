@@ -50,9 +50,7 @@ def plan(amadeus_pune_row):
     old_sb = getattr(db_mod, '_sb_client', None)
     db_mod._sb_client = fake
     api_app._client_loader = None
-    for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                 '_menu_rules_by_city', '_filtered_cache'):
-        setattr(api_app, attr, {})
+    api_app.reset_caches()
     api_app.app.config['TESTING'] = True
     try:
         reset_for_tests()
@@ -256,9 +254,7 @@ class TestNoDiagnosticNoise:
         })
         monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
         monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            monkeypatch.setattr(api_app, attr, {}, raising=False)
+        api_app.reset_caches()
         reset_for_tests()
         resp = api_app.app.test_client().post('/api/v1/diagnose', json={
             'client_name': 'Amadeus Pune', 'start_date': MONDAY, 'num_days': 7,
@@ -514,9 +510,7 @@ class TestRaitaSurvivesASavedWeek:
         old = getattr(db_mod, '_sb_client', None)
         db_mod._sb_client = fake
         api_app._client_loader = None
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            setattr(api_app, attr, {})
+        api_app.reset_caches()
         api_app.app.config['TESTING'] = True
         try:
             reset_for_tests()
@@ -576,9 +570,7 @@ class TestRaitaSurvivesASavedWeek:
         old = getattr(db_mod, '_sb_client', None)
         db_mod._sb_client = fake
         api_app._client_loader = None
-        for attr in ('_menu_data_by_path', '_nonveg_items_by_path',
-                     '_menu_rules_by_city', '_filtered_cache'):
-            setattr(api_app, attr, {})
+        api_app.reset_caches()
         try:
             reset_for_tests()
             body = api_app.app.test_client().post('/api/v1/diagnose', json={
