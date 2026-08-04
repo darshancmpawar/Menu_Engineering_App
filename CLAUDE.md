@@ -24,7 +24,7 @@ ikigai_masala-main/          active project (Indian menu planner)
 ├── tests/                   pytest suite
 ├── pytest.ini, requirements.txt
 ├── README.md                overview + quick start
-└── docs/                    setup.md, architecture.md, api.md, operations.md, client_logics.md, pune_rulebook.md, pune_client_logic.md, chennai_client_logic.md (the two .xlsx that lived here moved to data/raw/source_workbooks/)
+└── docs/                    setup.md, architecture.md, api.md, operations.md, data_fixes_for_client.md, client_logics.md, pune_rulebook.md, pune_client_logic.md, chennai_client_logic.md (the two .xlsx that lived here moved to data/raw/source_workbooks/)
 ```
 
 ---
