@@ -1209,14 +1209,14 @@
         ]
       },
       {
-        "_comment": "Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1). Chennai's cap of one maida bread a week is simply wrong for this client: the sample serves a maida bread on 4 of 7 days (aloo paratha, butter kulcha, kothu parotta, paratha) and only 3 of the 5 non-maida wheat breads in the whole 29-dish pool are chapati variants. Left as a cap rather than disabled, because 'unlimited refined-flour bread' is not what the sample shows either — 3 of 5 weekdays is the observed rate. Without this the pre-flight gate correctly answered 422: the wheat-flatbread composition below forces a maida bread on days the cap forbids.",
+        "_comment": "Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1). Chennai's cap of one maida bread a week is simply wrong for this client: the sample serves a maida bread on 4 of 7 days (aloo paratha, butter kulcha, kothu parotta, paratha) and only 3 of the 5 non-maida wheat breads in the whole 29-dish pool are chapati variants. Client-confirmed at 2 a week, replacing the 3 I had read off the sample (which serves a maida bread on 4 of 7 days). Feasible because only the maida DAYS are capped: the 5 non-maida wheat flatbreads include the chapati family, which plain_chapati_may_repeat exempts from uniqueness, so the remaining 3 days draw from a 5-dish pool. Without this the pre-flight gate correctly answered 422: the wheat-flatbread composition below forces a maida bread on days the cap forbids.",
         "name": "maida_bread_weekly",
         "type": "selector_frequency",
         "selector": {
           "flag": "is_maida_bread"
         },
         "base_slot": "bread",
-        "max": 3
+        "max": 2
       },
       {
         "_comment": "The bread is always a wheat or maida flat bread, never the dosai/idly family. Every one of the seven sampled breads is chapati, paratha, kulcha or kothu parotta; Chennai's 29-dish bread pool also holds 9 rice-breads (dosai, idly, appam) and the solver picked 'podi idly' as a bread row until this was added. A one-slot composition component with count 1 IS 'this slot must be a matching dish' (note 20) — `fixed_daily_item` would be the wrong tool, it only makes the choice consistent.",

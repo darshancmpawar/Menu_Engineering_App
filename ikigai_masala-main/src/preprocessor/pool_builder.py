@@ -151,6 +151,24 @@ class PoolBuilder:
         else:
             pools['curd_rice'] = df.iloc[0:0].copy()
 
+        # A curd rice belongs to the curd-rice station, not the flavoured-rice
+        # slot. Because the station is flag-driven while the dish's course_type is
+        # `rice`, every curd rice sat in BOTH pools — so a counter running `rice`
+        # and `curd_rice` together could serve the SAME dish twice on one day, and
+        # ToastTab CHN did exactly that (dry_fruits_curd_rice as Tuesday's
+        # flavoured rice AND its curd rice). `unique_items` could not stop it: the
+        # curd-rice staple declaration deliberately exempts the dish so it may
+        # recur across days, and that exemption also permitted the same-day pair.
+        #
+        # Same reasoning as the non-veg exclusion just below — a dish appears in
+        # the slot that IS its category, not in every slot whose column it happens
+        # to satisfy. 13 dishes in Bangalore, 2 in Chennai; three live counters
+        # (Computa Centre, ToastTab, ToastTab CHN) could hit it.
+        if 'is_curd_rice' in df.columns and len(pools.get('rice', [])) > 0:
+            is_cr = pd.to_numeric(
+                pools['rice']['is_curd_rice'], errors='coerce').fillna(0) == 1
+            pools['rice'] = pools['rice'][~is_cr].copy()
+
         # Combination categories: one slot whose pool is the union of two
         # component pools. The solver picks the per-day variant by course_type.
         for combo, (maj, minr) in COMBO_CATEGORIES.items():
