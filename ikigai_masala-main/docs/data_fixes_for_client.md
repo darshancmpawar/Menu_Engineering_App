@@ -100,37 +100,52 @@ actually serve seafood, those dishes are missing entirely.
 
 ---
 
-## D. Needs your decision — we have not changed these
+## D. Resolved by your decision — applied in our copy
 
-### D1. Seven South Indian desserts are tagged `north_indian` (Chennai)
+You reviewed D1-D3 and gave a decision on each; all three are now applied to
+`data/raw/city_items/*.xlsx`. As with sections A-C, **please also fix them at
+source** so a re-import stops undoing them.
 
-`broken_wheat_kesari`, `dry_fruit_kesari`, `fruit_kesari`, `millet_payasam`,
-`payasam`, `semiya_pal_payasam`, `semiya_payasam` — 28 of Chennai's 32 desserts are
-`north_indian`.
+### D1. Desserts now carry their real region (all cities) — DONE
 
-**It does nothing today** because `dessert` is exempt from the theme filter. It is a
-landmine: the moment anyone wants themed desserts, a South Indian day's dessert pool
-collapses from 32 dishes to 4, and a week with three south days becomes infeasible.
-Cheap to fix now, expensive to diagnose later.
+`cuisine_family` on desserts was almost all `north_indian` (221/249 Bangalore,
+28/32 Chennai, 43/45 Pune). We researched the dish families and retagged:
 
-### D2. `tomato_thokku` is an `accompaniment`, but the sample serves it as a gravy
+* **South Indian** — every *payasam* / *payasa*, rava *kesari*, *mysore pak*,
+  *holige* / *obbattu*, sweet *pongal*, *badusha*, *adhirasam*, *ada pradhaman*,
+  and the Kannada/Tamil/Telugu names (ellu-bella, karjikai, sunnundalu, …).
+* **Continental** — western bakery: cake, brownie, muffin, cupcake, custard,
+  pudding, tiramisu, ice cream. `milk_cake` / `ajmeri_milk_cake` were kept Indian
+  (they are *mawa* sweets, not bakery).
 
-Toast Tab's Friday 03 Jul menu has tomato thokku in the veg-gravy position. As an
-`accompaniment` it can never be selected for `veg_gravy`, so **that dish in that
-position is unreproducible.** Genuinely arguable — a thokku *is* a condiment — so
-tell us which it is for you.
+East Indian (Bengali — rasgulla, rasmalai, sandesh) and West Indian (modak,
+shrikhand, soan papdi) sweets were **left `north_indian` on purpose**: the
+`cuisine_family` field has only north / south / continental / chinese / other, with
+no East or West value, so those are the closest usable bucket. If you want a true
+East/West split, we would need to add those values to the vocabulary first — tell us
+if that matters to you.
 
-### D3. Nine Chennai dishes and two Pune dishes have names that don't identify a dish
+### D2. `tomato_thokku` is now a gravy — DONE
+
+You confirmed it is a gravy, so it moved from `accompaniment` to `veg_gravy`
+(sub-category `mixed_veg_curry`, matching `tomato_gojju` / `tomato_masala`) in both
+Bangalore and Chennai. ToastTab's Friday tomato-thokku-in-veg-gravy is now
+reproducible.
+
+### D3. The 11 generic-named rows were removed — DONE
 
 Chennai: `brinjal`, `chutney`, `darbar_soup`, `dry_sweet`, `local_salna`,
 `milk_sweet`, `sweet`, `toast_salad`, `veg_gravy`
 Pune: `salad`, `sweet`
 
-`dry_sweet` and `sweet` **appear in the real sample menu**, so they are live rows,
-not placeholders. But a menu that prints "Sweet" tells the diner nothing, and the
-engine cannot apply a colour, ingredient or variety rule to a dish it cannot
-identify. A row literally named `veg_gravy` sitting in the veg-gravy category is the
-clearest case. **Please supply the actual dish names.**
+You chose removal over renaming, so these rows are deleted. **One consequence to
+be aware of:** `dry_sweet` and `sweet` appear on ToastTab's real sample menu, so
+those two sample rows are now **unreproducible** — a generated plan can no longer
+put a dish called "Sweet" in the dessert slot, because no such dish exists. If you
+later supply the real names for what "Sweet" and "Dry Sweet" actually were on those
+days, we will add them back as proper dishes.
+
+## E. Still open — one item needs more data from you
 
 ### D4. Five Chennai stations are too small for a five-day week
 
@@ -149,7 +164,7 @@ days without one appearing twice.
 
 ---
 
-## E. Item IDs are not globally unique
+## F. Item IDs are not globally unique
 
 `MENU004360` is `ajwain_pulao` in Chennai and `aam_ras` in Pune. **151 IDs mean two
 different dishes** across those two lists, because both were allocated from
@@ -167,12 +182,12 @@ these 151 must be re-issued first. Current high-water across all three lists is
 
 | Priority | Ask |
 |---|---|
-| **1** | Fix sections **A**, **B** and **C** in the *source* workbooks, so a re-import stops undoing them |
-| **2** | **D3** — real names for the 11 generic rows, starting with the two that appear on live menus (`dry_sweet`, `sweet`) |
-| **3** | **D1** — confirm the 7 desserts are South Indian so we can retag them |
-| **4** | **D4** — more dishes for `rasam`, `curd_rice`, `curd`, `healthy_rice` if you want weekly variety |
-| **5** | **D2** — is `tomato_thokku` a gravy or an accompaniment? |
-| **6** | **E** — only if `item_id` is meant to be globally unique |
+| **1** | Fix sections **A**, **B**, **C** and **D1-D3** in the *source* workbooks, so a re-import stops undoing them |
+| **2** | **D3** — real names for `dry_sweet` and `sweet` if you want those two live-menu rows reproducible (they are removed for now) |
+| **3** | **D4** — more dishes for `rasam`, `curd_rice`, `curd`, `healthy_rice` if you want weekly variety |
+| **4** | **D1** — tell us if you need a true East/West dessert split (would require new `cuisine_family` values) |
+| **5** | **F** — only if `item_id` is meant to be globally unique |
 
-Everything in A, B and C is already live in our copy, so plans generated today are
-correct. The ask is to stop the next re-import from reintroducing them.
+Everything in A, B, C and D1-D3 is already live in our copy, so plans generated
+today are correct. The ask is to stop the next re-import from reintroducing them.
+Only **D4** still blocks nothing but limits variety.

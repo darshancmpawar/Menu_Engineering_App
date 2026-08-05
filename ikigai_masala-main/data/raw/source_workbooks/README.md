@@ -36,7 +36,10 @@ attachments and would have been lost.
    then again without `--dry-run` to write `city_items/<city>.xlsx`.
 3. Re-run the correction scripts — the normaliser rebuilds the workbook from the
    raw list and drops hand-applied fixes: `scripts/seafood_taxonomy.py`,
-   `scripts/pune_flag_corrections.py`, `scripts/chennai_course_corrections.py`.
+   `scripts/pune_flag_corrections.py`, `scripts/course_type_corrections.py`,
+   `scripts/remove_generic_rows.py`, `scripts/dessert_cuisine_corrections.py`.
    Each is idempotent, and each has a test that fails if its corrections are
    missing.
+4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
+   picks up the new city (keeps `/editor-metadata` fast).
 5. Declare the city's categories in `city_items/ontology_categories.json`.

@@ -83,6 +83,14 @@ class TestTheTwoRealMisfilesStayFixed:
         assert d.at['moong_dal_dosa', 'course_type'] == 'bread'
         assert 'dal' not in str(d.at['moong_dal_dosa', 'sub_category'])
 
+    @pytest.mark.parametrize('city', ['bangalore', 'chennai'])
+    def test_tomato_thokku_is_a_gravy(self, city):
+        """Filed `accompaniment` so it could never reach the veg-gravy slot, yet
+        ToastTab's Friday sample serves it there; the client confirmed it is a
+        gravy (D2)."""
+        d = _read(city).set_index('item')
+        assert d.at['tomato_thokku', 'course_type'] == 'veg_gravy'
+
     def test_it_is_the_only_dosa_that_was_wrong(self):
         """Stated as a property rather than a one-off: a dish that IS a dosa is a
         bread.

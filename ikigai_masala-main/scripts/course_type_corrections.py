@@ -57,6 +57,9 @@ CORRECTIONS = {
         # sweet pongal is spoonable, not pourable.
         'kalkandu_pongal':             ('dessert', 'sweet_pongal', 'semi_dry'),
         'mapillai_samba_sweet_pongal': ('dessert', 'sweet_pongal', 'semi_dry'),
+        # Accompaniment that the client serves as a gravy — see the Bangalore entry
+        # below. ToastTab's own Friday sample has it in the veg-gravy position.
+        'tomato_thokku': ('veg_gravy', 'mixed_veg_curry', None),
     },
     'bangalore': {
         # Drinks filed as a mixed-veg curry. Eight other buttermilks in the same
@@ -66,6 +69,13 @@ CORRECTIONS = {
         'butter_milk':        ('welcome_drink', 'indian_regional_drink', None),
         'masala_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
         'boondi_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
+        # Filed `accompaniment / non-herb_chutney`, so it could never be selected
+        # for `veg_gravy` — yet ToastTab's Friday sample serves tomato thokku in
+        # the veg-gravy position (D2 in docs/data_fixes_for_client.md). The client
+        # confirmed it is a gravy for them. `mixed_veg_curry` matches its South
+        # Indian tomato siblings `tomato_gojju` / `tomato_masala`, not the
+        # continental `tomato_base_gravy` bucket.
+        'tomato_thokku': ('veg_gravy', 'mixed_veg_curry', None),
         # UNSERVABLE, not merely misfiled: course_type `rice` with
         # primary_protein `egg`. PoolBuilder._nonveg_mask drops non-veg rows from
         # every slot except nonveg_main, so this was dropped from the rice pool —
