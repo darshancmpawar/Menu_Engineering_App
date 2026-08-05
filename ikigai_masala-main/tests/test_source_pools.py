@@ -57,8 +57,12 @@ class TestSourcePoolAPI:
         assert 'Unknown client pool' in resp.get_json()['error']
 
     def test_put_accepts_valid_pools_and_get_reflects(self, client, fake_supabase):
-        # Discover a real token from the ontology
-        pools = client.get('/api/v1/editor-metadata').get_json()['available_client_pools']
+        # Discover a real token for Rippling's city (Bangalore). The unscoped
+        # endpoint returns the cross-city union, which now includes NCR's tokens
+        # — invalid for a Bangalore client — so scope it to the client's city.
+        pools = client.get(
+            '/api/v1/editor-metadata?city=Bangalore'
+        ).get_json()['available_client_pools']
         token = pools[0]
         ver = client.get('/api/v1/client-config/Rippling').get_json()['version']
         resp = client.put('/api/v1/client-config/Rippling', json={
@@ -71,7 +75,11 @@ class TestSourcePoolAPI:
 
 class TestPoolPreview:
     def test_preview_counts(self, client, fake_supabase):
-        pools = client.get('/api/v1/editor-metadata').get_json()['available_client_pools']
+        # Scope to Bangalore: the unscoped union now carries NCR tokens, which
+        # match nothing in the default (Bangalore) ontology the preview counts.
+        pools = client.get(
+            '/api/v1/editor-metadata?city=Bangalore'
+        ).get_json()['available_client_pools']
         resp = client.post('/api/v1/pool-preview', json={'source_pools': [pools[0]]})
         assert resp.status_code == 200
         body = resp.get_json()

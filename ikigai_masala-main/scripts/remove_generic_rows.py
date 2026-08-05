@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Remove rows whose name does not identify a dish.
 
-Eleven rows in the Chennai and Pune lists are named for a *category*, not a dish:
+Rows in the Chennai, Pune and NCR lists are named for a *category*, not a dish:
 `sweet`, `veg_gravy`, `salad`, `soup`-shaped placeholders. A menu that prints
 "Sweet" tells the diner nothing, and — worse for the engine — nothing can be
 reasoned about a dish it cannot identify: no colour rule, no ingredient ban, no
@@ -12,6 +12,13 @@ The client reviewed these (D3 in ``docs/data_fixes_for_client.md``) and chose
 removal over renaming. Two of them — `dry_sweet` and `sweet` — appear on
 ToastTab's real sample menu, so those sample rows become unreproducible until the
 client supplies the actual dish names; that trade was made deliberately.
+
+NCR arrived with ten such bare labels (`dal`, `rice`, `sambar`, `rasam`, …),
+including the *only* `rasam` and `sambar` rows — so removing them cleanly means
+NCR carries no rasam/sambar station, which its North Indian menu never runs.
+`curd`, `papad` and `pickle` are deliberately KEPT: each is a single fixed thali
+condiment/staple printed as-is (there is no sibling `mango_pickle` making the
+bare name ambiguous), exactly like Bangalore's stamped "Papad".
 
 None of the removals starve a required slot: every affected pool keeps 26-50 rows
 (the smallest, Chennai `chutney`, is an optional station and drops 4 -> 3). The
@@ -48,6 +55,10 @@ GENERIC_ROWS = {
         'milk_sweet', 'sweet', 'toast_salad', 'veg_gravy',
     ],
     'pune': ['salad', 'sweet'],
+    'ncr': [
+        'chutney', 'dal', 'dessert', 'gravy', 'raita', 'rasam', 'rice',
+        'salad', 'sambar', 'veg_dry',
+    ],
 }
 
 

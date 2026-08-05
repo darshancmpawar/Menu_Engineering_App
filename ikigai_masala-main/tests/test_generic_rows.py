@@ -49,6 +49,12 @@ def test_removal_matches_whole_names_not_substrings():
 _AFFECTED = {
     'Chennai': ['veg_dry', 'soup', 'dessert', 'veg_gravy', 'salad'],
     'Pune': ['salad', 'dessert'],
+    # NCR's bare labels sat mostly in veg_gravy (the misfiled dessert/gravy/
+    # veg_dry names) plus one each in dal/rice/salad/curd_side. rasam/sambar are
+    # NOT here: their only row WAS the bare label, so removing it takes NCR to no
+    # rasam/sambar station at all (declared-out in ontology_categories), which is
+    # correct for a North Indian list — not a starved required slot.
+    'NCR': ['veg_gravy', 'dal', 'rice', 'salad', 'curd_side'],
 }
 
 

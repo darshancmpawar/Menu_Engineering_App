@@ -27,6 +27,7 @@ attachments and would have been lost.
 | `chennai_menu_items_raw.xlsx` | Chennai | raw item list, incl. its own `Mapping_Log` sheet | `city_items/chennai.xlsx` |
 | `chennai_sample_menu.xlsx` | Chennai | Toast Tab's 7-day service history (sheet `Toasttab`) | `docs/chennai_client_logic.md`, the `ToastTab CHN` client rules |
 | `bangalore_client_logics.xlsx` | Bangalore | **the Bangalore rulebook** — 158 logic statements across 32 clients, hard and soft mixed together, in one sheet named `Banglore`. This is the main regional ruleset; it is per-CLIENT logics rather than city-level rules | `docs/client_logics.md`, the Bangalore entries in `configs/client_rules.json` |
+| `NCR_menu_items.xlsx` | NCR | pre-mapped item list (already in master schema) for 8 NCR clients, with its own `Mapping_Log` / `Review_Required` / `Data_Quality_Log` sheets. **Its `ACCEPT_REVIEW` fuzzy matches are the provenance for `scripts/ncr_fuzzy_unmerge.py`** — the reversal cites the exact merges it undoes | `city_items/ncr.xlsx`, `docs/ncr_client_logic.md` |
 
 ## Adding a city
 
@@ -37,9 +38,9 @@ attachments and would have been lost.
 3. Re-run the correction scripts — the normaliser rebuilds the workbook from the
    raw list and drops hand-applied fixes: `scripts/seafood_taxonomy.py`,
    `scripts/pune_flag_corrections.py`, `scripts/course_type_corrections.py`,
-   `scripts/remove_generic_rows.py`, `scripts/dessert_cuisine_corrections.py`.
-   Each is idempotent, and each has a test that fails if its corrections are
-   missing.
+   `scripts/remove_generic_rows.py`, `scripts/dessert_cuisine_corrections.py`,
+   and (NCR only) `scripts/ncr_fuzzy_unmerge.py`. Each is idempotent, and each
+   has a test that fails if its corrections are missing.
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
 5. Declare the city's categories in `city_items/ontology_categories.json`.

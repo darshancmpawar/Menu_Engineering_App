@@ -119,6 +119,15 @@ ADJUDICATED = {
     ('bangalore', 'pepper_rice_chutney'): 'likewise',
     ('bangalore', 'veg_raita_masala_papad'):
         'masala papad served with raita; the papad is the dish',
+    ('ncr', 'dal_rasam'):
+        'a dal-based thin curry (key_ingredient dal, sub_category leafy_dal); '
+        'filed as dal by its base — NCR runs no rasam station',
+    ('ncr', 'sambar_masala'):
+        'a sambar-spiced dal, filed as dal by its base; NCR is a North list '
+        'with no sambar station',
+    ('ncr', 'masala_raita_aam_panna'):
+        'a masala raita (is_raita=1); aam panna is a modifier in the name, the '
+        'dish is the raita — correctly curd_side',
 }
 
 

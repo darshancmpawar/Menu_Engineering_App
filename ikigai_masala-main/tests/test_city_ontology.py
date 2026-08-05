@@ -36,10 +36,12 @@ class TestCityExcelPath:
 
     # Chennai dropped from this list once it got its own workbook — the point
     # is cities that have NOT had one dropped in yet.
-    @pytest.mark.parametrize('city', [None, '', 'Hyderabad', 'NCR'])
+    @pytest.mark.parametrize('city', [None, '', 'Hyderabad'])
     def test_city_without_a_file_falls_back_to_default(self, city):
         """Adding a city to AVAILABLE_CITIES must not break planning — it keeps
-        using the default list until someone drops in city_items/<slug>.xlsx."""
+        using the default list until someone drops in city_items/<slug>.xlsx.
+        (Hyderabad still has no file of its own; NCR now does, so it is no
+        longer a fallback case — see test_every_available_city_resolves.)"""
         assert city_excel_path(city) == DEFAULT_EXCEL_PATH
 
     def test_slug_normalises_case_and_spaces(self):
