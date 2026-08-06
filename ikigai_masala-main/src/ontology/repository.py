@@ -97,13 +97,28 @@ class OntologyRepository:
         * ``source_pools is None`` (column missing / pre-migration) → the full
           ontology, i.e. unchanged behaviour until the migration is applied.
         * otherwise → only items eligible for ``common ∪ source_pools``, with the
-          per-slot pools rebuilt from that subset. ``common`` is always included,
-          so filtering never empties a mandatory slot.
+          per-slot pools rebuilt from that subset.
+
+        Two properties matter for a city whose list carries **no ``common``
+        pool** (NCR — every row is tagged to a real client):
+
+        * The required-slot check is NOT applied to a per-client subset. It is an
+          *ontology-integrity* check ("a category the list should have and does
+          not is a mapping regression"), and that belongs on the full city list
+          (``menu_data`` still enforces it). A single client legitimately serves
+          only some slots; a slot its pool cannot fill surfaces per-counter in
+          ``diagnose``/the solve, not as a build-time 500. For a city that DOES
+          have ``common`` (Bangalore/Chennai/Pune) this changes nothing —
+          ``common`` already covers every declared slot, so the subset does too.
+        * If the eligible subset is **empty** — a client that configured no
+          ``source_pools`` in a city with no ``common`` — fall back to the full
+          city list rather than planning from nothing. "No pools configured"
+          then means "not narrowed", the same as ``None``.
 
         Takes `source_pools` as an argument rather than reading the client row:
         see the module docstring.
         """
-        from src.ontology.paths import city_excel_path, city_required_slots
+        from src.ontology.paths import city_excel_path
         from src.preprocessor.client_pool_filter import (
             filter_eligible, get_active_pools)
         from src.preprocessor.pool_builder import PoolBuilder
@@ -119,8 +134,11 @@ class OntologyRepository:
                 cached = self._filtered_by_path_and_pools.get(key)
                 if cached is None:
                     fdf = filter_eligible(df, active)
-                    cached = (fdf, PoolBuilder.build_pools(
-                        fdf, required_slots=city_required_slots(city)))
+                    if fdf is None or len(fdf) == 0:
+                        cached = (df, pools)          # no eligible items → full
+                    else:
+                        cached = (fdf, PoolBuilder.build_pools(
+                            fdf, required_slots=set()))
                     self._filtered_by_path_and_pools[key] = cached
         return cached
 

@@ -73,6 +73,41 @@ class TestSourcePoolAPI:
         assert got == [token]
 
 
+class TestNoCommonCityFallback:
+    """A city whose list has no `common` pool (NCR — every row is tagged to a
+    real client). The F5 filter must not leave such a client with an empty menu.
+    """
+
+    def _repo(self):
+        from src.ontology.repository import OntologyRepository
+        return OntologyRepository()
+
+    def test_empty_pools_fall_back_to_the_full_list(self):
+        repo = self._repo()
+        full_df, _ = repo.menu_data('NCR')
+        fdf, fpools = repo.filtered_menu_data('NCR', [])   # [] -> common-only
+        # NCR has no `common`, so common-only is empty -> fall back to full.
+        assert len(fdf) == len(full_df)
+        assert len(fpools['bread']) > 0
+
+    def test_common_city_still_narrows_to_common_only(self):
+        """The fallback must be scoped to the empty case: a city WITH a common
+        pool (Bangalore) keeps common-only narrowing, unchanged."""
+        repo = self._repo()
+        full_df, _ = repo.menu_data('Bangalore')
+        bdf, _ = repo.filtered_menu_data('Bangalore', [])
+        assert 0 < len(bdf) < len(full_df)
+
+    def test_token_pool_builds_even_when_it_misses_a_declared_slot(self):
+        """`sael` runs no nonveg_main; before, build_pools raised on the city's
+        declared nonveg_main applied to the subset. Now the subset builds and
+        the unserved slot is simply absent — surfaced per-counter, not a 500."""
+        repo = self._repo()
+        fdf, pools = repo.filtered_menu_data('NCR', ['sael'])
+        assert len(fdf) > 0
+        assert len(pools['bread']) > 0 and len(pools['veg_gravy']) > 0
+
+
 class TestPoolPreview:
     def test_preview_counts(self, client, fake_supabase):
         # Scope to Bangalore: the unscoped union now carries NCR tokens, which
