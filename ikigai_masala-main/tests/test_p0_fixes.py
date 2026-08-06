@@ -418,6 +418,28 @@ class TestPinnedConstantNonvegTagging:
 
 
 # --------------------------------------------------------------------------
+# Siemens Technology: typed non-veg constants on the Non Veg Lunch counter
+# --------------------------------------------------------------------------
+
+class TestSiemensTechNonvegConstants:
+    """Hyd mutton biryani + fish tikka masala are pinned as typed constants on
+    the Non Veg Lunch counter — the Bangalore ontology has no mutton/fish, so
+    they stamp verbatim. They must be counter-scoped so the client's two veg
+    counters never inherit a non-veg pin."""
+
+    def test_pins_present_on_the_nonveg_counter(self):
+        c = MenuRuleLoader().get_client_constant_items(
+            'Siemens Technology', 'Non Veg Lunch')
+        assert c.get('nonveg_main__1') == 'Hyd Mutton Biryani'
+        assert c.get('nonveg_main__2') == 'Fish Tikka Masala'
+
+    def test_pins_are_counter_scoped(self):
+        """The client-level default (and the veg counters) must not carry them."""
+        c = MenuRuleLoader().get_client_constant_items('Siemens Technology')
+        assert 'nonveg_main__1' not in c and 'nonveg_main__2' not in c
+
+
+# --------------------------------------------------------------------------
 # constant value validation
 # --------------------------------------------------------------------------
 

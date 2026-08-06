@@ -1146,7 +1146,12 @@
         "_comment": "Themed biryani on two weekdays (Wed + Fri) against the city cap of one biryani day per week. Before the composition rule applied to 3-slot counters this contradiction was hidden — the solver satisfied the cap by putting its one biryani day on a mix day and leaving both biryani days without one. Client confirmed two biryani days are intended, so the weekly cap is dropped for this counter only.",
         "disable": [
           "nonveg_biryani_once_per_week"
-        ]
+        ],
+        "constant_items": {
+          "_comment": "Hyd mutton biryani and fish tikka masala are this counter's actual non-veg mains, but the Bangalore ontology carries only chicken + egg for non-veg, so they are pinned as typed constants — stamped verbatim on nonveg_main__1/__2 every day, leaving nonveg_main__3 for the solver (a chicken/egg dish). Adding these dishes to the ontology would switch the same pins to solver candidates with no config change (CLAUDE.md note 9).",
+          "nonveg_main__1": "Hyd Mutton Biryani",
+          "nonveg_main__2": "Fish Tikka Masala"
+        }
       }
     }
   },
