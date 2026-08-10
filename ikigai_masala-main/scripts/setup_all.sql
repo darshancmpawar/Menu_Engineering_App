@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS clients (
     item_cooldown_days INT,
     source_pools       JSONB,
     working_days       JSONB,
+    is_launch_site     BOOLEAN NOT NULL DEFAULT false,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -75,6 +76,10 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_weekends     BOOLEAN NOT NULL
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS item_cooldown_days INT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_pools       JSONB;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS working_days       JSONB;
+-- Launch sites (F: launch view). NOT NULL DEFAULT false means every client that
+-- already exists becomes NON-launch the moment the column is added; only clients
+-- configured through the launch view afterwards are flagged true.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL DEFAULT false;
 
 -- Seed working_days for kitchens that do not run a full Mon–Fri week.
 UPDATE clients SET working_days = '["wednesday","thursday","friday"]'::jsonb
