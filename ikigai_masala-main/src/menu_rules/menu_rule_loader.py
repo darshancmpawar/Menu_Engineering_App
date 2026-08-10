@@ -293,6 +293,33 @@ class MenuRuleLoader:
             return {}
         return blob if isinstance(blob, dict) else {}
 
+    def get_shared_categories(self, client_name: str) -> List[str]:
+        """Base slots this client serves identically across all its counters.
+
+        Read from the client's top-level ``shared_categories`` list in
+        ``client_rules.json`` (empty when unset or the entry is the legacy bare
+        rule list). The planner uses it to pin the primary counter's choice for
+        each of these slots into the other counters on the matching day — the
+        "common categories are the same across counters" requirement. Cross-
+        counter coordination is client-orchestrated, so this is a hint the
+        planner reads, not a solver rule.
+        """
+        block = self._read_client_blob().get(client_name)
+        if not isinstance(block, dict):
+            return []
+        raw = block.get('shared_categories') or []
+        if not isinstance(raw, list):
+            return []
+        # De-dupe, drop blanks, preserve order.
+        seen: set = set()
+        out: List[str] = []
+        for c in raw:
+            s = str(c).strip()
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
+
     def get_client_constant_items(
         self, client_name: str, counter_name: Optional[str] = None,
     ) -> Dict[str, Any]:

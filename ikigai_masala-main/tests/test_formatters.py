@@ -6,6 +6,7 @@ from ui.formatters import (
     format_item_for_ui,
     format_item_html,
     nonveg_slots_from_solution,
+    shared_items_from_solution,
     slot_sort_key,
 )
 
@@ -131,3 +132,47 @@ def test_nonveg_slots_from_solution():
 def test_nonveg_slots_from_solution_empty_when_all_veg():
     raw = {"2026-03-23": {"items": {"rice": {"item": "jeera_rice(Y)", "is_nonveg": False}}}}
     assert nonveg_slots_from_solution(raw) == {}
+
+
+# --- shared_items_from_solution (cross-counter common categories) -----------
+
+def _sol():
+    return {
+        "2026-08-03": {"day_type": "north", "items": {
+            "rice": {"item": "masala_khuska(Y)", "item_base": "masala_khuska"},
+            "bread": {"item": "plain_chapatti", "item_base": "plain_chapatti"},
+            "veg_dry__1": {"item": "aloo_jeera(Y)", "item_base": "aloo_jeera"},
+            "nonveg_main": {"item": "chicken_65(R)", "item_base": "chicken_65"},
+        }},
+        "2026-08-04": {"day_type": "mix", "items": {
+            "rice": {"item": "mutter_pulao(Y)", "item_base": "mutter_pulao"},
+            "bread": {"item": "plain_phulka", "item_base": "plain_phulka"},
+        }},
+    }
+
+
+def test_shared_items_extracts_only_shared_base_slots():
+    got = shared_items_from_solution(_sol(), ["rice", "bread"])
+    # veg_dry / nonveg_main are not shared, so they are excluded.
+    assert ["2026-08-03", "rice", "masala_khuska"] in got
+    assert ["2026-08-03", "bread", "plain_chapatti"] in got
+    assert ["2026-08-04", "rice", "mutter_pulao"] in got
+    assert ["2026-08-04", "bread", "plain_phulka"] in got
+    assert all(row[1].split("__")[0] in {"rice", "bread"} for row in got)
+    assert len(got) == 4
+
+
+def test_shared_items_matches_expanded_slot_by_base():
+    got = shared_items_from_solution(_sol(), ["veg_dry"])
+    # base 'veg_dry' must catch the expanded 'veg_dry__1' cell.
+    assert got == [["2026-08-03", "veg_dry__1", "aloo_jeera"]]
+
+
+def test_shared_items_empty_when_no_shared_categories():
+    assert shared_items_from_solution(_sol(), []) == []
+    assert shared_items_from_solution(_sol(), None) == []
+
+
+def test_shared_items_tolerates_missing_items_key():
+    raw = {"2026-08-03": {"day_type": "north"}}  # no 'items'
+    assert shared_items_from_solution(raw, ["rice"]) == []

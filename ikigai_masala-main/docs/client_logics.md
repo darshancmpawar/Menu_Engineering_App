@@ -387,23 +387,37 @@ Adding to the earlier list (`INFUSED WATER`, a second salad row):
 Requirements that cannot be expressed with today's rule types. Ordered by how
 many clients need them.
 
-### 1. Shared items across counters
+### 1. Shared items across counters — **BUILT (per-day dish sync)**
 *Waters, L&T, Nike, Amadeus, Siemens Technology, Siemens Healthineers, DXC*
 
 > "categories such as indian bread, dessert, curd/raita, salad, papad and white
 > rice are all same items for the day across counters" — L&T
 
-Counters are solved **independently** today: the planner calls `/plan` once per
-counter with a `counter_index`, and each solve knows nothing about its siblings.
-Making a category resolve to the same dish across counters needs either a joint
-solve or a second pass that fixes the shared slots first and pins them into each
-counter. This is the one genuinely architectural item in the list.
+Counters are still solved **independently** — the planner calls `/plan` once per
+counter — but the "second pass that fixes the shared slots first and pins them
+into each counter" is now wired. A client declares a `shared_categories` list
+(base slots) in `client_rules.json`; the planner solves the primary counter
+(index 0), extracts its dish for each shared slot per day
+(`ui.formatters.shared_items_from_solution`), and passes them as `shared_items`
+to every later counter's `/plan` call, where `_merge_shared_items` folds them
+into `forced_items` — the same narrow-the-cell mechanism a client constant uses.
+So a common category resolves to the **same dish across counters each day**,
+while non-shared slots (e.g. a non-veg station's `nonveg_main`) still solve
+independently. An explicit client constant pin always wins over a sibling's
+shared item.
 
-The samples raise this from "five clients state it" to "six clients demonstrate
-it", and **Waters is built entirely on it** — four combo counters whose dal,
-salad, starters and sweet are the same dish, differing only in carb and in
-whether the dry/gravy slots hold veg or non-veg. Any design that cannot express
-Waters cannot serve Waters at all.
+**DXC uses it** (`shared_categories: bread, rice, sambar, rasam, curd_side,
+dessert, white_rice`), verified in `tests/test_dxc_client_logic.py`.
+
+What is *not* yet built: (a) an **editor UI** to set `shared_categories` — it is
+file-based for now; (b) a true **joint solve**. The pin-from-primary pass covers
+"identical shared dishes" (DXC, L&T-style shared bread/dessert/curd/salad). It
+does not cover a counter whose shared slot the primary lacks, and it makes the
+primary the source of truth rather than optimising all counters together —
+adequate for the stated requirements, short of a joint model. **Waters** — four
+combo counters whose dal/salad/starters/sweet match, differing only in carb and
+veg-vs-non-veg — is expressible with this pass once its `shared_categories` are
+configured.
 
 ### 2. Slot suppression driven by the day's theme
 *Siemens Technology, Eli Lilly, Nike*
@@ -643,7 +657,7 @@ logic, so those rules sit at the client level.
 | No South-cuisine flavoured rice | DONE | `dxc_no_south_flavoured_rice` (`max: 0`) |
 | Indian bread is plain chapati every day | DONE | `dxc_plain_chapati_daily` (a one-cell `slot_composition` component mandating `sub_category = plain_chapatti/phulka` — **not** `fixed_daily_item`, which only makes the dish consistent, see CLAUDE.md note 20) + `dxc_plain_chapati_repeatable` so the 2-item staple survives the cooldown into week 2 |
 | Curd side: raita Mon/Tue/Thu/Fri, plain curd Wednesday | DONE | `dxc_raita_except_wed_curd` (`slot_composition.components_by_weekday`) + base `curd_raita_logic` **disabled** (it forces raita on every biryani/pulao day, which collides with the fixed Wednesday curd) |
-| Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | BLOCKED | Gap 1 — counters are solved independently; a joint solve / shared-slot pass is needed |
+| Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | DONE | `shared_categories` in `client_rules.json` — the planner pins the primary counter's dish for each shared slot into the Non Veg counter per day (Gap 1, per-day dish sync) |
 
 The theme filter is **not** exempted for `rice`: biryani is already placeable on
 DXC's north/mix days, so `min: 3` is satisfiable once the weekly cap above is

@@ -679,6 +679,42 @@ def _resolve_counter(client_name: str, data: Dict[str, Any]):
     return idx, name, counter_count, cfg
 
 
+def _merge_shared_items(forced_items, shared_items, dates):
+    """Fold cross-counter shared-category pins into *forced_items*.
+
+    *shared_items* is a request-supplied list of ``[iso_date, slot_id, item]``
+    the planner extracts from the primary counter's solution (see
+    ``ui.formatters.shared_items_from_solution``). Each becomes a
+    ``forced_items[(date, slot_id)] = item.lower()`` pin, using the same
+    narrow-the-cell mechanism as a client constant. An explicit constant pin
+    already in *forced_items* WINS — a client's own config is never overridden
+    by a sibling counter. Entries with an out-of-horizon date or a missing field
+    are skipped. Malformed input never raises: syncing is best-effort and must
+    not fail a solve.
+    """
+    if not shared_items or not isinstance(shared_items, list):
+        return forced_items
+    date_set = {d.isoformat() for d in dates}
+    merged = dict(forced_items or {})
+    for entry in shared_items:
+        if not isinstance(entry, (list, tuple)) or len(entry) < 3:
+            continue
+        date_str, slot_id, item = entry[0], entry[1], entry[2]
+        if not date_str or not slot_id or not item:
+            continue
+        if str(date_str) not in date_set:
+            continue
+        try:
+            d = dt.date.fromisoformat(str(date_str))
+        except (ValueError, TypeError):
+            continue
+        key = (d, str(slot_id))
+        if key in merged:
+            continue  # an explicit client constant pin wins
+        merged[key] = str(item).strip().lower()
+    return merged
+
+
 def _prepare_solver_inputs(
     data: Dict[str, Any], client_cfg: Any = None,
 ) -> SolverInputs:
@@ -718,6 +754,13 @@ def _prepare_solver_inputs(
         client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
     )
     _validate_constant_values(client_name, constant_items, df)
+    # Cross-counter shared categories: the planner passes the primary counter's
+    # dish for each shared base slot as `shared_items`; fold them into the
+    # forced-item pins so this counter serves the same dish that day. Client
+    # constant pins already in `forced_items` win.
+    forced_items = _merge_shared_items(
+        forced_items, data.get('shared_items'), weekday_dates,
+    )
     # Per-client item-cooldown override (None = shipped default). Rebuild the
     # rule so the history window + diagnostics reflect the client's value.
     cooldown_days = row['item_cooldown_days']
@@ -1356,6 +1399,10 @@ def get_client_config(client_name):
             'version': version,
             'counter_mode': counter_mode,
             'counters': counters,
+            # Base slots this client serves identically across its counters
+            # (file-based, from client_rules.json). The planner reads it to sync
+            # the primary counter's dish into the others per day.
+            'shared_categories': MenuRuleLoader().get_shared_categories(client_name),
         })
         response.headers['ETag'] = f'"{version}"'
         return response
