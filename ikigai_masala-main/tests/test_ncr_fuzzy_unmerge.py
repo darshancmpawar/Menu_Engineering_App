@@ -17,7 +17,7 @@ import os
 import pandas as pd
 
 from scripts.ncr_fuzzy_unmerge import (
-    ATTR_FIXES, CITY_ITEMS, RENAMES, SPLITS, apply_unmerge)
+    CITY_ITEMS, RENAMES, SPLITS, apply_unmerge)
 
 
 def _read():
