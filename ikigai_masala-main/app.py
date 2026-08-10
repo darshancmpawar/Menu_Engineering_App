@@ -56,6 +56,7 @@ from ui.formatters import (
     flatten_api_solution,
     format_item_for_ui,
     nonveg_slots_from_solution,
+    shared_items_from_solution,
     slot_sort_key,
     THEME_TAG_COLORS,
     THEME_ICONS,
@@ -603,15 +604,21 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """Return (mode, [counter names], city) for a client; degrade to single."""
+    """Return (mode, [counter names], city, shared_categories); degrade to single.
+
+    ``shared_categories`` are the base slots this client serves identically
+    across its counters — the planner pins the primary counter's dish for each
+    into the others.
+    """
     try:
         cfg = api.get_client_config(name)
         counters = cfg.get("counters") or []
         names = [(c.get("name") or f"Counter {i + 1}")
                  for i, c in enumerate(counters)] or ["Counter 1"]
-        return cfg.get("counter_mode", "single"), names, cfg.get("city")
+        return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
+                cfg.get("shared_categories") or [])
     except Exception:
-        return "single", ["Counter 1"], None
+        return "single", ["Counter 1"], None, []
 
 
 # ---------------------------------------------------------------------------
@@ -621,7 +628,8 @@ if generate_clicked:
     if not selected_client or selected_client == "(no clients)":
         st.warning("Select a valid client first.")
     else:
-        mode, counter_names, city = _client_counter_names(client, selected_client)
+        mode, counter_names, city, shared_categories = _client_counter_names(
+            client, selected_client)
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -702,6 +710,10 @@ if generate_clicked:
             # time budget across counters so total wall-clock stays bounded.
             per_limit = max(45, _PLANNING_TIME_LIMIT_SECONDS // max(1, len(counter_names)))
             blocks = []
+            # Cross-counter common categories: solve the primary counter first,
+            # then pin its dishes for the shared base slots into every later
+            # counter so a common category resolves to the same dish per day.
+            shared_items: list = []
             with st.spinner(
                 f"Generating {len(counter_names)} counters for {selected_client}..."
             ):
@@ -710,7 +722,11 @@ if generate_clicked:
                         result = client.plan(
                             client_name=selected_client,
                             start_date=start_date.isoformat(), num_days=num_days,
-                            time_limit_seconds=per_limit, counter_index=i)
+                            time_limit_seconds=per_limit, counter_index=i,
+                            shared_items=shared_items if i > 0 else None)
+                        if i == 0 and shared_categories:
+                            shared_items = shared_items_from_solution(
+                                result.get("solution", {}), shared_categories)
                         blk = flatten_result(result)
                         blk["name"] = cname
                     except RuleDiagnosticsBlockedError as e:

@@ -165,6 +165,7 @@ class MenuApiClient:
         num_days: int = 5,
         time_limit_seconds: int = 240,
         counter_index: int = 0,
+        shared_items: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -173,6 +174,10 @@ class MenuApiClient:
             "time_limit_seconds": time_limit_seconds,
             "counter_index": counter_index,
         }
+        # Cross-counter common categories: the primary counter's dishes for the
+        # shared base slots, as [[date, slot_id, item], …]. The server pins them.
+        if shared_items:
+            payload["shared_items"] = shared_items
 
         def _do():
             return self.session.post(

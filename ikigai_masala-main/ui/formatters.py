@@ -98,6 +98,35 @@ def nonveg_slots_from_solution(
     return out
 
 
+def shared_items_from_solution(
+    raw_solution: Dict[str, Any], shared_categories,
+) -> list:
+    """Pins for a counter's common categories, as ``[[date, slot_id, item], …]``.
+
+    Reads a ``/plan`` solution and returns, for every cell whose base slot is in
+    *shared_categories*, the chosen dish's ``item_base``. The planner feeds this
+    into the *other* counters' ``/plan`` calls (as ``shared_items``) so a common
+    category resolves to the same dish across counters on each day — DXC's
+    "common categories are identical across counters".
+    """
+    bases = {str(c).strip() for c in (shared_categories or []) if str(c).strip()}
+    if not bases:
+        return []
+    out: list = []
+    for date_key, day_data in (raw_solution or {}).items():
+        items = day_data.get('items') if isinstance(day_data, dict) else None
+        if not isinstance(items, dict):
+            continue
+        for slot_id, meta in items.items():
+            base = slot_id.split('__')[0]
+            if base not in bases or not isinstance(meta, dict):
+                continue
+            item_base = meta.get('item_base') or meta.get('item')
+            if item_base:
+                out.append([date_key, slot_id, str(item_base)])
+    return out
+
+
 def flatten_api_solution(
     raw_solution: Dict[str, Any],
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:

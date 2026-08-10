@@ -183,6 +183,68 @@ def test_curd_side_raita_except_wednesday(api, _blr_df, ci):
 
 # --- the plain-chapati staple survives into week 2 --------------------------
 
+# --- cross-counter common categories (shared_items) -------------------------
+
+SHARED = ['bread', 'rice', 'sambar', 'rasam', 'curd_side', 'dessert', 'white_rice']
+
+
+def test_shared_categories_are_configured():
+    from src.menu_rules import MenuRuleLoader
+    assert MenuRuleLoader().get_shared_categories('DXC') == SHARED
+
+
+def test_client_config_exposes_shared_categories(api):
+    from api.rate_limit import reset_for_tests
+    reset_for_tests()
+    body = api.app.test_client().get('/api/v1/client-config/DXC').get_json()
+    assert body['shared_categories'] == SHARED
+
+
+def _by_slot_all(sol):
+    """date -> {slot_id: item_base} for every cell."""
+    out = {}
+    for ds, day in sol.items():
+        out[ds] = {sid: m['item_base'] for sid, m in day['items'].items()}
+    return out
+
+
+def test_common_categories_identical_across_counters(api):
+    from ui.formatters import shared_items_from_solution
+    sol0 = _plan(api, 0)
+    shared = shared_items_from_solution(sol0, SHARED)
+    assert shared, "primary counter produced no shared-category items"
+
+    resp = _post(api, '/api/v1/plan', {
+        'client_name': 'DXC', 'start_date': MONDAY, 'num_days': 5,
+        'time_limit_sec': TIME_LIMIT, 'counter_index': 1,
+        'shared_items': shared})
+    assert resp.status_code == 200, resp.get_json()
+    sol1 = resp.get_json()['solution']
+
+    a, b = _by_slot_all(sol0), _by_slot_all(sol1)
+    for ds in a:
+        for sid, item in a[ds].items():
+            if sid.split('__')[0] in SHARED and sid in b.get(ds, {}):
+                assert b[ds][sid] == item, (ds, sid, item, b[ds][sid])
+
+
+def test_sync_leaves_non_shared_slots_independent(api):
+    """The non-veg counter still solves its own nonveg_main — the sync pins
+    only the shared categories, not the whole counter."""
+    from ui.formatters import shared_items_from_solution
+    sol0 = _plan(api, 0)
+    shared = shared_items_from_solution(sol0, SHARED)
+    resp = _post(api, '/api/v1/plan', {
+        'client_name': 'DXC', 'start_date': MONDAY, 'num_days': 5,
+        'time_limit_sec': TIME_LIMIT, 'counter_index': 1,
+        'shared_items': shared})
+    sol1 = resp.get_json()['solution']
+    nonveg = [m['item_base'] for day in sol1.values()
+              for sid, m in day['items'].items()
+              if sid.split('__')[0] == 'nonveg_main']
+    assert len(nonveg) == 5  # one non-veg main each day, solved independently
+
+
 def test_bread_still_feasible_in_week_two(api, _blr_df):
     sol1 = _plan(api, 0, start=MONDAY)
     week_plan = {ds: {sid: c['item'] for sid, c in day['items'].items()}

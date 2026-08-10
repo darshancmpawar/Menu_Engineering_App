@@ -116,6 +116,18 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         return
 
     clients = metadata.get('clients', [])
+    # In the launch view, the existing-client picker lists launch sites only —
+    # the same scoping the sidebar applies to the planner's client picker. The
+    # launch flag is not in editor-metadata, so read it from /clients detail and
+    # fall back to the full list if that call fails (better a wide list than a
+    # blank editor).
+    if launch_mode:
+        try:
+            detail = api.list_clients_with_city()
+            launch_names = {d['name'] for d in detail if d.get('is_launch_site')}
+            clients = [c for c in clients if c in launch_names]
+        except Exception:  # noqa: BLE001 — never break the editor over this
+            pass
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
     default_off_slots = metadata.get('default_off_slots', [])
@@ -131,6 +143,9 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         _step_header(1, "Client",
                      "Select an existing client or create a new one, and set "
                      "its city.")
+        if launch_mode:
+            st.caption("🚀 Launch view — the existing-client list shows launch "
+                       "sites only; a new client created here is a launch site.")
 
         selected_client = None
         new_client_name = ""
@@ -154,7 +169,8 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     label_visibility="collapsed",
                 )
             elif not is_create_mode:
-                st.info("No clients yet. Use the **New client** tab to add one.")
+                _noun = "launch sites" if launch_mode else "clients"
+                st.info(f"No {_noun} yet. Use the **New client** tab to add one.")
 
         if not is_create_mode:
             if not selected_client:

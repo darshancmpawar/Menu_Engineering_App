@@ -1704,3 +1704,41 @@ class TestFixedDailyItem:
         # And it must NOT leak to the client's other counters.
         south = loader.load_for_client('L&T', city, 'South Lunch')
         assert not any(isinstance(r, FixedDailyItemRule) for r in south)
+
+
+# --------------------------------------------------------------------------
+# cross-counter shared categories: _merge_shared_items (pure)
+# --------------------------------------------------------------------------
+
+class TestMergeSharedItems:
+    """`shared_items` from the planner fold into forced_items as (date, slot_id)
+    pins, lowercased, without overriding an explicit client constant."""
+
+    def _fn(self):
+        flask = pytest.importorskip("flask")  # noqa: F841
+        from api.app import _merge_shared_items
+        return _merge_shared_items
+
+    DATES = [dt.date(2026, 8, 3), dt.date(2026, 8, 4)]
+
+    def test_entries_become_forced_pins_lowercased(self):
+        out = self._fn()({}, [["2026-08-03", "rice", "Masala_Khuska"]], self.DATES)
+        assert out == {(dt.date(2026, 8, 3), "rice"): "masala_khuska"}
+
+    def test_out_of_horizon_date_is_dropped(self):
+        out = self._fn()({}, [["2026-08-31", "rice", "x"]], self.DATES)
+        assert out == {}
+
+    def test_explicit_pin_wins_over_shared(self):
+        forced = {(dt.date(2026, 8, 3), "rice"): "biryani_pin"}
+        out = self._fn()(forced, [["2026-08-03", "rice", "other"]], self.DATES)
+        assert out[(dt.date(2026, 8, 3), "rice")] == "biryani_pin"
+
+    def test_malformed_entries_are_skipped_not_raised(self):
+        bad = [None, [], ["2026-08-03"], ["2026-08-03", "rice"],
+               ["2026-08-03", "", "x"], ["2026-08-03", "rice", ""]]
+        assert self._fn()({}, bad, self.DATES) == {}
+
+    def test_none_shared_items_is_a_noop(self):
+        forced = {(dt.date(2026, 8, 3), "rice"): "x"}
+        assert self._fn()(forced, None, self.DATES) == forced
