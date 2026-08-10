@@ -1148,9 +1148,10 @@
           "nonveg_biryani_once_per_week"
         ],
         "constant_items": {
-          "_comment": "Hyd mutton biryani and fish tikka masala are this counter's actual non-veg mains, but the Bangalore ontology carries only chicken + egg for non-veg, so they are pinned as typed constants — stamped verbatim on nonveg_main__1/__2 every day, leaving nonveg_main__3 for the solver (a chicken/egg dish). Adding these dishes to the ontology would switch the same pins to solver candidates with no config change (CLAUDE.md note 9).",
-          "nonveg_main__1": "Hyd Mutton Biryani",
-          "nonveg_main__2": "Fish Tikka Masala"
+          "_comment": "Wednesday only, ONE non-veg main, alternating weekly: Hyd Mutton Biryani one week and Fish Tikka Masala the next, in the same slot (nonveg_main__1). Neither is in the Bangalore ontology (chicken + egg only), so it stamps verbatim. The list value = alternate across ISO weeks (even week -> first, odd -> second); see _resolve_client_constant / CLAUDE.md note 9. The other two non-veg mains and every non-Wednesday day are solved normally.",
+          "nonveg_main__1": {
+            "wed": ["Hyd Mutton Biryani", "Fish Tikka Masala"]
+          }
         }
       }
     }

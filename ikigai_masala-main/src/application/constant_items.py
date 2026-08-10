@@ -97,7 +97,12 @@ def _validate_constant_values(client_name, resolved, df) -> None:
 
     for slot, spec in (resolved or {}).items():
         values = [spec] if not isinstance(spec, dict) else list(spec.values())
-        for value in values:
+        # A list value is a weekly-alternation set (e.g. ["Mutton Biryani",
+        # "Fish Tikka Masala"]); validate each element, not the list object.
+        flat: List[Any] = []
+        for v in values:
+            flat.extend(v) if isinstance(v, list) else flat.append(v)
+        for value in flat:
             if value is None:
                 continue
             if not isinstance(value, str):

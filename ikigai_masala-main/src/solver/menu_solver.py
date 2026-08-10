@@ -69,23 +69,40 @@ _WEEKDAY_ALIASES: Dict[str, str] = {
 }
 
 
-def _resolve_client_constant(spec: Any, weekday: str) -> Optional[str]:
+def _resolve_client_constant(
+    spec: Any, weekday: str, iso_week: Optional[int] = None,
+) -> Optional[str]:
     """Resolve a ``constant_items`` value for one weekday.
 
     * ``"Curd"`` → same string every day
     * ``{"friday": "raita"}`` → only on matching weekdays (full name or abbr)
+    * ``["Mutton Biryani", "Fish Tikka Masala"]`` → **alternate across ISO
+      weeks**: even ISO week → first item, odd → second (index = iso_week %
+      len). Usable on its own (alternate every day) or as a weekday-map value
+      (``{"wed": ["A", "B"]}`` → alternate only on Wednesdays). The engine's
+      ISO-week parity — the same one `chinese_continental` uses — makes
+      consecutive weeks flip, so "A this week, B next week" holds.
     """
+    def _pick(value):
+        if isinstance(value, list):
+            if not value:
+                return None
+            return str(value[(iso_week or 0) % len(value)])
+        return str(value) if value is not None else None
+
     if spec is None:
         return None
     if isinstance(spec, str):
         return spec
+    if isinstance(spec, list):
+        return _pick(spec)
     if isinstance(spec, dict):
         target = _WEEKDAY_ALIASES.get(weekday.lower(), weekday.lower())
         for key, value in spec.items():
             if not isinstance(key, str):
                 continue
             if _WEEKDAY_ALIASES.get(key.strip().lower()) == target and value is not None:
-                return str(value)
+                return _pick(value)
         return None
     return str(spec)
 
@@ -1168,7 +1185,8 @@ class MenuSolver:
                     # menu's colour column.
                     if (d, slot) in forced:
                         continue
-                    value = _resolve_client_constant(spec, weekday)
+                    value = _resolve_client_constant(
+                        spec, weekday, d.isocalendar()[1])
                     if value is not None:
                         day_out[slot] = value
             week_plan[d] = day_out

@@ -374,7 +374,8 @@ def _rules_and_skip_for_client(
             else _ontology_item_names(city)
         siblings = _exclusive_siblings(base)
         for d in dates:
-            value = _resolve_client_constant(spec, _weekday_name_fn(d))
+            value = _resolve_client_constant(
+                spec, _weekday_name_fn(d), d.isocalendar()[1])
             if value is None:
                 continue
             # Sibling entries are base-level on purpose: every expansion of
