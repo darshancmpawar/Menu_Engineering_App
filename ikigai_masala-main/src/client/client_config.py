@@ -304,24 +304,29 @@ class ClientConfigLoader:
         return [r['name'] for r in rows.data]
 
     def list_clients_with_city(self) -> List[Dict]:
-        """Return ``[{'name', 'city'}, …]`` for all clients, sorted by name.
+        """Return ``[{'name', 'city', 'is_launch_site'}, …]``, sorted by name.
 
-        Degrades to ``city=None`` for every client when the ``clients.city``
-        column is missing (pre-migration database).
+        Feeds the sidebar's city + launch-site filters. Degrades to
+        ``city=None, is_launch_site=False`` for every client when the columns are
+        missing (pre-migration database) — one retry drops ``is_launch_site`` so
+        a database that has ``city`` but not the newer flag still works.
         """
-        try:
-            rows = (
-                self._sb.table('clients')
-                .select('name, city')
-                .order('name')
-                .execute()
-            )
-        except Exception as exc:
-            if _is_missing_relation(exc):
-                return [{'name': n, 'city': None} for n in self.client_names]
-            raise
+        for cols in ('name, city, is_launch_site', 'name, city'):
+            try:
+                rows = (
+                    self._sb.table('clients').select(cols).order('name').execute()
+                )
+                break
+            except Exception as exc:
+                if _is_missing_relation(exc):
+                    return [{'name': n, 'city': None, 'is_launch_site': False}
+                            for n in self.client_names]
+                if cols != 'name, city':      # missing is_launch_site → retry
+                    continue
+                raise
         return [
-            {'name': r['name'], 'city': normalize_city(r.get('city'))}
+            {'name': r['name'], 'city': normalize_city(r.get('city')),
+             'is_launch_site': bool(r.get('is_launch_site'))}
             for r in rows.data
         ]
 
@@ -596,6 +601,47 @@ class ClientConfigLoader:
                 ) from exc
             raise
 
+    def get_client_is_launch_site(self, name: str) -> bool:
+        """Return whether the client is a launch site (F: launch view).
+
+        Degrades to ``False`` when the ``clients.is_launch_site`` column is
+        missing (pre-migration database) — i.e. nothing is a launch site until
+        the column exists, which matches "every existing client is non-launch"."""
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('is_launch_site')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return False
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return bool(row.data.get('is_launch_site'))
+
+    def set_client_is_launch_site(self, name: str, value: bool) -> None:
+        """Mark a client as a launch site (or not)."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'is_launch_site': bool(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.is_launch_site column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save launch-site flag: the clients.is_launch_site "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     def get_client_working_days(self, name: str) -> Optional[List[str]]:
         """Return the restricted set of working weekdays for a client, or None.
 
@@ -745,6 +791,7 @@ class ClientConfigLoader:
         item_cooldown_days=None,
         working_days=None,
         source_pools=None,
+        is_launch_site: bool = False,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -779,6 +826,10 @@ class ClientConfigLoader:
                 t for t in (_normalize_pool_name(p) for p in source_pools)
                 if t and t != COMMON_POOL
             })
+        if is_launch_site:
+            # Only send it when true, so a pre-migration DB still takes the
+            # common create path (the column defaults to false there anyway).
+            row['is_launch_site'] = True
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
@@ -791,7 +842,7 @@ class ClientConfigLoader:
                     name, _MIGRATION_HINT_COUNTERS,
                 )
                 for optional in ('city', 'serve_weekends', 'item_cooldown_days',
-                                 'working_days', 'source_pools'):
+                                 'working_days', 'source_pools', 'is_launch_site'):
                     row.pop(optional, None)
                 self._sb.table('clients').insert(row).execute()
             else:
@@ -984,7 +1035,7 @@ class ClientConfigLoader:
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
         'counters', 'city', 'serve_weekends', 'working_days',
-        'item_cooldown_days', 'source_pools', 'version',
+        'item_cooldown_days', 'source_pools', 'is_launch_site', 'version',
     )
 
     def get_client_row(self, name: str) -> Dict[str, Any]:
@@ -1020,6 +1071,7 @@ class ClientConfigLoader:
                     'working_days': self.get_client_working_days(name),
                     'item_cooldown_days': self.get_client_item_cooldown_days(name),
                     'source_pools': self.get_client_source_pools(name),
+                    'is_launch_site': self.get_client_is_launch_site(name),
                     'version': self.get_client_version(name),
                 }
             raise
@@ -1036,6 +1088,7 @@ class ClientConfigLoader:
                 data.get('item_cooldown_days')),
             'source_pools': self._normalize_source_pools_value(
                 data.get('source_pools')),
+            'is_launch_site': bool(data.get('is_launch_site')),
             'version': int(data.get('version') or 1),
         }
 
@@ -1156,6 +1209,7 @@ class ClientConfigLoader:
             ('working_days', self.set_client_working_days),
             ('item_cooldown_days', self.set_client_item_cooldown_days),
             ('source_pools', self.set_client_source_pools),
+            ('is_launch_site', self.set_client_is_launch_site),
         ):
             if column in fields:
                 try:

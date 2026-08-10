@@ -1146,7 +1146,13 @@
         "_comment": "Themed biryani on two weekdays (Wed + Fri) against the city cap of one biryani day per week. Before the composition rule applied to 3-slot counters this contradiction was hidden — the solver satisfied the cap by putting its one biryani day on a mix day and leaving both biryani days without one. Client confirmed two biryani days are intended, so the weekly cap is dropped for this counter only.",
         "disable": [
           "nonveg_biryani_once_per_week"
-        ]
+        ],
+        "constant_items": {
+          "_comment": "Wednesday only, ONE non-veg main, alternating weekly: Hyd Mutton Biryani one week and Fish Tikka Masala the next, in the same slot (nonveg_main__1). Neither is in the Bangalore ontology (chicken + egg only), so it stamps verbatim. The list value = alternate across ISO weeks (even week -> first, odd -> second); see _resolve_client_constant / CLAUDE.md note 9. The other two non-veg mains and every non-Wednesday day are solved normally.",
+          "nonveg_main__1": {
+            "wed": ["Hyd Mutton Biryani", "Fish Tikka Masala"]
+          }
+        }
       }
     }
   },
@@ -1209,14 +1215,14 @@
         ]
       },
       {
-        "_comment": "Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1). Chennai's cap of one maida bread a week is simply wrong for this client: the sample serves a maida bread on 4 of 7 days (aloo paratha, butter kulcha, kothu parotta, paratha) and only 3 of the 5 non-maida wheat breads in the whole 29-dish pool are chapati variants. Left as a cap rather than disabled, because 'unlimited refined-flour bread' is not what the sample shows either — 3 of 5 weekdays is the observed rate. Without this the pre-flight gate correctly answered 422: the wheat-flatbread composition below forces a maida bread on days the cap forbids.",
+        "_comment": "Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1). Chennai's cap of one maida bread a week is simply wrong for this client: the sample serves a maida bread on 4 of 7 days (aloo paratha, butter kulcha, kothu parotta, paratha) and only 3 of the 5 non-maida wheat breads in the whole 29-dish pool are chapati variants. Client-confirmed at 2 a week, replacing the 3 I had read off the sample (which serves a maida bread on 4 of 7 days). Feasible because only the maida DAYS are capped: the 5 non-maida wheat flatbreads include the chapati family, which plain_chapati_may_repeat exempts from uniqueness, so the remaining 3 days draw from a 5-dish pool. Without this the pre-flight gate correctly answered 422: the wheat-flatbread composition below forces a maida bread on days the cap forbids.",
         "name": "maida_bread_weekly",
         "type": "selector_frequency",
         "selector": {
           "flag": "is_maida_bread"
         },
         "base_slot": "bread",
-        "max": 3
+        "max": 2
       },
       {
         "_comment": "The bread is always a wheat or maida flat bread, never the dosai/idly family. Every one of the seven sampled breads is chapati, paratha, kulcha or kothu parotta; Chennai's 29-dish bread pool also holds 9 rice-breads (dosai, idly, appam) and the solver picked 'podi idly' as a bread row until this was added. A one-slot composition component with count 1 IS 'this slot must be a matching dish' (note 20) — `fixed_daily_item` would be the wrong tool, it only makes the choice consistent.",
@@ -1428,6 +1434,133 @@
             }
           ]
         }
+      }
+    ]
+  },
+  "Airtel Noida": {
+    "_comment": "NCR site 'Airtel Plot 5'. Lunch-relevant logics encoded below. Deferred (need more input / outside lunch scope): 'fish once a month' and 'paratha/rumali roti once a month' are long-horizon cadences a weekly plan can't express; 'no dish repeated in 15 days' is already covered by item_cooldown_days=20 (stricter); 'every Wednesday regional theme menu' needs the specific regional cuisine named (Wednesday is currently theme=mix).",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Paneer to be served twice a week.",
+        "name": "airtel_paneer_2x",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 2
+      },
+      {
+        "_comment": "Non-veg dish twice a week, on Wednesday and Friday only.",
+        "name": "airtel_nonveg_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": ["wed", "fri"]
+      },
+      {
+        "_comment": "Potato dish not to be served more than twice a week.",
+        "name": "airtel_potato_max_2",
+        "type": "selector_frequency",
+        "selector": { "key_ingredient": "potato" },
+        "max": 2
+      }
+    ]
+  },
+  "Siemens": {
+    "_comment": "NCR site 'Seimens' (2 nonveg_main slots). Deferred/outside lunch scope: tetrapack juice (snacks), and brown bread / cut fruit / boiled egg (breakfast) are not lunch slots this engine plans.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Two chicken dishes to be served 5 days a week — both nonveg_main slots chicken, every day.",
+        "name": "siemens_two_chicken_daily",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
+        "components": [
+          { "selector": { "primary_protein": "chicken" }, "count": 2 }
+        ]
+      },
+      {
+        "_comment": "Paneer to be served twice a week in lunch.",
+        "name": "siemens_paneer_2x",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 2
+      }
+    ]
+  },
+  "Sinch NCR": {
+    "_comment": "NCR site 'Sinch'. The single nonveg_main is filled by weekday: chicken Mon/Wed/Fri, egg curry Tue/Thu.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Chicken three times a week (Mon/Wed/Fri); egg curry twice a week (Tue/Thu).",
+        "name": "sinchncr_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
+          "wed": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
+          "fri": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
+          "tue": [ { "selector": { "flag": "is_egg_dish" }, "count": 1 } ],
+          "thu": [ { "selector": { "flag": "is_egg_dish" }, "count": 1 } ]
+        }
+      },
+      {
+        "_comment": "Paneer to be served once a week.",
+        "name": "sinchncr_paneer_1x",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 1
+      }
+    ]
+  },
+  "Junglee Games": {
+    "_comment": "NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main across the week; paneer once. Deferred: 'one chaat item once a week' has no slot on this counter (no starter/salad category) — add a starter slot to serve it.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Egg curry to be served once a week.",
+        "name": "junglee_egg_curry_1x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "flag": "is_egg_dish" },
+        "exact": 1
+      },
+      {
+        "_comment": "Chicken dish to be served 4 days a week.",
+        "name": "junglee_chicken_4x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "primary_protein": "chicken" },
+        "min": 4
+      },
+      {
+        "_comment": "Paneer to be served once a week.",
+        "name": "junglee_paneer_1x",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 1
+      }
+    ]
+  },
+  "Stryker NCR": {
+    "_comment": "NCR site 'Stryker Sector 59'. Deferred/outside lunch scope: 'fish every 15 days' is a long-horizon cadence a weekly plan can't express; 'every Thursday should be Thursday Special' needs the special defined; 'cut fruits twice a week' is a breakfast/snacks item, not a lunch slot.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Paneer to be served twice a week.",
+        "name": "strykerncr_paneer_2x",
+        "type": "selector_frequency",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 2
+      },
+      {
+        "_comment": "Egg curry to be served once a week.",
+        "name": "strykerncr_egg_curry_1x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "flag": "is_egg_dish" },
+        "exact": 1
       }
     ]
   }

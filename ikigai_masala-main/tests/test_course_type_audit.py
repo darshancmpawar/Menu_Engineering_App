@@ -83,6 +83,14 @@ class TestTheTwoRealMisfilesStayFixed:
         assert d.at['moong_dal_dosa', 'course_type'] == 'bread'
         assert 'dal' not in str(d.at['moong_dal_dosa', 'sub_category'])
 
+    @pytest.mark.parametrize('city', ['bangalore', 'chennai'])
+    def test_tomato_thokku_is_a_gravy(self, city):
+        """Filed `accompaniment` so it could never reach the veg-gravy slot, yet
+        ToastTab's Friday sample serves it there; the client confirmed it is a
+        gravy (D2)."""
+        d = _read(city).set_index('item')
+        assert d.at['tomato_thokku', 'course_type'] == 'veg_gravy'
+
     def test_it_is_the_only_dosa_that_was_wrong(self):
         """Stated as a property rather than a one-off: a dish that IS a dosa is a
         bread.
@@ -215,3 +223,50 @@ class TestTheThreeCitySheetsAgree:
             'fish_chinese_dry', 'fish_south_coastal', 'fish_spicy_fry',
             'sweet_pongal',
         }, sorted(chennai_only)
+
+
+class TestACurdRiceBelongsToTheCurdRiceStation:
+    """A dish appears in the slot that IS its category, not in every slot whose
+    column it happens to satisfy.
+
+    The `curd_rice` station is flag-driven (`is_curd_rice`) while a curd rice's
+    `course_type` is `rice`, so every one sat in BOTH pools. A counter running
+    `rice` and `curd_rice` together could therefore serve the SAME dish twice on
+    one day, and ToastTab CHN did: `dry_fruits_curd_rice` came back as both
+    Tuesday's flavoured rice and its curd rice.
+
+    `unique_items` could not prevent it. The curd-rice staple declaration
+    deliberately exempts the dish so it may recur across days, and that exemption
+    also permitted the same-day pair.
+    """
+
+    @pytest.fixture(scope='class')
+    def pools(self):
+        from api.config import city_excel_path, city_required_slots
+        from src.preprocessor.data_cleanser import DataCleanser
+        from src.preprocessor.excel_reader import ExcelReader
+        from src.preprocessor.pool_builder import PoolBuilder
+        out = {}
+        for city in ('Bangalore', 'Chennai', 'Pune'):
+            df = DataCleanser(ExcelReader(city_excel_path(city)).read()).clean()
+            out[city] = PoolBuilder().build_pools(
+                df, required_slots=city_required_slots(city))
+        return out
+
+    @pytest.mark.parametrize('city', ['Bangalore', 'Chennai', 'Pune'])
+    def test_the_two_pools_are_disjoint(self, pools, city):
+        p = pools[city]
+        overlap = set(p['rice']['item']) & set(p['curd_rice']['item'])
+        assert not overlap, sorted(overlap)
+
+    def test_the_curd_rice_station_still_has_its_dishes(self, pools):
+        """The exclusion must remove them from `rice`, not from `curd_rice` — that
+        would starve the station instead of fixing the duplicate."""
+        assert len(pools['Bangalore']['curd_rice']) == 13
+        assert len(pools['Chennai']['curd_rice']) == 2
+
+    def test_the_rice_pool_is_not_meaningfully_smaller(self, pools):
+        """13 of 531 in Bangalore, 2 of 38 in Chennai — no starvation risk for a
+        client that runs `rice` without a curd-rice station."""
+        assert len(pools['Bangalore']['rice']) > 500
+        assert len(pools['Chennai']['rice']) >= 36

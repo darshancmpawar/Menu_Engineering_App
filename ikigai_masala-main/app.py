@@ -166,7 +166,11 @@ st.set_page_config(
 # skip the dark stylesheet while the editor is active — otherwise the two sets
 # of !important rules fight and the editor renders half-dark. The editor
 # injects its own Pulse CSS in render_customisation_editor().
-if st.session_state.get("view", "planner") != "editor":
+# Launch mode renders the Pulse light theme too (the embedded editor injects
+# its own Pulse CSS page-wide), so the dark planner stylesheet is skipped there
+# as well — otherwise the two sets of !important rules fight.
+if (st.session_state.get("view", "planner") != "editor"
+        and not st.session_state.get("launch_mode", True)):
     st.markdown(STYLES, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
@@ -238,6 +242,10 @@ _SESSION_DEFAULTS = {
     # Each block: {name, plan, plan_dates, day_types, pool_warnings, source, error}.
     "plan_blocks": [],
     "plan_mode": "single",
+    # Launch view (feature F): when on, the sidebar lists launch sites only and
+    # the main area shows a collapsible Configure container above the menu.
+    # Defaults on — this is the primary workspace for onboarding new sites.
+    "launch_mode": True,
 }
 for key, default in _SESSION_DEFAULTS.items():
     if key not in st.session_state:
@@ -246,7 +254,7 @@ for key, default in _SESSION_DEFAULTS.items():
 # ---------------------------------------------------------------------------
 # Editor view (full-page)
 # ---------------------------------------------------------------------------
-if st.session_state.view == "editor":
+if st.session_state.view == "editor" and not st.session_state.get("launch_mode", True):
     try:
         render_customisation_editor(client)
     except Exception as _exc:
@@ -277,14 +285,27 @@ with st.sidebar:
         </div>
     </div>""", unsafe_allow_html=True)
 
+    # Launch view toggle — sits above City (feature F). On (default) → only
+    # launch sites are listed and the main area shows the Configure container.
+    launch_mode = st.toggle(
+        "Launch sites", value=st.session_state.get("launch_mode", True),
+        key="launch_mode",
+        help="Configure and generate menus for launch sites. Turn off for the "
+             "normal planner across all clients.",
+    )
+
     try:
         clients_detail = _cached_list_clients(client)
     except (ConnectionError, OSError, ValueError):
         clients_detail = []
         st.error("Cannot reach API.")
 
+    # In launch view, the picker lists launch sites only.
+    if launch_mode:
+        clients_detail = [c for c in clients_detail if c.get("is_launch_site")]
+
     # City filter — single-select, default "All". Only cities that actually
-    # have clients are offered, so no selection ever yields an empty list.
+    # have (in-scope) clients are offered, so no selection yields an empty list.
     cities = sorted({c.get("city") for c in clients_detail if c.get("city")})
     city_filter = st.selectbox("City", ["All"] + cities,
                                key="planner_city_filter")
@@ -307,6 +328,28 @@ with st.sidebar:
     generate_clicked = st.button("Generate Menu Plan", type="primary",
                                  key="planner_generate_btn",
                                  use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Launch view: a collapsible Configure container above the menu (feature F).
+# Collapsed by default; expand to create/edit the launch site with the same
+# editor as normal mode. The generated menu renders below (shared block).
+# ---------------------------------------------------------------------------
+if launch_mode:
+    # "(no clients)" is the empty-picker sentinel — treat it as "nothing chosen".
+    _preselect = selected_client if clients_list else None
+    _cfg_label = _preselect or "new launch site"
+    with st.expander(f"⚙️  Configure launch site — {_cfg_label}",
+                     expanded=False):
+        if not clients_list:
+            st.caption("No launch sites yet — create one on the "
+                       "**➕ New client** tab below.")
+        try:
+            render_customisation_editor(
+                client, embedded=True, launch_mode=True,
+                preselect_client=_preselect, client_names=clients_list,
+            )
+        except Exception as _exc:
+            _render_view_error("launch configuration", _exc)
 
 # ---------------------------------------------------------------------------
 # Page header
@@ -438,7 +481,10 @@ with _hdr_col1:
             '<p class="page-subtitle">Select a client and generate a plan to get started</p>',
             unsafe_allow_html=True)
 with _hdr_col2:
-    if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
+    # In launch view, editing happens in the Configure container above, so the
+    # separate full-page editor button is hidden.
+    if not launch_mode and st.button("Edit Logic", key="open_editor_btn",
+                                     use_container_width=True):
         st.session_state.view = "editor"
         st.rerun()
 

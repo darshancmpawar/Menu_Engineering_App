@@ -79,27 +79,39 @@ def _counters_equal(a: List[Dict], b: List[Dict]) -> bool:
     return True
 
 
-def render_customisation_editor(api: MenuApiClient):
-    """Main entry point for the customisation editor view."""
+def render_customisation_editor(api: MenuApiClient, *, embedded: bool = False,
+                                launch_mode: bool = False,
+                                preselect_client: str | None = None,
+                                client_names: List[str] | None = None):
+    """Main entry point for the customisation editor view.
+
+    ``embedded`` drops the full-page top bar — used inside the launch view's
+    Configure container, where the expander header already titles the section.
+    ``launch_mode`` flags a client created here as a launch site.
+    ``preselect_client`` pre-selects the Existing-client tab to the client
+    chosen in the sidebar (launch view keeps the two in sync). ``client_names``
+    overrides the Existing-tab list — the launch view passes its launch-sites-
+    only list so the tab is scoped to the same clients the sidebar shows.
+    """
     st.markdown(PULSE_EDITOR_CSS, unsafe_allow_html=True)
 
-    # --- Top bar ---
-    col_back, col_title = st.columns([1, 5])
-    with col_back:
-        if st.button("< Back to Menu", key="editor_back_btn", use_container_width=True):
-            st.session_state.view = "planner"
-            st.rerun()
-    with col_title:
-        _logo = logo_img_tag(height=34, extra_style="flex-shrink:0;")
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:0.7rem;">{_logo}'
-            '<div><p class="pulse-title">Customisation Editor</p>'
-            '<p class="pulse-subtitle">Create or edit clients, cuisine counters, '
-            'categories, frequency, and day themes</p></div></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("")
+    # --- Top bar (full-page only) ---
+    if not embedded:
+        col_back, col_title = st.columns([1, 5])
+        with col_back:
+            if st.button("< Back to Menu", key="editor_back_btn", use_container_width=True):
+                st.session_state.view = "planner"
+                st.rerun()
+        with col_title:
+            _logo = logo_img_tag(height=34, extra_style="flex-shrink:0;")
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:0.7rem;">{_logo}'
+                '<div><p class="pulse-title">Customisation Editor</p>'
+                '<p class="pulse-subtitle">Create or edit clients, cuisine counters, '
+                'categories, frequency, and day themes</p></div></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("")
 
     if st.session_state.get('editor_success_msg'):
         st.success(st.session_state.pop('editor_success_msg'))
@@ -111,7 +123,8 @@ def render_customisation_editor(api: MenuApiClient):
         st.error(f"Failed to load editor data: {e}")
         return
 
-    clients = metadata.get('clients', [])
+    clients = (client_names if client_names is not None
+               else metadata.get('clients', []))
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
     default_off_slots = metadata.get('default_off_slots', [])
@@ -128,34 +141,40 @@ def render_customisation_editor(api: MenuApiClient):
                      "Select an existing client or create a new one, and set "
                      "its city.")
 
-        mode = st.radio(
-            "Mode", ["Select Existing", "Create New"],
-            horizontal=True, key="editor_mode", label_visibility="collapsed",
-        )
-        is_create_mode = (mode == "Create New")
-
         selected_client = None
         new_client_name = ""
         config = None
 
-        if not is_create_mode:
-            if not clients:
-                st.info("No clients yet. Switch to **Create New** to add one.")
-                return
-            selected_client = st.selectbox(
-                "Client", clients, key="editor_client_select",
-                label_visibility="collapsed",
+        # Existing vs New client as two tabs. Streamlit tabs are visual-only
+        # (the server can't tell which is active), so the signal for "create"
+        # is a name typed on the New tab; otherwise we edit the selected
+        # existing client.
+        tab_existing, tab_new = st.tabs(["Existing client", "➕ New client"])
+        with tab_new:
+            new_client_name = st.text_input(
+                "New client name", key="editor_new_client_name",
+                placeholder="e.g. Acme Corp",
             )
+        is_create_mode = bool(new_client_name.strip())
+        with tab_existing:
+            if clients:
+                _idx = (clients.index(preselect_client)
+                        if preselect_client in clients else 0)
+                selected_client = st.selectbox(
+                    "Client", clients, index=_idx, key="editor_client_select",
+                    label_visibility="collapsed",
+                )
+            elif not is_create_mode:
+                st.info("No clients yet. Use the **New client** tab to add one.")
+
+        if not is_create_mode:
+            if not selected_client:
+                return
             try:
                 config = api.get_client_config(selected_client)
             except Exception as e:
                 st.error(f"Failed to load config for {selected_client}: {e}")
                 return
-        else:
-            new_client_name = st.text_input(
-                "Client Name", key="editor_new_client_name",
-                placeholder="e.g. Acme Corp",
-            )
 
         # City picker — a plain client attribute, one of AVAILABLE_CITIES.
         loaded_city = (config or {}).get('city') if not is_create_mode else None
@@ -417,6 +436,7 @@ def render_customisation_editor(api: MenuApiClient):
                         city=selected_city, serve_weekends=serve_weekends,
                         item_cooldown_days=item_cooldown_days,
                         source_pools=selected_source_pools,
+                        is_launch_site=launch_mode,
                     )
                     st.cache_data.clear()
                     st.session_state['editor_success_msg'] = (

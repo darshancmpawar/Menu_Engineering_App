@@ -37,8 +37,8 @@ class TestTheCommittedMapMatchesTheWorkbooks:
             'after-a-re-import checklist alongside the correction scripts).')
 
     def test_it_is_keyed_by_workbook_not_city(self):
-        """Hyderabad and NCR both resolve to bangalore.xlsx. One entry per city
-        would let two keys describing the same rows drift apart."""
+        """Hyderabad resolves to bangalore.xlsx (NCR now has its own file). One
+        entry per city would let two keys describing the same rows drift apart."""
         committed = load()
         assert committed
         assert all(k.endswith('.xlsx') for k in committed), list(committed)
@@ -47,6 +47,7 @@ class TestTheCommittedMapMatchesTheWorkbooks:
 class TestLookupBehaviour:
     @pytest.mark.parametrize('city,expected_nonempty', [
         ('Bangalore', True),   # 8 real client pools
+        ('NCR', True),         # 8 real client pools of its own
         ('Chennai', False),    # every row is tagged `common`
         ('Pune', False),
     ])
@@ -55,11 +56,17 @@ class TestLookupBehaviour:
         assert toks is not None, city
         assert bool(toks) is expected_nonempty, (city, toks)
 
+    def test_ncr_has_its_own_tokens_not_bangalores(self):
+        """NCR ships its own workbook, so its per-client pools are the 8 NCR
+        clients — not Bangalore's, which keying by path would have handed it
+        before the file existed."""
+        assert tokens_for_city('NCR') != tokens_for_city('Bangalore')
+        assert 'stryker' in tokens_for_city('NCR')
+
     def test_cities_sharing_a_workbook_share_tokens(self):
         """The payoff of keying by path: Hyderabad has no workbook of its own, so
         it must see exactly Bangalore's tokens rather than an empty list."""
         assert tokens_for_city('Hyderabad') == tokens_for_city('Bangalore')
-        assert tokens_for_city('NCR') == tokens_for_city('Bangalore')
 
     def test_a_missing_map_degrades_rather_than_raises(self, tmp_path, monkeypatch):
         """Absent map => None => the endpoint falls back to the workbooks. A fresh

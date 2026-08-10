@@ -418,6 +418,58 @@ class TestPinnedConstantNonvegTagging:
 
 
 # --------------------------------------------------------------------------
+# Siemens Technology: typed non-veg constants on the Non Veg Lunch counter
+# --------------------------------------------------------------------------
+
+class TestSiemensTechNonvegConstants:
+    """Non Veg Lunch, Wednesday only, ONE non-veg main, alternating weekly: Hyd
+    Mutton Biryani one week and Fish Tikka Masala the next (neither in the
+    Bangalore ontology, so stamped verbatim). Counter-scoped, so the client's
+    two veg counters never inherit it."""
+
+    def _spec(self):
+        return MenuRuleLoader().get_client_constant_items(
+            'Siemens Technology', 'Non Veg Lunch')['nonveg_main__1']
+
+    def test_pin_is_wednesday_only_and_alternating(self):
+        assert self._spec() == {
+            'wed': ['Hyd Mutton Biryani', 'Fish Tikka Masala']}
+
+    def test_alternates_by_iso_week_on_wednesday(self):
+        from src.solver.menu_solver import _resolve_client_constant
+        spec = self._spec()
+        assert _resolve_client_constant(spec, 'wednesday', 32) == 'Hyd Mutton Biryani'
+        assert _resolve_client_constant(spec, 'wednesday', 33) == 'Fish Tikka Masala'
+        # only Wednesday carries a pin; other days are solved
+        assert _resolve_client_constant(spec, 'monday', 32) is None
+
+    def test_pins_are_counter_scoped(self):
+        c = MenuRuleLoader().get_client_constant_items('Siemens Technology')
+        assert 'nonveg_main__1' not in c
+
+
+class TestConstantWeeklyAlternation:
+    """The `_resolve_client_constant` list form (weekly alternation) in general."""
+
+    def _r(self, spec, weekday, iso_week=None):
+        from src.solver.menu_solver import _resolve_client_constant
+        return _resolve_client_constant(spec, weekday, iso_week)
+
+    def test_bare_list_alternates_every_day(self):
+        assert self._r(['A', 'B'], 'monday', 10) == 'A'   # even
+        assert self._r(['A', 'B'], 'monday', 11) == 'B'   # odd
+
+    def test_string_and_weekday_map_still_work(self):
+        assert self._r('Curd', 'monday', 10) == 'Curd'
+        assert self._r({'friday': 'raita'}, 'friday', 10) == 'raita'
+        assert self._r({'friday': 'raita'}, 'monday', 10) is None
+
+    def test_empty_list_is_no_pin(self):
+        assert self._r([], 'monday', 10) is None
+        assert self._r({'wed': []}, 'wednesday', 10) is None
+
+
+# --------------------------------------------------------------------------
 # constant value validation
 # --------------------------------------------------------------------------
 

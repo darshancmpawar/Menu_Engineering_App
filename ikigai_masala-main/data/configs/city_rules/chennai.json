@@ -250,14 +250,14 @@
       }
     },
     {
-      "_comment": "Seafood at most twice a week. NOT from a rulebook — read off the sample, which serves fish once in seven days (fish kuzhambu, Fri 03 Jul), and set at 2 rather than 1 so a five-day week is not forced to drop fish entirely when the theme filter favours it. Exists mainly so the seafood flags are load-bearing: Chennai is the first city list with fish, and `is_seafood` is the umbrella (`is_fish_dish` is the fish-only subset, so prawn or crab in a future list is covered without touching this rule). Drop or widen this once a Chennai rulebook states the real rate.",
+      "_comment": "Seafood weekly ONCE — confirmed by the client, replacing the 2 I had inferred from the sample. `max` counts DAYS, not dishes, so with one nonveg_main slot this is one fish dish a week; a counter with 2+ nonveg slots could still stack two fish onto that one day, which `daily_max` would be the fix for if it ever matters here. Exists mainly so the seafood flags are load-bearing: Chennai is the first city list with fish, and `is_seafood` is the umbrella (`is_fish_dish` is the fish-only subset, so prawn or crab in a future list is covered without touching this rule). Drop or widen this once a Chennai rulebook states the real rate.",
       "name": "seafood_weekly",
       "type": "selector_frequency",
       "selector": {
         "flag": "is_seafood"
       },
       "base_slot": "nonveg_main",
-      "max": 2
+      "max": 1
     },
     {
       "_comment": "Same for North Indian chicken gravies (13 rows).",

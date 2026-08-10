@@ -22,7 +22,7 @@ dropped silently.
 
 | | |
 |---|---|
-| Item list | `data/raw/city_items/pune.xlsx` — 274 items, 133 columns (the reference format) |
+| Item list | `data/raw/city_items/pune.xlsx` — 272 items, 133 columns (the reference format). Was 274 before `scripts/remove_generic_rows.py` dropped `salad` and `sweet` (rows named for a category, not a dish) |
 | Selected by | `clients.city = 'Pune'` → `api.config.city_excel_path()` |
 | Categories covered | welcome_drink, salad, bread, rice, veg_dry, veg_gravy, dal, dessert, healthy_rice, curd_side (declared in `data/raw/city_items/ontology_categories.json`) |
 | Not covered | soup, starter, sambar, rasam, nonveg_main — the list is fully vegetarian and carries no south-Indian tiffin/sambar section |

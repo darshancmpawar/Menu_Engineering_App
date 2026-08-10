@@ -374,7 +374,8 @@ def _rules_and_skip_for_client(
             else _ontology_item_names(city)
         siblings = _exclusive_siblings(base)
         for d in dates:
-            value = _resolve_client_constant(spec, _weekday_name_fn(d))
+            value = _resolve_client_constant(
+                spec, _weekday_name_fn(d), d.isocalendar()[1])
             if value is None:
                 continue
             # Sibling entries are base-level on purpose: every expansion of
@@ -1348,6 +1349,7 @@ def get_client_config(client_name):
             'working_days': row['working_days'],
             'item_cooldown_days': row['item_cooldown_days'],
             'source_pools': row['source_pools'],
+            'is_launch_site': row.get('is_launch_site', False),
             'active_base_slots': list(primary['categories']),
             'slot_counts': primary['slot_counts'],
             'theme_map': primary['theme_map'],
@@ -1515,6 +1517,8 @@ def update_client_config(client_name):
         if 'item_cooldown_days' in data:
             fields['item_cooldown_days'] = _validated_cooldown_days(
                 data.get('item_cooldown_days'))
+        if 'is_launch_site' in data:
+            fields['is_launch_site'] = bool(data.get('is_launch_site'))
         if 'source_pools' in data:
             # Validate against the city the client will HAVE after this update
             # (the payload's, else the stored one) — a city change and a pool
@@ -1585,6 +1589,9 @@ def create_client():
             _validated_source_pools(data.get('source_pools'), city=city)
             if 'source_pools' in data else None
         )
+        # Launch view: a client created here while launch mode is on is a launch
+        # site. The editor sends the flag; it defaults false everywhere else.
+        is_launch_site = bool(data.get('is_launch_site', False))
 
         counters = data.get('counters')
         if counters:
@@ -1597,6 +1604,7 @@ def create_client():
                 item_cooldown_days=item_cooldown_days,
                 working_days=working_days,
                 source_pools=source_pools,
+                is_launch_site=is_launch_site,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
@@ -1604,7 +1612,8 @@ def create_client():
                                  serve_weekends=serve_weekends,
                                  item_cooldown_days=item_cooldown_days,
                                  working_days=working_days,
-                                 source_pools=source_pools)
+                                 source_pools=source_pools,
+                                 is_launch_site=is_launch_site)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:
