@@ -388,7 +388,7 @@ Requirements that cannot be expressed with today's rule types. Ordered by how
 many clients need them.
 
 ### 1. Shared items across counters
-*Waters, L&T, Nike, Amadeus, Siemens Technology, Siemens Healthineers*
+*Waters, L&T, Nike, Amadeus, Siemens Technology, Siemens Healthineers, DXC*
 
 > "categories such as indian bread, dessert, curd/raita, salad, papad and white
 > rice are all same items for the day across counters" — L&T
@@ -630,6 +630,25 @@ No `client_rules.json` entry.
 | Flavoured rice every Monday, Wednesday, Friday | TODO | `slot_day_restriction` on `rice`, as Ikea has |
 | Paneer curry once a week | TODO | `selector_frequency` exact 1 |
 | Ragi mudde once a week, Tuesday or Thursday, south counter | BLOCKED | Gap 6 |
+
+### DXC
+Bangalore launch site (created through the launch view), two counters — **Veg
+Lunch** and **Non Veg Lunch** — that share the flavoured-rice, bread and curd
+logic, so those rules sit at the client level.
+
+| Requirement | Status | Mechanism |
+|---|---|---|
+| Flavoured rice: biryani ≥3 days/week, even on non-biryani days | DONE | `dxc_flavoured_rice_biryani_3x` (`min: 3`) + base `mixedveg_pulao_biryani_weekly` **disabled** (it caps biryani+pulao at 1/week) |
+| Flavoured rice: pulao ≥1/week | DONE | `dxc_flavoured_rice_pulao_1x` (`min: 1`) |
+| No South-cuisine flavoured rice | DONE | `dxc_no_south_flavoured_rice` (`max: 0`) |
+| Indian bread is plain chapati every day | DONE | `dxc_plain_chapati_daily` (a one-cell `slot_composition` component mandating `sub_category = plain_chapatti/phulka` — **not** `fixed_daily_item`, which only makes the dish consistent, see CLAUDE.md note 20) + `dxc_plain_chapati_repeatable` so the 2-item staple survives the cooldown into week 2 |
+| Curd side: raita Mon/Tue/Thu/Fri, plain curd Wednesday | DONE | `dxc_raita_except_wed_curd` (`slot_composition.components_by_weekday`) + base `curd_raita_logic` **disabled** (it forces raita on every biryani/pulao day, which collides with the fixed Wednesday curd) |
+| Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | BLOCKED | Gap 1 — counters are solved independently; a joint solve / shared-slot pass is needed |
+
+The theme filter is **not** exempted for `rice`: biryani is already placeable on
+DXC's north/mix days, so `min: 3` is satisfiable once the weekly cap above is
+lifted. Verified end-to-end in `tests/test_dxc_client_logic.py` (both counters,
+each logic, plus a week-1-save → week-2-replan proving the bread staple holds).
 
 ### Eli Lilly
 No `client_rules.json` entry.
