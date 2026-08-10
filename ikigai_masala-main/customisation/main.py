@@ -79,39 +79,31 @@ def _counters_equal(a: List[Dict], b: List[Dict]) -> bool:
     return True
 
 
-def render_customisation_editor(api: MenuApiClient, *, embedded: bool = False,
-                                launch_mode: bool = False,
-                                preselect_client: str | None = None,
-                                client_names: List[str] | None = None):
+def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False):
     """Main entry point for the customisation editor view.
 
-    ``embedded`` drops the full-page top bar — used inside the launch view's
-    Configure container, where the expander header already titles the section.
-    ``launch_mode`` flags a client created here as a launch site.
-    ``preselect_client`` pre-selects the Existing-client tab to the client
-    chosen in the sidebar (launch view keeps the two in sync). ``client_names``
-    overrides the Existing-tab list — the launch view passes its launch-sites-
-    only list so the tab is scoped to the same clients the sidebar shows.
+    ``launch_mode`` flags a client created here as a launch site — the launch
+    view sets it from the sidebar toggle. The editor UI is otherwise identical
+    in both modes (same UI/UX for launch and non-launch clients).
     """
     st.markdown(PULSE_EDITOR_CSS, unsafe_allow_html=True)
 
-    # --- Top bar (full-page only) ---
-    if not embedded:
-        col_back, col_title = st.columns([1, 5])
-        with col_back:
-            if st.button("< Back to Menu", key="editor_back_btn", use_container_width=True):
-                st.session_state.view = "planner"
-                st.rerun()
-        with col_title:
-            _logo = logo_img_tag(height=34, extra_style="flex-shrink:0;")
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:0.7rem;">{_logo}'
-                '<div><p class="pulse-title">Customisation Editor</p>'
-                '<p class="pulse-subtitle">Create or edit clients, cuisine counters, '
-                'categories, frequency, and day themes</p></div></div>',
-                unsafe_allow_html=True,
-            )
-        st.markdown("")
+    # --- Top bar ---
+    col_back, col_title = st.columns([1, 5])
+    with col_back:
+        if st.button("< Back to Menu", key="editor_back_btn", use_container_width=True):
+            st.session_state.view = "planner"
+            st.rerun()
+    with col_title:
+        _logo = logo_img_tag(height=34, extra_style="flex-shrink:0;")
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:0.7rem;">{_logo}'
+            '<div><p class="pulse-title">Customisation Editor</p>'
+            '<p class="pulse-subtitle">Create or edit clients, cuisine counters, '
+            'categories, frequency, and day themes</p></div></div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("")
 
     if st.session_state.get('editor_success_msg'):
         st.success(st.session_state.pop('editor_success_msg'))
@@ -123,8 +115,7 @@ def render_customisation_editor(api: MenuApiClient, *, embedded: bool = False,
         st.error(f"Failed to load editor data: {e}")
         return
 
-    clients = (client_names if client_names is not None
-               else metadata.get('clients', []))
+    clients = metadata.get('clients', [])
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
     default_off_slots = metadata.get('default_off_slots', [])
@@ -158,10 +149,8 @@ def render_customisation_editor(api: MenuApiClient, *, embedded: bool = False,
         is_create_mode = bool(new_client_name.strip())
         with tab_existing:
             if clients:
-                _idx = (clients.index(preselect_client)
-                        if preselect_client in clients else 0)
                 selected_client = st.selectbox(
-                    "Client", clients, index=_idx, key="editor_client_select",
+                    "Client", clients, key="editor_client_select",
                     label_visibility="collapsed",
                 )
             elif not is_create_mode:
