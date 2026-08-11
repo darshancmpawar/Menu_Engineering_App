@@ -19,6 +19,8 @@ import streamlit as st
 
 from ui.api_client import MenuApiClient
 from ui.branding import logo_img_tag
+from ui.formatters import display_label_for_slot_id
+from src.constants import DISPLAY_SLOT_ORDER
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
 
@@ -289,6 +291,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         loaded_counters = config.get('counters') or [
             _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
         ]
+        loaded_shared_categories = list(config.get('shared_categories') or [])
         current_version = config.get('version')
         client_key = f"exist_{selected_client}"
     else:
@@ -303,6 +306,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         loaded_counters = [
             _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
         ]
+        loaded_shared_categories = []
         current_version = None
         client_key = "_new_"
 
@@ -383,6 +387,55 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
     empty_counters = [c['name'] for c in result_counters if not c['categories']]
 
     # ============================================================
+    # Shared categories (multi-counter only)
+    # ============================================================
+    # A common category serves the SAME dish on every counter each day: the
+    # planner solves the primary counter, then pins its dish for each shared
+    # base slot into the others. Only offered for multi-counter clients, and
+    # only for base slots present on 2+ counters (a slot on one counter has
+    # nothing to sync).
+    selected_shared_categories: List[str] = []
+    if is_multi:
+        from collections import Counter as _Counter
+        slot_counts_across = _Counter(
+            s for c in result_counters for s in (c.get('categories') or [])
+        )
+        shareable = [s for s, n in slot_counts_across.items() if n >= 2]
+        shareable_sorted = sorted(
+            shareable,
+            key=lambda s: DISPLAY_SLOT_ORDER.index(s)
+            if s in DISPLAY_SLOT_ORDER else 999,
+        )
+        with st.container(border=True):
+            st.markdown(
+                '<p class="pulse-step-title">Shared categories</p>'
+                '<p class="pulse-step-desc">Turn on to serve the same dish on '
+                'every counter for the chosen categories each day (the primary '
+                'counter decides; the others follow).</p>',
+                unsafe_allow_html=True,
+            )
+            share_on = st.toggle(
+                "Share common categories across counters",
+                value=bool(loaded_shared_categories),
+                key=f"share_toggle_{client_key}",
+            )
+            if share_on:
+                if shareable_sorted:
+                    selected_shared_categories = st.multiselect(
+                        "Categories shared across counters",
+                        options=shareable_sorted,
+                        default=[s for s in loaded_shared_categories
+                                 if s in shareable_sorted],
+                        key=f"share_cats_{client_key}",
+                        format_func=display_label_for_slot_id,
+                        help="Only categories present on 2+ counters can be "
+                             "shared.",
+                    )
+                else:
+                    st.caption("No category is present on 2 or more counters "
+                               "yet — add a common category to share it.")
+
+    # ============================================================
     # Action bar
     # ============================================================
     st.markdown("")
@@ -394,6 +447,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
             or serve_weekends != loaded_serve_weekends
             or item_cooldown_days != loaded_cooldown
             or sorted(selected_source_pools) != sorted(loaded_source_pools)
+            or sorted(selected_shared_categories) != sorted(loaded_shared_categories)
             or not _counters_equal(result_counters, loaded_counters)
         )
         if dirty:
@@ -442,6 +496,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                         item_cooldown_days=item_cooldown_days,
                         source_pools=selected_source_pools,
                         is_launch_site=launch_mode,
+                        shared_categories=selected_shared_categories,
                     )
                     st.cache_data.clear()
                     st.session_state['editor_success_msg'] = (
@@ -488,6 +543,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     'serve_weekends': serve_weekends,
                     'item_cooldown_days': item_cooldown_days,
                     'source_pools': selected_source_pools,
+                    'shared_categories': selected_shared_categories,
                 }
                 try:
                     api.update_client_config(selected_client, payload)
@@ -505,6 +561,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                 'counters': [
                     _default_counter(0, all_base_slots, const_slots, default_theme_map, default_off_slots)
                 ],
+                'shared_categories': [],
             }
             try:
                 api.update_client_config(selected_client, payload)

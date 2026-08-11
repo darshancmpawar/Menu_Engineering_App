@@ -409,8 +409,13 @@ shared item.
 **DXC uses it** (`shared_categories: bread, rice, sambar, rasam, curd_side,
 dessert, white_rice`), verified in `tests/test_dxc_client_logic.py`.
 
-What is *not* yet built: (a) an **editor UI** to set `shared_categories` — it is
-file-based for now; (b) a true **joint solve**. The pin-from-primary pass covers
+`shared_categories` can be set two ways: the **multi-counter editor** (a toggle +
+a multiselect of base slots present on 2+ counters, persisted to
+`clients.shared_categories`) or `client_rules.json` (file-based, e.g. DXC). GET
+`/client-config` prefers the DB value and falls back to the file, so both feed
+the same planner path.
+
+What is *not* yet built: a true **joint solve**. The pin-from-primary pass covers
 "identical shared dishes" (DXC, L&T-style shared bread/dessert/curd/salad). It
 does not cover a counter whose shared slot the primary lacks, and it makes the
 primary the source of truth rather than optimising all counters together —
