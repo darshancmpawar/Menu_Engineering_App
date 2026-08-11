@@ -46,7 +46,9 @@ CLIENTS = {
         'Stryker NCR',
         ['welcome_drink', 'salad', 'bread', 'rice', 'veg_dry', 'veg_gravy',
          'dal', 'dessert', 'curd_side', 'nonveg_main', 'white_rice'],
-        {'dal': 1, 'rice': 1, 'bread': 1, 'salad': 2, 'dessert': 1, 'veg_dry': 1,
+        # bread 2: 'indian bread 1 tawa roti, bread 2 follows rules' (the live
+        # DB has bread 1 — the config note tells the operator to set it to 2).
+        {'dal': 1, 'rice': 1, 'bread': 2, 'salad': 2, 'dessert': 1, 'veg_dry': 1,
          'curd_side': 2, 'veg_gravy': 1, 'nonveg_main': 1, 'welcome_drink': 1}),
     'Siemens': _counter(
         'Siemens',
@@ -140,21 +142,73 @@ def _paneer_days(df, solution):
     return days
 
 
-def test_stryker_paneer_twice_and_egg_once(api, _ncr_df):
+def _flag(df, base, col):
+    row = df[df['item'].astype(str).str.strip() == base]
+    return not row.empty and pd.to_numeric(
+        row.iloc[0].get(col), errors='coerce') == 1
+
+
+def _slot_by_day(solution, base_slot):
+    """weekday -> list of item_bases for base_slot's cells that day."""
+    out = {}
+    for i, day in enumerate(solution.values()):
+        items = day.get('items') or {}
+        out[WEEKDAYS[i]] = [c['item_base'] for s, c in items.items()
+                            if s.split('__')[0] == base_slot]
+    return out
+
+
+def _veg_gravy_by_day(solution):
+    return _slot_by_day(solution, 'veg_gravy')
+
+
+def test_stryker_salad_bread_rice_and_gravies(api, _ncr_df):
     sol = _plan(api, 'Stryker NCR')
-    assert _paneer_days(_ncr_df, sol) == 2
+    # Salad 1 = green salad every day (the pinned __1 expansion); salad 2 varies.
+    salads = _slot_by_day(sol, 'salad')
+    assert all('green_salad' in day for day in salads.values()), salads
+    # Bread 1 = tawa roti every day.
+    breads = _slot_by_day(sol, 'bread')
+    assert all('tawa_roti' in day for day in breads.values()), breads
+    # Rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const) Tue only.
+    rice = _slot_by_day(sol, 'rice')
+    white = _slot_by_day(sol, 'white_rice')
+    assert rice['tue'] == [] and white['tue'], (rice, white)
+    for wd in ('mon', 'wed', 'thu', 'fri'):
+        assert rice[wd] and white[wd] == [], (wd, rice[wd], white[wd])
+    # Two paneer gravies + one kofta gravy in the week.
+    vg = _veg_gravy_by_day(sol)
+    flat = [b for day in vg.values() for b in day]
+    assert sum(1 for b in flat if _protein(_ncr_df, b) == 'paneer') == 2, flat
+    assert sum(1 for b in flat
+               if _flag(_ncr_df, b, 'is_veg_kofta_gravy')) == 1, flat
+    # Egg gravy once; fish at most once.
     nv = _nonveg_by_day(sol)
-    egg_days = sum(1 for v in nv.values() if any(_is_egg(_ncr_df, b) for b in v))
-    assert egg_days == 1
+    assert sum(1 for v in nv.values() if any(_is_egg(_ncr_df, b) for b in v)) == 1
+    assert sum(1 for v in nv.values()
+               if any(_flag(_ncr_df, b, 'is_fish_dish') for b in v)) <= 1
 
 
-def test_siemens_two_chicken_every_day(api, _ncr_df):
+def test_siemens_pair_paneer_soya(api, _ncr_df):
     sol = _plan(api, 'Siemens')
+    # Salad green + bread plain chapati daily.
+    assert all('green_salad' in d or 'green salad' in d
+               for d in _slot_by_day(sol, 'salad').values())
+    assert all(d for d in _slot_by_day(sol, 'bread').values())
+    # Tuesday = one chicken + one egg; every other day = two chicken.
     nv = _nonveg_by_day(sol)
     for wd, bases in nv.items():
         chicken = [b for b in bases if _protein(_ncr_df, b) == 'chicken']
-        assert len(chicken) == 2, (wd, bases)
-    assert _paneer_days(_ncr_df, sol) == 2
+        eggs = [b for b in bases if _is_egg(_ncr_df, b)]
+        if wd == 'tue':
+            assert len(chicken) >= 1 and len(eggs) >= 1, (wd, bases)
+        else:
+            assert len(chicken) == 2, (wd, bases)
+    # One paneer, one soya in the veg gravy.
+    vg = [b for day in _veg_gravy_by_day(sol).values() for b in day]
+    assert sum(1 for b in vg if _protein(_ncr_df, b) == 'paneer') == 1, vg
+    assert sum(1 for b in vg
+               if _protein(_ncr_df, b) in ('soya', 'soy')) == 1, vg
 
 
 def test_airtel_nonveg_only_wed_and_fri(api, _ncr_df):
@@ -171,6 +225,26 @@ def test_sinch_chicken_mwf_egg_tue_thu(api, _ncr_df):
         assert any(_protein(_ncr_df, b) == 'chicken' for b in nv[wd]), (wd, nv[wd])
     for wd in ('tue', 'thu'):
         assert any(_is_egg(_ncr_df, b) for b in nv[wd]), (wd, nv[wd])
+
+
+def test_sinch_bread_rice_raita_welcome_by_weekday(api, _ncr_df):
+    sol = _plan(api, 'Sinch NCR')
+    # Bread is tawa roti every day.
+    assert all(d for d in _slot_by_day(sol, 'bread').values())
+    # Flavour rice Mon/Wed only; white rice (const) Tue/Thu/Fri only.
+    rice = _slot_by_day(sol, 'rice')
+    white = _slot_by_day(sol, 'white_rice')
+    for wd in ('mon', 'wed'):
+        assert rice[wd] and white[wd] == [], (wd, rice[wd], white[wd])
+    for wd in ('tue', 'thu', 'fri'):
+        assert rice[wd] == [] and white[wd], (wd, rice[wd], white[wd])
+    # Raita (curd_side) only Mon/Fri; welcome drink only Tue/Thu.
+    curd = _slot_by_day(sol, 'curd_side')
+    assert curd['mon'] and curd['fri']
+    assert curd['tue'] == [] and curd['wed'] == [] and curd['thu'] == []
+    wd_drink = _slot_by_day(sol, 'welcome_drink')
+    assert wd_drink['tue'] and wd_drink['thu']
+    assert wd_drink['mon'] == [] and wd_drink['wed'] == [] and wd_drink['fri'] == []
 
 
 def test_junglee_chicken_four_days_egg_once(api, _ncr_df):

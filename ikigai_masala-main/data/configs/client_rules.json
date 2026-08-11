@@ -1465,30 +1465,59 @@
     ]
   },
   "Siemens": {
-    "_comment": "NCR site 'Seimens' (2 nonveg_main slots). Deferred/outside lunch scope: tetrapack juice (snacks), and brown bread / cut fruit / boiled egg (breakfast) are not lunch slots this engine plans.",
-    "disable": [],
+    "_comment": "NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet + the 27-Jul / 03-Aug sample weeks. Deferred/outside lunch scope: tetrapack juice (snacks), and brown bread / cut fruit / boiled egg (breakfast) are not lunch slots this engine plans. Kofta 'once per 2 weeks' is capped to <=1/week here (a true fortnightly window needs saved history).",
+    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with 'plain chapati every day' — it links bread to the deep-fried rice/veg-dry family and cannot be satisfied when bread is pinned to plain chapati on this simple North-Indian counter. Not relevant to NCR's menu, so dropped.",
+    "disable": ["deep_fried_coupling"],
     "rules": [
       {
-        "_comment": "Two chicken dishes to be served 5 days a week — both nonveg_main slots chicken, every day.",
-        "name": "siemens_two_chicken_daily",
+        "_comment": "Two non-veg in the gravy part. Tuesday = one egg + one chicken; every other day = both chicken. components (default) applies Mon/Wed/Thu/Fri; components_by_weekday overrides Tuesday. Salad (green salad) and bread (plain chapati) are daily constants in the constant_items block below.",
+        "name": "siemens_nonveg_pair_by_weekday",
         "type": "slot_composition",
         "base_slot": "nonveg_main",
         "min_slot_count": 2,
         "components": [
           { "selector": { "primary_protein": "chicken" }, "count": 2 }
-        ]
+        ],
+        "components_by_weekday": {
+          "tue": [
+            { "selector": { "primary_protein": "chicken" }, "count": 1 },
+            { "selector": { "flag": "is_egg_dish" }, "count": 1 }
+          ]
+        }
       },
       {
-        "_comment": "Paneer to be served twice a week in lunch.",
-        "name": "siemens_paneer_2x",
+        "_comment": "One paneer a week (in the veg gravy).",
+        "name": "siemens_paneer_1x",
         "type": "selector_frequency",
+        "base_slot": "veg_gravy",
         "selector": { "primary_protein": "paneer" },
-        "exact": 2
+        "exact": 1
+      },
+      {
+        "_comment": "One soya a week (soya chaap; primary_protein soya/soy in the veg gravy).",
+        "name": "siemens_soya_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "any_of": [ { "primary_protein": "soya" }, { "primary_protein": "soy" } ] },
+        "exact": 1
+      },
+      {
+        "_comment": "Kofta once every 2 weeks -> capped to at most once a week (fortnightly spacing is history-checked).",
+        "name": "siemens_kofta_max_1",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "flag": "is_veg_kofta_gravy" },
+        "max": 1
       }
-    ]
+    ],
+    "constant_items": {
+      "_comment": "salad = green salad daily; bread = plain chapati daily.",
+      "salad": "green salad",
+      "bread": "chapati"
+    }
   },
   "Sinch NCR": {
-    "_comment": "NCR site 'Sinch'. The single nonveg_main is filled by weekday: chicken Mon/Wed/Fri, egg curry Tue/Thu.",
+    "_comment": "NCR site 'Sinch' (city NCR). Logics from the client sheet + the two sample weeks. Bread is tawa roti daily (constant). Rice split: flavour rice Mon/Wed, white rice (the const 'white_rice' slot) Tue/Thu/Fri — so exactly one carb each day and never both. Raita (curd_side) Mon/Fri only; welcome drink Tue/Thu only. Deferred: 'starter (only chaats) on Wednesday' has no starter slot on this counter — add a starter category (count 1) in the editor to serve it, then a starter_wed + chaat rule can be added. The Tue/Wed/Thu drink in the sample 'Curd Prep' row is not a curd_side dish and is out of clean scope.",
     "disable": [],
     "rules": [
       {
@@ -1506,13 +1535,46 @@
         }
       },
       {
-        "_comment": "Paneer to be served once a week.",
+        "_comment": "Paneer once a week (in the veg gravy).",
         "name": "sinchncr_paneer_1x",
         "type": "selector_frequency",
+        "base_slot": "veg_gravy",
         "selector": { "primary_protein": "paneer" },
         "exact": 1
+      },
+      {
+        "_comment": "Flavour rice only Mon and Wed.",
+        "name": "sinchncr_flavour_rice_mon_wed",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [ "mon", "wed" ]
+      },
+      {
+        "_comment": "White rice only when there is no flavour rice: Tue/Thu/Fri. (white_rice is the const steamed-rice slot.)",
+        "name": "sinchncr_white_rice_tue_thu_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [ "tue", "thu", "fri" ]
+      },
+      {
+        "_comment": "Raita served only on Monday and Friday.",
+        "name": "sinchncr_raita_mon_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "curd_side",
+        "allowed_weekdays": [ "mon", "fri" ]
+      },
+      {
+        "_comment": "Welcome drink only on Tuesday and Thursday.",
+        "name": "sinchncr_welcome_drink_tue_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "welcome_drink",
+        "allowed_weekdays": [ "tue", "thu" ]
       }
-    ]
+    ],
+    "constant_items": {
+      "_comment": "bread = tawa roti daily.",
+      "bread": "tawa roti"
+    }
   },
   "Junglee Games": {
     "_comment": "NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main across the week; paneer once. Deferred: 'one chaat item once a week' has no slot on this counter (no starter/salad category) — add a starter slot to serve it.",
@@ -1544,25 +1606,77 @@
     ]
   },
   "Stryker NCR": {
-    "_comment": "NCR site 'Stryker Sector 59'. Deferred/outside lunch scope: 'fish every 15 days' is a long-horizon cadence a weekly plan can't express; 'every Thursday should be Thursday Special' needs the special defined; 'cut fruits twice a week' is a breakfast/snacks item, not a lunch slot.",
-    "disable": [],
+    "_comment": "NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-day sample. Salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules — needs bread slot_count 2, see the config note); rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const slot) Tue only, so flavour rice is blank whenever white rice runs. Deferred / history-checked (a weekly plan can't see a 15-day window): fish once/15 days is capped to <=1/week here, and 'biryani once/15 days, not the same week as fish' + 'sambar once/15 days' are left to the history check when generating — NCR also carries NO sambar dishes (course_type sambar is empty) and no biryani theme day on this counter, so neither is forced. 'Thursday special' needs the special defined; 'cut fruits' is a breakfast item.",
+    "_config_note": "This counter currently has bread slot_count 1. For 'indian bread 2 follows rules' (the second, non-tawa bread the sample shows), set bread to 2 in the editor. At count 1 the pin still holds — tawa roti every day — just with no second bread.",
+    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with pinning bread 1 to tawa roti daily on this simple North-Indian counter; not relevant to NCR, so dropped.",
+    "disable": ["deep_fried_coupling"],
     "rules": [
       {
-        "_comment": "Paneer to be served twice a week.",
-        "name": "strykerncr_paneer_2x",
+        "_comment": "Two paneer gravies a week.",
+        "name": "strykerncr_paneer_gravy_2x",
         "type": "selector_frequency",
+        "base_slot": "veg_gravy",
         "selector": { "primary_protein": "paneer" },
         "exact": 2
       },
       {
-        "_comment": "Egg curry to be served once a week.",
+        "_comment": "One kofta gravy a week.",
+        "name": "strykerncr_kofta_gravy_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "flag": "is_veg_kofta_gravy" },
+        "exact": 1
+      },
+      {
+        "_comment": "Egg gravy once a week (mostly Wednesday, not compulsory — day left to the solver).",
         "name": "strykerncr_egg_curry_1x",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
         "selector": { "flag": "is_egg_dish" },
         "exact": 1
+      },
+      {
+        "_comment": "Fish once per 15 days -> capped to at most once a week (true fortnightly spacing is history-checked at generation time).",
+        "name": "strykerncr_fish_max_1",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": { "flag": "is_fish_dish" },
+        "max": 1
+      },
+      {
+        "_comment": "Flavour rice on the days white rice is not served: Mon/Wed/Thu/Fri.",
+        "name": "strykerncr_flavour_rice_no_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [ "mon", "wed", "thu", "fri" ]
+      },
+      {
+        "_comment": "White rice (const steamed-rice slot) only on Tuesday; flavour rice is blank that day.",
+        "name": "strykerncr_white_rice_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [ "tue" ]
+      },
+      {
+        "_comment": "Green salad is pinned daily in salad 1 (a multi-slot expansion, so the pin is a solved cell, not a whole-slot stamp). Mark it repeatable so unique_items allows the same dish every day.",
+        "name": "strykerncr_green_salad_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "salad",
+        "selector": { "item": "green_salad" }
+      },
+      {
+        "_comment": "Tawa roti is pinned daily in bread 1 — repeatable so it may recur every day.",
+        "name": "strykerncr_tawa_roti_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "bread",
+        "selector": { "item": "tawa_roti" }
       }
-    ]
+    ],
+    "constant_items": {
+      "_comment": "salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules).",
+      "salad__1": "green salad",
+      "bread__1": "tawa roti"
+    }
   },
   "DXC": {
     "_comment": "Bangalore launch site (created via the launch view). Uses the Bangalore regional ruleset + these DXC logics; the two counters (Veg Lunch, Non Veg Lunch) both carry bread/rice/curd_side so these are client-level. The 'common categories are identical across both counters' requirement is handled by shared_categories below: the planner solves the primary counter and pins its dish for each shared slot into the other counter per day (see docs/client_logics.md gap 1).",

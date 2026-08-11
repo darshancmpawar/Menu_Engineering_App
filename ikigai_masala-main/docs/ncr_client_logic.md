@@ -108,15 +108,34 @@ five NCR sites. Sheet → client-name mapping (they differ): `Stryker Sector 59`
 
 | Client | Encoded (lunch) | Deferred / out of scope |
 |---|---|---|
-| Stryker NCR | paneer 2×/wk; egg curry 1×/wk | fish every 15 days (long-horizon cadence); 'Thursday special' (undefined); cut fruit (breakfast) |
-| Siemens | 2 chicken every day (nonveg_main:2); paneer 2×/wk | tetrapack juice (snacks); brown bread / cut fruit / boiled egg (breakfast) |
+| Stryker NCR | salad 1 = green salad daily (salad 2 varies); bread 1 = tawa roti daily (bread 2 varies); rice split — flavour rice Mon/Wed/Thu/Fri, white rice Tue only; 2 paneer gravies + 1 kofta gravy/wk; egg gravy 1×/wk; fish ≤1/wk | fish/biryani/sambar **once per 15 days** (rolling window a weekly plan can't see — history-checked at generation); 'biryani not the same week as fish' (week-level co-occurrence); **NCR carries no sambar dishes** so that rule is inert; 'Thursday special' (undefined); cut fruit (breakfast) |
+| Siemens | salad = green salad daily; bread = plain chapati daily; non-veg pair — Tue one egg + one chicken, other days two chicken; 1 paneer + 1 soya/wk; kofta ≤1/wk | kofta 'once per 2 weeks' (capped to ≤1/wk; fortnightly is history-checked); tetrapack juice (snacks); brown bread / cut fruit / boiled egg (breakfast) |
 | Airtel Noida | paneer 2×/wk; non-veg Wed & Fri only; potato ≤2×/wk | fish / paratha monthly (long-horizon); 'no repeat in 15 days' (already covered by cooldown 20); Wed 'regional theme' (needs the cuisine named) |
-| Sinch NCR | chicken Mon/Wed/Fri, egg curry Tue/Thu; paneer 1×/wk | — |
+| Sinch NCR | bread = tawa roti daily; flavour rice Mon/Wed, white rice Tue/Thu/Fri; raita Mon/Fri only; welcome drink Tue/Thu only; chicken Mon/Wed/Fri, egg curry Tue/Thu; paneer 1×/wk | 'starter (only chaats) on Wednesday' — no starter slot on this counter (add a starter category to serve it) |
 | Junglee Games | chicken 4×/wk; egg curry 1×/wk; paneer 1×/wk | one chaat item 1×/wk (no starter/salad slot on this counter — add one to serve it) |
 
-Selectors: `primary_protein` = paneer/chicken, `is_egg_dish`, `key_ingredient` =
-potato. "N times a week" is `exact`/`min` day-count (`selector_frequency`,
-auto-capped so it never forces INFEASIBLE); day-specific placement uses
-`slot_composition.components_by_weekday`; "non-veg only Wed/Fri" is
-`slot_day_restriction`. The **deferred** rows above are the ones the next round of
-client input / a sample menu should pin down.
+Selectors: `primary_protein` = paneer/chicken/soya, `is_egg_dish`,
+`is_fish_dish`, `is_veg_kofta_gravy`, `key_ingredient` = potato, `item` =
+green_salad / tawa_roti (staple pins). "N times a week" is `exact`/`min`/`max`
+day-count (`selector_frequency`, auto-capped so it never forces INFEASIBLE);
+day-specific placement uses `slot_composition.components_by_weekday`; "non-veg
+only Wed/Fri" and the rice/raita/welcome-drink weekday windows use
+`slot_day_restriction`; a same-dish-daily staple pinned into one expansion of a
+multi-slot (Stryker salad 1 / bread 1) also carries a `repeatable_items`
+declaration so `unique_items` allows the daily repeat.
+
+**Two operator notes:**
+- **Stryker bread must be slot_count 2** for the second (varying) bread the
+  sample shows — the live counter has bread 1. At count 1 the pin still holds
+  (tawa roti daily) with no second bread; set it to 2 in the editor to get the
+  variety bread.
+- **Stryker and Siemens disable `deep_fried_coupling`** (the Bangalore rice-bread /
+  deep-fried-family rule). It links bread to the deep-fried rice/veg-dry family
+  and cannot be satisfied once bread is pinned to plain chapati / tawa roti on
+  these simple North-Indian counters; it is irrelevant to the NCR menu.
+
+The **15-day / fortnightly cadences** (Stryker fish/biryani/sambar, Siemens
+kofta) exceed a weekly horizon, so they are encoded as the tightest weekly bound
+that is safe (`max: 1`, or left to the solver) and the true rolling window is
+verified against saved history at generation time. The remaining **deferred**
+rows are the ones the next round of client input / a sample menu should pin down.
