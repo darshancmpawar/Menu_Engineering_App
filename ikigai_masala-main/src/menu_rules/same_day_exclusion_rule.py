@@ -63,6 +63,11 @@ class SameDayExclusionRule(BaseMenuRule):
         # Optional narrowing: by default both sides are counted across every slot.
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         self.exclude_base_slot: Optional[str] = rule_config.get('exclude_base_slot')
+        # 'day' (default): the two families may not share a DAY. 'week': they may
+        # not appear anywhere in the same plan (the horizon = a week) — "biryani
+        # not the same week as fish". A plan longer than a week treats the whole
+        # horizon as the exclusion window.
+        self.scope: str = str(rule_config.get('scope', 'day')).lower()
 
     def validate_config(self) -> bool:
         return not self.validation_errors()
@@ -135,6 +140,10 @@ class SameDayExclusionRule(BaseMenuRule):
         if self._sel is None or self._exc is None:
             return
 
+        if self.scope == 'week':
+            self._apply_week(model, cells, link_any)
+            return
+
         for di in range(len(dates)):
             sel_cells = self._day_cells(cells, di, self.base_slot)
             exc_cells = self._day_cells(cells, di, self.exclude_base_slot)
@@ -157,6 +166,38 @@ class SameDayExclusionRule(BaseMenuRule):
             link_any(model, sel_lits, a)
             link_any(model, exc_lits, b)
             model.Add(a + b <= 1)
+
+    def _apply_week(self, model, cells, link_any) -> None:
+        """Plan-wide exclusion: the two families may not both appear in the plan.
+
+        One indicator per side over ALL cells (not per day), then ``A + B <= 1``.
+        Same forced-both relaxation as the day scope: if some cell can only be
+        the selector AND some cell can only be the exclude, the week cannot avoid
+        both, so the rule stands down rather than forcing INFEASIBLE.
+        """
+        sel_cells = [c for c in cells
+                     if self.base_slot is None or c.base_slot == self.base_slot]
+        exc_cells = [c for c in cells
+                     if self.exclude_base_slot is None
+                     or c.base_slot == self.exclude_base_slot]
+        sel_lits = self._lits(sel_cells, self._sel)
+        exc_lits = self._lits(exc_cells, self._exc, self._sel)
+        if not sel_lits or not exc_lits:
+            return
+        if self._forced(sel_cells, self._sel) and \
+                self._forced(exc_cells, self._exc, self._sel):
+            logger.info(
+                "%s: the plan has a cell with only %s candidates AND a cell with "
+                "only %s candidates, so both families are unavoidable this week; "
+                "skipping the week exclusion rather than making the plan "
+                "INFEASIBLE", self.name, self._sel, self._exc,
+            )
+            return
+        a = model.NewBoolVar(f'{self.name}_sel_week')
+        b = model.NewBoolVar(f'{self.name}_exc_week')
+        link_any(model, sel_lits, a)
+        link_any(model, exc_lits, b)
+        model.Add(a + b <= 1)
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         """Report a side that matches nothing — an exclusion between a real family

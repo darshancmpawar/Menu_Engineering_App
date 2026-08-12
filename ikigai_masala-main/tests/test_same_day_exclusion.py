@@ -483,3 +483,43 @@ class TestShippedSelectorsMatchTheRightItems:
         assert len(named) >= 6, len(named)
         assert set(named['key_ingredient']) == {'soy'}, \
             named[['item', 'key_ingredient']].to_string(index=False)
+
+
+class TestWeekScope:
+    """`scope: "week"` forbids the two families anywhere in the same plan —
+    "biryani not the same week as fish" (Stryker NCR, site-specific)."""
+
+    def _wrule(self):
+        return SameDayExclusionRule({
+            'name': 'fb', 'type': 'same_day_exclusion', 'scope': 'week',
+            'selector': {'flag': 'is_nonveg_biryani'},
+            'exclude': {'flag': 'is_fish_dish'}})
+
+    def test_biryani_and_fish_cannot_share_the_week(self):
+        model = cp_model.CpModel()
+        # Day 0 can only be biryani; day 1 is fish-or-chicken.
+        c0 = _cell(model, 0, 'nonveg_main', [{'is_nonveg_biryani': 1}])
+        c1 = _cell(model, 1, 'nonveg_main',
+                   [{'is_fish_dish': 1}, {'is_nonveg_biryani': 0, 'is_fish_dish': 0}])
+        self._wrule().apply(model, {}, None, _ctx([c0, c1], 2))
+        solver, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        # Biryani is in the week, so day 1 must be the chicken, not the fish.
+        assert solver.Value(c1.x_vars[0]) == 0   # fish
+        assert solver.Value(c1.x_vars[1]) == 1   # chicken
+
+    def test_biryani_alone_all_week_is_fine(self):
+        model = cp_model.CpModel()
+        c0 = _cell(model, 0, 'nonveg_main', [{'is_nonveg_biryani': 1}])
+        c1 = _cell(model, 1, 'nonveg_main', [{'is_nonveg_biryani': 1}])
+        self._wrule().apply(model, {}, None, _ctx([c0, c1], 2))
+        _s, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    def test_both_forced_stands_down_not_infeasible(self):
+        model = cp_model.CpModel()
+        c0 = _cell(model, 0, 'nonveg_main', [{'is_nonveg_biryani': 1}])
+        c1 = _cell(model, 1, 'nonveg_main', [{'is_fish_dish': 1}])
+        self._wrule().apply(model, {}, None, _ctx([c0, c1], 2))
+        _s, status = _solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)

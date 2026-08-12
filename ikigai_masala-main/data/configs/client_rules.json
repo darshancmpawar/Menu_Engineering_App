@@ -1692,6 +1692,14 @@
         "window_days": 15
       },
       {
+        "_comment": "Biryani not in the same WEEK as fish (site-specific, Stryker only). scope: week makes the two families mutually exclusive across the whole plan — if the week has a fish it has no biryani, and vice versa. Covers veg (rice) and non-veg (nonveg_main) biryani.",
+        "name": "strykerncr_fish_biryani_not_same_week",
+        "type": "same_day_exclusion",
+        "scope": "week",
+        "selector": { "any_of": [ { "flag": "is_nonveg_biryani" }, { "flag": "is_mixedveg_biryani" } ] },
+        "exclude": { "flag": "is_fish_dish" }
+      },
+      {
         "_comment": "Flavour rice on the days white rice is not served: Mon/Wed/Thu/Fri.",
         "name": "strykerncr_flavour_rice_no_tue",
         "type": "slot_day_restriction",
