@@ -28,18 +28,29 @@ COMMON_POOL = "common"
 
 
 def normalize_name(value) -> str:
-    """Canonical form of a client-pool token: trimmed, case-folded."""
-    return str(value or "").strip().casefold()
+    """Canonical form of a client-pool token: trimmed, case-folded.
+
+    A pandas NaN (an empty ``client`` cell read from a workbook) is a float,
+    and ``float('nan') or ''`` is truthy, so a naive ``str(value or '')`` would
+    coin the spurious token ``'nan'``. Treat NaN / None as empty.
+    """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value).strip().casefold()
 
 
 def parse_client_pools(value) -> Set[str]:
     """Parse a raw ``client`` cell into a set of normalized pool tokens.
 
     Comma-separated, trimmed, case-folded, empties dropped. Exact-match only.
+    A NaN / None cell (an untagged row) yields no tokens — never the string
+    ``'nan'``.
     """
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return set()
     return {
         normalize_name(client)
-        for client in str(value or "").split(",")
+        for client in str(value).split(",")
         if normalize_name(client)
     }
 

@@ -85,6 +85,23 @@ class TestRule:
             'name': 'x', 'selector': {'course_type': 'sambar'}, 'window_days': 15})
         assert len(r.matching_items(df)) >= 10
 
+    def test_matching_items_is_scoped_to_base_slot(self):
+        # 'leafy veg_dry once per 15 days' must not match a leafy DAL: the ban is
+        # scoped to the rule's base_slot, so a leafy dal in history never trips
+        # the veg_dry cadence (the Pune R31 regression).
+        from src.ontology.paths import city_excel_path
+        df = pd.read_excel(city_excel_path('Pune'))
+        df.columns = [c.strip() for c in df.columns]
+        r = SelectorHistoryWindowRule({
+            'name': 'x', 'base_slot': 'veg_dry',
+            'selector': {'flag': 'is_leafy_based_dish'}, 'window_days': 15})
+        items = r.matching_items(df)
+        assert items, "expected some leafy veg_dry items"
+        assert 'dal_palak' not in items  # a leafy dal, not a veg_dry
+        # every matched item really is a veg_dry
+        vd = set(df[df['course_type'] == 'veg_dry']['item'].astype(str).str.strip())
+        assert items <= {v.lower() for v in vd}
+
 
 # --- loader wiring ----------------------------------------------------------
 

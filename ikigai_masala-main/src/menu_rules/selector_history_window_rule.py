@@ -84,12 +84,22 @@ class SelectorHistoryWindowRule(BaseMenuRule):
     def matching_items(self, df: pd.DataFrame) -> Set[str]:
         """Lowercased item names in *df* that match the selector.
 
+        Scoped to ``base_slot`` when one is set: the cadence "leafy veg_dry once
+        per 15 days" is about the veg_dry slot, so a leafy *dal* served last week
+        must NOT trigger it. Without this, matching by flag alone bans a whole
+        family across every slot it appears in — the R31 window then starved
+        Pune's dal on the week after a leafy dal was saved. `course_type` is the
+        column the per-slot pools are built from, so it is the right scope.
+
         Lowercased because the ban is merged into ``banned_by_date`` and the
         solver compares candidate names case-folded there.
         """
         if self._inc is None or df is None or 'item' not in getattr(df, 'columns', []):
             return set()
         mask = df.apply(self._row_matches, axis=1)
+        if self.base_slot and 'course_type' in df.columns:
+            from ..preprocessor.column_mapper import _norm_str
+            mask = mask & (df['course_type'].map(_norm_str) == _norm_str(self.base_slot))
         return {str(v).strip().lower() for v in df.loc[mask, 'item'].tolist()}
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
