@@ -40,6 +40,35 @@ def pools_for_city(metadata: Dict, city) -> List[str]:
     return list((metadata.get('client_pools_by_city') or {}).get(city, []))
 
 
+def _token_words(s) -> set:
+    return set(str(s).strip().lower().replace('-', ' ').replace('_', ' ').split())
+
+
+def pool_token_client_labels(api, city, tokens) -> Dict[str, str]:
+    """Map each ontology pool token to the app client of the same city it names.
+
+    The `client` column tags dishes with short tokens ('stryker', 'junglee
+    games'); the app knows those clients by fuller names ('Stryker NCR',
+    'Junglee Games'). Match by word-subset (token words ⊆ client words, or the
+    reverse), scoped to the selected city's clients so 'siemens' resolves to the
+    NCR Siemens and not a Bangalore namesake. An unmatched token keeps its
+    titled form so the picker never hides a real pool.
+    """
+    try:
+        detail = api.list_clients_with_city()
+    except Exception:  # noqa: BLE001 — labels are cosmetic; never break the editor
+        detail = []
+    city_clients = [c.get('name') for c in detail
+                    if (c.get('city') or None) == (city or None) and c.get('name')]
+    labels: Dict[str, str] = {}
+    for t in tokens:
+        tw = _token_words(t)
+        cands = [c for c in city_clients
+                 if tw and (tw <= _token_words(c) or _token_words(c) <= tw)]
+        labels[t] = min(cands, key=len) if cands else str(t).title()
+    return labels
+
+
 def _default_counter(idx: int, all_base_slots: List[str], const_slots: List[str],
                      default_theme_map: Dict[str, str],
                      default_off_slots: List[str] = ()) -> Dict:
@@ -250,13 +279,16 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         with st.container(border=True):
             st.markdown(
                 '<p class="pulse-step-title">Item Pools</p>'
-                '<p class="pulse-step-desc">Choose which client item-pools this '
-                'client can draw from. <b>Common</b> is always included; add '
-                'others to widen the available items. The client\'s own rules '
-                'still apply to borrowed items.</p>',
+                '<p class="pulse-step-desc">Choose which <b>clients</b> of this '
+                'city this client can borrow items from. <b>Common</b> is always '
+                'included; add others to widen the available items. The client\'s '
+                'own rules still apply to borrowed items.</p>',
                 unsafe_allow_html=True,
             )
             st.caption("✓ Common — always included")
+            # Show pool tokens by the app client each names (city-scoped match).
+            _pool_labels = pool_token_client_labels(
+                api, selected_city, available_client_pools)
             if not available_client_pools:
                 # Say so rather than rendering an empty control: a city whose item
                 # list tags every dish `common` has no pools to pick, and silence
@@ -271,14 +303,15 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                 selected_source_pools = []
             else:
                 selected_source_pools = st.multiselect(
-                    "Additional item pools",
+                    "Borrow items from these clients",
                     options=available_client_pools,
                     default=[p for p in loaded_source_pools
                              if p in available_client_pools],
                     key=f"editor_pools_{'new' if is_create_mode else selected_client}",
-                    format_func=lambda s: s.title(),
-                    help="An item is eligible if it belongs to Common or any "
-                         "selected pool (exact match).",
+                    format_func=lambda s: _pool_labels.get(s, s.title()),
+                    help="Each option is a client of this city; picking it lets "
+                         "this client draw from that client's items. An item is "
+                         "eligible if it belongs to Common or any selected pool.",
                 )
             try:
                 preview = api.pool_preview(selected_source_pools, city=selected_city)
