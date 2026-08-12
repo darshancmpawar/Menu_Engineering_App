@@ -125,6 +125,26 @@ UPDATE clients SET source_pools = '["infineon"]'::jsonb
  WHERE name = 'Infenion'
    AND (source_pools IS NULL OR source_pools = '[]'::jsonb);
 
+-- -----------------------------------------------------------------------------
+-- Enable cross-counter common categories (shared_categories).
+--
+-- A multi-counter client can declare that some base slots serve the SAME dish
+-- across all of its counters each day (the "common category" sync). The planner
+-- solves the primary counter first and pins its dish for each shared slot into
+-- every other counter (see note 22 in CLAUDE.md). shared_categories NULL means
+-- "none"; the planner then falls back to the file value in client_rules.json.
+--
+-- Seed the known multi-counter client(s) here so the feature is live straight
+-- after setup — the DB value and the client_rules.json value agree for DXC
+-- (bread/rice/sambar/rasam/curd_side/dessert/white_rice shared; each counter's
+-- nonveg_main still solves independently). Applied only where still unset, so a
+-- later editor choice (the toggle + multiselect) is never overwritten.
+UPDATE clients
+   SET shared_categories =
+       '["bread","rice","sambar","rasam","curd_side","dessert","white_rice"]'::jsonb
+ WHERE name = 'DXC'
+   AND shared_categories IS NULL;
+
 -- (a) Fold an older `client_counters` table (multi-cuisine build) into the
 --     column: aggregate ALL of a client's rows, ordered by counter_index.
 DO $$
