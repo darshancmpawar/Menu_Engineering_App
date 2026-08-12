@@ -561,6 +561,33 @@ class ClientConfigLoader:
             return []
         return [_normalize_pool_name(t) for t in val if _normalize_pool_name(t)]
 
+    def get_client_shared_categories(self, name: str):
+        """Return the base slots this client serves identically across counters.
+
+          * ``list`` — configured base slots (the planner pins the primary
+            counter's dish for each into the others per day).
+          * ``[]``   — column exists but this client shares nothing.
+          * ``None`` — the ``clients.shared_categories`` column is missing
+            (pre-migration). Callers fall back to the file-based value in
+            ``client_rules.json`` so an un-migrated database keeps working.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('shared_categories')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return self._normalize_shared_categories_value(
+            row.data.get('shared_categories'))
+
     def get_client_serve_weekends(self, name: str) -> bool:
         """Return whether the client is served on weekends (Sat/Sun).
 
@@ -792,6 +819,7 @@ class ClientConfigLoader:
         working_days=None,
         source_pools=None,
         is_launch_site: bool = False,
+        shared_categories=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -830,6 +858,9 @@ class ClientConfigLoader:
             # Only send it when true, so a pre-migration DB still takes the
             # common create path (the column defaults to false there anyway).
             row['is_launch_site'] = True
+        if shared_categories is not None:
+            row['shared_categories'] = self._normalize_shared_categories_value(
+                shared_categories)
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
@@ -842,7 +873,8 @@ class ClientConfigLoader:
                     name, _MIGRATION_HINT_COUNTERS,
                 )
                 for optional in ('city', 'serve_weekends', 'item_cooldown_days',
-                                 'working_days', 'source_pools', 'is_launch_site'):
+                                 'working_days', 'source_pools', 'is_launch_site',
+                                 'shared_categories'):
                     row.pop(optional, None)
                 self._sb.table('clients').insert(row).execute()
             else:
@@ -888,6 +920,31 @@ class ClientConfigLoader:
                 raise ValueError(
                     "Cannot save source pools: the clients.source_pools column "
                     "is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
+    def set_client_shared_categories(self, name: str, categories) -> None:
+        """Persist the base slots synced across this client's counters.
+
+        Values are lower-cased, de-duped, and filtered to known base/const
+        slots; unknown tokens are dropped.
+        """
+        self._require_client_exists(name)
+        norm = self._normalize_shared_categories_value(categories)
+        try:
+            self._sb.table('clients').update({
+                'shared_categories': norm,
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.shared_categories column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save shared categories: the "
+                    "clients.shared_categories column is missing. "
+                    + _MIGRATION_HINT_COUNTERS
                 ) from exc
             raise
 
@@ -1031,11 +1088,28 @@ class ClientConfigLoader:
             return []
         return [_normalize_pool_name(t) for t in raw if _normalize_pool_name(t)]
 
+    @staticmethod
+    def _normalize_shared_categories_value(raw) -> List[str]:
+        # None (column unset) -> []. Keep only known base/const slots, lower-
+        # cased and de-duped, order preserved.
+        if not raw:
+            return []
+        valid = set(BASE_SLOTS) | set(CONST_SLOTS)
+        seen: Set[str] = set()
+        out: List[str] = []
+        for c in raw:
+            s = str(c).strip().lower()
+            if s in valid and s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
+
     # Config columns that live directly on the ``clients`` row. Read together so
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
         'counters', 'city', 'serve_weekends', 'working_days',
-        'item_cooldown_days', 'source_pools', 'is_launch_site', 'version',
+        'item_cooldown_days', 'source_pools', 'is_launch_site',
+        'shared_categories', 'version',
     )
 
     def get_client_row(self, name: str) -> Dict[str, Any]:
@@ -1072,6 +1146,7 @@ class ClientConfigLoader:
                     'item_cooldown_days': self.get_client_item_cooldown_days(name),
                     'source_pools': self.get_client_source_pools(name),
                     'is_launch_site': self.get_client_is_launch_site(name),
+                    'shared_categories': self.get_client_shared_categories(name),
                     'version': self.get_client_version(name),
                 }
             raise
@@ -1089,6 +1164,8 @@ class ClientConfigLoader:
             'source_pools': self._normalize_source_pools_value(
                 data.get('source_pools')),
             'is_launch_site': bool(data.get('is_launch_site')),
+            'shared_categories': self._normalize_shared_categories_value(
+                data.get('shared_categories')),
             'version': int(data.get('version') or 1),
         }
 
@@ -1210,6 +1287,7 @@ class ClientConfigLoader:
             ('item_cooldown_days', self.set_client_item_cooldown_days),
             ('source_pools', self.set_client_source_pools),
             ('is_launch_site', self.set_client_is_launch_site),
+            ('shared_categories', self.set_client_shared_categories),
         ):
             if column in fields:
                 try:

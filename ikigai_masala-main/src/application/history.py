@@ -23,7 +23,7 @@ _HISTORY_WINDOW_SLACK_DAYS = 15
 
 def _build_history_context(
     df, client_name, start_date, weekday_dates, window_days=None,
-    cooldown_days=None,
+    cooldown_days=None, selector_windows=None,
 ):
     """Shared helper to build history-based solver inputs from Supabase.
 
@@ -76,6 +76,15 @@ def _build_history_context(
     banned = hm.banned_items_by_date(weekday_dates, const_slots=CONST_SLOTS,
                                       repeatable_items=REPEATABLE_ITEM_BASES,
                                       **_cooldown_kw)
+    # Cross-week selector cadences ("fish once per 15 days"): ban the whole
+    # selector on dates within its window of a saved occurrence, folded into
+    # the same per-date ban map the item-cooldown pre-filter already applies.
+    for matching_items, sel_window in (selector_windows or []):
+        sel_bans = hm.selector_banned_by_date(
+            weekday_dates, matching_items, sel_window)
+        for d, items in sel_bans.items():
+            if items:
+                banned.setdefault(d, set()).update(items)
     ricebread_items = set(
         df.loc[df.get('is_rice_bread', 0) == 1, 'item'].tolist()
     ) if 'is_rice_bread' in df.columns else set()

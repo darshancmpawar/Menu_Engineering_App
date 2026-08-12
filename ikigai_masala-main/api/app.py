@@ -78,6 +78,7 @@ from src.menu_rules import (
     has_blocking_errors,
     pool_warnings_projection,
 )
+from src.menu_rules.selector_history_window_rule import SelectorHistoryWindowRule
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -452,7 +453,7 @@ def _effective_history_window(rules) -> int:
     """
     max_cd = 0
     for r in rules or []:
-        for attr in ('cooldown_days', 'gap_days'):
+        for attr in ('cooldown_days', 'gap_days', 'window_days'):
             value = getattr(r, attr, None)
             if isinstance(value, int) and value > max_cd:
                 max_cd = value
@@ -766,9 +767,18 @@ def _prepare_solver_inputs(
     cooldown_days = row['item_cooldown_days']
     rules = _apply_item_cooldown_override(rules, cooldown_days)
     window_days = _effective_history_window(rules)
+    # Cross-week cadence rules: each names a selector + window_days. Resolve the
+    # selector to concrete item names against this city's ontology now, so the
+    # history layer can ban the whole family on dates within the window of a
+    # saved occurrence (see SelectorHistoryWindowRule).
+    selector_windows = [
+        (r.matching_items(df), r.window_days)
+        for r in rules
+        if isinstance(r, SelectorHistoryWindowRule) and r.window_days
+    ]
     banned, rb_ban, recent_sigs = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
-        cooldown_days=cooldown_days,
+        cooldown_days=cooldown_days, selector_windows=selector_windows,
     )
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
@@ -1399,10 +1409,15 @@ def get_client_config(client_name):
             'version': version,
             'counter_mode': counter_mode,
             'counters': counters,
-            # Base slots this client serves identically across its counters
-            # (file-based, from client_rules.json). The planner reads it to sync
-            # the primary counter's dish into the others per day.
-            'shared_categories': MenuRuleLoader().get_shared_categories(client_name),
+            # Base slots this client serves identically across its counters. The
+            # editor writes it to clients.shared_categories (DB); a client
+            # configured only in client_rules.json (e.g. DXC) has none in the DB,
+            # so fall back to the file value. The planner reads whichever wins to
+            # sync the primary counter's dish into the others per day.
+            'shared_categories': (
+                row.get('shared_categories')
+                or MenuRuleLoader().get_shared_categories(client_name)
+            ),
         })
         response.headers['ETag'] = f'"{version}"'
         return response
@@ -1574,6 +1589,10 @@ def update_client_config(client_name):
                 data.get('source_pools'),
                 city=fields.get('city', _client_row(client_name)['city']),
             )
+        if 'shared_categories' in data:
+            # Base slots synced across counters (the editor's toggle+multiselect).
+            # Normalisation (keep known slots only) happens in the config layer.
+            fields['shared_categories'] = list(data.get('shared_categories') or [])
 
         new_version = loader.update_client_atomic(client_name, expected, fields)
 
@@ -1639,6 +1658,11 @@ def create_client():
         # Launch view: a client created here while launch mode is on is a launch
         # site. The editor sends the flag; it defaults false everywhere else.
         is_launch_site = bool(data.get('is_launch_site', False))
+        # Base slots synced across counters (the editor's toggle+multiselect).
+        shared_categories = (
+            list(data.get('shared_categories') or [])
+            if 'shared_categories' in data else None
+        )
 
         counters = data.get('counters')
         if counters:
@@ -1652,6 +1676,7 @@ def create_client():
                 working_days=working_days,
                 source_pools=source_pools,
                 is_launch_site=is_launch_site,
+                shared_categories=shared_categories,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
@@ -1660,7 +1685,8 @@ def create_client():
                                  item_cooldown_days=item_cooldown_days,
                                  working_days=working_days,
                                  source_pools=source_pools,
-                                 is_launch_site=is_launch_site)
+                                 is_launch_site=is_launch_site,
+                                 shared_categories=shared_categories)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:

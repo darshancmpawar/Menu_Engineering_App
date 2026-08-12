@@ -92,7 +92,7 @@ class TestSolverInputsPicksCorrectWindow:
         captured = {}
 
         def _capture(df, client_name, start_date, weekday_dates,
-                     window_days=None, cooldown_days=None):
+                     window_days=None, cooldown_days=None, selector_windows=None):
             captured["window_days"] = window_days
             # Return empty history so the rest of the solve can proceed.
             import pandas as pd

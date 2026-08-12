@@ -211,6 +211,16 @@
       "max": 1
     },
     {
+      "_comment": "The 15-day rolling window behind special_sambar_weekly (rulebook 82). The weekly max caps it within a plan; this reads saved history so a special sambar served last week is held off until the 15 days clear.",
+      "name": "special_sambar_15d_window",
+      "type": "selector_history_window",
+      "selector": {
+        "flag": "is_special_sambar"
+      },
+      "base_slot": "sambar",
+      "window_days": 15
+    },
+    {
       "name": "maida_bread_weekly",
       "type": "selector_frequency",
       "selector": {

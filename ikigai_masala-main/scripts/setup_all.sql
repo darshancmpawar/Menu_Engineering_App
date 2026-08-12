@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS clients (
     source_pools       JSONB,
     working_days       JSONB,
     is_launch_site     BOOLEAN NOT NULL DEFAULT false,
+    shared_categories  JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -80,6 +81,9 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS working_days       JSONB;
 -- already exists becomes NON-launch the moment the column is added; only clients
 -- configured through the launch view afterwards are flagged true.
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL DEFAULT false;
+-- Cross-counter common categories (editor toggle+multiselect). NULL = none;
+-- the planner falls back to the file-based value in client_rules.json (DXC).
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS shared_categories  JSONB;
 
 -- Seed working_days for kitchens that do not run a full Mon–Fri week.
 UPDATE clients SET working_days = '["wednesday","thursday","friday"]'::jsonb

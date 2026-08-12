@@ -33,6 +33,15 @@ class TestParsing:
         assert parse_client_pools("") == set()
         assert parse_client_pools(None) == set()
 
+    def test_parse_nan_is_not_a_token(self):
+        # An empty `client` cell read from a workbook is a float NaN; it must
+        # yield no tokens, never the spurious string 'nan' (which had leaked
+        # into the pool-token map when untagged sambar rows were added to NCR).
+        import math
+        assert parse_client_pools(float("nan")) == set()
+        assert normalize_name(float("nan")) == ""
+        assert math.nan != math.nan  # sanity: NaN is why `value or ""` failed
+
 
 class TestActivePools:
     def test_common_always_added(self):
