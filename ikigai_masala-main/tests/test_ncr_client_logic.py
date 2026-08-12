@@ -247,6 +247,34 @@ def test_sinch_bread_rice_raita_welcome_by_weekday(api, _ncr_df):
     assert wd_drink['mon'] == [] and wd_drink['wed'] == [] and wd_drink['fri'] == []
 
 
+def test_sinch_starter_wednesday_chaat_when_slot_added(monkeypatch, _ncr_df):
+    """The starter rules are inert until a starter slot exists; once it does,
+    the starter runs Wednesday only and must be a chaat (sub_category
+    chaat_/_tikki)."""
+    base = CLIENTS['Sinch NCR']
+    counter = dict(base['counters'][0])
+    counter['categories'] = list(counter['categories']) + ['starter']
+    counter['slot_counts'] = {**counter['slot_counts'], 'starter': 1}
+    seeded = {**base, 'counters': [counter]}
+
+    import src.db as db_mod
+    fake = FakeSupabase(seed={'clients': [seeded], 'app_settings': [],
+                              'menu_history': [], 'week_signatures': []})
+    monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
+    import api.app as api_app
+    monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
+    api_app.reset_caches()
+    api_app.app.config['TESTING'] = True
+
+    sol = _plan(api_app, 'Sinch NCR')
+    starters = _slot_by_day(sol, 'starter')
+    assert starters['wed'], starters  # served on Wednesday
+    for wd in ('mon', 'tue', 'thu', 'fri'):
+        assert starters[wd] == [], (wd, starters[wd])
+    row = _ncr_df[_ncr_df['item'].astype(str).str.strip() == starters['wed'][0]]
+    assert str(row.iloc[0]['sub_category']).strip() == 'chaat_/_tikki'
+
+
 def test_junglee_chicken_four_days_egg_once(api, _ncr_df):
     sol = _plan(api, 'Junglee Games')
     nv = _nonveg_by_day(sol)

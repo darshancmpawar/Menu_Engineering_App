@@ -1517,7 +1517,7 @@
     }
   },
   "Sinch NCR": {
-    "_comment": "NCR site 'Sinch' (city NCR). Logics from the client sheet + the two sample weeks. Bread is tawa roti daily (constant). Rice split: flavour rice Mon/Wed, white rice (the const 'white_rice' slot) Tue/Thu/Fri — so exactly one carb each day and never both. Raita (curd_side) Mon/Fri only; welcome drink Tue/Thu only. Deferred: 'starter (only chaats) on Wednesday' has no starter slot on this counter — add a starter category (count 1) in the editor to serve it, then a starter_wed + chaat rule can be added. The Tue/Wed/Thu drink in the sample 'Curd Prep' row is not a curd_side dish and is out of clean scope.",
+    "_comment": "NCR site 'Sinch' (city NCR). Logics from the client sheet + the two sample weeks. Bread is tawa roti daily (constant). Rice split: flavour rice Mon/Wed, white rice (the const 'white_rice' slot) Tue/Thu/Fri — so exactly one carb each day and never both. Raita (curd_side) Mon/Fri only; welcome drink Tue/Thu only; starter Wednesday only and chaats only (the last two rules are inert until a starter category, count 1, is added to this counter in the editor). The Tue/Wed/Thu drink in the sample 'Curd Prep' row is not a curd_side dish and is out of clean scope.",
     "disable": [],
     "rules": [
       {
@@ -1569,6 +1569,23 @@
         "type": "slot_day_restriction",
         "base_slot": "welcome_drink",
         "allowed_weekdays": [ "tue", "thu" ]
+      },
+      {
+        "_comment": "Starter is served only on Wednesday. Inert until a starter slot is added to this counter (slot_count 0 => no cells to restrict); it activates the moment the editor gives the counter a starter category.",
+        "name": "sinchncr_starter_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "starter",
+        "allowed_weekdays": [ "wed" ]
+      },
+      {
+        "_comment": "The Wednesday starter must be a chaat (only chaats to be served). NCR's chaat starters are sub_category 'chaat_/_tikki' (dhokla, kachori, samosa_chaat) — only 3 today, so add more chaat starters if a 4th consecutive week is needed. Inactive until the starter slot exists (min_slot_count gate).",
+        "name": "sinchncr_starter_chaats_only",
+        "type": "slot_composition",
+        "base_slot": "starter",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [ { "selector": { "sub_category": "chaat_/_tikki" }, "count": 1 } ]
+        }
       }
     ],
     "constant_items": {
