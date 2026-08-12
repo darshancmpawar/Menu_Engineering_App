@@ -117,19 +117,18 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         st.error(f"Failed to load editor data: {e}")
         return
 
-    clients = metadata.get('clients', [])
-    # In the launch view, the existing-client picker lists launch sites only —
-    # the same scoping the sidebar applies to the planner's client picker. The
-    # launch flag is not in editor-metadata, so read it from /clients detail and
-    # fall back to the full list if that call fails (better a wide list than a
-    # blank editor).
+    clients = metadata.get('clients', [])  # every client name — for the dup check
+    # Clients WITH their city, for the city-first picker (city → clients of that
+    # city, the same shape as the planner's sidebar). Falls back to the flat
+    # name list (no city) if the detail call fails, and is launch-filtered in
+    # the launch view (same scoping as the planner).
+    try:
+        clients_detail = api.list_clients_with_city()
+    except Exception:  # noqa: BLE001 — never break the editor over this
+        clients_detail = [{'name': n, 'city': None, 'is_launch_site': False}
+                          for n in clients]
     if launch_mode:
-        try:
-            detail = api.list_clients_with_city()
-            launch_names = {d['name'] for d in detail if d.get('is_launch_site')}
-            clients = [c for c in clients if c in launch_names]
-        except Exception:  # noqa: BLE001 — never break the editor over this
-            pass
+        clients_detail = [c for c in clients_detail if c.get('is_launch_site')]
     all_base_slots = metadata.get('base_slot_names', [])
     const_slots = metadata.get('const_slots', [])
     default_off_slots = metadata.get('default_off_slots', [])
@@ -143,8 +142,8 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
     # ============================================================
     with st.container(border=True):
         _step_header(1, "Client",
-                     "Select an existing client or create a new one, and set "
-                     "its city.")
+                     "Pick a city, then a client served from it — or create a "
+                     "new one in that city.")
         if launch_mode:
             st.caption("🚀 Launch view — the existing-client list shows launch "
                        "sites only; a new client created here is a launch site.")
@@ -152,6 +151,20 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         selected_client = None
         new_client_name = ""
         config = None
+
+        # City FIRST — it filters the existing-client list to that city (and is
+        # the city a new client is created in). Reordered above the client
+        # picker per request; one City control, no cross-city editing. Cities
+        # present among clients are unioned in so a client whose city is not in
+        # AVAILABLE_CITIES is still reachable.
+        city_options = sorted(
+            set(available_cities)
+            | {c['city'] for c in clients_detail if c.get('city')}
+        )
+        selected_city = st.selectbox(
+            "City", city_options, key="editor_city_filter",
+            help="The existing-client list below shows only this city's clients.",
+        ) if city_options else None
 
         # Existing vs New client as two tabs. Streamlit tabs are visual-only
         # (the server can't tell which is active), so the signal for "create"
@@ -165,14 +178,20 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
             )
         is_create_mode = bool(new_client_name.strip())
         with tab_existing:
-            if clients:
+            city_client_names = [
+                c['name'] for c in clients_detail
+                if (c.get('city') or None) == selected_city
+            ]
+            if city_client_names:
                 selected_client = st.selectbox(
-                    "Client", clients, key="editor_client_select",
+                    "Client", city_client_names,
+                    key=f"editor_client_select_{selected_city}",
                     label_visibility="collapsed",
                 )
             elif not is_create_mode:
                 _noun = "launch sites" if launch_mode else "clients"
-                st.info(f"No {_noun} yet. Use the **New client** tab to add one.")
+                st.info(f"No {_noun} in {selected_city or 'this city'}. Pick "
+                        f"another city, or use the **New client** tab to add one.")
 
         if not is_create_mode:
             if not selected_client:
@@ -183,19 +202,10 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                 st.error(f"Failed to load config for {selected_client}: {e}")
                 return
 
-        # City picker — a plain client attribute, one of AVAILABLE_CITIES.
+        # For an existing client the city equals its stored city (the list is
+        # filtered by it), so the save sends it unchanged; for a new client it
+        # is the city being created in.
         loaded_city = (config or {}).get('city') if not is_create_mode else None
-        city_options = list(available_cities)
-        city_index = (
-            city_options.index(loaded_city)
-            if loaded_city in city_options else 0
-        ) if city_options else 0
-        selected_city = st.selectbox(
-            "City", city_options,
-            index=city_index if city_options else 0,
-            key=f"editor_city_{'new' if is_create_mode else selected_client}",
-            help="Location this client is served from.",
-        ) if city_options else None
 
         # Weekend-service toggle — when on, generated plans also cover Sat/Sun.
         loaded_serve_weekends = bool((config or {}).get('serve_weekends', False))
