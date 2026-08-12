@@ -7,7 +7,7 @@ from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleType
 
 # Number of rules in the reference (bangalore) ruleset. Asserted rather than
 # hard-coded per test so adding a city rule is a one-line update here.
-_CITY_RULE_COUNT = 56
+_CITY_RULE_COUNT = 57
 
 
 class TestMenuRuleLoader:

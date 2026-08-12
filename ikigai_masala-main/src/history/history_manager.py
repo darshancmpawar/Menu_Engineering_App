@@ -107,6 +107,33 @@ class HistoryManager:
             out[d] = banned
         return out
 
+    def selector_banned_by_date(
+        self,
+        dates: List[dt.date],
+        matching_items: Set[str],
+        window_days: int,
+    ) -> Dict[dt.date, Set[str]]:
+        """Ban a whole selector on dates within ``window_days`` of its last use.
+
+        *matching_items* are the (lower-cased) item names that satisfy the
+        selector. For each planned date, if ANY of them was served in history
+        inside ``[date - window_days, date)``, every one of them is banned on
+        that date — the selector-level analogue of ``banned_items_by_date``.
+        Cross-week cadences ("fish once per 15 days") are enforced this way.
+        """
+        h = self._long
+        if h is None or not matching_items or not window_days:
+            return {d: set() for d in dates}
+        matching = {str(m).strip().lower() for m in matching_items}
+        # item_base is already _norm_str'd (lower-cased) in _ensure_long.
+        served = h[h['item_base'].isin(matching)]
+        out: Dict[dt.date, Set[str]] = {}
+        for d in dates:
+            start = d - dt.timedelta(days=window_days)
+            recent = (served['service_date'] >= start) & (served['service_date'] < d)
+            out[d] = set(matching) if bool(recent.any()) else set()
+        return out
+
     def recent_week_signatures(
         self,
         week_start: dt.date,

@@ -78,6 +78,7 @@ from src.menu_rules import (
     has_blocking_errors,
     pool_warnings_projection,
 )
+from src.menu_rules.selector_history_window_rule import SelectorHistoryWindowRule
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -452,7 +453,7 @@ def _effective_history_window(rules) -> int:
     """
     max_cd = 0
     for r in rules or []:
-        for attr in ('cooldown_days', 'gap_days'):
+        for attr in ('cooldown_days', 'gap_days', 'window_days'):
             value = getattr(r, attr, None)
             if isinstance(value, int) and value > max_cd:
                 max_cd = value
@@ -766,9 +767,18 @@ def _prepare_solver_inputs(
     cooldown_days = row['item_cooldown_days']
     rules = _apply_item_cooldown_override(rules, cooldown_days)
     window_days = _effective_history_window(rules)
+    # Cross-week cadence rules: each names a selector + window_days. Resolve the
+    # selector to concrete item names against this city's ontology now, so the
+    # history layer can ban the whole family on dates within the window of a
+    # saved occurrence (see SelectorHistoryWindowRule).
+    selector_windows = [
+        (r.matching_items(df), r.window_days)
+        for r in rules
+        if isinstance(r, SelectorHistoryWindowRule) and r.window_days
+    ]
     banned, rb_ban, recent_sigs = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
-        cooldown_days=cooldown_days,
+        cooldown_days=cooldown_days, selector_windows=selector_windows,
     )
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,

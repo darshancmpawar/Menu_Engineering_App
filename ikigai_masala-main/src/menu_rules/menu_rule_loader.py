@@ -58,6 +58,7 @@ from .nonveg_rules import (
 from .ingredient_ban_rule import IngredientBanRule
 from .item_frequency_rule import ItemFrequencyRule
 from .selector_frequency_rule import SelectorFrequencyRule
+from .selector_history_window_rule import SelectorHistoryWindowRule
 from .attribute_grouping_rule import AttributeGroupingRule
 from .soft_preference_rule import SoftPreferenceRule
 from .slot_composition_rule import SlotCompositionRule
@@ -118,6 +119,7 @@ class MenuRuleLoader:
         'ingredient_ban': IngredientBanRule,
         'item_frequency': ItemFrequencyRule,
         'selector_frequency': SelectorFrequencyRule,
+        'selector_history_window': SelectorHistoryWindowRule,
         'attribute_grouping': AttributeGroupingRule,
         'soft_preference': SoftPreferenceRule,
         'slot_composition': SlotCompositionRule,

@@ -135,7 +135,14 @@ declaration so `unique_items` allows the daily repeat.
   these simple North-Indian counters; it is irrelevant to the NCR menu.
 
 The **15-day / fortnightly cadences** (Stryker fish/biryani/sambar, Siemens
-kofta) exceed a weekly horizon, so they are encoded as the tightest weekly bound
-that is safe (`max: 1`, or left to the solver) and the true rolling window is
-verified against saved history at generation time. The remaining **deferred**
-rows are the ones the next round of client input / a sample menu should pin down.
+kofta) exceed a weekly horizon, so they are enforced across plans by the
+`selector_history_window` rule type (CLAUDE.md note 23): it reads saved
+`menu_history` and bans the whole family on dates within the window of a prior
+occurrence, paired with a within-plan `max` cap. So "fish once per 15 days" is
+now automatic — a fish served last week holds the family off until the 15 days
+clear — not a manual check. Stryker's sambar window is inert until the counter
+serves sambar (switch `dal` → `dal_sambar`); Stryker's biryani window enforces
+the *cap* half only (the positive "serve a biryani day once/15 days" and "not
+the same week as fish" are not expressible and stay deferred). The remaining
+**deferred** rows are the ones the next round of client input / a sample menu
+should pin down.

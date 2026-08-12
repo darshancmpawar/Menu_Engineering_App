@@ -131,6 +131,16 @@
       "max": 1
     },
     {
+      "_comment": "R30's 15-day window, enforced across plans from saved history (kadhi_weekly is the within-plan half). A kadhi served last week is held off until the 15 days clear, not just kept to one per week.",
+      "name": "kadhi_15d_window",
+      "type": "selector_history_window",
+      "selector": {
+        "flag": "is_kadhi_dal"
+      },
+      "base_slot": "veg_gravy",
+      "window_days": 15
+    },
+    {
       "_comment": "R22 — premium-ingredient gravies max once a week.",
       "name": "premium_gravy_weekly",
       "type": "selector_frequency",
@@ -187,6 +197,16 @@
       },
       "base_slot": "veg_dry",
       "max": 1
+    },
+    {
+      "_comment": "R31's 15-day window across plans (leafy_veg_dry_weekly is the within-plan half): a leafy veg dry served last week is held off until the 15 days clear.",
+      "name": "leafy_veg_dry_15d_window",
+      "type": "selector_history_window",
+      "selector": {
+        "flag": "is_leafy_based_dish"
+      },
+      "base_slot": "veg_dry",
+      "window_days": 15
     },
     {
       "_comment": "R43 — only one leafy-based dish per day's menu, across all slots.",
@@ -249,6 +269,16 @@
       },
       "base_slot": "bread",
       "max": 1
+    },
+    {
+      "_comment": "R47's monthly window enforced across plans from history: once an oil-based bread is served it is held off for 30 days, so the cadence is truly monthly and not once-a-week. Inert in the current Pune list (no oil-based breads).",
+      "name": "oil_based_bread_monthly_window",
+      "type": "selector_history_window",
+      "selector": {
+        "flag": "is_oil_based_bread"
+      },
+      "base_slot": "bread",
+      "window_days": 30
     },
     {
       "_comment": "R34 — multigrain breads must not run on consecutive days. Inert in the current Pune list.",
