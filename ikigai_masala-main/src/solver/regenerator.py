@@ -42,6 +42,7 @@ class MenuRegenerator:
         ricebread_ban_day=None,
         recent_sigs=None,
         skip_cells=None,
+        recency_by_item=None,
     ):
         self.pools = pools
         self.df = df
@@ -51,6 +52,7 @@ class MenuRegenerator:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        self.recency_by_item = recency_by_item or {}
         # Mirror of MenuSolver.rule_failures from the last regenerate() call
         # so the API can forward soft-rule failures to the client.
         self.rule_failures: List[Dict[str, str]] = []
@@ -135,6 +137,7 @@ class MenuRegenerator:
             ricebread_ban_day=self.ricebread_ban_day,
             recent_sigs=self.recent_sigs,
             skip_cells=self.skip_cells,
+            recency_by_item=self.recency_by_item,
         )
 
         # Compute similarity scores

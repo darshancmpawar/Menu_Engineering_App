@@ -116,6 +116,17 @@ DEFAULT_SEED_RESTART_STEP = 17
 # Penalty/bonus weights
 REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
 
+# Soft freshness objective (menu variety). A dish's bonus is
+# ``min(days_since_last_served, FRESHNESS_CAP_DAYS) * FRESHNESS_UNIT``; a dish
+# absent from the recency map (never served in the window) scores the full cap.
+# The unit sits ABOVE the random tie-break (max ~1000 per cell) so freshness
+# actually orders the candidates, and CAP*UNIT stays BELOW one LOW-tier soft
+# rule unit (1e6) so any real rule outranks freshness in a cell — variety is
+# maximised only "unless a rule is forcing it". Ties among equally-fresh dishes
+# still fall to the random tie-break, preserving cross-solve variety.
+FRESHNESS_CAP_DAYS = 30
+FRESHNESS_UNIT = 3_000  # 30 * 3000 = 90_000  < LOW (1e6); step 3000 > tie-break
+
 
 @dataclass
 class SolverConfig:
@@ -331,6 +342,7 @@ class MenuSolver:
         ricebread_ban_day: Optional[Dict[dt.date, bool]] = None,
         recent_sigs: Optional[Set[str]] = None,
         skip_cells: Optional[Set[Tuple[dt.date, str]]] = None,
+        recency_by_item: Optional[Dict[str, int]] = None,
     ):
         self.pools = pools
         self.cfg = solver_config
@@ -339,6 +351,13 @@ class MenuSolver:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        # {item_base(norm): days-since-last-served}. Drives the soft freshness
+        # objective — a dish served long ago (large value) or absent from the
+        # map (never served in the window) is preferred over a recently-served
+        # one, so a plan spreads item usage instead of reprinting day-1's menu
+        # the moment its hard cooldown lapses. Purely a preference: it never
+        # bans anything, so it cannot make a solve INFEASIBLE.
+        self.recency_by_item = recency_by_item or {}
         # Soft rules that threw during apply / get_objective_terms.
         # Scoped to the winning attempt only — cleared at the start of
         # each restart so callers (API, regenerator) don't see failures
@@ -1095,6 +1114,24 @@ class MenuSolver:
 
     # ----- Objective -----
 
+    def _freshness_bonus(self, item_name: str) -> int:
+        """Soft variety weight for a candidate dish.
+
+        Larger = served longer ago (or never in the queried window), so the
+        objective prefers it. Bounded by ``FRESHNESS_CAP_DAYS * FRESHNESS_UNIT``
+        and always non-negative, so it only ever *adds* to the maximised
+        objective and can never make a solve INFEASIBLE. Returns 0 when no
+        recency map was supplied (regenerate paths / tests), leaving the
+        historic random tie-break behaviour unchanged.
+        """
+        if not self.recency_by_item:
+            return 0
+        days = self.recency_by_item.get(_norm_str(item_name))
+        if days is None:
+            # Not in recent history → maximally fresh.
+            days = FRESHNESS_CAP_DAYS
+        return min(int(days), FRESHNESS_CAP_DAYS) * FRESHNESS_UNIT
+
     def _build_objective(self, model, cells, rng, similarity, context):
         obj_terms = []
 
@@ -1107,11 +1144,17 @@ class MenuSolver:
                     if sc:
                         obj_terms.append(var * sc)
             for cell in cells:
-                for var in cell.x_vars:
+                for var, row in zip(cell.x_vars, cell.cand_rows):
+                    fb = self._freshness_bonus(row.get('item', ''))
+                    if fb:
+                        obj_terms.append(var * fb)
                     obj_terms.append(var * rng.randint(0, 3))
         else:
             for cell in cells:
-                for var in cell.x_vars:
+                for var, row in zip(cell.x_vars, cell.cand_rows):
+                    fb = self._freshness_bonus(row.get('item', ''))
+                    if fb:
+                        obj_terms.append(var * fb)
                     obj_terms.append(var * rng.randint(0, 1000))
 
         # Collect objective terms from rules. These are always treated as

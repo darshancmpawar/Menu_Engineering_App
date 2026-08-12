@@ -103,6 +103,7 @@ class TestSolverInputsPicksCorrectWindow:
                 hm.banned_items_by_date(weekday_dates, const_slots=set()),
                 hm.ricebread_ban_by_date(weekday_dates),
                 hm.recent_week_signatures(start_date),
+                hm.days_since_last_served(start_date),
             )
 
         monkeypatch.setattr(api_app, "_build_history_context", _capture)

@@ -90,4 +90,12 @@ def _build_history_context(
     ) if 'is_rice_bread' in df.columns else set()
     rb_ban = hm.ricebread_ban_by_date(weekday_dates, ricebread_items)
     recent_sigs = hm.recent_week_signatures(start_date)
-    return banned, rb_ban, recent_sigs
+    # Freshness map for the solver's soft variety objective: days since each
+    # dish was last served. Prefers dishes served long ago (or never) so a plan
+    # does not reprint an item the moment its hard cooldown lapses. Const /
+    # repeatable staples are excluded — they recur by design.
+    recency_by_item = hm.days_since_last_served(
+        start_date, const_slots=CONST_SLOTS,
+        repeatable_items=REPEATABLE_ITEM_BASES,
+    )
+    return banned, rb_ban, recent_sigs, recency_by_item
