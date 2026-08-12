@@ -42,6 +42,7 @@ class MenuRegenerator:
         ricebread_ban_day=None,
         recent_sigs=None,
         skip_cells=None,
+        recency_by_item=None,
     ):
         self.pools = pools
         self.df = df
@@ -51,6 +52,7 @@ class MenuRegenerator:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        self.recency_by_item = recency_by_item or {}
         # Mirror of MenuSolver.rule_failures from the last regenerate() call
         # so the API can forward soft-rule failures to the client.
         self.rule_failures: List[Dict[str, str]] = []
@@ -59,6 +61,7 @@ class MenuRegenerator:
         self,
         base_plan: Dict[dt.date, Dict[str, str]],
         replace_mask: Dict[dt.date, Set[str]],
+        extra_forbidden: Dict[Tuple[dt.date, str], Set[str]] = None,
     ) -> Tuple[Dict, List[dt.date]]:
         """
         Regenerate selected cells.
@@ -66,6 +69,12 @@ class MenuRegenerator:
         Args:
             base_plan: Original plan {date: {slot_id: item_string}}
             replace_mask: {date: {slot_ids_to_replace}}
+            extra_forbidden: {(date, slot_id): {item_base, …}} to ALSO block
+                beyond the cell's current item — the items already suggested for
+                that cell in this regenerate session, so repeated clicks cycle
+                through fresh dishes instead of flipping A→B→A. Blocking is soft:
+                if it leaves a cell unsolvable the solve falls back to the
+                penalty path (same as blocking the current item alone).
 
         Returns:
             (new_plan, dates)
@@ -108,6 +117,17 @@ class MenuRegenerator:
                 old_item = _norm_str(_strip_color_suffix(base_plan.get(d, {}).get(slot_id, '')))
                 if old_item:
                     forbidden[d, slot_id] = {old_item}
+        # Fold in the caller's already-seen items so repeated regenerations keep
+        # producing something new (only for cells actually being replaced).
+        for (d, slot_id), items in (extra_forbidden or {}).items():
+            if slot_id not in replace_mask.get(d, set()):
+                continue
+            if _cell_is_skipped(self.skip_cells, d, slot_id):
+                continue
+            norm = {_norm_str(_strip_color_suffix(i)) for i in items}
+            norm.discard('')
+            if norm:
+                forbidden.setdefault((d, slot_id), set()).update(norm)
 
         solver = MenuSolver(
             pools=self.pools,
@@ -117,6 +137,7 @@ class MenuRegenerator:
             ricebread_ban_day=self.ricebread_ban_day,
             recent_sigs=self.recent_sigs,
             skip_cells=self.skip_cells,
+            recency_by_item=self.recency_by_item,
         )
 
         # Compute similarity scores

@@ -288,14 +288,19 @@ with st.sidebar:
     # Launch view toggle — sits above City (feature F). Off by default; on →
     # the picker lists launch sites only. The rest of the UI is unchanged, so a
     # launch site is planned/edited exactly like any other client. A client
-    # created via Edit Logic while this is on is flagged a launch site.
+    # created via Edit Logic while this is on is flagged a launch site. Off =
+    # the Ops Client View (every client that is not a launch site).
     launch_mode = st.toggle(
         "Launch sites", key="launch_mode",
         help="Show launch sites only. A client created via Edit Logic while "
-             "this is on becomes a launch site. Off = all clients.",
+             "this is on becomes a launch site. Off = Ops Client View (all "
+             "non-launch clients).",
     )
     if launch_mode:
         st.caption("🚀 **Launch view** — showing launch sites only")
+    else:
+        st.caption("🗂️ **Ops Client View** — showing operational (non-launch) "
+                   "clients")
 
     try:
         clients_detail = _cached_list_clients(client)
@@ -303,9 +308,13 @@ with st.sidebar:
         clients_detail = []
         st.error("Cannot reach API.")
 
-    # In launch view, the picker lists launch sites only.
+    # Launch view lists launch sites only; the Ops Client View lists the rest
+    # (a client is in exactly one of the two).
     if launch_mode:
         clients_detail = [c for c in clients_detail if c.get("is_launch_site")]
+    else:
+        clients_detail = [c for c in clients_detail
+                          if not c.get("is_launch_site")]
 
     # City filter — single-select, default "All". Only cities that actually
     # have (in-scope) clients are offered, so no selection yields an empty list.
@@ -323,6 +332,28 @@ with st.sidebar:
     selected_client = st.selectbox(_client_label,
         clients_list if clients_list else [_empty_msg],
         key="planner_client_select")
+
+    # Launch -> Ops: reclassify the selected launch site as an operational
+    # (non-launch) client. It then leaves the Launch view and appears in the
+    # Ops Client View. Only offered in launch view for a real selection.
+    if launch_mode and selected_client and selected_client != _empty_msg:
+        if st.button("Move to Ops Client View", key="planner_demote_btn",
+                     use_container_width=True,
+                     help="Reclassify this launch site as an operational client "
+                          "(is_launch_site = false)."):
+            try:
+                _cfg = client.get_client_config(selected_client)
+                client.update_client_config(selected_client, {
+                    "version": _cfg.get("version"),
+                    "is_launch_site": False,
+                })
+                st.cache_data.clear()
+                st.session_state.pop("planner_client_select", None)
+                st.toast(f"{selected_client} moved to Ops Client View", icon="🗂️")
+                st.rerun()
+            except Exception as e:  # noqa: BLE001 — surface any API error inline
+                st.error(f"Could not move client: {e}")
+
     start_date = st.date_input("Start date", value=dt.date.today(),
                                key="planner_start_date")
     num_days = st.slider("Weekdays", min_value=1, max_value=20, value=5,
@@ -530,6 +561,21 @@ def _render_regen_expander(api, block_index: int, counter_index: int,
                 (d, s): plan.get(d, {}).get(s, "")
                 for d, slots in regen_selections.items() for s in slots
             }
+            # Exclude every item already shown for each selected cell this
+            # session (plus its current item), so repeated regenerations keep
+            # producing something new instead of flipping A->B->A. Keyed per
+            # (counter, date, slot); reset when the pool is exhausted.
+            seen_store = st.session_state.setdefault("regen_seen", {})
+            exclude_items = {}
+            for d_str, slots in regen_selections.items():
+                for s in slots:
+                    k = f"{counter_index}|{d_str}|{s}"
+                    ex = set(seen_store.get(k, set()))
+                    cur = plan.get(d_str, {}).get(s, "")
+                    if cur:
+                        ex.add(cur)
+                    if ex:
+                        exclude_items.setdefault(d_str, {})[s] = sorted(ex)
             with st.spinner("Regenerating..."):
                 try:
                     result = api.regenerate(
@@ -537,10 +583,25 @@ def _render_regen_expander(api, block_index: int, counter_index: int,
                         base_plan=plan, replace_slots=regen_selections,
                         start_date=plan_dates[0], num_days=len(plan_dates),
                         time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
-                        counter_index=counter_index)
+                        counter_index=counter_index,
+                        exclude_items=exclude_items)
                     solution = result.get("solution", {})
                     flat_regen, regen_day_types = flatten_api_solution(solution)
                     new_plan = flat_regen if flat_regen else plan
+                    # Record what each cell now shows so the next regenerate
+                    # avoids it too; if the solver had to repeat an already-seen
+                    # item (pool exhausted), restart that cell's cycle.
+                    for d_str, slots in regen_selections.items():
+                        for s in slots:
+                            k = f"{counter_index}|{d_str}|{s}"
+                            prev = set(seen_store.get(k, set()))
+                            new_item = new_plan.get(d_str, {}).get(s, "")
+                            old_item = plan.get(d_str, {}).get(s, "")
+                            if new_item and new_item in prev:
+                                seen_store[k] = {new_item}
+                            else:
+                                seen_store[k] = prev | {
+                                    x for x in (old_item, new_item) if x}
                     b["plan"] = new_plan
                     if regen_day_types:
                         b["day_types"] = regen_day_types
@@ -640,6 +701,8 @@ if generate_clicked:
         # egg dishes, with stale Days / Slots / Total items cards to match.
         st.session_state.plan_blocks = []
         st.session_state.plan_source = None
+        # Fresh plan → forget which items regenerate has already shown.
+        st.session_state.regen_seen = {}
         st.session_state.rule_diagnostics = []
         st.session_state.diagnostics_summary = None
 

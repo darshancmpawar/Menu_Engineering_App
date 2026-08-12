@@ -279,7 +279,7 @@ rules against.
 | "Non-Vegetarian Gravy Items Lunch on Monday and Wednesday" | DONE | `tekion_nonveg_mwf` restricts the slot to Mon/Wed/Fri; `tekion_nonveg_by_weekday` then makes Mon/Wed a chicken gravy and Friday a biryani. Friday **is** its biryani day, confirmed in the live client config. |
 | "only infused or flavoured chapthi to be served in indian bread" | TODO | Bread sub-category restriction. The sample's first Monday serves "Plain Chapati", which contradicts it — worth confirming. |
 | "curd daily except [biryani day] raitha" | TODO | Both weeks: curd Mon–Thu, raitha Friday. |
-| "Chinese Noodles to be served once in a month on Tuesday (Lunch)" | BLOCKED | New gap — a **monthly** window. Longest window the engine has is a per-item cooldown in days. |
+| "Chinese Noodles to be served once in a month on Tuesday (Lunch)" | BUILDABLE | The monthly window is now expressible — `selector_history_window` with `window_days: 30` on a noodles selector (gap 4, BUILT); pair it with a Tuesday `slot_composition` component. Not yet configured for Tekion pending confirmation it still applies. |
 | "on any day theme except chinese, if veg dry is south the veg gravy should be north or vice versa, not from same family" | BLOCKED | New gap — cross-slot cuisine complementarity within a day. |
 
 ### Other sheet notes
@@ -467,21 +467,36 @@ Kongsberg's Thursday is the clearest case: its requirement says "Thursday
 chinese", which is already its theme, so pinning a dish family there would only
 narrow what the theme filter already handles.
 
-### 4. Frequency windows longer than the horizon, and co-occurrence
+### 4. Frequency windows longer than the horizon, and co-occurrence — **BUILT (both halves, minus the positive min)**
 *Icon, Telstra, Take 2, Vector, Piramel Finance, Tekion*
 
 > "mushroom or kofta should come once in 10 days, but not with paneer" — Icon
 
-Two separate needs. A **multi-week window** ("once in 10 days", "2 weeks once")
-spans more than one plan, so it has to be evaluated against history rather than
-within the horizon — `item_cooldown` does this per item, but not per category with
-a target count. And **co-occurrence exclusion** ("not with paneer") is a
-mutual-exclusion between two selectors on the same day, which no rule type
-expresses.
+Two separate needs, both now expressible.
 
-Tekion adds the longest window of all — *"Chinese Noodles once in a month on
-Tuesday"* — and is the only client with two consecutive sample weeks, which makes
-it the right one to verify any multi-week implementation against.
+A **multi-week window** ("once in 10 days", "2 weeks once", "once in a month")
+spans more than one plan, so it is evaluated against history rather than within
+the horizon. The `selector_history_window` rule type (CLAUDE.md §4.2 + note 23)
+does exactly this **per category with a window in days**: it resolves the
+selector to concrete items, reads saved `menu_history`, and bans the whole
+family on any planned date within `window_days` of a prior occurrence — folded
+into the same `banned_by_date` the item cooldown uses. Tekion's *"Chinese
+Noodles once in a month on Tuesday"* is a 30-day window; Icon's "once in 10
+days" a 10-day one. Wired today for Bangalore (special sambar 15d), Pune
+(kadhi/leafy 15d, oil-bread 30d) and the NCR clients (Stryker fish/biryani/
+sambar 15d, Siemens kofta 14d).
+
+**Co-occurrence exclusion** ("not with paneer") is a mutual-exclusion between
+two selectors, and `same_day_exclusion` expresses it — `"scope": "day"`
+(default) forbids the pair on one day, `"scope": "week"` forbids it across the
+whole plan ("biryani not the same week as fish", Stryker NCR). Icon's "not with
+paneer" is the day form; the fish/biryani case is the week form.
+
+**Still deferred:** only the *positive* min direction across plans — "serve a
+biryani day at least once every 15 days". A history ban can suppress a family
+that appeared too recently but cannot *force* one that has been absent too long,
+so that direction waits on a positive history-aware rule. The two consecutive
+Tekion sample weeks remain the right fixture to verify any such implementation.
 
 ### 5. Weekly alternation between two dishes
 *Siemens Technology*  ~~L&T~~ — see the correction below

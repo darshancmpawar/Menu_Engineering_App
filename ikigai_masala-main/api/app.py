@@ -17,7 +17,7 @@ import os
 import re
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from flask import Flask, request, jsonify, g, has_request_context
@@ -654,6 +654,9 @@ class SolverInputs:
     rb_ban: Dict[Any, Any]
     recent_sigs: List[Any]
     cfg: SolverConfig
+    # {item_base: days-since-last-served} — the solver's soft freshness map.
+    # Defaulted so older construction sites / tests stay valid.
+    recency_by_item: Dict[str, int] = field(default_factory=dict)
     # The client's city — selects which ontology `df`/`pools` came from, so
     # anything derived from the ontology downstream (the non-veg name set that
     # colours the rendered menu) reads the same list the solver did.
@@ -776,7 +779,7 @@ def _prepare_solver_inputs(
         for r in rules
         if isinstance(r, SelectorHistoryWindowRule) and r.window_days
     ]
-    banned, rb_ban, recent_sigs = _build_history_context(
+    banned, rb_ban, recent_sigs, recency_by_item = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,
     )
@@ -800,6 +803,7 @@ def _prepare_solver_inputs(
         banned=banned,
         rb_ban=rb_ban,
         recent_sigs=recent_sigs,
+        recency_by_item=recency_by_item,
         cfg=cfg,
         city=city,
     )
@@ -939,6 +943,7 @@ def plan_menu():
             ricebread_ban_day=inputs.rb_ban,
             recent_sigs=inputs.recent_sigs,
             skip_cells=inputs.skip_cells,
+            recency_by_item=inputs.recency_by_item,
         )
 
         # Optional ranked alternates: closest-to-ideal distinct menus, not
@@ -1034,6 +1039,18 @@ def regenerate_cells():
             dt.date.fromisoformat(d_str): set(slot_list)
             for d_str, slot_list in replace_slots_raw.items()
         }
+        # Optional: items already suggested for a cell this session, so repeated
+        # regenerations keep giving something new instead of cycling A->B->A.
+        # Shape: {iso_date: {slot_id: [item, …]}}.
+        extra_forbidden = {}
+        for d_str, slot_map in (data.get('exclude_items') or {}).items():
+            try:
+                d = dt.date.fromisoformat(d_str)
+            except (ValueError, TypeError):
+                continue
+            for slot_id, items in (slot_map or {}).items():
+                if items:
+                    extra_forbidden[(d, str(slot_id))] = set(items)
 
         regen = MenuRegenerator(
             pools=inputs.pools,
@@ -1044,9 +1061,11 @@ def regenerate_cells():
             ricebread_ban_day=inputs.rb_ban,
             recent_sigs=inputs.recent_sigs,
             skip_cells=inputs.skip_cells,
+            recency_by_item=inputs.recency_by_item,
         )
 
-        week_plan, plan_dates = regen.regenerate(base_plan, replace_mask)
+        week_plan, plan_dates = regen.regenerate(
+            base_plan, replace_mask, extra_forbidden=extra_forbidden)
 
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,

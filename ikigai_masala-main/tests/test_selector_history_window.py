@@ -141,7 +141,7 @@ def test_history_context_merges_selector_window_into_banned(monkeypatch):
     fish = SelectorHistoryWindowRule({
         'name': 'fish', 'selector': {'flag': 'is_fish_dish'}, 'window_days': 15})
     dates = [dt.date(2026, 8, 3), dt.date(2026, 8, 4)]
-    banned, _rb, _sig = _build_history_context(
+    banned, _rb, _sig, _rec = _build_history_context(
         df, 'Stryker NCR', dt.date(2026, 8, 3), dates, window_days=45,
         selector_windows=[(fish.matching_items(df), 15)])
     assert 'fish_curry' in banned[dates[0]]
@@ -166,7 +166,7 @@ def test_history_context_no_ban_when_occurrence_is_old(monkeypatch):
     fish = SelectorHistoryWindowRule({
         'name': 'fish', 'selector': {'flag': 'is_fish_dish'}, 'window_days': 15})
     dates = [dt.date(2026, 8, 3)]
-    banned, _rb, _sig = _build_history_context(
+    banned, _rb, _sig, _rec = _build_history_context(
         df, 'Stryker NCR', dt.date(2026, 8, 3), dates, window_days=45,
         selector_windows=[(fish.matching_items(df), 15)])
     assert 'fish_curry' not in banned.get(dates[0], set())

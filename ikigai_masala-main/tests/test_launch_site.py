@@ -127,6 +127,16 @@ class TestApiLayer:
         got = _c(api).get('/api/v1/client-config/Existing Co').get_json()
         assert got['is_launch_site'] is True
 
+    def test_put_demotes_launch_to_ops(self, api):
+        # The "Move to Ops Client View" button: a launch site set back to
+        # non-launch via PUT is_launch_site=False.
+        ver = _c(api).get('/api/v1/client-config/Launch Co').get_json()['version']
+        r = _c(api).put('/api/v1/client-config/Launch Co',
+                        json={'version': ver, 'is_launch_site': False})
+        assert r.status_code == 200, r.get_json()
+        assert _c(api).get(
+            '/api/v1/client-config/Launch Co').get_json()['is_launch_site'] is False
+
 
 class TestPreMigrationDegrade:
     """A database without the column: everything reads non-launch, nothing 500s."""

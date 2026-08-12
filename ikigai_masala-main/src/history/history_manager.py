@@ -134,6 +134,45 @@ class HistoryManager:
             out[d] = set(matching) if bool(recent.any()) else set()
         return out
 
+    def days_since_last_served(
+        self,
+        as_of: dt.date,
+        const_slots: List[str] = (),
+        repeatable_items: Set[str] = frozenset(),
+    ) -> Dict[str, int]:
+        """Days since each dish was last served before ``as_of``.
+
+        Returns ``{item_base: days_since}`` where ``days_since`` counts back
+        from ``as_of`` to the dish's most recent service date strictly before
+        it. This feeds the solver's soft **freshness** objective: an item
+        served long ago (large value) is preferred over one served recently,
+        so a plan does not reprint day-1's dishes the moment their hard
+        cooldown expires ("day 1 on day 21"). A dish absent from the map was
+        not served in the queried history window and the objective treats it
+        as maximally fresh.
+
+        ``const_slots`` and ``repeatable_items`` are excluded: a staple that
+        recurs by design (steamed rice, the daily kebab) must not be pushed
+        away by freshness.
+        """
+        h = self._long
+        if h is None or len(h) == 0:
+            return {}
+        m = h['service_date'] < as_of
+        if 'slot' in h.columns and const_slots:
+            m = m & ~h['slot'].isin(set(const_slots))
+        sub = h.loc[m, ['service_date', 'item_base']]
+        if sub.empty:
+            return {}
+        repeat = set(repeatable_items)
+        out: Dict[str, int] = {}
+        last = sub.groupby('item_base')['service_date'].max()
+        for item_base, last_date in last.items():
+            if not item_base or item_base in repeat:
+                continue
+            out[str(item_base)] = max(0, (as_of - last_date).days)
+        return out
+
     def recent_week_signatures(
         self,
         week_start: dt.date,

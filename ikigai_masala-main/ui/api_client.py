@@ -198,6 +198,7 @@ class MenuApiClient:
         num_days: int = 5,
         time_limit_seconds: int = 240,
         counter_index: int = 0,
+        exclude_items: Optional[Dict[str, Dict[str, List[str]]]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -209,6 +210,10 @@ class MenuApiClient:
         }
         if start_date:
             payload["start_date"] = start_date
+        # Items already shown for a cell this session, so repeated regenerations
+        # don't cycle A->B->A. {iso_date: {slot_id: [item, …]}}.
+        if exclude_items:
+            payload["exclude_items"] = exclude_items
 
         def _do():
             return self.session.post(
