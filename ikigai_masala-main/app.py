@@ -288,14 +288,19 @@ with st.sidebar:
     # Launch view toggle — sits above City (feature F). Off by default; on →
     # the picker lists launch sites only. The rest of the UI is unchanged, so a
     # launch site is planned/edited exactly like any other client. A client
-    # created via Edit Logic while this is on is flagged a launch site.
+    # created via Edit Logic while this is on is flagged a launch site. Off =
+    # the Ops Client View (every client that is not a launch site).
     launch_mode = st.toggle(
         "Launch sites", key="launch_mode",
         help="Show launch sites only. A client created via Edit Logic while "
-             "this is on becomes a launch site. Off = all clients.",
+             "this is on becomes a launch site. Off = Ops Client View (all "
+             "non-launch clients).",
     )
     if launch_mode:
         st.caption("🚀 **Launch view** — showing launch sites only")
+    else:
+        st.caption("🗂️ **Ops Client View** — showing operational (non-launch) "
+                   "clients")
 
     try:
         clients_detail = _cached_list_clients(client)
@@ -303,9 +308,13 @@ with st.sidebar:
         clients_detail = []
         st.error("Cannot reach API.")
 
-    # In launch view, the picker lists launch sites only.
+    # Launch view lists launch sites only; the Ops Client View lists the rest
+    # (a client is in exactly one of the two).
     if launch_mode:
         clients_detail = [c for c in clients_detail if c.get("is_launch_site")]
+    else:
+        clients_detail = [c for c in clients_detail
+                          if not c.get("is_launch_site")]
 
     # City filter — single-select, default "All". Only cities that actually
     # have (in-scope) clients are offered, so no selection yields an empty list.
@@ -323,6 +332,28 @@ with st.sidebar:
     selected_client = st.selectbox(_client_label,
         clients_list if clients_list else [_empty_msg],
         key="planner_client_select")
+
+    # Launch -> Ops: reclassify the selected launch site as an operational
+    # (non-launch) client. It then leaves the Launch view and appears in the
+    # Ops Client View. Only offered in launch view for a real selection.
+    if launch_mode and selected_client and selected_client != _empty_msg:
+        if st.button("Move to Ops Client View", key="planner_demote_btn",
+                     use_container_width=True,
+                     help="Reclassify this launch site as an operational client "
+                          "(is_launch_site = false)."):
+            try:
+                _cfg = client.get_client_config(selected_client)
+                client.update_client_config(selected_client, {
+                    "version": _cfg.get("version"),
+                    "is_launch_site": False,
+                })
+                st.cache_data.clear()
+                st.session_state.pop("planner_client_select", None)
+                st.toast(f"{selected_client} moved to Ops Client View", icon="🗂️")
+                st.rerun()
+            except Exception as e:  # noqa: BLE001 — surface any API error inline
+                st.error(f"Could not move client: {e}")
+
     start_date = st.date_input("Start date", value=dt.date.today(),
                                key="planner_start_date")
     num_days = st.slider("Weekdays", min_value=1, max_value=20, value=5,
