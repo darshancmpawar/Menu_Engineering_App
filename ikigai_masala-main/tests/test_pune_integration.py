@@ -186,6 +186,35 @@ class TestRegenerate:
         assert (out['2026-08-04']['items']['veg_gravy']['item_base']
                 == week['2026-08-04']['veg_gravy'])
 
+    def test_exclude_items_prevents_cycling_back(self, pune_api):
+        """Repeated regeneration with the accumulated 'seen' set must keep
+        producing new items, not flip A -> B -> A."""
+        week = _week_plan(_plan(pune_api, MONDAY)['solution'])
+        target = '2026-08-05'
+        a = week[target]['veg_gravy']
+        # First regenerate, excluding the current item A -> some B != A.
+        r1 = _post(pune_api, '/api/v1/regenerate', {
+            'client_name': CLIENT, 'start_date': MONDAY, 'num_days': 7,
+            'time_limit_seconds': TIME_LIMIT, 'base_plan': week,
+            'replace_slots': {target: ['veg_gravy']},
+            'exclude_items': {target: {'veg_gravy': [a]}},
+        })
+        assert r1.status_code == 200, r1.get_json()
+        b = r1.get_json()['solution'][target]['items']['veg_gravy']['item_base']
+        assert b != a
+        # Second regenerate, now excluding BOTH A and B -> some C, never back to A.
+        week2 = dict(week)
+        week2[target] = {**week[target], 'veg_gravy': b}
+        r2 = _post(pune_api, '/api/v1/regenerate', {
+            'client_name': CLIENT, 'start_date': MONDAY, 'num_days': 7,
+            'time_limit_seconds': TIME_LIMIT, 'base_plan': week2,
+            'replace_slots': {target: ['veg_gravy']},
+            'exclude_items': {target: {'veg_gravy': [a, b]}},
+        })
+        assert r2.status_code == 200, r2.get_json()
+        c = r2.get_json()['solution'][target]['items']['veg_gravy']['item_base']
+        assert c not in (a, b), f"cycled back: a={a} b={b} c={c}"
+
     def test_restricted_slots_stay_absent_through_regenerate(self, pune_api):
         """A day restriction is skip_cells, and the regenerator has its own cell
         builder — Sunday must not sprout a gravy on the way back."""

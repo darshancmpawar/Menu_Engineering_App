@@ -1034,6 +1034,18 @@ def regenerate_cells():
             dt.date.fromisoformat(d_str): set(slot_list)
             for d_str, slot_list in replace_slots_raw.items()
         }
+        # Optional: items already suggested for a cell this session, so repeated
+        # regenerations keep giving something new instead of cycling A->B->A.
+        # Shape: {iso_date: {slot_id: [item, …]}}.
+        extra_forbidden = {}
+        for d_str, slot_map in (data.get('exclude_items') or {}).items():
+            try:
+                d = dt.date.fromisoformat(d_str)
+            except (ValueError, TypeError):
+                continue
+            for slot_id, items in (slot_map or {}).items():
+                if items:
+                    extra_forbidden[(d, str(slot_id))] = set(items)
 
         regen = MenuRegenerator(
             pools=inputs.pools,
@@ -1046,7 +1058,8 @@ def regenerate_cells():
             skip_cells=inputs.skip_cells,
         )
 
-        week_plan, plan_dates = regen.regenerate(base_plan, replace_mask)
+        week_plan, plan_dates = regen.regenerate(
+            base_plan, replace_mask, extra_forbidden=extra_forbidden)
 
         formatter = SolutionFormatter(
             week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,

@@ -561,6 +561,21 @@ def _render_regen_expander(api, block_index: int, counter_index: int,
                 (d, s): plan.get(d, {}).get(s, "")
                 for d, slots in regen_selections.items() for s in slots
             }
+            # Exclude every item already shown for each selected cell this
+            # session (plus its current item), so repeated regenerations keep
+            # producing something new instead of flipping A->B->A. Keyed per
+            # (counter, date, slot); reset when the pool is exhausted.
+            seen_store = st.session_state.setdefault("regen_seen", {})
+            exclude_items = {}
+            for d_str, slots in regen_selections.items():
+                for s in slots:
+                    k = f"{counter_index}|{d_str}|{s}"
+                    ex = set(seen_store.get(k, set()))
+                    cur = plan.get(d_str, {}).get(s, "")
+                    if cur:
+                        ex.add(cur)
+                    if ex:
+                        exclude_items.setdefault(d_str, {})[s] = sorted(ex)
             with st.spinner("Regenerating..."):
                 try:
                     result = api.regenerate(
@@ -568,10 +583,25 @@ def _render_regen_expander(api, block_index: int, counter_index: int,
                         base_plan=plan, replace_slots=regen_selections,
                         start_date=plan_dates[0], num_days=len(plan_dates),
                         time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
-                        counter_index=counter_index)
+                        counter_index=counter_index,
+                        exclude_items=exclude_items)
                     solution = result.get("solution", {})
                     flat_regen, regen_day_types = flatten_api_solution(solution)
                     new_plan = flat_regen if flat_regen else plan
+                    # Record what each cell now shows so the next regenerate
+                    # avoids it too; if the solver had to repeat an already-seen
+                    # item (pool exhausted), restart that cell's cycle.
+                    for d_str, slots in regen_selections.items():
+                        for s in slots:
+                            k = f"{counter_index}|{d_str}|{s}"
+                            prev = set(seen_store.get(k, set()))
+                            new_item = new_plan.get(d_str, {}).get(s, "")
+                            old_item = plan.get(d_str, {}).get(s, "")
+                            if new_item and new_item in prev:
+                                seen_store[k] = {new_item}
+                            else:
+                                seen_store[k] = prev | {
+                                    x for x in (old_item, new_item) if x}
                     b["plan"] = new_plan
                     if regen_day_types:
                         b["day_types"] = regen_day_types
@@ -671,6 +701,8 @@ if generate_clicked:
         # egg dishes, with stale Days / Slots / Total items cards to match.
         st.session_state.plan_blocks = []
         st.session_state.plan_source = None
+        # Fresh plan → forget which items regenerate has already shown.
+        st.session_state.regen_seen = {}
         st.session_state.rule_diagnostics = []
         st.session_state.diagnostics_summary = None
 
