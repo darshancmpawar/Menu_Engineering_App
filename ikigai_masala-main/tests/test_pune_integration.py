@@ -28,6 +28,18 @@ TIME_LIMIT = 60
 CLIENT = 'Amadeus Pune'
 
 
+def _pune_row_count():
+    """How many dishes the committed Pune workbook holds, read from the file.
+
+    The counts below used to be literals and broke every time the ontology
+    gained a dish; what they are actually asserting is "this endpoint counted
+    PUNE's list, not Bangalore's", which the derived number states directly.
+    """
+    import pandas as pd
+    from src.ontology.paths import city_excel_path
+    return len(pd.read_excel(city_excel_path('Pune')))
+
+
 @pytest.fixture
 def pune_api(monkeypatch):
     """The live Amadeus Pune row, on an empty history."""
@@ -107,12 +119,14 @@ class TestEveryEndpointServesAPuneClient:
         r = _post(pune_api, '/api/v1/pool-preview',
                   {'source_pools': [], 'city': 'Pune'})
         body = r.get_json()
-        assert body['eligible_item_count'] == 344, body
+        # Derived, not hard-coded: the point is that the endpoint counts *Pune's*
+        # list, and a literal here just breaks every time a dish is added.
+        assert body['eligible_item_count'] == _pune_row_count(), body
         assert body['city'] == 'Pune'
 
     def test_pool_preview_without_a_city_counts_the_default(self, pune_api):
         r = _post(pune_api, '/api/v1/pool-preview', {'source_pools': []})
-        assert r.get_json()['eligible_item_count'] > 344
+        assert r.get_json()['eligible_item_count'] > _pune_row_count()
 
     def test_bangalore_pool_token_is_rejected_for_a_pune_client(self, pune_api):
         """Pool tokens live inside one city's list, so a Bangalore token on a Pune
@@ -282,7 +296,7 @@ class TestPerCityIsolation:
         hyd, _ = pune_api._get_menu_data('Hyderabad')
         pune, _ = pune_api._get_menu_data('Pune')
         assert blr is hyd                           # same file, one load
-        assert pune is not blr and len(pune) == 344
+        assert pune is not blr and len(pune) == _pune_row_count()
         assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):

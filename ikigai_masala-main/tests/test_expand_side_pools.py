@@ -35,9 +35,13 @@ def _cat(df, cat):
     return df[df['course_type'].map(_norm) == cat]
 
 
-def test_each_category_grew_by_seven(dfs):
-    """Every city gained 7 dishes in each of the four categories."""
-    # Baseline sizes recorded before the expansion (from the fleet survey).
+def test_each_category_grew_by_at_least_seven(dfs):
+    """Every city gained the 7 curated dishes in each of the four categories.
+
+    ``>=`` not ``==``: a (city, category) in CITY_SHARE_TARGETS is topped up
+    further by the sharing pass (Pune bread also goes to 22), so the curated
+    seven are a floor, not the whole story.
+    """
     baseline = {
         'bangalore': {'healthy_rice': 91, 'dessert': 249, 'starter': 148, 'bread': 253},
         'pune':      {'healthy_rice': 1,  'dessert': 44,  'starter': 0,   'bread': 2},
@@ -48,7 +52,18 @@ def test_each_category_grew_by_seven(dfs):
         for cat in CATEGORIES:
             got = len(_cat(df, cat))
             want = baseline[slug][cat] + 7
-            assert got == want, f'{slug}/{cat}: expected {want}, got {got}'
+            assert got >= want, f'{slug}/{cat}: expected >= {want}, got {got}'
+
+
+def test_strict_slot_targets_are_met(dfs):
+    """Every (city, category) a client serves under the STRICT no-repeat rule
+    carries enough distinct dishes for a cooldown window (~19); the targets are
+    set to 22 for margin. rasam/sambar are not cooldown-exempt, so this is the
+    only thing standing between them and an empty pool in week 3."""
+    from scripts.expand_side_pools import CITY_SHARE_TARGETS
+    for (slug, cat), target in CITY_SHARE_TARGETS.items():
+        got = len(_cat(dfs[slug], cat))
+        assert got >= target, f'{slug}/{cat}: {got} dishes, target {target}'
 
 
 def test_curated_flavoured_chapatis_present_everywhere(dfs):

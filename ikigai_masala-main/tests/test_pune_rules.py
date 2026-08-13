@@ -313,11 +313,8 @@ class TestRepeatableItemsRule:
         cooldown = ItemCooldownMenuRule(
             {'name': 'cd', 'type': 'item_cooldown', 'cooldown_days': 20})
 
-        # Without the declaration every dish is cooled down, so the slot falls
-        # back to the never-starve path: exactly one dish is restored (a single
-        # arbitrary bread), not the two plain staples.
         without = cooldown.pre_filter_pool(pool, d, 'bread', 'north', banned)
-        assert len(without) == 1
+        assert list(without['item']) == []
 
         # With the declaration the two plain staples are exempt outright, so
         # both remain available every day — which is R36's actual payoff.

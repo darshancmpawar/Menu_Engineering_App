@@ -52,8 +52,51 @@ SHARE_TARGETS = {
     "sambar": 12,
     "soup": 10,
 }
+
+# Deeper, per-(city, category) targets for the slots a STRICT no-repeat rule
+# actually has to sustain. rasam and sambar are deliberately NOT cooldown-exempt
+# (unlike soup / curd_side / curd_rice / healthy_rice), so they can only be fixed
+# with data. Sizing: a strict count-1 slot needs about one distinct dish per
+# working day inside the cooldown window plus the week being planned
+# (floor(20*5/7) + 5 = 19); 22 leaves a margin. Only categories a real client
+# counter serves are listed — deepening a category a city does not serve would
+# be noise, and a city that carries none of a category by design (Chennai has no
+# welcome drinks) is never given one.
+CITY_SHARE_TARGETS = {
+    ("pune", "welcome_drink"): 22,   # Amadeus Pune serves it; city had 4
+    ("pune", "bread"): 22,           # Amadeus Pune; city had 9
+    ("chennai", "rasam"): 22,        # ToastTab CHN; city had 12
+    ("chennai", "sambar"): 22,       # ToastTab CHN; city had 12
+    ("ncr", "starter"): 22,          # Airtel Noida / Sinch NCR; city had 15
+    ("ncr", "welcome_drink"): 22,    # Corning; city had 17
+}
 # Donor preference order per category (first city that has the dish wins).
 SHARE_DONORS = ["bangalore", "chennai", "ncr", "pune"]
+
+# A shared dish must be **doable in the target region**, so bread — the most
+# regionally-locked category — is filtered by cuisine. Pune (Maharashtrian) and
+# NCR (North Indian) take North breads (paratha/poori/kulcha/thepla/…), not the
+# South breakfast breads (idli/dosa/adai/uttapam) or continental ones; Chennai
+# and Bangalore take either. Drinks and starters travel freely.
+CITY_REGION = {"pune": "north", "ncr": "north",
+               "chennai": "south", "bangalore": "south"}
+REGION_LOCKED_CATEGORIES = {"bread"}
+
+# Individually-checked rows that must never be borrowed into another city:
+#   pretzel    — cuisine_family=continental, sub_category=garlic_bread; not an
+#                Indian bread slot dish.
+#   tea_cake   — a cake filed under course_type=welcome_drink in the Bangalore
+#                list; sharing it would propagate that mislabel.
+#   a2b_juice  — named for a restaurant chain, not a dish another kitchen can act
+#                on (abc_juice — apple/beetroot/carrot — is fine and is kept).
+#   sambaram   — Kerala spiced buttermilk, i.e. the SAME drink as `buttermilk`
+#                under a South Indian name, and it carries is_buttermilk=1.
+#                Sharing it into a North city gave Pune two buttermilk rows and
+#                handed NCR a Kerala name for a drink a Delhi kitchen calls
+#                chaas; worse, being the fresher of the two it displaced the
+#                daily `buttermilk` Amadeus Pune's logic expects. North cities
+#                take the chaas variants instead.
+SHARE_BLOCKLIST = {"pretzel", "tea_cake", "a2b_juice", "sambaram"}
 
 _NONVEG_FLAGS = ["is_egg_dish", "is_seafood", "is_fish_dish", "is_chicken",
                  "is_nonveg"]
@@ -176,9 +219,37 @@ def _mk_id(n):
     return f"MENU{n:06d}"
 
 
+#: The master/source list. Blocklisted names are legitimate rows *there* (it is
+#: the ontology everything else is derived from); they must simply never be
+#: borrowed into another city.
+MASTER_CITY = "bangalore"
+
+
+def _unshare_blocklisted(dfs):
+    """Drop blocklisted dishes a previous run of this script shared out.
+
+    The blocklist is applied when *choosing* what to share, but a name can only
+    be added to it after a bad share has already been written (``sambaram`` was).
+    Removing it here makes the script self-healing and keeps it idempotent.
+    Scoped to the non-master cities so the source list keeps its own rows.
+    """
+    removed = {}
+    for slug, df in dfs.items():
+        if slug == MASTER_CITY:
+            continue
+        mask = df["item"].map(_norm).isin(SHARE_BLOCKLIST)
+        if mask.any():
+            removed[slug] = sorted(df.loc[mask, "item"].map(_norm))
+            dfs[slug] = df[~mask].reset_index(drop=True)
+    return removed
+
+
 def expand(dry_run=False):
     dfs = {c: _load(c) for c in CITIES}
-    bng = dfs["bangalore"]
+    unshared = _unshare_blocklisted(dfs)
+    for slug, names in unshared.items():
+        print(f"{slug}: removed wrongly-shared {', '.join(names)}")
+    bng = dfs[MASTER_CITY]
     templates = {}
     for cat, tname in NEW_TEMPLATE.items():
         sub = bng[_cat_mask(bng, cat)]
@@ -235,9 +306,18 @@ def expand(dry_run=False):
         nid = _next_id(df)
         pool_value = "common" if df["client"].map(_norm).str.contains(
             "common").any() else ""
-        for cat, target in SHARE_TARGETS.items():
+        cats = set(SHARE_TARGETS) | {c for (s, c) in CITY_SHARE_TARGETS
+                                     if s == slug}
+        for cat in sorted(cats):
+            target = max(SHARE_TARGETS.get(cat, 0),
+                         CITY_SHARE_TARGETS.get((slug, cat), 0))
             have_names = set(df[_cat_mask(df, cat)]["item"].map(_norm))
             all_names = set(df["item"].map(_norm))
+            # Never invent a category a city does not serve at all (Chennai
+            # carries no welcome drinks by design).
+            if not have_names:
+                share_summary[(slug, cat)] = []
+                continue
             missing = target - len(have_names)
             if missing <= 0:
                 share_summary[(slug, cat)] = []
@@ -255,6 +335,16 @@ def expand(dry_run=False):
                 # to cook. Every word must be >= 3 letters and not a known
                 # abbreviation; then prefer the shorter, plainer names.
                 cand = cand[cand["_n"].map(_readable_name)]
+                cand = cand[~cand["_n"].isin(SHARE_BLOCKLIST)]
+                # Regional fit: a North city never borrows a South/continental
+                # bread, and vice versa.
+                if cat in REGION_LOCKED_CATEGORIES:
+                    region = CITY_REGION.get(slug)
+                    if region == "north":
+                        cand = cand[~cand["cuisine_family"].map(_norm).isin(
+                            {"south_indian", "continental"})]
+                    elif region == "south":
+                        cand = cand[cand["cuisine_family"].map(_norm) != "continental"]
                 cand = cand.sort_values("_n", key=lambda s: s.str.len())
                 for _i, src in cand.iterrows():
                     if len(additions) >= missing:
@@ -281,7 +371,7 @@ def expand(dry_run=False):
             adds = summary.get((slug, cat), [])
             print(f"  {cat:12s} +{len(adds)}: "
                   f"{', '.join(adds) if adds else '(already present)'}")
-        for cat in SHARE_TARGETS:
+        for cat in sorted(set(SHARE_TARGETS) | {c for (sl, c) in CITY_SHARE_TARGETS if sl == slug}):
             adds = share_summary.get((slug, cat), [])
             if adds:
                 print(f"  {cat:12s} +{len(adds)} shared: {', '.join(adds)}")

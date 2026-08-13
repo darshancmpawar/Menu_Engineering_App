@@ -122,35 +122,14 @@ class ItemCooldownMenuRule(BaseMenuRule):
         # doesn't — which starves the slot a week later instead of now.
         declared = filter_context.get('extra_repeatable') or {}
         staple = self._staple_mask(pool, base_slot, declared)
+        # No-repeat is HARD. A cooled-down dish is removed outright and the rule
+        # never "borrows back" a recent dish to fill a gap: repetition is allowed
+        # only for the slots that declare it (REPEATABLE_SLOTS /
+        # COOLDOWN_EXEMPT_SLOTS above) or for a dish declared a staple. If that
+        # empties a slot, the answer is more dishes in the ontology for that
+        # category — not a quietly repeated menu.
         drop = pool['item'].isin(banned) & ~staple
-        kept = pool[~drop]
-
-        # Graceful degradation — the cooldown must NEVER empty a slot below the
-        # number of dishes it needs that day, or a small pool turns the whole
-        # solve INFEASIBLE (the failure that stopped counters sustaining a 10-
-        # or 22-day run). If the ban would starve the slot, restore the least-
-        # recently-served banned dishes (the ones closest to leaving the 20-day
-        # window) — just enough to fill it. Freshness still prefers the freshest
-        # candidate, so a dish only repeats early when the pool genuinely can't
-        # avoid it. Same principle as unique_items' starved relaxation, and it
-        # means the item cooldown can no longer make a plan INFEASIBLE.
-        cfg = filter_context.get('cfg')
-        needed = 1
-        slot_counts = getattr(cfg, 'slot_counts', None) if cfg is not None else None
-        if slot_counts:
-            needed = max(1, int(slot_counts.get(base_slot, 1)))
-        if len(kept) >= needed:
-            return kept
-        dropped = pool[drop]
-        if len(dropped) == 0:
-            return kept
-        recency: Dict[str, int] = filter_context.get('recency_by_item') or {}
-        # Oldest-served first: largest days-since-last-served, unknown = very old.
-        rank = dropped['item'].map(lambda it: recency.get(_norm_str(it), 10 ** 6))
-        dropped = dropped.assign(_cd_rank=rank.values).sort_values(
-            '_cd_rank', ascending=False).drop(columns='_cd_rank')
-        restore = dropped.head(needed - len(kept))
-        return pd.concat([kept, restore])
+        return pool[~drop]
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -213,28 +192,26 @@ class ItemCooldownMenuRule(BaseMenuRule):
                 slot_label = base.replace('_', ' ')
 
                 if remaining == 0:
-                    # Not a blocker: pre_filter_pool restores the least-recently-
-                    # served dishes so the slot is never actually starved (the
-                    # cooldown can no longer make a plan INFEASIBLE). Report it as
-                    # a WARNING so an operator still sees the pool is too small to
-                    # honour the full 20-day window and a dish repeats early.
+                    # A real blocker: no-repeat is hard, so an emptied pool has
+                    # nothing left to serve and the solve is INFEASIBLE. The fix
+                    # is more dishes in this category for this city.
                     diags.append(Diagnostic(
                         rule=self.name,
                         rule_type=self.rule_type.value,
-                        severity=DiagnosticSeverity.WARNING,
+                        severity=DiagnosticSeverity.ERROR,
                         phase=DiagnosticPhase.PRE_FILTER,
                         message=(
-                            f"Item cooldown ({self.cooldown_days} days) would ban "
+                            f"Item cooldown ({self.cooldown_days} days) banned "
                             f"all {ban_count} {slot_label} candidate"
                             f"{'s' if ban_count != 1 else ''} "
-                            f"on {day_label} ({day_type or 'no theme'}); the "
-                            f"cooldown is relaxed here so the slot still fills, "
-                            f"and a recently-served {slot_label} repeats early."
+                            f"on {day_label} ({day_type or 'no theme'}). "
+                            f"Pool is empty after cooldown."
                         ),
                         suggestion=(
-                            f"Add more {slot_label} items to the ontology (or "
-                            f"lower cooldown_days) if you want the full "
-                            f"{self.cooldown_days}-day gap honoured for this slot."
+                            f"Add more {slot_label} items to this city's "
+                            f"ontology (a slot needs roughly one dish per "
+                            f"working day in the {self.cooldown_days}-day "
+                            f"window), or lower cooldown_days for this rule."
                         ),
                         affected={
                             'date': d.isoformat(),
