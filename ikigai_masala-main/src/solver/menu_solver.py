@@ -644,6 +644,9 @@ class MenuSolver:
             'ricebread_ban_day': self.ricebread_ban_day,
             'pools': self.pools,
             'extra_repeatable': self._declared_repeatable(),
+            # Lets the item-cooldown pre-filter restore the least-recently-served
+            # dishes (oldest first) when a ban would otherwise starve a slot.
+            'recency_by_item': self.recency_by_item,
         }
 
         for di, d in enumerate(dates):

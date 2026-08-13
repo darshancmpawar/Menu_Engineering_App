@@ -376,7 +376,12 @@ class TestItemCooldownDiagnose:
     pool empties. Should fire an ERROR — this is what unblocks the
     chinese-starter scenario."""
 
-    def test_error_when_cooldown_empties_pool(self):
+    def test_warning_not_error_when_cooldown_would_empty_pool(self):
+        # The cooldown no longer BLOCKS when it would empty a slot: pre_filter
+        # restores the least-recently-served dishes so the slot still fills, and
+        # this is reported as a WARNING (a dish repeats early), not an ERROR that
+        # gates the plan. That is what lets small-pool counters sustain a 10/22-
+        # day run instead of going INFEASIBLE.
         d = dt.date(2026, 5, 12)
         pool = pd.DataFrame({'item': ['a', 'b', 'c']})
         ctx = _ctx(
@@ -388,9 +393,8 @@ class TestItemCooldownDiagnose:
                                      'cooldown_days': 20})
         diags = rule.diagnose(ctx)
         assert len(diags) == 1
-        assert diags[0].severity == DiagnosticSeverity.ERROR
+        assert diags[0].severity == DiagnosticSeverity.WARNING
         assert diags[0].affected['pool_size_after'] == 0
-        # Crucial: the suggestion is actionable, not generic.
         assert 'cooldown' in diags[0].suggestion.lower()
 
     def test_no_diagnostic_when_pool_still_healthy(self):

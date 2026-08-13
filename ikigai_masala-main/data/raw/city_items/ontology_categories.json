@@ -4,7 +4,7 @@
     "",
     "PoolBuilder.build_pools raises when a required base slot comes out empty,",
     "because a category the ontology should have and does not is a mapping",
-    "regression — not a menu decision. A city list legitimately covers only what",
+    "regression \u2014 not a menu decision. A city list legitimately covers only what",
     "that city serves, so it declares its set here and the check stays strict",
     "against exactly that set.",
     "",
@@ -44,7 +44,10 @@
     "dessert",
     "healthy_rice",
     "curd_side",
-    "starter"
+    "starter",
+    "rasam",
+    "sambar",
+    "soup"
   ],
   "ncr": [
     "welcome_drink",
@@ -59,6 +62,8 @@
     "dessert",
     "healthy_rice",
     "curd_side",
-    "nonveg_main"
+    "nonveg_main",
+    "rasam",
+    "sambar"
   ]
 }

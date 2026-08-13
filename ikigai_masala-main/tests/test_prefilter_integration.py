@@ -145,13 +145,17 @@ class TestItemCooldownEdgeCases:
                                        {'banned_by_date': {d: {'x'}}})
         assert len(result) == 0
 
-    def test_all_items_banned(self):
+    def test_all_items_banned_keeps_one_rather_than_starving(self):
+        """When the cooldown would ban EVERY candidate it restores the
+        least-recently-served one instead of emptying the slot — otherwise a
+        small pool makes the whole solve INFEASIBLE. It never returns nothing."""
         rule = ItemCooldownMenuRule({"name": "cd", "type": "item_cooldown"})
         pool = pd.DataFrame({'item': ['a', 'b']})
         d = dt.date(2026, 3, 24)
         result = rule.pre_filter_pool(pool, d, 'rice', 'south',
                                        {'banned_by_date': {d: {'a', 'b'}}})
-        assert len(result) == 0
+        assert len(result) == 1
+        assert result['item'].iloc[0] in ('a', 'b')
 
     def test_different_date_not_banned(self):
         rule = ItemCooldownMenuRule({"name": "cd", "type": "item_cooldown"})

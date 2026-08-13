@@ -313,9 +313,14 @@ class TestRepeatableItemsRule:
         cooldown = ItemCooldownMenuRule(
             {'name': 'cd', 'type': 'item_cooldown', 'cooldown_days': 20})
 
+        # Without the declaration every dish is cooled down, so the slot falls
+        # back to the never-starve path: exactly one dish is restored (a single
+        # arbitrary bread), not the two plain staples.
         without = cooldown.pre_filter_pool(pool, d, 'bread', 'north', banned)
-        assert list(without['item']) == []
+        assert len(without) == 1
 
+        # With the declaration the two plain staples are exempt outright, so
+        # both remain available every day — which is R36's actual payoff.
         declared = {'extra_repeatable': {
             'bread': [self._rule().repeatable_item_flags()['bread']]}}
         with_decl = cooldown.pre_filter_pool(
@@ -323,8 +328,17 @@ class TestRepeatableItemsRule:
         assert sorted(with_decl['item']) == ['chapati', 'phulka']
 
     def test_declaration_is_slot_scoped_in_the_cooldown(self):
-        """A bread declaration must not exempt the same dish in another slot."""
-        pool = pd.DataFrame([{'item': 'chapati', 'is_plain_phulka_chapathi': 1}])
+        """A bread declaration must not exempt the same dish in another slot.
+
+        Two rows so the distinction stays visible: only `chapati` is cooled
+        down, so in `bread` the declaration keeps it (2 remain) while in `rice`
+        it is banned like any ordinary dish (1 remains) — the never-starve
+        fallback doesn't fire because a candidate is still available.
+        """
+        pool = pd.DataFrame([
+            {'item': 'chapati', 'is_plain_phulka_chapathi': 1},
+            {'item': 'butter_naan', 'is_plain_phulka_chapathi': 0},
+        ])
         d = dt.date(2026, 8, 3)
         ctx = {
             'banned_by_date': {d: {'chapati'}},
@@ -333,8 +347,10 @@ class TestRepeatableItemsRule:
         }
         cooldown = ItemCooldownMenuRule(
             {'name': 'cd', 'type': 'item_cooldown', 'cooldown_days': 20})
-        assert len(cooldown.pre_filter_pool(pool, d, 'bread', 'north', ctx)) == 1
-        assert len(cooldown.pre_filter_pool(pool, d, 'rice', 'north', ctx)) == 0
+        in_bread = cooldown.pre_filter_pool(pool, d, 'bread', 'north', ctx)
+        assert sorted(in_bread['item']) == ['butter_naan', 'chapati']
+        in_rice = cooldown.pre_filter_pool(pool, d, 'rice', 'north', ctx)
+        assert list(in_rice['item']) == ['butter_naan']
 
     def test_solver_collects_the_declaration(self):
         """MenuSolver._declared_repeatable is the single collection point both

@@ -129,7 +129,7 @@ class TestPuneEndToEnd:
 
     def test_every_dish_comes_from_the_pune_list(self, pune_client, pune_df):
         """The bug this guards: a Pune client planning off Bangalore's ontology.
-        123 of Pune's 300 items also exist in Bangalore, so checking a couple of
+        123 of Pune's 344 items also exist in Bangalore, so checking a couple of
         dishes would not catch it — every dish must be in the Pune list."""
         _resp, body = _plan(pune_client)
         pune_items = set(pune_df['item'])

@@ -35,6 +35,26 @@ CITY_DIR = ROOT / "data" / "raw" / "city_items"
 CITIES = ["bangalore", "pune", "chennai", "ncr"]
 CATEGORIES = ["healthy_rice", "dessert", "bread", "starter"]
 
+# --- Part 2: top up thin pools by SHARING real dishes from a donor city -------
+# Some cities carry only a handful of dishes in a category a client actually
+# serves — Chennai has 2 rasam and 4 curd_side, Pune 2 curd_side. Over a
+# multi-week run those slots go stale (and before the cooldown relaxation, they
+# went INFEASIBLE). These are regional staples every Indian kitchen makes, so
+# the fix is to share real, correctly-tagged dishes from the city that has them
+# rather than invent rows: the whole 135-column row is copied verbatim, only
+# item_id (reassigned past the city's max) and client (the city's pool token)
+# change. Only VEG rows are shared, so an all-veg city stays all-veg.
+#
+# {course_type: minimum distinct dishes a city should carry}
+SHARE_TARGETS = {
+    "rasam": 12,
+    "curd_side": 12,
+    "sambar": 12,
+    "soup": 10,
+}
+# Donor preference order per category (first city that has the dish wins).
+SHARE_DONORS = ["bangalore", "chennai", "ncr", "pune"]
+
 _NONVEG_FLAGS = ["is_egg_dish", "is_seafood", "is_fish_dish", "is_chicken",
                  "is_nonveg"]
 
@@ -134,6 +154,18 @@ def _cat_mask(df, cat):
     return df["course_type"].map(_norm) == cat
 
 
+# Opaque abbreviations seen in the source lists — a shared dish must be a name a
+# kitchen can act on, so these are never borrowed into another city.
+_ABBREV_WORDS = {"vwg", "cho", "khol", "kora", "mc", "m", "c", "vg", "sp"}
+
+
+def _readable_name(n: str) -> bool:
+    words = [w for w in n.split("_") if w]
+    if not words:
+        return False
+    return all(len(w) >= 3 and w not in _ABBREV_WORDS for w in words)
+
+
 def _next_id(df):
     nums = [int(m.group(1)) for s in df["item_id"].dropna().astype(str)
             for m in [re.search(r"(\d+)", s)] if m]
@@ -196,12 +228,64 @@ def expand(dry_run=False):
                 dfs[slug] = df
             summary[(slug, cat)] = [_norm(a["item"]) for a in additions]
 
+    # --- Part 2: share real dishes into thin pools (rasam/curd_side/sambar/soup)
+    share_summary = {}
+    for slug in CITIES:
+        df = dfs[slug]
+        nid = _next_id(df)
+        pool_value = "common" if df["client"].map(_norm).str.contains(
+            "common").any() else ""
+        for cat, target in SHARE_TARGETS.items():
+            have_names = set(df[_cat_mask(df, cat)]["item"].map(_norm))
+            all_names = set(df["item"].map(_norm))
+            missing = target - len(have_names)
+            if missing <= 0:
+                share_summary[(slug, cat)] = []
+                continue
+            additions = []
+            for donor in SHARE_DONORS:
+                if donor == slug or len(additions) >= missing:
+                    continue
+                ddf = dfs[donor]
+                cand = ddf[_cat_mask(ddf, cat)].copy()
+                cand = cand.assign(_n=cand["item"].map(_norm))
+                cand = cand[~cand["_n"].isin(all_names)]
+                # Skip abbreviated/opaque names ("vwg_sambar", "m_c_sambar",
+                # "cho_sambar"): a kitchen has to recognise the dish it is asked
+                # to cook. Every word must be >= 3 letters and not a known
+                # abbreviation; then prefer the shorter, plainer names.
+                cand = cand[cand["_n"].map(_readable_name)]
+                cand = cand.sort_values("_n", key=lambda s: s.str.len())
+                for _i, src in cand.iterrows():
+                    if len(additions) >= missing:
+                        break
+                    if not _is_veg(src):
+                        continue
+                    nm = _norm(src["item"])
+                    if nm in all_names:
+                        continue
+                    r = src.drop(labels=["_n"]).copy()
+                    r["item_id"] = _mk_id(nid); nid += 1
+                    if "client" in r.index:
+                        r["client"] = pool_value
+                    additions.append(r)
+                    all_names.add(nm)
+            if additions:
+                df = pd.concat([df, pd.DataFrame(additions)], ignore_index=True)
+                dfs[slug] = df
+            share_summary[(slug, cat)] = [_norm(a["item"]) for a in additions]
+
     for slug in CITIES:
         print(f"\n{slug}:")
         for cat in CATEGORIES:
             adds = summary.get((slug, cat), [])
             print(f"  {cat:12s} +{len(adds)}: "
                   f"{', '.join(adds) if adds else '(already present)'}")
+        for cat in SHARE_TARGETS:
+            adds = share_summary.get((slug, cat), [])
+            if adds:
+                print(f"  {cat:12s} +{len(adds)} shared: {', '.join(adds)}")
+    summary.update(share_summary)
 
     if dry_run:
         print("\n[dry-run] no files written")

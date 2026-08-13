@@ -107,12 +107,12 @@ class TestEveryEndpointServesAPuneClient:
         r = _post(pune_api, '/api/v1/pool-preview',
                   {'source_pools': [], 'city': 'Pune'})
         body = r.get_json()
-        assert body['eligible_item_count'] == 300, body
+        assert body['eligible_item_count'] == 344, body
         assert body['city'] == 'Pune'
 
     def test_pool_preview_without_a_city_counts_the_default(self, pune_api):
         r = _post(pune_api, '/api/v1/pool-preview', {'source_pools': []})
-        assert r.get_json()['eligible_item_count'] > 272
+        assert r.get_json()['eligible_item_count'] > 344
 
     def test_bangalore_pool_token_is_rejected_for_a_pune_client(self, pune_api):
         """Pool tokens live inside one city's list, so a Bangalore token on a Pune
@@ -282,7 +282,7 @@ class TestPerCityIsolation:
         hyd, _ = pune_api._get_menu_data('Hyderabad')
         pune, _ = pune_api._get_menu_data('Pune')
         assert blr is hyd                           # same file, one load
-        assert pune is not blr and len(pune) == 300
+        assert pune is not blr and len(pune) == 344
         assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):

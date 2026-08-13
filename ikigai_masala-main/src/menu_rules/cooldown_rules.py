@@ -110,20 +110,47 @@ class ItemCooldownMenuRule(BaseMenuRule):
             return pool
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
-        if banned and len(pool) > 0:
-            drop = pool['item'].isin(banned)
-            # A staple item recurs by design, so the 20-day window never bans it
-            # — same exemption the plain-curd slot gets above, applied per item
-            # instead of per slot. Two sources, both honoured: the ontology-wide
-            # flags in constants (the chicken kebab) and the per-city/per-client
-            # `repeatable_items` declarations the solver collects (Pune's plain
-            # chapati). Skipping the declared set would leave a "may repeat"
-            # exemption that unique_items honours and the cooldown quietly
-            # doesn't — which starves the slot a week later instead of now.
-            declared = filter_context.get('extra_repeatable') or {}
-            staple = self._staple_mask(pool, base_slot, declared)
-            pool = pool[~(drop & ~staple)]
-        return pool
+        if not banned or len(pool) == 0:
+            return pool
+        # A staple item recurs by design, so the 20-day window never bans it
+        # — same exemption the plain-curd slot gets above, applied per item
+        # instead of per slot. Two sources, both honoured: the ontology-wide
+        # flags in constants (the chicken kebab) and the per-city/per-client
+        # `repeatable_items` declarations the solver collects (Pune's plain
+        # chapati). Skipping the declared set would leave a "may repeat"
+        # exemption that unique_items honours and the cooldown quietly
+        # doesn't — which starves the slot a week later instead of now.
+        declared = filter_context.get('extra_repeatable') or {}
+        staple = self._staple_mask(pool, base_slot, declared)
+        drop = pool['item'].isin(banned) & ~staple
+        kept = pool[~drop]
+
+        # Graceful degradation — the cooldown must NEVER empty a slot below the
+        # number of dishes it needs that day, or a small pool turns the whole
+        # solve INFEASIBLE (the failure that stopped counters sustaining a 10-
+        # or 22-day run). If the ban would starve the slot, restore the least-
+        # recently-served banned dishes (the ones closest to leaving the 20-day
+        # window) — just enough to fill it. Freshness still prefers the freshest
+        # candidate, so a dish only repeats early when the pool genuinely can't
+        # avoid it. Same principle as unique_items' starved relaxation, and it
+        # means the item cooldown can no longer make a plan INFEASIBLE.
+        cfg = filter_context.get('cfg')
+        needed = 1
+        slot_counts = getattr(cfg, 'slot_counts', None) if cfg is not None else None
+        if slot_counts:
+            needed = max(1, int(slot_counts.get(base_slot, 1)))
+        if len(kept) >= needed:
+            return kept
+        dropped = pool[drop]
+        if len(dropped) == 0:
+            return kept
+        recency: Dict[str, int] = filter_context.get('recency_by_item') or {}
+        # Oldest-served first: largest days-since-last-served, unknown = very old.
+        rank = dropped['item'].map(lambda it: recency.get(_norm_str(it), 10 ** 6))
+        dropped = dropped.assign(_cd_rank=rank.values).sort_values(
+            '_cd_rank', ascending=False).drop(columns='_cd_rank')
+        restore = dropped.head(needed - len(kept))
+        return pd.concat([kept, restore])
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -186,23 +213,28 @@ class ItemCooldownMenuRule(BaseMenuRule):
                 slot_label = base.replace('_', ' ')
 
                 if remaining == 0:
+                    # Not a blocker: pre_filter_pool restores the least-recently-
+                    # served dishes so the slot is never actually starved (the
+                    # cooldown can no longer make a plan INFEASIBLE). Report it as
+                    # a WARNING so an operator still sees the pool is too small to
+                    # honour the full 20-day window and a dish repeats early.
                     diags.append(Diagnostic(
                         rule=self.name,
                         rule_type=self.rule_type.value,
-                        severity=DiagnosticSeverity.ERROR,
+                        severity=DiagnosticSeverity.WARNING,
                         phase=DiagnosticPhase.PRE_FILTER,
                         message=(
-                            f"Item cooldown ({self.cooldown_days} days) banned "
+                            f"Item cooldown ({self.cooldown_days} days) would ban "
                             f"all {ban_count} {slot_label} candidate"
                             f"{'s' if ban_count != 1 else ''} "
-                            f"on {day_label} ({day_type or 'no theme'}). "
-                            f"Pool is empty after cooldown."
+                            f"on {day_label} ({day_type or 'no theme'}); the "
+                            f"cooldown is relaxed here so the slot still fills, "
+                            f"and a recently-served {slot_label} repeats early."
                         ),
                         suggestion=(
-                            f"Lower cooldown_days for this rule, add more "
-                            f"{slot_label} items to the ontology, or choose "
-                            f"a later start date so recent history falls "
-                            f"outside the cooldown window."
+                            f"Add more {slot_label} items to the ontology (or "
+                            f"lower cooldown_days) if you want the full "
+                            f"{self.cooldown_days}-day gap honoured for this slot."
                         ),
                         affected={
                             'date': d.isoformat(),

@@ -80,9 +80,25 @@ class TestCurdSideCurdRiceCooldownExempt:
             assert list(out['item']) == ['a', 'b', 'c'], (
                 f'{slot} pool should survive the cooldown intact')
 
-        # control: an ordinary slot IS emptied by the same bans
+    def test_ordinary_slot_never_starved_to_empty(self):
+        """A non-exempt slot is still cooled down, but the cooldown NEVER empties
+        it: if every candidate is banned it restores the least-recently-served
+        one (graceful degradation) rather than going INFEASIBLE."""
+        rule = ItemCooldownMenuRule(
+            {'type': 'item_cooldown', 'name': 'item_cooldown_20d',
+             'cooldown_days': 20})
+        d = dt.date(2026, 8, 24)
+        pool = pd.DataFrame({'item': ['a', 'b', 'c']})
+        # recency: 'a' served longest ago → restored first
+        ctx = {'banned_by_date': {d: {'a', 'b', 'c'}}, 'extra_repeatable': {},
+               'recency_by_item': {'a': 19, 'b': 5, 'c': 2}}
         out = rule.pre_filter_pool(pool, d, 'veg_gravy', 'north', ctx)
-        assert len(out) == 0
+        assert list(out['item']) == ['a'], out['item'].tolist()
+
+        # a partial ban still just drops the banned ones (plenty remain)
+        ctx2 = {'banned_by_date': {d: {'a'}}, 'extra_repeatable': {}}
+        out2 = rule.pre_filter_pool(pool, d, 'veg_gravy', 'north', ctx2)
+        assert set(out2['item']) == {'b', 'c'}
 
 
 class TestCurdPool:
