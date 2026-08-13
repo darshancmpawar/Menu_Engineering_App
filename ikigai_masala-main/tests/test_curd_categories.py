@@ -8,10 +8,13 @@ validation between plain curd and curd/raita.
 import pandas as pd
 import pytest
 
+import datetime as dt
+
 from src.constants import (
     BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS, REPEATABLE_SLOTS, DISPLAY_SLOT_NAME,
-    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
+    MUTUALLY_EXCLUSIVE_SLOT_GROUPS, COOLDOWN_EXEMPT_SLOTS,
 )
+from src.menu_rules.cooldown_rules import ItemCooldownMenuRule
 from src.preprocessor.pool_builder import PoolBuilder
 
 
@@ -43,6 +46,41 @@ class TestCurdCategoryRegistration:
 
     def test_curd_curd_raita_are_a_mutex_group(self):
         assert frozenset({'curd', 'curd_side'}) in MUTUALLY_EXCLUSIVE_SLOT_GROUPS
+
+
+class TestCurdSideCurdRiceCooldownExempt:
+    """curd_side (Curd/Raita) and curd_rice are exempt from the 20-day item
+    cooldown ban so their small pools are never drained empty by it — but,
+    unlike REPEATABLE_SLOTS, they KEEP unique_items, so they still vary within
+    a week and only repeat once every distinct dish has been used.
+    """
+
+    def test_slots_are_cooldown_exempt_but_not_repeatable(self):
+        for slot in ('curd_side', 'curd_rice'):
+            assert slot in COOLDOWN_EXEMPT_SLOTS      # cooldown never bans them
+            assert slot not in REPEATABLE_SLOTS       # unique_items still applies
+
+    def _banned_ctx(self, d, items):
+        return {'banned_by_date': {d: set(items)}, 'extra_repeatable': {}}
+
+    def test_cooldown_never_empties_curd_side_or_curd_rice(self):
+        """Even when every candidate was served inside the window, the exempt
+        slots keep their full pool; a normal slot is emptied."""
+        rule = ItemCooldownMenuRule(
+            {'type': 'item_cooldown', 'name': 'item_cooldown_20d',
+             'cooldown_days': 20})
+        d = dt.date(2026, 8, 24)
+        pool = pd.DataFrame({'item': ['a', 'b', 'c']})
+        ctx = self._banned_ctx(d, ['a', 'b', 'c'])   # all three cooling down
+
+        for slot in ('curd_side', 'curd_rice'):
+            out = rule.pre_filter_pool(pool, d, slot, 'north', ctx)
+            assert list(out['item']) == ['a', 'b', 'c'], (
+                f'{slot} pool should survive the cooldown intact')
+
+        # control: an ordinary slot IS emptied by the same bans
+        out = rule.pre_filter_pool(pool, d, 'veg_gravy', 'north', ctx)
+        assert len(out) == 0
 
 
 class TestCurdPool:

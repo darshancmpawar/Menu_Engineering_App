@@ -95,6 +95,21 @@ DEFAULT_OFF_SLOTS: Set[str] = {'curd', 'curd_rice'} | set(COMBO_CATEGORIES)
 # starved by cooldown or forced to vary day-to-day by unique_items.
 REPEATABLE_SLOTS: Set[str] = {'curd'}
 
+# Slots exempt from the item-cooldown ban ONLY — unlike REPEATABLE_SLOTS they
+# KEEP unique_items, so they still serve distinct dishes within a week and only
+# repeat once every distinct dish has been used ("once everything is done").
+#
+# The curd/raita side (``curd_side``) and the curd-rice station (``curd_rice``)
+# are condiment-like slots with small pools (4-13 distinct dishes). The 20-day
+# cooldown is a hard ban, so over a multi-week run it empties these pools and
+# the solve goes INFEASIBLE — a fleet sweep found this drained ~18 counters by
+# week 2-3. They are sides, not variety centrepieces, so the cross-week no-repeat
+# window is wrong for them: dropping the hard ban lets the pool stay full, while
+# unique_items still varies them within the week and the soft freshness
+# objective rotates least-recently-served first across weeks. Pan-India (global),
+# mirroring how plain ``curd`` is already cooldown-exempt.
+COOLDOWN_EXEMPT_SLOTS: Set[str] = {'curd_side', 'curd_rice'}
+
 # The two yogurt-side categories are mutually exclusive on a single counter:
 # a counter serves EITHER plain curd OR the curd/raita side, never both. The
 # curd-rice station is independent and may be combined with either.

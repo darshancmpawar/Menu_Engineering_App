@@ -23,7 +23,9 @@ from ortools.sat.python import cp_model
 
 from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
-from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS, repeatable_row
+from src.constants import (
+    BASE_SLOT_NAMES, REPEATABLE_SLOTS, COOLDOWN_EXEMPT_SLOTS, repeatable_row,
+)
 from .base_menu_rule import (
     BaseMenuRule,
     Diagnostic,
@@ -100,7 +102,11 @@ class ItemCooldownMenuRule(BaseMenuRule):
                         filter_context: Dict[str, Any]) -> pd.DataFrame:
         # Repeatable slots (e.g. the plain-curd station) are never cooled down —
         # the same staple is meant to recur, so history bans don't apply.
-        if base_slot in REPEATABLE_SLOTS:
+        # COOLDOWN_EXEMPT_SLOTS (curd_side/curd_rice) are exempt from the ban too,
+        # but KEEP unique_items: small condiment pools must not be drained empty
+        # by the 20-day hard ban, yet should still vary within the week and only
+        # repeat once every distinct dish is used (freshness rotates them).
+        if base_slot in REPEATABLE_SLOTS or base_slot in COOLDOWN_EXEMPT_SLOTS:
             return pool
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
@@ -161,7 +167,7 @@ class ItemCooldownMenuRule(BaseMenuRule):
             for base in base_slots:
                 if (d, base) in ctx.skip_cells:
                     continue
-                if base in REPEATABLE_SLOTS:
+                if base in REPEATABLE_SLOTS or base in COOLDOWN_EXEMPT_SLOTS:
                     continue  # exempt from cooldown, so no cooldown diagnostic
                 if base not in ctx.pools:
                     continue
