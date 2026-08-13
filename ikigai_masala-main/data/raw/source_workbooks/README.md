@@ -39,9 +39,11 @@ attachments and would have been lost.
    raw list and drops hand-applied fixes: `scripts/seafood_taxonomy.py`,
    `scripts/pune_flag_corrections.py`, `scripts/course_type_corrections.py`,
    `scripts/remove_generic_rows.py`, `scripts/dessert_cuisine_corrections.py`,
-   and (NCR only) `scripts/ncr_cuisine_corrections.py` +
-   `scripts/ncr_fuzzy_unmerge.py`. Each is idempotent, and each has a test that
-   fails if its corrections are missing.
+   `scripts/expand_side_pools.py` (adds 7 dishes to the small
+   healthy_rice/dessert/bread/starter pools in every city),
+   and (NCR only) `scripts/ncr_cuisine_corrections.py`,
+   `scripts/ncr_fuzzy_unmerge.py` + `scripts/add_ncr_sambar.py`. Each is
+   idempotent, and each has a test that fails if its corrections are missing.
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
 5. Declare the city's categories in `city_items/ontology_categories.json`.

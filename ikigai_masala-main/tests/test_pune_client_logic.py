@@ -122,7 +122,7 @@ class TestServiceDaysMatchTheSample:
 
     def test_every_dish_comes_from_the_pune_list(self, plan, pune_df):
         """The real client, not just the reference counter next door: 123 of
-        Pune's 272 items also exist in Bangalore, so a spot check would not catch
+        Pune's 300 items also exist in Bangalore, so a spot check would not catch
         a plan built off the wrong ontology."""
         pune_items = set(pune_df['item'])
         stamped = {'steamed rice', 'Papad'}   # nothing else is stamped now

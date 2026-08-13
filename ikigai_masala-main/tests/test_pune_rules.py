@@ -162,18 +162,22 @@ class TestPuneRulesBiteOnPuneData:
                     f"{value!r} — re-run scripts/pune_flag_corrections.py"
                 )
 
-    def test_chapati_exemption_matches_the_whole_bread_pool(self, pune_pools):
-        """Pune's bread slot is chapati + phulka only. If the exemption stopped
-        covering one of them, the 20-day cooldown would empty the slot in week 2
-        — the failure R36 exists to prevent."""
+    def test_chapati_exemption_covers_the_plain_staples(self, pune_pools):
+        """R36: the two plain staples (chapati + phulka) may repeat, so the
+        20-day cooldown never empties them. The pool now also carries flavoured
+        chapatis (expand_side_pools.py) — those are ordinary variety, NOT
+        staples, so the exemption must cover exactly the two plain ones and no
+        more (a flavoured chapati repeating daily would be wrong)."""
         _df, pools = pune_pools
         bread = pools['bread']
         rule = next(
             r for r in MenuRuleLoader().load_for_city('Pune')
             if r.name == 'plain_chapati_may_repeat'
         )
-        covered = [r['item'] for _i, r in bread.iterrows() if rule._row_matches(r)]
-        assert sorted(covered) == sorted(bread['item'].tolist())
+        covered = {r['item'] for _i, r in bread.iterrows() if rule._row_matches(r)}
+        assert covered == {'chapati', 'phulka'}, covered
+        # the flavoured chapatis exist in the pool but are not exempt
+        assert 'methi_chapati' in set(bread['item']) and 'methi_chapati' not in covered
 
 
 class TestColorVarietyRule:

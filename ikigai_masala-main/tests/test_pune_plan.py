@@ -17,6 +17,14 @@ import pytest
 
 from tests.fake_supabase import FakeSupabase
 
+
+def _pune_bread_names():
+    from src.ontology.paths import city_excel_path
+    df = pd.read_excel(city_excel_path('Pune'))
+    df.columns = [c.strip() for c in df.columns]
+    br = df[df['course_type'].astype(str).str.strip().str.lower() == 'bread']
+    return set(br['item'].astype(str).str.strip())
+
 MONDAY = '2026-08-03'   # Monday, ISO week 32
 TIME_LIMIT = 30
 
@@ -121,7 +129,7 @@ class TestPuneEndToEnd:
 
     def test_every_dish_comes_from_the_pune_list(self, pune_client, pune_df):
         """The bug this guards: a Pune client planning off Bangalore's ontology.
-        123 of Pune's 272 items also exist in Bangalore, so checking a couple of
+        123 of Pune's 300 items also exist in Bangalore, so checking a couple of
         dishes would not catch it — every dish must be in the Pune list."""
         _resp, body = _plan(pune_client)
         pune_items = set(pune_df['item'])
@@ -298,7 +306,13 @@ class TestPuneSecondWeek:
         assert resp.status_code == 200, body.get('error') or body.get('message')
         breads = [item for _d, item in _by_slot(body, 'bread')]
         assert len(breads) == 5
-        assert set(breads) <= {'chapati', 'phulka'}
+        # Bread survives a week of chapati/phulka history — R36's payoff. The pool
+        # now also carries flavoured chapatis (expand_side_pools.py), so week 2
+        # stays full through variety as well as the repeatable plain staples;
+        # every day still gets a real Pune bread, none blank.
+        assert all(breads), breads
+        pune_breads = set(_pune_bread_names())
+        assert set(breads) <= pune_breads, set(breads) - pune_breads
         # The dals used last week must NOT come back — the exemption is scoped to
         # the declared staples, it does not switch the cooldown off wholesale.
         used = {'dal_fry', 'dal_palak', 'dal_makhani', 'dal_adraki', 'dal_tadka'}

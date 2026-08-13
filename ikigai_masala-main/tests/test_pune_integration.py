@@ -107,7 +107,7 @@ class TestEveryEndpointServesAPuneClient:
         r = _post(pune_api, '/api/v1/pool-preview',
                   {'source_pools': [], 'city': 'Pune'})
         body = r.get_json()
-        assert body['eligible_item_count'] == 272, body
+        assert body['eligible_item_count'] == 300, body
         assert body['city'] == 'Pune'
 
     def test_pool_preview_without_a_city_counts_the_default(self, pune_api):
@@ -282,7 +282,7 @@ class TestPerCityIsolation:
         hyd, _ = pune_api._get_menu_data('Hyderabad')
         pune, _ = pune_api._get_menu_data('Pune')
         assert blr is hyd                           # same file, one load
-        assert pune is not blr and len(pune) == 272
+        assert pune is not blr and len(pune) == 300
         assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):

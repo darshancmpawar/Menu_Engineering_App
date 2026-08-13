@@ -56,7 +56,9 @@ class TestCurdSideCurdRiceCooldownExempt:
     """
 
     def test_slots_are_cooldown_exempt_but_not_repeatable(self):
-        for slot in ('curd_side', 'curd_rice'):
+        # curd_side/curd_rice plus the other small side slots (soup, healthy_rice)
+        # that also repeat only after a full cycle of distinct dishes.
+        for slot in ('curd_side', 'curd_rice', 'soup', 'healthy_rice'):
             assert slot in COOLDOWN_EXEMPT_SLOTS      # cooldown never bans them
             assert slot not in REPEATABLE_SLOTS       # unique_items still applies
 
@@ -73,7 +75,7 @@ class TestCurdSideCurdRiceCooldownExempt:
         pool = pd.DataFrame({'item': ['a', 'b', 'c']})
         ctx = self._banned_ctx(d, ['a', 'b', 'c'])   # all three cooling down
 
-        for slot in ('curd_side', 'curd_rice'):
+        for slot in ('curd_side', 'curd_rice', 'soup', 'healthy_rice'):
             out = rule.pre_filter_pool(pool, d, slot, 'north', ctx)
             assert list(out['item']) == ['a', 'b', 'c'], (
                 f'{slot} pool should survive the cooldown intact')
