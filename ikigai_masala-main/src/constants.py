@@ -218,6 +218,22 @@ PULAO_SUBCATS: Set[str] = {
 # when the city carries a suitable dish.
 THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 
+# Cities where EVERY client plans from the whole city list, ignoring the
+# per-client `source_pools` narrowing (F5).
+#
+# Bangalore is here because the narrowing was costing far more than it bought:
+# only 893 of its 4,349 rows carry `common`, the other 3,456 sit in eight
+# client pools (healthineers 1,870 · continental 752 · cloudera 666 ·
+# infineon 463 · zscalar 300 · amadeus 297 · computacenter 256 · icon 103), and
+# most Bangalore clients have `source_pools = []` — so they were planning from
+# roughly a fifth of the list while the rest was unreachable. An all-south
+# counter like L&T saw 9 south desserts where the city holds 69.
+#
+# Deliberately a city-level switch, not a per-client edit: it is reversible in
+# one line and leaves every client row untouched. Remove a city from this set to
+# restore per-client pools.
+FULL_POOL_CITIES: Set[str] = {'bangalore'}
+
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.
 RICE_EXCLUDE_ITEMS: Set[str] = {

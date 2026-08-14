@@ -201,9 +201,12 @@ class TestPerCityCaches:
         hand a Pune client Bangalore's `common` pool."""
         import api.app as api_app
         api_app.reset_caches()
+        # Two cities that BOTH narrow: Bangalore is in FULL_POOL_CITIES now, so
+        # it returns the whole list without ever populating the filtered cache,
+        # which would make this assert nothing about the key.
         api_app._get_client_loader().set_client_city('Rippling', 'Pune')
         pune_df, _ = api_app._menu_data_for_client('Rippling')
-        api_app._get_client_loader().set_client_city('Rippling', 'Bangalore')
-        blr_df, _ = api_app._menu_data_for_client('Rippling')
-        assert len(pune_df) != len(blr_df)
+        api_app._get_client_loader().set_client_city('Rippling', 'Chennai')
+        chn_df, _ = api_app._menu_data_for_client('Rippling')
+        assert len(pune_df) != len(chn_df)
         assert api_app._ontology.cache_sizes()['filtered'] == 2
