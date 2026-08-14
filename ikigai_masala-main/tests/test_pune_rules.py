@@ -77,17 +77,22 @@ class TestPuneRulesBiteOnPuneData:
     match items in it — and name the ones knowingly inert."""
 
     KNOWN_INERT = {
-        # These three are inert because the Pune list carries NO SUCH DISH — its
-        # bread pool is chapati and phulka. That is a fact about the menu, not a
-        # data gap: the rules are kept so they bite the day a maida, multigrain or
-        # oil-based bread is added.
+        # Only ONE bread rule is still inert: the Pune list carries no multigrain
+        # bread. That is a fact about the menu, not a data gap — the rule is kept
+        # so it bites the day one is added.
+        #
+        # `maida_bread_weekly` and `oil_based_bread_weekly` USED to be inert too,
+        # back when the Pune bread pool was just chapati + phulka. Deepening it
+        # (scripts/expand_side_pools.py: butter_naan / tawa_kulcha are maida,
+        # palak_poori is oil-based) activated both — which is the point of having
+        # written them. Their weekly caps now genuinely shape Pune's menus, so a
+        # re-import that dropped those breads would silently switch two rulebook
+        # rules back off; this set is what catches that.
         #
         # (`black_chana_gravy_weekly` and `leafy_veg_dry_weekly` were inert too,
         # for the opposite reason — the dishes existed but the flags were 0.
         # scripts/pune_flag_corrections.py fixed that, and this set is what stops
         # a re-import from silently undoing it.)
-        'maida_bread_weekly',
-        'oil_based_bread_weekly',
         'multigrain_bread_non_consecutive',
     }
 

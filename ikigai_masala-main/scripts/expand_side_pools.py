@@ -80,7 +80,19 @@ SHARE_DONORS = ["bangalore", "chennai", "ncr", "pune"]
 # and Bangalore take either. Drinks and starters travel freely.
 CITY_REGION = {"pune": "north", "ncr": "north",
                "chennai": "south", "bangalore": "south"}
-REGION_LOCKED_CATEGORIES = {"bread"}
+# `starter` joins the lock because NCR's ruleset forbids a continental starter
+# (scripts/ncr_cuisine_corrections.py) — and Bangalore mislabels pakora / samosa
+# / vada_pav as continental, so sharing them in imported that mislabel and broke
+# the NCR correction.
+REGION_LOCKED_CATEGORIES = {"bread", "starter"}
+
+# A row carrying any of these flags is never shared. `is_plain_phulka_chapathi`
+# is what Pune's R36 `plain_chapati_may_repeat` matches on, so importing a bread
+# that carries it (tawa_roti, methi_roti, rava_roti, palak_roti all do) silently
+# widens the staple exemption — those breads would become repeatable EVERY day
+# instead of only plain chapati/phulka. Every city already has its own plain
+# chapati, so nothing is lost by refusing them.
+SHARE_EXCLUDE_FLAGS = {"is_plain_phulka_chapathi"}
 
 # Individually-checked rows that must never be borrowed into another city:
 #   pretzel    — cuisine_family=continental, sub_category=garlic_bread; not an
@@ -97,6 +109,25 @@ REGION_LOCKED_CATEGORIES = {"bread"}
 #                daily `buttermilk` Amadeus Pune's logic expects. North cities
 #                take the chaas variants instead.
 SHARE_BLOCKLIST = {"pretzel", "tea_cake", "a2b_juice", "sambaram"}
+
+# Repairs for rows an EARLIER, less careful sharing pass already wrote. The
+# guards above stop them being shared again, but the rows are committed, so they
+# must also be undone. Keyed (city, category) -> {item}.
+UNSHARE = {
+    # These four carry is_plain_phulka_chapathi, which Pune's R36 matches, so
+    # they would have become daily-repeatable staples alongside plain chapati.
+    ("pune", "bread"): {"rava_roti", "tawa_roti", "methi_roti", "palak_roti"},
+    # Middle-Eastern; NCR's ruleset forbids a continental starter.
+    ("ncr", "starter"): {"falafel"},
+}
+
+# pakora / samosa / vada_pav are plainly North Indian but the Bangalore list
+# labels them `continental`; sharing carried that mislabel into NCR, where
+# ncr_cuisine_corrections.py forbids a continental starter. They are worth
+# keeping, so fix the label on the NCR copy rather than dropping the dish.
+RECUISINE = {
+    ("ncr", "starter"): ({"pakora", "samosa", "vada_pav"}, "north_indian"),
+}
 
 _NONVEG_FLAGS = ["is_egg_dish", "is_seafood", "is_fish_dish", "is_chicken",
                  "is_nonveg"]
@@ -267,9 +298,28 @@ def _unshare_blocklisted(dfs):
         if slug == MASTER_CITY:
             continue
         mask = df["item"].map(_norm).isin(SHARE_BLOCKLIST)
+        # Rows an earlier, less careful pass wrote: drop by (city, category).
+        for (sl, cat), items in UNSHARE.items():
+            if sl != slug:
+                continue
+            mask = mask | (df["item"].map(_norm).isin(items)
+                           & (df["course_type"].map(_norm) == cat))
         if mask.any():
             removed[slug] = sorted(df.loc[mask, "item"].map(_norm))
-            dfs[slug] = df[~mask].reset_index(drop=True)
+            df = df[~mask].reset_index(drop=True)
+            dfs[slug] = df
+        # Correct a mislabel carried in from the donor rather than lose the dish.
+        for (sl, cat), (items, cuisine) in RECUISINE.items():
+            if sl != slug or "cuisine_family" not in df.columns:
+                continue
+            m = (df["item"].map(_norm).isin(items)
+                 & (df["course_type"].map(_norm) == cat)
+                 & (df["cuisine_family"].map(_norm) != cuisine))
+            if m.any():
+                df.loc[m, "cuisine_family"] = cuisine
+                if "cuisine_family_region" in df.columns:
+                    df.loc[m, "cuisine_family_region"] = cuisine
+                dfs[slug] = df
     return removed
 
 
@@ -366,6 +416,10 @@ def expand(dry_run=False):
                 cand = cand[cand["_n"].map(_readable_name)]
                 cand = cand[~cand["_n"].isin(SHARE_BLOCKLIST)]
                 cand = cand[~cand["_n"].isin(_GENERIC)]
+                for _f in SHARE_EXCLUDE_FLAGS:
+                    if _f in cand.columns:
+                        cand = cand[pd.to_numeric(
+                            cand[_f], errors="coerce").fillna(0) != 1]
                 # Regional fit: a North city never borrows a South/continental
                 # bread, and vice versa.
                 if cat in REGION_LOCKED_CATEGORIES:
