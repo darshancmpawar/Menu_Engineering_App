@@ -342,7 +342,6 @@ def expand(dry_run=False):
         pool_value = "common" if df["client"].map(_norm).str.contains(
             "common").any() else ""
         for cat in CATEGORIES:
-            have = set(df[_cat_mask(df, cat)]["item"].map(_norm))
             all_names = set(df["item"].map(_norm))
             additions = []
             for name, color, cuisine, liquid in NEW_DISHES[cat]:

@@ -14,7 +14,7 @@ import pytest
 
 from src.ontology.paths import city_excel_path
 from scripts.expand_side_pools import (
-    CATEGORIES, NEW_DISHES, expand, _norm, _is_veg, _is_flavoured_chapati,
+    CATEGORIES, NEW_DISHES, expand, _norm, _is_veg,
 )
 
 CITY_KEY = {'bangalore': 'Bangalore', 'pune': 'Pune',
