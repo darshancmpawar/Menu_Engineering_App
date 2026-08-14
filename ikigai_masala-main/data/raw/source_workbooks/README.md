@@ -42,7 +42,8 @@ attachments and would have been lost.
    `scripts/expand_side_pools.py` (adds 7 dishes to the small
    healthy_rice/dessert/bread/starter pools in every city),
    and (NCR only) `scripts/ncr_cuisine_corrections.py`,
-   `scripts/ncr_fuzzy_unmerge.py` + `scripts/add_ncr_sambar.py`. Each is
+   `scripts/ncr_fuzzy_unmerge.py`, `scripts/add_ncr_sambar.py` +
+   `scripts/ncr_bread_misfiles.py` (curries the mapper filed as bread). Each is
    idempotent, and each has a test that fails if its corrections are missing.
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).

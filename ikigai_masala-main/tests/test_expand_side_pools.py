@@ -48,10 +48,16 @@ def test_each_category_grew_by_at_least_seven(dfs):
         'chennai':   {'healthy_rice': 2,  'dessert': 29,  'starter': 27,  'bread': 29},
         'ncr':       {'healthy_rice': 2,  'dessert': 176, 'starter': 8,   'bread': 59},
     }
+    # `scripts/ncr_bread_misfiles.py` then took 12 rows back OUT of NCR's bread
+    # pool — curries and a dal the mapping pipeline had filed as bread
+    # (paneer_jaipuri and friends). That correction is deliberate and must not be
+    # read as the expansion under-delivering, so the expected floor accounts for
+    # it rather than the test being loosened.
+    removed_after = {('ncr', 'bread'): 12}
     for slug, df in dfs.items():
         for cat in CATEGORIES:
             got = len(_cat(df, cat))
-            want = baseline[slug][cat] + 7
+            want = baseline[slug][cat] + 7 - removed_after.get((slug, cat), 0)
             assert got >= want, f'{slug}/{cat}: expected >= {want}, got {got}'
 
 

@@ -209,6 +209,35 @@ def _readable_name(n: str) -> bool:
     return all(len(w) >= 3 and w not in _ABBREV_WORDS for w in words)
 
 
+def _generic_names() -> set:
+    """Names `scripts/remove_generic_rows.py` deliberately deleted — rows named
+    for a CATEGORY ("rasam", "sweet", "gravy") rather than a dish.
+
+    Read from that script's own table so the two can never disagree: sharing
+    must not quietly re-import a row the cleanup exists to remove, which it did
+    — it put a dish literally called `rasam` back into NCR.
+    """
+    GENERIC_ROWS = None
+    try:                       # imported as a package (tests, project root)
+        from scripts.remove_generic_rows import GENERIC_ROWS
+    except Exception:
+        try:                   # run directly: scripts/ is sys.path[0]
+            from remove_generic_rows import GENERIC_ROWS
+        except Exception:  # pragma: no cover
+            GENERIC_ROWS = None
+    if not GENERIC_ROWS:
+        raise RuntimeError(
+            "cannot read GENERIC_ROWS from remove_generic_rows.py — refusing to "
+            "share, since generic category rows would leak back in")
+    out = set()
+    for names in GENERIC_ROWS.values():
+        out |= {str(n).strip().lower() for n in names}
+    return out
+
+
+_GENERIC = _generic_names()
+
+
 def _next_id(df):
     nums = [int(m.group(1)) for s in df["item_id"].dropna().astype(str)
             for m in [re.search(r"(\d+)", s)] if m]
@@ -336,6 +365,7 @@ def expand(dry_run=False):
                 # abbreviation; then prefer the shorter, plainer names.
                 cand = cand[cand["_n"].map(_readable_name)]
                 cand = cand[~cand["_n"].isin(SHARE_BLOCKLIST)]
+                cand = cand[~cand["_n"].isin(_GENERIC)]
                 # Regional fit: a North city never borrows a South/continental
                 # bread, and vice versa.
                 if cat in REGION_LOCKED_CATEGORIES:
