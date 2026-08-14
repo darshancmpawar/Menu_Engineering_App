@@ -137,10 +137,18 @@ CONSTANT_ITEMS: Dict[str, str] = {
     'chutney': 'chutney',
 }
 
+# Slots the day's theme must NOT hard-filter by cuisine. `dessert` and
+# `curd_side` are here because a sweet or a raita does not have to match the
+# day's region: serve the region's own when there is a good one, otherwise any
+# is fine. Hard-narrowing them starved single-theme counters — L&T's all-south
+# lunch saw 4 south desserts and 3 south raitas for a 5-day week and went
+# INFEASIBLE, while Bangalore held 256 desserts. They are also in
+# THEME_FALLBACK_SLOTS, which keeps "own region first" as a *preference*.
 EXEMPT_FROM_CUISINE: Set[str] = {
     'welcome_drink', 'dal', 'sambar', 'rasam',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
     'starter', 'soup', 'salad', 'healthy_rice', 'curd_rice',
+    'dessert', 'curd_side',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
@@ -202,7 +210,13 @@ PULAO_SUBCATS: Set[str] = {
     'millet_pulao', 'mixed_grain_pulao',
 }
 
-THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry'}
+# Slots whose pool is NOT hard-filtered by cuisine but which still *prefer* the
+# day's region: the solver samples the theme-matching items first and pays a
+# fallback penalty when it has to reach outside. That is "fit its own region
+# first, otherwise take one from another region" — the rule for `dessert` and
+# `curd_side`, which have no regional obligation but should still read as local
+# when the city carries a suitable dish.
+THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.
