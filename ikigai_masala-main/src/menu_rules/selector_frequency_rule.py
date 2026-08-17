@@ -16,11 +16,12 @@ Config::
         "min": 0,            # horizon day-level: at least N days
         "exact": null,       # horizon day-level: exactly N days
         "non_consecutive": false,   # matched days may not be adjacent
-        "daily_max": null    # per-day: at most N matching items in one day
+        "daily_max": null,   # per-day: at most N matching items in one day
+        "daily_min": null    # per-day: at least N matching items EVERY day
     }
 
-At least one of ``max``/``min``/``exact``/``daily_max``/``non_consecutive``
-must be set. ``non_consecutive`` may stand alone (e.g. "sugar-syrup sweets
+At least one of ``max``/``min``/``exact``/``daily_max``/``daily_min``/
+``non_consecutive`` must be set. ``non_consecutive`` may stand alone (e.g. "sugar-syrup sweets
 cannot appear on consecutive days" — no count, just an adjacency ban).
 
 Selector keys: ``flag`` (column name), ``sub_category``, ``item``,
@@ -28,7 +29,9 @@ Selector keys: ``flag`` (column name), ``sub_category``, ``item``,
 
 Counting is day-level for max/min/exact (how many days carry >= 1 match), which
 equals occurrence count for single-per-day slots. ``daily_max`` is an
-occurrence cap within a single day. ``min``/``exact`` targets are capped to what
+occurrence cap within a single day, and ``daily_min`` its floor — the way to say
+"every day" without depending on the horizon length, since `min` counts days
+across the horizon (`min: 5` is "5 of 5" on a week but "5 of 10" on a fortnight). ``min``/``exact`` targets are capped to what
 the horizon can actually place (availability + non-consecutive aware) so the
 rule relaxes gracefully instead of forcing an INFEASIBLE model; the pre-flight
 diagnostics surface the shortfall.
@@ -73,11 +76,24 @@ class SelectorFrequencyRule(BaseMenuRule):
         self._exc = self._parse_matcher(rule_config.get('exclude'))
         self.sel_kind = self._inc[0] if self._inc else ''
         self.sel_value = self._inc[1] if self._inc else ''
-        self.base_slot: Optional[str] = rule_config.get('base_slot')
+        # `base_slot` accepts a name OR a list of names. A list is needed for a
+        # constraint that spans slots — "a protein source somewhere on the
+        # plate" is satisfied by the rice, the gravy, the veg dry, the salad or
+        # the dal, and scoping to any single one of them would be a different
+        # (and wrong) rule. `self.base_slot` stays the single name for the
+        # one-slot case so diagnose() and every existing config are unchanged.
+        bs = rule_config.get('base_slot')
+        if isinstance(bs, (list, tuple, set)):
+            self.base_slots: Optional[Set[str]] = {str(x) for x in bs if str(x).strip()}
+            self.base_slot: Optional[str] = None
+        else:
+            self.base_slots = {str(bs)} if bs else None
+            self.base_slot = bs
         self.max: Optional[int] = self._int_or_none(rule_config, 'max')
         self.min: Optional[int] = self._int_or_none(rule_config, 'min')
         self.exact: Optional[int] = self._int_or_none(rule_config, 'exact')
         self.daily_max: Optional[int] = self._int_or_none(rule_config, 'daily_max')
+        self.daily_min: Optional[int] = self._int_or_none(rule_config, 'daily_min')
         self.non_consecutive: bool = bool(rule_config.get('non_consecutive', False))
         # Restrict the selector to days of these themes. A nonveg biryani belongs
         # on a biryani day; without this, `mix` days (which the theme filter does
@@ -157,12 +173,13 @@ class SelectorFrequencyRule(BaseMenuRule):
         errs: List[str] = []
         if not self.sel_kind:
             errs.append("selector must contain exactly one of " + ", ".join(sorted(_SELECTOR_KEYS)))
-        if all(v is None for v in (self.max, self.min, self.exact, self.daily_max)) \
+        if all(v is None for v in (self.max, self.min, self.exact, self.daily_max,
+                                   self.daily_min)) \
                 and not self.non_consecutive:
             errs.append("at least one of max / min / exact / daily_max / non_consecutive is required")
         if self.exact is not None and (self.max is not None or self.min is not None):
             errs.append("exact cannot be combined with max/min")
-        for k in ('max', 'min', 'exact', 'daily_max'):
+        for k in ('max', 'min', 'exact', 'daily_max', 'daily_min'):
             v = getattr(self, k)
             if v is not None and v < 0:
                 errs.append(f"{k} must be >= 0 (got {v})")
@@ -194,7 +211,8 @@ class SelectorFrequencyRule(BaseMenuRule):
         for di in range(len(dates)):
             day_cells = [
                 c for c in cells
-                if c.d_idx == di and (self.base_slot is None or c.base_slot == self.base_slot)
+                if c.d_idx == di and (self.base_slots is None
+                                      or c.base_slot in self.base_slots)
             ]
             if not day_cells:
                 continue
@@ -226,6 +244,23 @@ class SelectorFrequencyRule(BaseMenuRule):
             # Per-day occurrence cap.
             if self.daily_max is not None:
                 model.Add(sum(lits) <= self.daily_max)
+            # Per-day floor — the twin of daily_max, and the only way to say
+            # "every day" independently of the horizon length. `min` counts days
+            # across the horizon, so `min: 5` means "5 of 5" on a week but "5 of
+            # 10" on a fortnight; `daily_min` means the same thing whatever the
+            # horizon. Capped to what the day can actually place, so a day whose
+            # cells offer fewer matches than the floor relaxes to what exists
+            # instead of taking the plan down (`diagnose()` reports the gap).
+            if self.daily_min is not None:
+                want = min(self.daily_min, len(lits), len(day_cells))
+                if want > 0:
+                    model.Add(sum(lits) >= want)
+                if want < self.daily_min:
+                    logger.info(
+                        "%s: day %d can place only %d of the %d required "
+                        "matching item(s); floor relaxed for that day",
+                        self.name, di, want, self.daily_min,
+                    )
             hv = model.NewBoolVar(f'{self.name}_day_{di}')
             link_any(model, lits, hv)
             day_has.append((di, hv))
@@ -261,7 +296,7 @@ class SelectorFrequencyRule(BaseMenuRule):
         distinct_matches = {
             _norm_str(r.get('item', ''))
             for c in cells
-            if self.base_slot is None or c.base_slot == self.base_slot
+            if self.base_slots is None or c.base_slot in self.base_slots
             for r in c.cand_rows
             if self._row_matches(r)
         }
@@ -311,7 +346,7 @@ class SelectorFrequencyRule(BaseMenuRule):
         numbers reported here are the numbers the constraint will be built from.
         """
         slots = (
-            [self.base_slot] if self.base_slot
+            sorted(self.base_slots) if self.base_slots
             else list(ctx.active_base_slots or [])
         )
         days = 0

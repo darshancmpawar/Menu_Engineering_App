@@ -174,6 +174,71 @@
         "indian_veg_dry_themes": [
           "chinese"
         ]
+      },
+      {
+        "_comment": "Client's protein-source list: at least one dish a day whose key_ingredient is one of these, anywhere across flavoured rice / veg gravy / veg dry / salad / dal. Selected on key_ingredient because that is how the client specified it. daily_min (not min) so it means 'every day' whatever the horizon length; it is capped per day to what that day can place, so a thin day relaxes instead of going INFEASIBLE. Variant spellings (channa_dal, gram_dal, cottage_cheese, soppu_moong, allesande, kofta_made_from_lentil) were folded into these canonical values by scripts/protein_key_ingredients.py. Not covered because Bangalore carries no such dish: soya chaap, moong chilla; pesarattu exists but is filed as bread, not one of the five slots.",
+        "name": "tekion_protein_source_daily",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad",
+          "dal"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "daily_min": 1
       }
     ],
     "constant_items": {}
@@ -189,6 +254,71 @@
         "indian_veg_dry_themes": [
           "chinese"
         ]
+      },
+      {
+        "_comment": "Client's protein-source list: at least one dish a day whose key_ingredient is one of these, anywhere across flavoured rice / veg gravy / veg dry / salad / dal. Selected on key_ingredient because that is how the client specified it. daily_min (not min) so it means 'every day' whatever the horizon length; it is capped per day to what that day can place, so a thin day relaxes instead of going INFEASIBLE. Variant spellings (channa_dal, gram_dal, cottage_cheese, soppu_moong, allesande, kofta_made_from_lentil) were folded into these canonical values by scripts/protein_key_ingredients.py. Not covered because Bangalore carries no such dish: soya chaap, moong chilla; pesarattu exists but is filed as bread, not one of the five slots.",
+        "name": "stryker_protein_source_daily",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad",
+          "dal"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "daily_min": 1
       }
     ],
     "constant_items": {}
