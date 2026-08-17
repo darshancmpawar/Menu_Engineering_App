@@ -275,6 +275,23 @@ Streamlit customisation/* → PUT /api/v1/client-config/<name>  [api/app.py]
 
 ## 8. Tests (`ikigai_masala-main/tests/`)
 
+**Layout** — 77 files in one flat directory made a subject hard to find (NCR
+alone had 8 scattered across it). Grouped by what a change touches, so the tests
+for one edit sit together:
+
+| Directory | Holds |
+|---|---|
+| `tests/clients/` | per-client logic (DXC, NCR sites, Pune, Chennai, protein/veg-dry rules) **and** the client-config layer |
+| `tests/cities/` | per-city ontology, ruleset and end-to-end plan (`ncr_*`, `pune_*`, `chennai_*`, `city_ontology`) |
+| `tests/rules/` | the rule engine — every rule type, the loader, diagnostics, the solver |
+| `tests/data/` | ontology corrections + the preprocessing pipeline |
+| `tests/platform/` | API, concurrency, rate limit, metrics, logging, **architecture** |
+| `tests/ui/` | formatters, planner view, API client |
+| `tests/` (root) | fixtures (`conftest`, `fake_supabase`, `client_fixtures`) + the three genuinely fleet-wide suites: `test_all_clients_generate`, `test_integration_slow`, `test_p0_fixes` |
+
+Each directory carries an `__init__.py` — `tests/` is a package, so its
+subdirectories must be too or `from tests.fake_supabase import …` breaks.
+
 | File | Target |
 |---|---|
 | `conftest.py` | fixtures (project_root, sample data path) |
