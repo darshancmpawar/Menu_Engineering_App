@@ -56,11 +56,18 @@ class TestCurdSideCurdRiceCooldownExempt:
     """
 
     def test_slots_are_cooldown_exempt_but_not_repeatable(self):
-        # curd_side/curd_rice plus the other small side slots (soup, healthy_rice)
-        # that also repeat only after a full cycle of distinct dishes.
-        for slot in ('curd_side', 'curd_rice', 'soup', 'healthy_rice'):
+        # These repeat only after a full cycle: the cooldown never bans them, but
+        # `unique_items` still makes them distinct within a week.
+        for slot in ('curd_side', 'soup', 'healthy_rice'):
             assert slot in COOLDOWN_EXEMPT_SLOTS      # cooldown never bans them
             assert slot not in REPEATABLE_SLOTS       # unique_items still applies
+
+    def test_curd_and_curd_rice_are_staples(self):
+        """Curd rice is a staple the way steamed rice is — the same bowl every
+        day is what the station serves, not a variety slot. So it is exempt from
+        `unique_items` too, not just the cooldown."""
+        for slot in ('curd', 'curd_rice'):
+            assert slot in REPEATABLE_SLOTS, slot
 
     def _banned_ctx(self, d, items):
         return {'banned_by_date': {d: set(items)}, 'extra_repeatable': {}}

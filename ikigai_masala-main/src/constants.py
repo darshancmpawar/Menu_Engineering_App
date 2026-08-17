@@ -93,7 +93,12 @@ DEFAULT_OFF_SLOTS: Set[str] = {'curd', 'curd_rice'} | set(COMBO_CATEGORIES)
 # unique-items constraint and the item-cooldown pre-filter). ``curd`` is a
 # plain-curd station: the same plain curd is a daily staple, so it must not be
 # starved by cooldown or forced to vary day-to-day by unique_items.
-REPEATABLE_SLOTS: Set[str] = {'curd'}
+# `curd_rice` sits here with `curd` because curd rice is a STAPLE, the way
+# steamed rice is: the same bowl every day is what the station serves, not a
+# variety slot to rotate. It is therefore exempt from `unique_items` as well as
+# the cooldown. (It was only cooldown-exempt before, so `unique_items` still
+# demanded a distinct curd rice per day — ToastTab CHN has 2 and needed 3.)
+REPEATABLE_SLOTS: Set[str] = {'curd', 'curd_rice'}
 
 # Slots exempt from the item-cooldown ban ONLY — unlike REPEATABLE_SLOTS they
 # KEEP unique_items, so they still serve distinct dishes within a week and only

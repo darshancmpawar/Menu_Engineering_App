@@ -36,7 +36,7 @@
         "curd_rice",
         "dessert",
         "bread"
-      ]
+      , "veg_dry"]
     },
     {
       "_comment": "Colour variety. Chennai's list is brown-heavy — 194 of 361 rows (54%) are brown, against 67 red and 34 yellow — so Pune's flat cap of 2 per colour is too tight here: a day drawing 6 colour slots from a 54%-brown pool needs somewhere to put the third brown dish. This uses Bangalore's asymmetric shape instead: every colour capped at 2, with ONE colour allowed to reach 3.",
