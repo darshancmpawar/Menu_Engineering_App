@@ -9,6 +9,14 @@
       "base_slot": "bread",
       "selector": {"cuisine_family": "south_indian"},
       "window_days": 15
+    },
+    {
+      "_comment": "The within-plan half of the pair (CLAUDE.md note 23: the window handles ACROSS plans, the cap handles WITHIN one). Needed because the bread cuisine lock only runs on south/north days — a biryani/chinese/continental/mix day takes a different branch that does not touch bread, so every south bread stays a candidate there. Junglee's week 1 duly served pesarattu on the biryani Wednesday AND malabar_paratha on the south Thursday. With max 1 the single allowed day goes to the south day, which the lock forces anyway. If a counter ever themes two weekdays south this reports a 422 naming the conflict rather than quietly serving two — which is the intended behaviour.",
+      "name": "ncr_south_bread_weekly_max",
+      "type": "selector_frequency",
+      "base_slot": "bread",
+      "selector": {"cuisine_family": "south_indian"},
+      "max": 1
     }
   ]
 }

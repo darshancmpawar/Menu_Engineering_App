@@ -113,6 +113,17 @@ bread pool, so the day serves a chapati rather than starving — pinned by
 `test_ncr_south_bread.py::test_banning_the_family_leaves_the_south_day_a_bread`.
 Shorten `window_days` to 13 for a strict fortnight.
 
+The window is only half of it. It reads history, so it cannot stop two south
+breads inside ONE plan — and the bread cuisine lock runs only on south/north
+days (`ThemeSlotFilterRule.pre_filter_pool` sends biryani, chinese, continental
+and mix days down other branches that never touch bread), so on those days every
+south bread stays a candidate. Junglee's week 1 duly came back with `pesarattu`
+on the biryani Wednesday *and* `malabar_paratha` on the south Thursday. The
+within-plan half is `ncr_south_bread_weekly_max`, a `selector_frequency`
+`max: 1` over the same selector — the pairing CLAUDE.md note 23 describes. With
+it the one allowed day goes to the south day, which the lock forces anyway, and
+the biryani day is back to a roti.
+
 ## The fuzzy-merge reversal (client-requested)
 
 The raw file fuzzy-matched each source dish name to the master at 0.82 string

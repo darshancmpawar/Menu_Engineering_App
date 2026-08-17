@@ -144,6 +144,7 @@ def test_rerun_is_a_noop(ncr, master):
 # weeks.
 
 CADENCE = 'ncr_south_bread_cadence'
+WEEKLY_MAX = 'ncr_south_bread_weekly_max'
 
 
 @pytest.fixture(scope='module')
@@ -165,6 +166,23 @@ def test_cadence_rule_is_valid_and_spans_more_than_a_week(cadence):
         'a window inside one week is enforceable within a plan and does not '
         'need a history read'
     )
+
+
+def test_weekly_cap_pairs_with_the_window(ncr_rules):
+    """The within-plan half of the pair.
+
+    The window only reads history, so it cannot stop two south breads inside
+    ONE plan — and the bread cuisine lock runs only on south/north days, so a
+    biryani/chinese/continental/mix day leaves every south bread a candidate.
+    Junglee's week 1 duly served pesarattu on the biryani Wednesday as well as
+    malabar_paratha on the south Thursday until this cap was added.
+    """
+    caps = [r for r in ncr_rules if r.name == WEEKLY_MAX]
+    assert caps, f'{WEEKLY_MAX} is not in the NCR ruleset'
+    cap = caps[0]
+    assert cap.validate_config(), cap.validation_errors()
+    assert cap.base_slot == 'bread'
+    assert getattr(cap, 'max_days', None) == 1 or cap.config.get('max') == 1
 
 
 def test_cadence_covers_every_south_bread_and_only_breads(cadence, ncr):
