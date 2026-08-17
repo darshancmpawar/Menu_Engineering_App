@@ -1,0 +1,375 @@
+{
+  "Tekion": {
+    "disable": [
+      "deep_fried_coupling"
+    ],
+    "rules": [
+      {
+        "name": "tekion_no_mushroom",
+        "type": "ingredient_ban",
+        "ingredients": [
+          "mushroom"
+        ]
+      },
+      {
+        "name": "tekion_liquid_rice_once",
+        "type": "item_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "flag": "is_liquid_rice"
+        },
+        "min_per_week": 1,
+        "max_per_week": 1
+      },
+      {
+        "name": "tekion_nonveg_mwf",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Non-veg gravy Monday and Wednesday, chicken biryani Friday - Friday is this counter's biryani day (client confirmed, and both sample weeks serve a veg biryani there too). Tuesday and Thursday are blank via tekion_nonveg_mwf. Mon/Wed exclude is_egg_dish because two egg dishes are mis-flagged is_south_chicken_gravy in the ontology.",
+        "name": "tekion_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Chinese Rice & Chinese gravy to be served on Tuesday.' Both sample weeks honour it (Chilli Garlic Fried Rice, Herbed Fried Rice).",
+        "name": "tekion_chinese_rice_tuesday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_chinese_fried_rice",
+                  "is_chinese_carb"
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "The veg-gravy half of the same Tuesday rule.",
+        "name": "tekion_chinese_gravy_tuesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_chinese_veg_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Paneer Gravy every wednesday.' Written '(Lunch & Dinner)'; dinner is out of scope, so this is the whole rule. Both sample weeks serve paneer then.",
+        "name": "tekion_paneer_gravy_wednesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_paneer_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Khichdi every Thursday.' There is no is_khichdi flag; every khichdi in the ontology carries is_liquid_rice, and tekion_liquid_rice_once already caps liquid rice at one a week, so pinning Thursday lands that one there. Both sample weeks serve a khichdi on Thursday.",
+        "name": "tekion_khichdi_thursday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_liquid_rice"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Client: no rice-based bread — only chapati or flavoured chapati. A one-slot slot_composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20), so this pins the single bread cell to the chapati/phulka family. Bangalore carries 47 of them and none is is_rice_bread, so ricebread_gap_10d can no longer bite: the dosa/idli family is simply never chosen.",
+        "name": "tekion_bread_chapati_only",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "name_contains": [
+                "chapati",
+                "chapatti",
+                "phulka"
+              ]
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Chinese Tuesday serves a north or south Indian veg dry, whichever suits the rest of that day's menu — not a gobi manchurian beside the Chinese rice and gravy. Same shape a continental day already has by default (the themed veg is the gravy, the veg dry stays Indian). Per-key merge, so the city rule's exempt_slots are inherited untouched.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ]
+      },
+      {
+        "_comment": "Client's protein-source list: at least one dish a day whose key_ingredient is one of these, anywhere across flavoured rice / veg gravy / veg dry / salad / dal. Selected on key_ingredient because that is how the client specified it. daily_min (not min) so it means 'every day' whatever the horizon length; it is capped per day to what that day can place, so a thin day relaxes instead of going INFEASIBLE. Variant spellings (channa_dal, gram_dal, cottage_cheese, soppu_moong, allesande, kofta_made_from_lentil) were folded into these canonical values by scripts/protein_key_ingredients.py. Not covered because Bangalore carries no such dish: soya chaap, moong chilla; pesarattu exists but is filed as bread, not one of the five slots.",
+        "name": "tekion_protein_source_daily",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad",
+          "dal"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "daily_min": 1
+      },
+      {
+        "_comment": "The protein must not always be the dal. At least 3 days a week carry one OUTSIDE the dal slot — the three ordinary (non-chinese, non-biryani) days. HARD, and `min` is auto-capped to the days that can actually place a match, so it degrades instead of going INFEASIBLE. The chinese and biryani days are pushed for by the companion soft rule rather than mandated here: every day can supply one today, but forcing all five would trade a whole plan for one dish the moment another rule disagrees.",
+        "name": "tekion_protein_outside_dal",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "min": 3
+      },
+      {
+        "_comment": "'these 2 days also can possibly have without breaking rules' — the chinese and biryani days. Soft twin of the floor above: one penalty per day with no non-dal protein, so the solver takes all five whenever nothing else has to give, and yields when something does. priority medium keeps it under the theme and high-tier rules.",
+        "name": "tekion_protein_outside_dal_all_days",
+        "type": "soft_preference",
+        "mode": "prefer_daily",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "priority": "medium"
+      }
+    ],
+    "constant_items": {}
+  }
+}

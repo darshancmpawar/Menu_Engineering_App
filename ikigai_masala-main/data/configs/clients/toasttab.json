@@ -1,0 +1,32 @@
+{
+  "ToastTab": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "buttermilk_twice_weekly",
+        "type": "welcome_drink_buttermilk",
+        "count": 1,
+        "non_consecutive": false
+      },
+      {
+        "name": "toasttab_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "name": "toasttab_mushroom_exact_1",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "mushroom"
+        },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  }
+}

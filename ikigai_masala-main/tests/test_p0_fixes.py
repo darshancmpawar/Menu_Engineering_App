@@ -1539,8 +1539,11 @@ class TestResolvedSampleConflicts:
     """The three sample-vs-rulebook conflicts, as decided by the client."""
 
     def _entry(self, client):
-        import json
-        return json.load(open('data/configs/client_rules.json'))[client]
+        # Reads through the loader rather than a fixed path: the rules moved to
+        # one file per client under data/configs/clients/, and the loader is the
+        # single place that knows how they are assembled.
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        return MenuRuleLoader._read_client_blob()[client]
 
     def test_astrazeneca_serves_curd_not_raita(self):
         e = self._entry('Astrazeneca')

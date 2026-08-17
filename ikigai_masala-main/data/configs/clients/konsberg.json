@@ -1,0 +1,70 @@
+{
+  "Konsberg": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "konsberg_paneer_exact_1",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "_comment": "Sample: Mon/Tue chicken gravy, Wed EGG PEPPER, Thu ghee-roast chicken on its chinese theme day, Fri Mughlai Chicken Biryani. Thursday is left to the theme map rather than pinned.",
+        "name": "konsberg_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {}
+  }
+}

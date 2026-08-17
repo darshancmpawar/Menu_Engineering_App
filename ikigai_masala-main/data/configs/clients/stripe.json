@@ -1,0 +1,17 @@
+{
+  "Stripe": {
+    "_comment": "Bangalore site. Empty theme_map, so the default weekday themes apply and Tuesday is the Chinese day.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Chinese Tuesday serves a north or south Indian veg dry, whichever suits that day's menu.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ]
+      }
+    ],
+    "constant_items": {}
+  }
+}

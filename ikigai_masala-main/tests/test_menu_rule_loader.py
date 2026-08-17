@@ -1,8 +1,22 @@
 """Tests for MenuRuleLoader and BaseMenuRule."""
 
+import json
+
 import pytest
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules.base_menu_rule import BaseMenuRule, MenuRuleType
+
+
+def _write_client(directory, slug, client_name, block):
+    """Write one per-client rules file, the shape the loader reads.
+
+    The client NAME goes inside the file and the filename is cosmetic — the
+    lookup is an exact match against `clients.name`, and names like
+    `Booking.com` or `ToastTab CHN` do not survive a filesystem-safe slug.
+    """
+    path = directory / f'{slug}.json'
+    path.write_text(json.dumps({client_name: block}))
+    return path
 
 
 # Number of rules in the reference (bangalore) ruleset. Asserted rather than
@@ -99,7 +113,10 @@ class TestMenuRuleLoader:
 class TestLoadForClient:
     """Tests for MenuRuleLoader.load_for_client()."""
 
-    def test_missing_file_returns_generic(self, monkeypatch):
+    def test_missing_config_returns_generic(self, monkeypatch):
+        monkeypatch.setattr(
+            'src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR',
+            '/nonexistent/clients')
         monkeypatch.setattr(
             'src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH',
             '/nonexistent/nope.json')
@@ -138,23 +155,18 @@ class TestLoadForClient:
             if not r.validate_config()]
 
     def test_invalid_rule_is_skipped(self, tmp_path):
-        import json
-        bad_file = tmp_path / 'client_rules.json'
-        bad_file.write_text(json.dumps({
-            "TestClient": [
-                {"name": "bad", "type": "nonexistent_type"},
-                {"name": "good", "type": "ingredient_ban", "ingredients": ["egg"]},
-            ]
-        }))
+        _write_client(tmp_path, 'testclient', 'TestClient', [
+            {"name": "bad", "type": "nonexistent_type"},
+            {"name": "good", "type": "ingredient_ban", "ingredients": ["egg"]},
+        ])
         from unittest.mock import patch
-        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(bad_file)):
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
             loader = MenuRuleLoader()
             result = loader.load_for_client('TestClient', [])
         assert len(result) == 1
         assert result[0].name == 'good'
 
     def test_object_form_disable_and_override(self, tmp_path):
-        import json
         from src.menu_rules.welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
         from src.menu_rules.ingredient_ban_rule import IngredientBanRule
         city = MenuRuleLoader().load_from_dict({'rules': [
@@ -163,20 +175,17 @@ class TestLoadForClient:
             {'name': 'keep_me', 'type': 'unique_items'},
             {'name': 'drop_me', 'type': 'unique_items'},
         ]})
-        cfg = tmp_path / 'client_rules.json'
-        cfg.write_text(json.dumps({
-            "Acme": {
-                "disable": ["drop_me"],
-                "rules": [
-                    {"name": "buttermilk_twice_weekly", "type": "welcome_drink_buttermilk",
-                     "count": 1, "non_consecutive": False},
-                    {"name": "acme_ban", "type": "ingredient_ban", "ingredients": ["egg"]},
-                ],
-                "constant_items": {"salad": "green salad"},
-            }
-        }))
+        _write_client(tmp_path, 'acme', 'Acme', {
+            "disable": ["drop_me"],
+            "rules": [
+                {"name": "buttermilk_twice_weekly", "type": "welcome_drink_buttermilk",
+                 "count": 1, "non_consecutive": False},
+                {"name": "acme_ban", "type": "ingredient_ban", "ingredients": ["egg"]},
+            ],
+            "constant_items": {"salad": "green salad"},
+        })
         from unittest.mock import patch
-        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(cfg)):
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
             loader = MenuRuleLoader()
             result = loader.load_for_client('Acme', city)
             consts = loader.get_client_constant_items('Acme')
@@ -188,18 +197,14 @@ class TestLoadForClient:
         assert consts == {"salad": "green salad"}
 
     def test_legacy_list_form_still_appends(self, tmp_path):
-        import json
         city = MenuRuleLoader().load_from_dict({'rules': [
             {'name': 'city_rule', 'type': 'unique_items'},
         ]})
-        cfg = tmp_path / 'client_rules.json'
-        cfg.write_text(json.dumps({
-            "Legacy": [
-                {"name": "extra", "type": "ingredient_ban", "ingredients": ["egg"]},
-            ]
-        }))
+        _write_client(tmp_path, 'legacy', 'Legacy', [
+            {"name": "extra", "type": "ingredient_ban", "ingredients": ["egg"]},
+        ])
         from unittest.mock import patch
-        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(cfg)):
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
             result = MenuRuleLoader().load_for_client('Legacy', city)
         assert [r.name for r in result] == ['city_rule', 'extra']
 
@@ -292,7 +297,6 @@ class TestCityRules:
         standalone for a different reason than Pune's: not a rival rulebook but
         an item list that leaves a third of Bangalore's selectors matching
         nothing — every welcome-drink rule among them."""
-        import json
         raw = json.load(open(f'data/configs/city_rules/{city.lower()}.json'))
         assert 'extends' not in raw
         rules = MenuRuleLoader().load_for_city(city)
@@ -325,7 +329,6 @@ class TestCityRules:
         assert len(MenuRuleLoader().load_for_city(None)) == _CITY_RULE_COUNT
 
     def test_extends_override_and_disable(self, tmp_path):
-        import json
         (tmp_path / 'bangalore.json').write_text(json.dumps({'rules': [
             {'name': 'a', 'type': 'coupling'},
             {'name': 'b', 'type': 'unique_items'},
@@ -339,7 +342,6 @@ class TestCityRules:
         assert names == ['a', 'c']  # b disabled, c appended, bangalore order kept
 
     def test_child_overrides_parent_by_name(self, tmp_path):
-        import json
         (tmp_path / 'bangalore.json').write_text(json.dumps({'rules': [
             {'name': 'cap', 'type': 'selector_frequency',
              'selector': {'flag': 'is_pulao'}, 'max': 1},
@@ -353,9 +355,78 @@ class TestCityRules:
         assert len(rules) == 1 and rules[0].max == 3  # child's max wins
 
     def test_circular_extends_raises(self, tmp_path):
-        import json
         import pytest as _pytest
         (tmp_path / 'a.json').write_text(json.dumps({'extends': 'b', 'rules': []}))
         (tmp_path / 'b.json').write_text(json.dumps({'extends': 'a', 'rules': []}))
         with _pytest.raises(ValueError, match='circular'):
             MenuRuleLoader().load_for_city('a', cities_dir=str(tmp_path))
+
+
+class TestPerClientRuleFiles:
+    """One file per client (`data/configs/clients/<slug>.json`).
+
+    The single `client_rules.json` had grown to 2,453 lines across 36 clients,
+    so every client edit touched the same document. The loader now reads the
+    directory and falls back to the single file only when the directory is
+    absent, so an un-migrated deployment still works.
+    """
+
+    def test_every_live_client_has_its_own_file(self):
+        from pathlib import Path
+        from src.menu_rules.menu_rule_loader import CLIENT_RULES_DIR
+        files = sorted(Path(CLIENT_RULES_DIR).glob('*.json'))
+        assert files, 'no per-client rule files found'
+        blob = MenuRuleLoader._read_client_blob()
+        assert len(blob) == len(files), (
+            f'{len(files)} files but {len(blob)} clients — a file holding two '
+            f'clients, or an empty one')
+
+    def test_each_file_holds_exactly_one_client(self):
+        from pathlib import Path
+        from src.menu_rules.menu_rule_loader import CLIENT_RULES_DIR
+        for path in sorted(Path(CLIENT_RULES_DIR).glob('*.json')):
+            blob = json.loads(path.read_text())
+            assert isinstance(blob, dict), f'{path.name}: not an object'
+            assert len(blob) == 1, (
+                f'{path.name} holds {len(blob)} clients; one file per client')
+
+    def test_a_client_defined_twice_is_an_error(self, tmp_path):
+        """Silent last-one-wins is the same class of bug as a name typo: the
+        rules load as something nobody wrote, and neither file's diff shows it."""
+        _write_client(tmp_path, 'a', 'Duplicated', {'rules': []})
+        _write_client(tmp_path, 'b', 'Duplicated', {'rules': []})
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
+            with pytest.raises(ValueError, match='more than one file'):
+                MenuRuleLoader._read_client_blob()
+
+    def test_the_filename_is_cosmetic_only(self, tmp_path):
+        """A name that cannot be a filename must still resolve."""
+        _write_client(tmp_path, 'whatever', 'ToastTab CHN', {
+            'rules': [{'name': 'x', 'type': 'ingredient_ban',
+                       'ingredients': ['egg']}]})
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
+            got = MenuRuleLoader().load_for_client('ToastTab CHN', [])
+        assert [r.name for r in got] == ['x']
+
+    def test_a_malformed_file_does_not_take_the_others_down(self, tmp_path):
+        (tmp_path / 'broken.json').write_text('{not json')
+        _write_client(tmp_path, 'good', 'Good', {
+            'rules': [{'name': 'ok', 'type': 'ingredient_ban',
+                       'ingredients': ['egg']}]})
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path)):
+            got = MenuRuleLoader().load_for_client('Good', [])
+        assert [r.name for r in got] == ['ok']
+
+    def test_the_legacy_single_file_is_still_read_without_a_directory(self, tmp_path):
+        cfg = tmp_path / 'client_rules.json'
+        cfg.write_text(json.dumps({'Solo': {'rules': [
+            {'name': 'legacy', 'type': 'ingredient_ban', 'ingredients': ['egg']}]}}))
+        from unittest.mock import patch
+        with patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR',
+                   str(tmp_path / 'no_such_dir')), \
+             patch('src.menu_rules.menu_rule_loader.CLIENT_RULES_CONFIG_PATH', str(cfg)):
+            got = MenuRuleLoader().load_for_client('Solo', [])
+        assert [r.name for r in got] == ['legacy']

@@ -1,0 +1,32 @@
+{
+  "Booking.com": {
+    "disable": [
+      "mixedveg_pulao_biryani_weekly"
+    ],
+    "rules": [
+      {
+        "name": "booking_pulao_exact_3",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "flag": "is_pulao"
+        },
+        "min": 3,
+        "max": 3
+      }
+    ],
+    "constant_items": {
+      "bread": "plain chapati",
+      "starter__2": "veg kati roll",
+      "curd": {
+        "monday": "Curd",
+        "tuesday": "Curd",
+        "thursday": "Curd",
+        "friday": "Curd"
+      },
+      "curd_side": {
+        "wednesday": "raita"
+      }
+    }
+  }
+}

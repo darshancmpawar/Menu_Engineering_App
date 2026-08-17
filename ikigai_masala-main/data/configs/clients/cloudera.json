@@ -1,0 +1,49 @@
+{
+  "Cloudera": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "cloudera_paneer_exact_2",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "name": "cloudera_special_bread_1x",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "any_flag": [
+            "is_dosa",
+            "is_paratha"
+          ]
+        },
+        "min": 1,
+        "max": 1
+      },
+      {
+        "_comment": "Monday is egg gravy (sample: Kadai Egg Curry). Other days fall through to the theme map. 'curd rice daily' in healthy_rice is confirmed and pinned via constant_items.",
+        "name": "cloudera_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {
+      "healthy_rice": "curd rice"
+    }
+  }
+}

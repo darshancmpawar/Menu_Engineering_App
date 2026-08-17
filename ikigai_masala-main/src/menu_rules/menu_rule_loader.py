@@ -19,6 +19,17 @@ CLIENT_RULES_CONFIG_PATH = os.getenv(
     str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'client_rules.json'),
 )
 
+# Directory holding ONE file per client (``<slug>.json``), each a single
+# ``{"<client name>": {disable, rules, constant_items, …}}``. This is the source
+# of truth; ``CLIENT_RULES_CONFIG_PATH`` above is the legacy single document and
+# is read only when this directory is missing or empty, so a deployment that has
+# not taken the split keeps working. The single file grew to 2,453 lines across
+# 36 clients, which made every client edit touch the same document.
+CLIENT_RULES_DIR = os.getenv(
+    'CLIENT_RULES_DIR',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'clients'),
+)
+
 # Directory holding one rules file per city (``<city>.json``). A city file may
 # ``"extends"`` another city (by bare name) to inherit its rules and override
 # by rule ``name``; ``DEFAULT_CITY`` is the reference ruleset and the fallback
@@ -284,6 +295,50 @@ class MenuRuleLoader:
 
     @classmethod
     def _read_client_blob(cls) -> Dict[str, Any]:
+        """Every client's override block, keyed by ``clients.name``.
+
+        Reads ``CLIENT_RULES_DIR`` — one file per client, each holding a single
+        top-level ``{"<client name>": {...}}`` — and falls back to the legacy
+        single ``client_rules.json`` when the directory is absent or empty, so a
+        deployment that has not taken the split still works.
+
+        **The client name lives inside the file, not in the filename.** The
+        lookup is an exact byte-for-byte match against ``clients.name`` and a
+        mismatch is silent: every rule for that client loads as zero, /diagnose
+        still reports clean, and a plausible plan comes back having ignored all
+        of them. Names like ``Booking.com``, ``L&T`` and ``ToastTab CHN`` cannot
+        survive a round trip through a filesystem-safe slug, so the filename is
+        cosmetic and the key is authoritative.
+
+        A client defined in two files is a hard error rather than a silent
+        last-one-wins: that is the same class of bug as the name mismatch above,
+        and it would be invisible in a diff of either file.
+        """
+        merged: Dict[str, Any] = {}
+        directory = Path(CLIENT_RULES_DIR)
+        if directory.is_dir():
+            for path in sorted(directory.glob('*.json')):
+                try:
+                    with open(path, 'r') as f:
+                        blob = json.load(f)
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Failed to read %s: %s", path.name, exc)
+                    continue
+                if not isinstance(blob, dict):
+                    logger.warning("%s: expected an object at the top level, "
+                                   "got %s — skipped", path.name,
+                                   type(blob).__name__)
+                    continue
+                for name, block in blob.items():
+                    if name in merged:
+                        raise ValueError(
+                            f"client {name!r} is defined in more than one file "
+                            f"under {directory} (latest: {path.name}); the "
+                            f"loader cannot know which one you meant")
+                    merged[name] = block
+        if merged:
+            return merged
+
         path = Path(CLIENT_RULES_CONFIG_PATH)
         if not path.exists():
             return {}

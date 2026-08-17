@@ -211,17 +211,6 @@ def _is_veg(row) -> bool:
     return True
 
 
-_FLAVOURED_BREAD = re.compile(r"(chapat|thepla|thalipeeth|phulka)")
-
-
-def _is_flavoured_chapati(name: str) -> bool:
-    """A flavoured/infused chapati or thepla (not a plain chapati/phulka)."""
-    n = _norm(name)
-    if "thepla" in n or "thalipeeth" in n:
-        return True
-    return bool(_FLAVOURED_BREAD.search(n)) and n not in (
-        "chapati", "plain_chapatti", "plain_chapati", "phulka",
-        "plain_phulka", "roti")
 
 
 def _cat_mask(df, cat):

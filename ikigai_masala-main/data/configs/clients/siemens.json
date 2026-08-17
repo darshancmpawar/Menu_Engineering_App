@@ -1,0 +1,94 @@
+{
+  "Siemens": {
+    "_comment": "NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet + the 27-Jul / 03-Aug sample weeks. Deferred/outside lunch scope: tetrapack juice (snacks), and brown bread / cut fruit / boiled egg (breakfast) are not lunch slots this engine plans. Kofta 'once per 2 weeks' is capped to <=1/week here (a true fortnightly window needs saved history).",
+    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with 'plain chapati every day' — it links bread to the deep-fried rice/veg-dry family and cannot be satisfied when bread is pinned to plain chapati on this simple North-Indian counter. Not relevant to NCR's menu, so dropped.",
+    "disable": [
+      "deep_fried_coupling"
+    ],
+    "rules": [
+      {
+        "_comment": "Two non-veg in the gravy part. Tuesday = one egg + one chicken; every other day = both chicken. components (default) applies Mon/Wed/Thu/Fri; components_by_weekday overrides Tuesday. Salad (green salad) and bread (plain chapati) are daily constants in the constant_items block below.",
+        "name": "siemens_nonveg_pair_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "primary_protein": "chicken"
+            },
+            "count": 2
+          }
+        ],
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            },
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "One paneer a week (in the veg gravy).",
+        "name": "siemens_paneer_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "One soya a week (soya chaap; primary_protein soya/soy in the veg gravy).",
+        "name": "siemens_soya_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "any_of": [
+            {
+              "primary_protein": "soya"
+            },
+            {
+              "primary_protein": "soy"
+            }
+          ]
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "Kofta at most once a WEEK within a plan (within-plan half of once-per-2-weeks).",
+        "name": "siemens_kofta_max_1",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
+        "max": 1
+      },
+      {
+        "_comment": "Kofta once every 2 WEEKS (14 days) across plans, from saved history: a kofta served in the last 14 days is held off until the window clears. Pairs with siemens_kofta_max_1.",
+        "name": "siemens_kofta_14d_window",
+        "type": "selector_history_window",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
+        "window_days": 14
+      }
+    ],
+    "constant_items": {
+      "_comment": "salad = green salad daily; bread = plain chapati daily.",
+      "salad": "green salad",
+      "bread": "chapati"
+    }
+  }
+}

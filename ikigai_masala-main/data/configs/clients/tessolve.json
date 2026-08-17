@@ -1,0 +1,40 @@
+{
+  "Tessolve": {
+    "disable": [
+      "buttermilk_twice_weekly",
+      "welcome_drink_no_repeat_color"
+    ],
+    "rules": [
+      {
+        "name": "tessolve_nonveg_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "wed"
+        ]
+      },
+      {
+        "name": "tessolve_green_salad_2x",
+        "type": "selector_frequency",
+        "base_slot": "salad",
+        "selector": {
+          "sub_category": "fresh_veg_salad"
+        },
+        "min": 2,
+        "max": 2
+      }
+    ],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "curd": {
+        "monday": "Curd",
+        "tuesday": "Curd",
+        "thursday": "Curd",
+        "friday": "Curd"
+      },
+      "curd_side": {
+        "wednesday": "raita"
+      }
+    }
+  }
+}

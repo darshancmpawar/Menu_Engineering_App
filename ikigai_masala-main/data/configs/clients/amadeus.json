@@ -1,0 +1,18 @@
+{
+  "Amadeus": {
+    "disable": [],
+    "rules": [],
+    "constant_items": {
+      "salad": "green salad",
+      "bread": "plain chapati"
+    },
+    "counters": {
+      "Chinese": {
+        "_comment": "This is a dedicated Chinese/Continental station: every weekday is themed chinese_continental, so on an odd ISO week the theme filter narrows rice to continental rice on all five days. The city-wide 'continental rice at most once a week' cap is meant for a mixed counter that sees continental once, and contradicts a station whose whole purpose is continental — it made this counter INFEASIBLE on every odd week. Scoped off here only; Amadeus's South and North counters still obey it.",
+        "disable": [
+          "continental_rice_weekly"
+        ]
+      }
+    }
+  }
+}
