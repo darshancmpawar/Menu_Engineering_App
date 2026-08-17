@@ -166,6 +166,44 @@
             "count": 1
           }
         ]
+      },
+      {
+        "_comment": "Chinese Tuesday serves a north or south Indian veg dry, whichever suits the rest of that day's menu — not a gobi manchurian beside the Chinese rice and gravy. Same shape a continental day already has by default (the themed veg is the gravy, the veg dry stays Indian). Per-key merge, so the city rule's exempt_slots are inherited untouched.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ]
+      }
+    ],
+    "constant_items": {}
+  },
+  "Stryker": {
+    "_comment": "Bangalore site (not 'Stryker NCR', which is a separate client). Its theme_map is empty, so the default weekday themes apply and Tuesday is the Chinese day.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Chinese Tuesday serves a north or south Indian veg dry, whichever suits that day's menu.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ]
+      }
+    ],
+    "constant_items": {}
+  },
+  "Stripe": {
+    "_comment": "Bangalore site. Empty theme_map, so the default weekday themes apply and Tuesday is the Chinese day.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Chinese Tuesday serves a north or south Indian veg dry, whichever suits that day's menu.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ]
       }
     ],
     "constant_items": {}

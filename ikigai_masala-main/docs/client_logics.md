@@ -281,6 +281,7 @@ rules against.
 | "curd daily except [biryani day] raitha" | TODO | Both weeks: curd Mon–Thu, raitha Friday. |
 | "Chinese Noodles to be served once in a month on Tuesday (Lunch)" | BUILDABLE | The monthly window is now expressible — `selector_history_window` with `window_days: 30` on a noodles selector (gap 4, BUILT); pair it with a Tuesday `slot_composition` component. Not yet configured for Tekion pending confirmation it still applies. |
 | "on any day theme except chinese, if veg dry is south the veg gravy should be north or vice versa, not from same family" | BLOCKED | New gap — cross-slot cuisine complementarity within a day. |
+| "on chinese day veg dry will be either north or south, whichever best suits that day's menu" | DONE | `theme_cuisine_filter` override with `indian_veg_dry_themes: ["chinese"]`. The Chinese day keeps its Chinese rice/gravy/starter/nonveg and the veg dry becomes a regular Indian dish — the shape a continental day already had by default. **Both** regions stay in the pool so the objective picks per day rather than the config pinning one. Same rule for **Stryker** and **Stripe** (both Bangalore, both Chinese on Tuesday via the default theme map). Verified on real solves: Tekion `baby_corn_gobi_kebab`, Stryker `soya_chunk_masala_dry` (both north), Stripe `mixed_veg_palya` (south). |
 
 ### Other sheet notes
 

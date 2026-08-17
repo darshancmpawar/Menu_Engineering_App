@@ -262,12 +262,29 @@ class TestCityRules:
     def test_city_name_is_case_insensitive(self):
         assert len(MenuRuleLoader().load_for_city('bangalore')) == _CITY_RULE_COUNT
 
-    # Chennai left this list once it became standalone; hyderabad.json and
-    # ncr.json are still extends-bangalore stubs.
-    @pytest.mark.parametrize('city', ['Hyderabad', 'NCR'])
+    # Chennai left this list once it became standalone, and NCR once it grew
+    # its own south-bread cadence rules. hyderabad.json is still a bare
+    # extends-bangalore stub.
+    @pytest.mark.parametrize('city', ['Hyderabad'])
     def test_city_without_its_own_rules_inherits_bangalore(self, city):
         # These files extend bangalore with no overrides yet → same ruleset.
         assert len(MenuRuleLoader().load_for_city(city)) == _CITY_RULE_COUNT
+
+    def test_ncr_extends_bangalore_and_adds_its_own(self):
+        """NCR inherits every Bangalore rule and adds the south-bread pair.
+
+        Asserted by name rather than by count: the point of `extends` is that
+        nothing is silently dropped, and a count check cannot tell an added rule
+        from a replaced one.
+        """
+        loader = MenuRuleLoader()
+        parent = {r.name for r in loader.load_for_city('Bangalore')}
+        ncr = {r.name for r in loader.load_for_city('NCR')}
+        assert parent - ncr == set(), f'NCR lost inherited rules: {parent - ncr}'
+        assert ncr - parent == {
+            'ncr_south_bread_cadence', 'ncr_south_bread_weekly_max',
+        }, ncr - parent
+        assert all(r.validate_config() for r in loader.load_for_city('NCR'))
 
     @pytest.mark.parametrize('city', ['Pune', 'Chennai'])
     def test_cities_with_their_own_ruleset_are_standalone(self, city):
