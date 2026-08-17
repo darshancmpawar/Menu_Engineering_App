@@ -141,8 +141,8 @@ class TestPlannedDates:
 class TestStarvedSlots:
     def test_detects_slot_with_fewer_items_than_cells(self):
         m = cp_model.CpModel()
-        cells = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
-        assert 'curd_rice' in starved_slots(cells)
+        cells = _build(m, 5, 'veg_gravy', ['a', 'b', 'c', 'd'])
+        assert 'veg_gravy' in starved_slots(cells)
 
     def test_healthy_slot_not_flagged(self):
         m = cp_model.CpModel()
@@ -154,30 +154,39 @@ class TestStarvedSlots:
         cells = _build(m, 5, 'curd', ['only_one'])
         assert starved_slots(cells) == {}
 
+    def test_curd_rice_is_a_staple_so_never_starved(self):
+        """Curd rice is a staple like steamed rice — the same bowl daily is the
+        offer, not a variety slot. It is therefore exempt from unique_items and
+        can never be 'starved', however few distinct curd rices a city carries
+        (ToastTab CHN has 2 and serves 3 south days)."""
+        m = cp_model.CpModel()
+        cells = _build(m, 5, 'curd_rice', ['a', 'b'])
+        assert starved_slots(cells) == {}
+
 
 class TestUniqueItemsRelaxation:
     def test_strict_uniqueness_is_infeasible_when_starved(self):
         """Baseline: 4 items for 5 days cannot be unique."""
         m = cp_model.CpModel()
-        cells = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
+        cells = _build(m, 5, 'veg_gravy', ['a', 'b', 'c', 'd'])
         for vars_ in _item_to_vars(cells).values():
             m.Add(sum(vars_) <= 1)
         assert _status(m) == 'INFEASIBLE'
 
     def test_rule_relaxes_starved_slot_instead_of_failing(self):
         m = cp_model.CpModel()
-        cells = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
+        cells = _build(m, 5, 'veg_gravy', ['a', 'b', 'c', 'd'])
         rule = UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'})
         with capture_logs('src.menu_rules.unique_items_menu_rule') as msgs:
             rule.apply(m, {}, None,
                        {'cells': cells, 'item_to_vars': _item_to_vars(cells)})
         assert _status(m) in ('OPTIMAL', 'FEASIBLE')
-        assert any('curd_rice' in msg for msg in msgs), msgs
+        assert any('veg_gravy' in msg for msg in msgs), msgs
 
     def test_healthy_slots_keep_strict_uniqueness(self):
         """Relaxing one slot must not license repeats in another."""
         m = cp_model.CpModel()
-        starved = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
+        starved = _build(m, 5, 'veg_gravy', ['a', 'b', 'c', 'd'])
         healthy = _build(m, 5, 'dessert', ['d1', 'd2', 'd3', 'd4', 'd5'])
         cells = starved + healthy
         rule = UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'})
@@ -196,7 +205,7 @@ class TestUniqueItemsRelaxation:
         answer of one item five times.
         """
         m = cp_model.CpModel()
-        cells = _build(m, 5, 'curd_rice', ['a', 'b', 'c', 'd'])
+        cells = _build(m, 5, 'veg_gravy', ['a', 'b', 'c', 'd'])
         rule = UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'})
         ctx = {'cells': cells, 'item_to_vars': _item_to_vars(cells)}
         rule.apply(m, {}, None, ctx)
