@@ -42,8 +42,11 @@ attachments and would have been lost.
    `scripts/expand_side_pools.py` (adds 7 dishes to the small
    healthy_rice/dessert/bread/starter pools in every city),
    and (NCR only) `scripts/ncr_cuisine_corrections.py`,
-   `scripts/ncr_fuzzy_unmerge.py`, `scripts/add_ncr_sambar.py` +
-   `scripts/ncr_bread_misfiles.py` (curries the mapper filed as bread). Each is
+   `scripts/ncr_fuzzy_unmerge.py`, `scripts/add_ncr_sambar.py`,
+   `scripts/ncr_bread_misfiles.py` (curries the mapper filed as bread),
+   `scripts/add_ncr_north_rice.py` (16 north rices outside the weekly-capped
+   mixed-veg pulao family) + `scripts/ncr_south_bread.py` (a real south bread
+   pool for counters with a south-themed weekday). Each is
    idempotent, and each has a test that fails if its corrections are missing.
 
    **Order matters in one place**: run `scripts/merge_duplicate_curd.py` BEFORE

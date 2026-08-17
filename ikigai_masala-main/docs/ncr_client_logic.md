@@ -51,6 +51,51 @@ normaliser (which rebuilds from the raw list and drops hand fixes):
    dish on every non-continental day, and no NCR client runs a continental day.
    Genuinely-continental veg_dry/soup rows are left alone.
 6. **`ncr_fuzzy_unmerge.py`** — see next.
+7. **`ncr_bread_misfiles.py`** — 12 curries/dals/a salad the pipeline filed as
+   `course_type = bread`, so a counter could serve `paneer_jaipuri` (a paneer
+   curry) as the day's roti. Ten re-filed, 2 removed. NCR bread 66 → 54.
+8. **`add_ncr_sambar.py`** — 10 vegetable sambars copied from the master, since
+   the raw list carried none (see item 3).
+9. **`add_ncr_north_rice.py`** — 16 vegetarian North-Indian rices. See
+   "Two pools that ran dry" below.
+10. **`ncr_south_bread.py`** — a real South Indian bread pool. Same section.
+
+## Two pools that ran dry
+
+Both were invisible in a single week's plan and only appeared under the rolling
+endurance sweep (5 consecutive weeks, each saved to history so the 20-day item
+cooldown accumulates — the way the app is actually used). Neither showed up as a
+starved slot: each pool looked healthy in isolation, and the shortfall only
+existed *after* the theme filter narrowed it to one cuisine.
+
+**North rice (6 of 8 counters).** Every NCR counter themes most or all of the
+week `north`, so `rice` narrows to NCR's north-Indian rices. 18 of the original
+23 were mixed-veg pulao or biryani — a family `mixedveg_pulao_biryani_weekly`
+caps at **one day a week** — leaving 5 dishes to cover the other four days. Week
+1 spent all five; from week 2 the cooldown had banned every one and the slot had
+nothing legal left. That is what broke Carelon, Corning, SAEL, Siemens and
+Stryker NCR in week 2, and Airtel Noida in week 3. `add_ncr_north_rice.py`
+imports 16 rices from outside the capped family (rich pulaos, everyday pulaos,
+the khichdi family), taking the usable count 5 → 21 against the ~19 a daily slot
+needs (`floor(20 × 5/7) + 5`).
+
+**South bread (Junglee Games).** Junglee is the only NCR counter with a
+south-themed weekday (Thursday). The bread cuisine lock narrows `bread` to
+`cuisine_family == south_indian`, and NCR carried **three** such rows — `idli`,
+`idly`, `malabar_paratha` — of which the first two are one dish spelled twice
+*and* both `is_rice_bread`. Once week 1 served `malabar_paratha` the cooldown
+left nothing but rice-breads, so the bread slot was **forced**. Coupling rule 38
+(rice-bread ⇒ liquid rice) then demanded a liquid rice, while the same cuisine
+lock offers a south day 16 rices of which **none** is liquid — every khichdi in
+NCR is north Indian. The two demands cannot both hold, so the solve came back
+INFEASIBLE in 14 s (proven, not a timeout) with no slot to point at; dropping
+any one of `item_cooldown_20d`, `theme_cuisine_filter` or `deep_fried_coupling`
+unblocked it, which is the signature of a three-way conflict rather than a data
+gap in one rule. `ncr_south_bread.py` retags the idli/vada rows the pipeline
+left with no cuisine, removes the four duplicate spellings, and imports 12 south
+breads — **6 of them deliberately not rice-bread** (kerala parotta, ragi / wheat
+/ onion-tomato dosa, pesarattu, adai), which is the part that breaks the forced
+chain. South bread 3 → 17, 7 of them non-rice-bread.
 
 ## The fuzzy-merge reversal (client-requested)
 
