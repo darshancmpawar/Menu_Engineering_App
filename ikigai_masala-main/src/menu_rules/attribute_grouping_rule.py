@@ -118,9 +118,59 @@ class AttributeGroupingRule(BaseMenuRule):
                 if len(lits) > self.max_per_group:
                     model.Add(sum(lits) <= self.max_per_group)
 
-        # The same value may not be chosen on two adjacent service days.
+        # The same value may not be chosen on two adjacent service days —
+        # UNLESS neither day has another value to switch to.
+        #
+        # A dal colour may repeat when no other colour is left in the pool. Once
+        # the cooldown has removed the dals already served, a day can be down to
+        # a single colour; banning the adjacency then is not a preference the
+        # solver can honour, it is an arithmetic impossibility that takes the
+        # whole plan down (Amadeus Pune, week 3). If EITHER day still has two
+        # values the ban is satisfiable and stays enforced — the relaxation is
+        # scoped to the pair that genuinely has no choice.
         if self.non_consecutive:
+            day_values: Dict[int, set] = defaultdict(set)
+            for (di, val) in dv_bool:
+                day_values[di].add(val)
+
+            # Horizon-level check first. Alternating over n days needs about
+            # n//2 days drawn from outside the dominant value, and `unique_items`
+            # means each of those must be a DIFFERENT dish. Pune's dal is 32
+            # dishes but 26 are yellow: only 6 non-yellow exist, so from week 3
+            # (once the cooldown has taken the ones already served) alternation
+            # is arithmetically impossible even though each individual day still
+            # shows two colours. Enforcing it then kills the plan, so the rule
+            # stands down for the horizon instead.
+            dishes_by_value: Dict[str, set] = defaultdict(set)
+            for c in cells:
+                if self.base_slot is not None and c.base_slot != self.base_slot:
+                    continue
+                for r in c.cand_rows:
+                    val = _norm_str(str(r.get(self.group_by, '')))
+                    if val:
+                        dishes_by_value[val].add(_norm_str(str(r.get('item', ''))))
+            if dishes_by_value:
+                sizes = sorted((len(v) for v in dishes_by_value.values()),
+                               reverse=True)
+                non_dominant = sum(sizes[1:])
+                if non_dominant < n_days // 2:
+                    logger.info(
+                        "%s: only %d distinct %s outside the dominant value for "
+                        "%d day(s) — alternation is not achievable, so the "
+                        "non-consecutive ban is relaxed for this horizon",
+                        self.name, non_dominant, self.group_by, n_days,
+                    )
+                    return
+
             for di in range(n_days - 1):
+                if max(len(day_values.get(di, ())),
+                       len(day_values.get(di + 1, ()))) < 2:
+                    logger.info(
+                        "%s: days %d/%d have no alternative %s left, so the "
+                        "non-consecutive ban is relaxed for that pair",
+                        self.name, di, di + 1, self.group_by,
+                    )
+                    continue
                 for val in values:
                     a = dv_bool.get((di, val))
                     b = dv_bool.get((di + 1, val))
