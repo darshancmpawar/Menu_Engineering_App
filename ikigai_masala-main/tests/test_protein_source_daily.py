@@ -172,3 +172,82 @@ def test_the_selector_matches_only_listed_key_ingredients(blr):
     got = set(matched['key_ingredient'].map(_norm))
     assert got <= set(PROTEIN_KEY_INGREDIENTS), got - set(PROTEIN_KEY_INGREDIENTS)
     assert len(matched) > 500, f'only {len(matched)} dishes matched'
+
+
+# --------------------------------------------------------------------------
+# Not always the dal
+# --------------------------------------------------------------------------
+# "it's not just in dal, make it in other items also — at least 3 days
+# (non-chinese, non-biryani) will have protein other than dal, and these 2 days
+# also can possibly have without breaking rules."
+#
+# A hard floor of 3 plus a soft push for the rest. A hard every-day floor was
+# the wrong tool: every day CAN supply one today, but mandating all five would
+# trade a whole plan for one dish the moment another rule disagrees, which is
+# the opposite of "without breaking rules".
+
+NON_DAL = ['rice', 'veg_gravy', 'veg_dry', 'salad']
+
+
+@pytest.mark.parametrize('client,slug', [('Tekion', 'tekion'),
+                                         ('Stryker', 'stryker')])
+def test_non_dal_floor_is_three_days(client, slug):
+    from src.menu_rules.menu_rule_loader import MenuRuleLoader
+    loader = MenuRuleLoader()
+    rules = loader.load_for_client(
+        client, loader.load_for_city('Bangalore'), 'Counter 1')
+    got = [r for r in rules if r.name == f'{slug}_protein_outside_dal']
+    assert got, f'{slug}_protein_outside_dal is not loaded'
+    r = got[0]
+    assert r.validate_config(), r.validation_errors()
+    assert r.min == 3
+    assert r.base_slots == set(NON_DAL), 'the dal slot must not count here'
+    assert 'dal' not in r.base_slots
+
+
+@pytest.mark.parametrize('client,slug', [('Tekion', 'tekion'),
+                                         ('Stryker', 'stryker')])
+def test_the_remaining_days_are_a_soft_push_not_a_mandate(client, slug):
+    from src.menu_rules.base_menu_rule import MenuRuleSeverity
+    from src.menu_rules.menu_rule_loader import MenuRuleLoader
+    loader = MenuRuleLoader()
+    rules = loader.load_for_client(
+        client, loader.load_for_city('Bangalore'), 'Counter 1')
+    got = [r for r in rules
+           if r.name == f'{slug}_protein_outside_dal_all_days']
+    assert got, f'{slug}_protein_outside_dal_all_days is not loaded'
+    r = got[0]
+    assert r.validate_config(), r.validation_errors()
+    assert r.mode == 'prefer_daily'
+    assert r.base_slots == set(NON_DAL)
+    assert r.severity is MenuRuleSeverity.SOFT, (
+        'a hard every-day rule would fail the plan rather than yield')
+
+
+def test_prefer_daily_requires_a_selector():
+    from src.menu_rules.soft_preference_rule import SoftPreferenceRule
+    bad = SoftPreferenceRule({'type': 'soft_preference', 'name': 'x',
+                              'mode': 'prefer_daily'})
+    assert not bad.validate_config()
+
+
+def test_soft_preference_base_slot_accepts_a_list():
+    from src.menu_rules.soft_preference_rule import SoftPreferenceRule
+    r = SoftPreferenceRule({
+        'type': 'soft_preference', 'name': 'x', 'mode': 'prefer_daily',
+        'selector': {'key_ingredient': 'paneer'}, 'base_slot': NON_DAL})
+    assert r.base_slots == set(NON_DAL)
+    assert r.base_slot is None
+    one = SoftPreferenceRule({
+        'type': 'soft_preference', 'name': 'x', 'mode': 'prefer_daily',
+        'selector': {'key_ingredient': 'paneer'}, 'base_slot': 'veg_gravy'})
+    assert one.base_slots == {'veg_gravy'} and one.base_slot == 'veg_gravy'
+
+
+def test_non_dal_protein_is_available_on_every_themed_day(blr):
+    """The floor is 3 because the themed days might be thin — but they are not,
+    so the soft push has something to reach for on all five."""
+    ct = blr['course_type'].map(_norm)
+    ki = blr['key_ingredient'].map(_norm)
+    n = int((ct.isin(NON_DAL) & ki.isin(PROTEIN_KEY_INGREDIENTS)).sum())
+    assert n > 300, f'only {n} non-dal protein dishes in the whole city list'

@@ -11,6 +11,13 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     back-to-back).
   * ``avoid_attribute_repeat`` — penalise a slot repeating an attribute value
     across the horizon (soft #1: vary the key ingredient).
+  * ``prefer_daily`` — penalise every day the selector is ABSENT. The soft twin
+    of ``selector_frequency.daily_min``: use the hard floor for the days that
+    must carry it and this for "and the remaining days too, if the rules
+    allow". Tekion/Stryker want a non-dal protein on their three ordinary days
+    (hard) and on the Chinese and biryani days as well when nothing else has to
+    give (soft) — a hard every-day floor there would trade a whole plan for one
+    dish.
 
 Config::
 
@@ -45,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
-    'prefer_day_types',
+    'prefer_day_types', 'prefer_daily',
 })
 
 
@@ -61,8 +68,16 @@ class SoftPreferenceRule(BaseMenuRule):
         self.priority: str = str(rule_config.get('priority', 'medium')).lower()
         _tier = OBJECTIVE_TIER_WEIGHTS.get(self.priority, OBJECTIVE_TIER_WEIGHTS['medium'])
         self.weight: int = int(rule_config.get('weight', _tier))
-        # avoid_consecutive
-        self.base_slot: Optional[str] = rule_config.get('base_slot')
+        # avoid_consecutive / prefer_daily. `base_slot` accepts a name or a
+        # LIST, matching selector_frequency: "a protein somewhere on the plate"
+        # spans slots, and scoping it to one would be a different preference.
+        bs = rule_config.get('base_slot')
+        if isinstance(bs, (list, tuple, set)):
+            self.base_slots: Optional[Set[str]] = {str(x) for x in bs if str(x).strip()}
+            self.base_slot: Optional[str] = None
+        else:
+            self.base_slots = {str(bs)} if bs else None
+            self.base_slot = bs
         self._sel = SelectorFrequencyRule._parse_matcher(rule_config.get('selector'))
         # different_day
         self.base_slot_a: Optional[str] = rule_config.get('base_slot_a')
@@ -105,15 +120,28 @@ class SoftPreferenceRule(BaseMenuRule):
                 errs.append("prefer_day_types requires selector")
             if not self.day_types:
                 errs.append("prefer_day_types requires a non-empty day_types")
+        if self.mode == 'prefer_daily' and not self._sel:
+            errs.append("prefer_daily requires selector")
         return errs
 
     # ----- helpers -----
 
     def _day_slot_lits(self, cells, di, base_slot, matcher):
-        """Item vars in (day di, base_slot) whose row matches `matcher`."""
+        """Item vars in (day di, base_slot) whose row matches `matcher`.
+
+        *base_slot* may be a single name, a set of names, or None for every slot.
+        """
+        if isinstance(base_slot, (set, frozenset)):
+            allowed, single = base_slot, None
+        else:
+            allowed, single = None, base_slot
         out = []
         for c in cells:
-            if c.d_idx != di or (base_slot is not None and c.base_slot != base_slot):
+            if c.d_idx != di:
+                continue
+            if allowed is not None and c.base_slot not in allowed:
+                continue
+            if allowed is None and single is not None and c.base_slot != single:
                 continue
             for v, r in zip(c.x_vars, c.cand_rows):
                 if SelectorFrequencyRule._matches(r, matcher):
@@ -159,7 +187,7 @@ class SoftPreferenceRule(BaseMenuRule):
                 dtype = str(day_types[di] if di < len(day_types) else '').lower()
                 if dtype in self.day_types:
                     continue
-                lits = self._day_slot_lits(cells, di, self.base_slot, self._sel)
+                lits = self._day_slot_lits(cells, di, self.base_slots, self._sel)
                 if not lits:
                     continue
                 h = model.NewBoolVar(f'{self.name}_off_{di}')
@@ -167,10 +195,26 @@ class SoftPreferenceRule(BaseMenuRule):
                 off.append(h)
             return [sum(off) * (-abs(w))] if off else []
 
+        if self.mode == 'prefer_daily':
+            # One penalty per day the selector is absent. Only days that COULD
+            # carry it are scored: penalising a day with no candidate would be a
+            # constant the solver cannot act on, and would drown the days it can.
+            missing = []
+            for di in range(n):
+                lits = self._day_slot_lits(cells, di, self.base_slots, self._sel)
+                if not lits:
+                    continue
+                h = model.NewBoolVar(f'{self.name}_has_{di}')
+                link_any(model, lits, h)
+                gap = model.NewBoolVar(f'{self.name}_gap_{di}')
+                model.Add(gap == 1 - h)
+                missing.append(gap)
+            return [sum(missing) * (-abs(w))] if missing else []
+
         if self.mode == 'avoid_consecutive':
             day_has = {}
             for di in range(n):
-                lits = self._day_slot_lits(cells, di, self.base_slot, self._sel)
+                lits = self._day_slot_lits(cells, di, self.base_slots, self._sel)
                 if lits:
                     h = model.NewBoolVar(f'{self.name}_h_{di}')
                     link_any(model, lits, h)
@@ -193,7 +237,8 @@ class SoftPreferenceRule(BaseMenuRule):
         for di in range(n):
             groups = defaultdict(list)
             for c in cells:
-                if c.d_idx != di or (self.base_slot is not None and c.base_slot != self.base_slot):
+                if c.d_idx != di or (self.base_slots is not None
+                                     and c.base_slot not in self.base_slots):
                     continue
                 for v, r in zip(c.x_vars, c.cand_rows):
                     val = _norm_str(str(r.get(self.group_by, '')))

@@ -239,6 +239,135 @@
           ]
         },
         "daily_min": 1
+      },
+      {
+        "_comment": "The protein must not always be the dal. At least 3 days a week carry one OUTSIDE the dal slot — the three ordinary (non-chinese, non-biryani) days. HARD, and `min` is auto-capped to the days that can actually place a match, so it degrades instead of going INFEASIBLE. The chinese and biryani days are pushed for by the companion soft rule rather than mandated here: every day can supply one today, but forcing all five would trade a whole plan for one dish the moment another rule disagrees.",
+        "name": "tekion_protein_outside_dal",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "min": 3
+      },
+      {
+        "_comment": "'these 2 days also can possibly have without breaking rules' — the chinese and biryani days. Soft twin of the floor above: one penalty per day with no non-dal protein, so the solver takes all five whenever nothing else has to give, and yields when something does. priority medium keeps it under the theme and high-tier rules.",
+        "name": "tekion_protein_outside_dal_all_days",
+        "type": "soft_preference",
+        "mode": "prefer_daily",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "priority": "medium"
       }
     ],
     "constant_items": {}
@@ -319,6 +448,135 @@
           ]
         },
         "daily_min": 1
+      },
+      {
+        "_comment": "The protein must not always be the dal. At least 3 days a week carry one OUTSIDE the dal slot — the three ordinary (non-chinese, non-biryani) days. HARD, and `min` is auto-capped to the days that can actually place a match, so it degrades instead of going INFEASIBLE. The chinese and biryani days are pushed for by the companion soft rule rather than mandated here: every day can supply one today, but forcing all five would trade a whole plan for one dish the moment another rule disagrees.",
+        "name": "stryker_protein_outside_dal",
+        "type": "selector_frequency",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "min": 3
+      },
+      {
+        "_comment": "'these 2 days also can possibly have without breaking rules' — the chinese and biryani days. Soft twin of the floor above: one penalty per day with no non-dal protein, so the solver takes all five whenever nothing else has to give, and yields when something does. priority medium keeps it under the theme and high-tier rules.",
+        "name": "stryker_protein_outside_dal_all_days",
+        "type": "soft_preference",
+        "mode": "prefer_daily",
+        "base_slot": [
+          "rice",
+          "veg_gravy",
+          "veg_dry",
+          "salad"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "chickpea"
+            },
+            {
+              "key_ingredient": "kidney_bean"
+            },
+            {
+              "key_ingredient": "black_eyed_pea"
+            },
+            {
+              "key_ingredient": "green_moong"
+            },
+            {
+              "key_ingredient": "moong_dal"
+            },
+            {
+              "key_ingredient": "masoor_dal"
+            },
+            {
+              "key_ingredient": "toor_dal"
+            },
+            {
+              "key_ingredient": "chana_dal"
+            },
+            {
+              "key_ingredient": "urad_dal"
+            },
+            {
+              "key_ingredient": "urad"
+            },
+            {
+              "key_ingredient": "mixed_dal"
+            },
+            {
+              "key_ingredient": "dal"
+            },
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "peanut"
+            },
+            {
+              "key_ingredient": "besan"
+            }
+          ]
+        },
+        "priority": "medium"
       }
     ],
     "constant_items": {}
