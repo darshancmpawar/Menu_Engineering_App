@@ -2,11 +2,12 @@
 
 NCR (Delhi National Capital Region) is a North Indian city list with non-veg and
 welcome drinks. This documents how its ontology was integrated, what data
-corrections it needed, and the **one decision still open** (per-client pools).
+corrections it needed, and how its pools and per-client logics are wired.
 
 ## The list
 
-`data/raw/city_items/ncr.xlsx` — **1,544 items**, derived by
+`data/raw/city_items/ncr.xlsx` — **1,630 items** (1,544 as imported, plus the
+sambar / north rice / south bread the corrections below added), derived by
 `scripts/normalize_city_ontology.py` from `source_workbooks/NCR_menu_items.xlsx`.
 Unlike Pune/Chennai, the raw file arrived already in the master 135-column schema
 (a mapping pipeline had run — it carries `Mapping_Log`, `Review_Required` and
@@ -17,8 +18,9 @@ Declared categories (`ontology_categories.json`): welcome_drink, soup, salad,
 bread, rice, veg_dry, veg_gravy, starter, dal, dessert, healthy_rice, curd_side,
 nonveg_main. No rasam/sambar — see corrections below.
 
-Ruleset: `configs/city_rules/ncr.json` `extends` Bangalore (no NCR-specific rules
-yet). A real solve produces a coherent North Indian menu from the list with
+Ruleset: `configs/city_rules/ncr.json` `extends` Bangalore and adds one
+NCR-specific rule, `ncr_south_bread_cadence` (see "Two pools that ran dry").
+A real solve produces a coherent North Indian menu from the list with
 non-veg tagged and zero blocking diagnostics (`tests/test_ncr_plan.py`).
 
 ## Data corrections applied
@@ -97,6 +99,20 @@ breads — **6 of them deliberately not rice-bread** (kerala parotta, ragi / whe
 / onion-tomato dosa, pesarattu, adai), which is the part that breaks the forced
 chain. South bread 3 → 17, 7 of them non-rice-bread.
 
+*Cadence.* A real south bread pool would otherwise put a dosa or idli on the
+south day **every** week, because the cuisine lock narrows the slot to them —
+wrong for a North Indian site, where the dosa/idli/parotta family is a treat and
+the daily bread is a chapati. `ncr.json` therefore carries one NCR-specific
+rule, `ncr_south_bread_cadence`: a `selector_history_window` on
+`cuisine_family: south_indian` scoped to `base_slot: bread`, `window_days: 15`.
+With a weekly south day that lands the family about once every three weeks
+(served on day X, the next two south days at X+7 and X+14 fall inside the
+window; X+21 clears it). It is safe by construction: when every south bread is
+banned the cuisine lock finds no south candidate and falls back to the whole
+bread pool, so the day serves a chapati rather than starving — pinned by
+`test_ncr_south_bread.py::test_banning_the_family_leaves_the_south_day_a_bread`.
+Shorten `window_days` to 13 for a strict fortnight.
+
 ## The fuzzy-merge reversal (client-requested)
 
 The raw file fuzzy-matched each source dish name to the master at 0.82 string
@@ -128,20 +144,23 @@ those are split, the existing row kept as the real dish and a fresh row added fo
 the restored one. The other ~177 merges are left as-is (`Review_Required` still
 lists them for the client to eyeball).
 
-## Pools: full-list fallback (no `common`)
+## Pools: the full city list (no `common`)
 
 Every NCR row is tagged to one or more of the **8 real NCR clients** (Stryker,
 Carelon, Junglee Games, Airtel Noida, Sinch, Siemens, SAEL, Corning) and there is
 **no `common` pool**. In the live DB every NCR client has `source_pools = []`.
 Under the old F5 rule that resolved to common-only → an empty menu.
 
-Resolved in `OntologyRepository.filtered_menu_data` (see note 15 / the F5
-section): a client whose eligible subset comes out **empty** falls back to the
-full city list, so all 8 NCR clients plan from the whole NCR ontology today,
-differentiated by their per-client rules (below) rather than by dish pools. The
-per-client `client` tags remain available: assign `source_pools = ['stryker']`
-and that client narrows to its own dishes, and the required-slot check is no
-longer applied to the subset (a slot the client doesn't serve is simply absent).
+NCR is now listed in `src.constants.FULL_POOL_CITIES` alongside Bangalore, so
+**every** NCR client plans from the whole NCR ontology, differentiated by its
+per-client rules (below) rather than by dish pools. That was already the
+observed behaviour, but only by accident: `source_pools = []` resolves to
+common-only, which matches zero NCR rows, and `filtered_menu_data` falls back to
+the full list when a subset comes out empty. Naming the city makes it
+intentional, and it also keeps the whole list for a client who *does* set
+`source_pools` — assigning `['stryker']` no longer drops that client to one
+site's 504 dishes. The per-client `client` tags stay in the workbook; remove
+`'ncr'` from `FULL_POOL_CITIES` to restore per-client narrowing.
 
 ## Client-specific logics
 

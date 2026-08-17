@@ -234,10 +234,21 @@ THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 # roughly a fifth of the list while the rest was unreachable. An all-south
 # counter like L&T saw 9 south desserts where the city holds 69.
 #
+# NCR is here for the same reason, and its list is even more lopsided: it has
+# NO `common` pool at all — all 1,630 rows are tagged to one of eight sites
+# (stryker 504 · carelon 443 · junglee games 353 · airtel noida 273 · sinch 247
+# · siemens 223 · sael 203 · corning 124), with 93 untagged. Every live NCR
+# client already planned from the whole list, but only by accident: their
+# `source_pools = []` resolves to common-only, which matches zero NCR rows, and
+# `filtered_menu_data` falls back to the full list when the subset comes out
+# empty. Naming NCR here makes that intentional rather than incidental, and it
+# also means a client who *does* set `source_pools` keeps the whole list instead
+# of dropping to one site's dishes.
+#
 # Deliberately a city-level switch, not a per-client edit: it is reversible in
 # one line and leaves every client row untouched. Remove a city from this set to
 # restore per-client pools.
-FULL_POOL_CITIES: Set[str] = {'bangalore'}
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'ncr'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.

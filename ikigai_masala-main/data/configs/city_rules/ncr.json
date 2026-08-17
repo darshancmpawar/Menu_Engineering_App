@@ -1,5 +1,14 @@
 {
-  "description": "ncr menu rules — inherits the Bangalore ruleset until ncr-specific rules are defined.",
+  "description": "ncr menu rules — inherits the Bangalore ruleset, plus the NCR-specific south-bread cadence.",
   "extends": "bangalore",
-  "rules": []
+  "rules": [
+    {
+      "_comment": "NCR is a North Indian site: the dosa/idli/parotta family is a treat, not the daily roti. A counter that themes a weekday `south` has its bread locked to cuisine_family=south_indian, which would otherwise serve a south bread EVERY south day (i.e. weekly). This holds the whole family off for 15 days after any one of them is served, so with a weekly south day it lands roughly once every three weeks. When every south bread is banned the cuisine lock finds an empty set and falls back to the full bread pool, so the south day simply serves a chapati/paratha — it can never make the plan INFEASIBLE. Scoped to base_slot=bread so a south *dish* elsewhere on the menu does not trigger it.",
+      "name": "ncr_south_bread_cadence",
+      "type": "selector_history_window",
+      "base_slot": "bread",
+      "selector": {"cuisine_family": "south_indian"},
+      "window_days": 15
+    }
+  ]
 }
