@@ -377,6 +377,8 @@ class TestItemCooldownDiagnose:
     chinese-starter scenario."""
 
     def test_error_when_cooldown_empties_pool(self):
+        # No-repeat is hard, so an emptied pool really is a blocker: report it as
+        # an ERROR naming the slot, and the fix is more dishes for that category.
         d = dt.date(2026, 5, 12)
         pool = pd.DataFrame({'item': ['a', 'b', 'c']})
         ctx = _ctx(
@@ -390,7 +392,6 @@ class TestItemCooldownDiagnose:
         assert len(diags) == 1
         assert diags[0].severity == DiagnosticSeverity.ERROR
         assert diags[0].affected['pool_size_after'] == 0
-        # Crucial: the suggestion is actionable, not generic.
         assert 'cooldown' in diags[0].suggestion.lower()
 
     def test_no_diagnostic_when_pool_still_healthy(self):

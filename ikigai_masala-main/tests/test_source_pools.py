@@ -90,13 +90,37 @@ class TestNoCommonCityFallback:
         assert len(fdf) == len(full_df)
         assert len(fpools['bread']) > 0
 
-    def test_common_city_still_narrows_to_common_only(self):
-        """The fallback must be scoped to the empty case: a city WITH a common
-        pool (Bangalore) keeps common-only narrowing, unchanged."""
+    def test_common_city_still_narrows_to_common_only(self, monkeypatch):
+        """The common-only narrowing still works and is gated ONLY by the
+        FULL_POOL_CITIES switch — flip Bangalore out of it and the old behaviour
+        is back, unchanged.
+
+        It has to be demonstrated this way: Bangalore was the only city with a
+        mixed `client` column, and it is now full-pool by choice. Chennai and
+        Pune are 100% `common`, so narrowing there is a no-op and would prove
+        nothing.
+        """
+        import src.constants as consts
+        monkeypatch.setattr(consts, 'FULL_POOL_CITIES', set(), raising=True)
         repo = self._repo()
         full_df, _ = repo.menu_data('Bangalore')
         bdf, _ = repo.filtered_menu_data('Bangalore', [])
-        assert 0 < len(bdf) < len(full_df)
+        assert 0 < len(bdf) < len(full_df), (
+            'common-only narrowing should return a strict subset once the '
+            'full-pool switch is off')
+
+    def test_full_pool_city_ignores_the_narrowing(self):
+        """Bangalore plans from the whole city list whatever `source_pools` says
+        — an empty list, a token, anything. Removing it from FULL_POOL_CITIES
+        restores per-client pools."""
+        from src.constants import FULL_POOL_CITIES
+        assert 'bangalore' in FULL_POOL_CITIES
+        repo = self._repo()
+        full_df, _ = repo.menu_data('Bangalore')
+        for pools in ([], ['cloudera'], ['icon', 'infineon']):
+            df, _ = repo.filtered_menu_data('Bangalore', pools)
+            assert len(df) == len(full_df), (
+                f'Bangalore with source_pools={pools} should be the full list')
 
     def test_token_pool_builds_even_when_it_misses_a_declared_slot(self):
         """`sael` runs no nonveg_main; before, build_pools raised on the city's

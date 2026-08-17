@@ -120,14 +120,30 @@ class TestEveryRuleIsValidAndMatchesSomething:
 
 
 class TestStaplesThatWouldOtherwiseStarve:
-    """Chennai's spine slots hold 2-4 dishes each and run most days. Without the
-    staple declarations `unique_items` empties them inside a single plan."""
+    """Chennai's spine slots run most days, so a small pool empties inside a
+    single plan unless a staple declaration covers it.
+
+    Two of them have since been deepened on purpose (`scripts/expand_side_pools.py`):
+    `rasam` and `sambar` are NOT cooldown-exempt — a kitchen carries real variety
+    there — so they were fixed with dishes instead of a relaxation. `curd_rice`
+    is still genuinely tiny and still depends on its staple rule.
+    """
 
     @pytest.mark.parametrize('slot,expected_max', [
-        ('rasam', 2), ('curd_rice', 2), ('curd_side', 4),
+        ('curd_rice', 2),
     ])
     def test_the_slot_really_is_that_small(self, chennai_pools, slot, expected_max):
         assert len(chennai_pools[slot]) <= expected_max
+
+    @pytest.mark.parametrize('slot,expected_min', [
+        ('rasam', 22), ('sambar', 22), ('curd_side', 12),
+    ])
+    def test_the_deepened_slots_stayed_deep(self, chennai_pools, slot,
+                                            expected_min):
+        """Guards the top-up: rasam/sambar carry the strict no-repeat rule, so
+        losing these dishes puts ToastTab CHN back to an empty pool in week 3."""
+        assert len(chennai_pools[slot]) >= expected_min, (
+            f'{slot}: {len(chennai_pools[slot])} dishes, need >= {expected_min}')
 
     @pytest.mark.parametrize('slot', ['rasam', 'curd_side', 'curd_rice', 'bread'])
     def test_a_staple_rule_covers_the_slot(self, chennai_rules, chennai_pools, slot):
@@ -202,6 +218,18 @@ class TestBreadIsExemptFromTheCuisineLock:
         pool = pools['bread']
         south = rule.pre_filter_pool(
             pool.copy(), dt.date(2026, 8, 3), 'bread', 'south', {})
-        if len(pool) > 10:      # Pune's pool is 2 chapatis; nothing to narrow
+        # The lock can only narrow if the city HAS south breads. Pune has none by
+        # design — expand_side_pools.py keeps the South breakfast breads
+        # (idli/dosa/adai/uttapam) out of a Maharashtrian city — so the filter's
+        # availability guard leaves its pool whole rather than emptying it. The
+        # old guard keyed on pool size, which silently stopped applying once
+        # Pune's bread pool grew past 10.
+        n_south = (pool['cuisine_family'].astype(str).str.strip().str.lower()
+                   == 'south_indian').sum()
+        if n_south:
             assert len(south) < len(pool), (
                 f'{city} bread should still narrow on a south day')
+        else:
+            assert len(south) == len(pool), (
+                f'{city} has no south bread, so the lock must leave the pool '
+                f'intact rather than empty it')

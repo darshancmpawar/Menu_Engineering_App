@@ -1,6 +1,8 @@
 {
   "Tekion": {
-    "disable": [],
+    "disable": [
+      "deep_fried_coupling"
+    ],
     "rules": [
       {
         "name": "tekion_no_mushroom",
@@ -144,6 +146,26 @@
             }
           ]
         }
+      },
+      {
+        "_comment": "Client: no rice-based bread — only chapati or flavoured chapati. A one-slot slot_composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20), so this pins the single bread cell to the chapati/phulka family. Bangalore carries 47 of them and none is is_rice_bread, so ricebread_gap_10d can no longer bite: the dosa/idli family is simply never chosen.",
+        "name": "tekion_bread_chapati_only",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "name_contains": [
+                "chapati",
+                "chapatti",
+                "phulka"
+              ]
+            },
+            "count": 1
+          }
+        ]
       }
     ],
     "constant_items": {}
@@ -1150,7 +1172,10 @@
         "constant_items": {
           "_comment": "Wednesday only, ONE non-veg main, alternating weekly: Hyd Mutton Biryani one week and Fish Tikka Masala the next, in the same slot (nonveg_main__1). Neither is in the Bangalore ontology (chicken + egg only), so it stamps verbatim. The list value = alternate across ISO weeks (even week -> first, odd -> second); see _resolve_client_constant / CLAUDE.md note 9. The other two non-veg mains and every non-Wednesday day are solved normally.",
           "nonveg_main__1": {
-            "wed": ["Hyd Mutton Biryani", "Fish Tikka Masala"]
+            "wed": [
+              "Hyd Mutton Biryani",
+              "Fish Tikka Masala"
+            ]
           }
         }
       }
@@ -1445,7 +1470,9 @@
         "_comment": "Paneer to be served twice a week.",
         "name": "airtel_paneer_2x",
         "type": "selector_frequency",
-        "selector": { "primary_protein": "paneer" },
+        "selector": {
+          "primary_protein": "paneer"
+        },
         "exact": 2
       },
       {
@@ -1453,13 +1480,18 @@
         "name": "airtel_nonveg_wed_fri",
         "type": "slot_day_restriction",
         "base_slot": "nonveg_main",
-        "allowed_weekdays": ["wed", "fri"]
+        "allowed_weekdays": [
+          "wed",
+          "fri"
+        ]
       },
       {
         "_comment": "Potato dish not to be served more than twice a week.",
         "name": "airtel_potato_max_2",
         "type": "selector_frequency",
-        "selector": { "key_ingredient": "potato" },
+        "selector": {
+          "key_ingredient": "potato"
+        },
         "max": 2
       }
     ]
@@ -1467,7 +1499,9 @@
   "Siemens": {
     "_comment": "NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet + the 27-Jul / 03-Aug sample weeks. Deferred/outside lunch scope: tetrapack juice (snacks), and brown bread / cut fruit / boiled egg (breakfast) are not lunch slots this engine plans. Kofta 'once per 2 weeks' is capped to <=1/week here (a true fortnightly window needs saved history).",
     "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with 'plain chapati every day' — it links bread to the deep-fried rice/veg-dry family and cannot be satisfied when bread is pinned to plain chapati on this simple North-Indian counter. Not relevant to NCR's menu, so dropped.",
-    "disable": ["deep_fried_coupling"],
+    "disable": [
+      "deep_fried_coupling"
+    ],
     "rules": [
       {
         "_comment": "Two non-veg in the gravy part. Tuesday = one egg + one chicken; every other day = both chicken. components (default) applies Mon/Wed/Thu/Fri; components_by_weekday overrides Tuesday. Salad (green salad) and bread (plain chapati) are daily constants in the constant_items block below.",
@@ -1476,12 +1510,27 @@
         "base_slot": "nonveg_main",
         "min_slot_count": 2,
         "components": [
-          { "selector": { "primary_protein": "chicken" }, "count": 2 }
+          {
+            "selector": {
+              "primary_protein": "chicken"
+            },
+            "count": 2
+          }
         ],
         "components_by_weekday": {
           "tue": [
-            { "selector": { "primary_protein": "chicken" }, "count": 1 },
-            { "selector": { "flag": "is_egg_dish" }, "count": 1 }
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            },
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
           ]
         }
       },
@@ -1490,7 +1539,9 @@
         "name": "siemens_paneer_1x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "primary_protein": "paneer" },
+        "selector": {
+          "primary_protein": "paneer"
+        },
         "exact": 1
       },
       {
@@ -1498,7 +1549,16 @@
         "name": "siemens_soya_1x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "any_of": [ { "primary_protein": "soya" }, { "primary_protein": "soy" } ] },
+        "selector": {
+          "any_of": [
+            {
+              "primary_protein": "soya"
+            },
+            {
+              "primary_protein": "soy"
+            }
+          ]
+        },
         "exact": 1
       },
       {
@@ -1506,7 +1566,9 @@
         "name": "siemens_kofta_max_1",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "flag": "is_veg_kofta_gravy" },
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
         "max": 1
       },
       {
@@ -1514,7 +1576,9 @@
         "name": "siemens_kofta_14d_window",
         "type": "selector_history_window",
         "base_slot": "veg_gravy",
-        "selector": { "flag": "is_veg_kofta_gravy" },
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
         "window_days": 14
       }
     ],
@@ -1535,11 +1599,46 @@
         "base_slot": "nonveg_main",
         "min_slot_count": 1,
         "components_by_weekday": {
-          "mon": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
-          "wed": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
-          "fri": [ { "selector": { "primary_protein": "chicken" }, "count": 1 } ],
-          "tue": [ { "selector": { "flag": "is_egg_dish" }, "count": 1 } ],
-          "thu": [ { "selector": { "flag": "is_egg_dish" }, "count": 1 } ]
+          "mon": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ]
         }
       },
       {
@@ -1547,7 +1646,9 @@
         "name": "sinchncr_paneer_1x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "primary_protein": "paneer" },
+        "selector": {
+          "primary_protein": "paneer"
+        },
         "exact": 1
       },
       {
@@ -1555,35 +1656,50 @@
         "name": "sinchncr_flavour_rice_mon_wed",
         "type": "slot_day_restriction",
         "base_slot": "rice",
-        "allowed_weekdays": [ "mon", "wed" ]
+        "allowed_weekdays": [
+          "mon",
+          "wed"
+        ]
       },
       {
         "_comment": "White rice only when there is no flavour rice: Tue/Thu/Fri. (white_rice is the const steamed-rice slot.)",
         "name": "sinchncr_white_rice_tue_thu_fri",
         "type": "slot_day_restriction",
         "base_slot": "white_rice",
-        "allowed_weekdays": [ "tue", "thu", "fri" ]
+        "allowed_weekdays": [
+          "tue",
+          "thu",
+          "fri"
+        ]
       },
       {
         "_comment": "Raita served only on Monday and Friday.",
         "name": "sinchncr_raita_mon_fri",
         "type": "slot_day_restriction",
         "base_slot": "curd_side",
-        "allowed_weekdays": [ "mon", "fri" ]
+        "allowed_weekdays": [
+          "mon",
+          "fri"
+        ]
       },
       {
         "_comment": "Welcome drink only on Tuesday and Thursday.",
         "name": "sinchncr_welcome_drink_tue_thu",
         "type": "slot_day_restriction",
         "base_slot": "welcome_drink",
-        "allowed_weekdays": [ "tue", "thu" ]
+        "allowed_weekdays": [
+          "tue",
+          "thu"
+        ]
       },
       {
         "_comment": "Starter is served only on Wednesday. Inert until a starter slot is added to this counter (slot_count 0 => no cells to restrict); it activates the moment the editor gives the counter a starter category.",
         "name": "sinchncr_starter_wed_only",
         "type": "slot_day_restriction",
         "base_slot": "starter",
-        "allowed_weekdays": [ "wed" ]
+        "allowed_weekdays": [
+          "wed"
+        ]
       },
       {
         "_comment": "The Wednesday starter must be a chaat (only chaats to be served). NCR's chaat starters are sub_category 'chaat_/_tikki' (dhokla, kachori, samosa_chaat) — only 3 today, so add more chaat starters if a 4th consecutive week is needed. Inactive until the starter slot exists (min_slot_count gate).",
@@ -1592,7 +1708,14 @@
         "base_slot": "starter",
         "min_slot_count": 1,
         "components_by_weekday": {
-          "wed": [ { "selector": { "sub_category": "chaat_/_tikki" }, "count": 1 } ]
+          "wed": [
+            {
+              "selector": {
+                "sub_category": "chaat_/_tikki"
+              },
+              "count": 1
+            }
+          ]
         }
       }
     ],
@@ -1610,7 +1733,9 @@
         "name": "junglee_egg_curry_1x",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
-        "selector": { "flag": "is_egg_dish" },
+        "selector": {
+          "flag": "is_egg_dish"
+        },
         "exact": 1
       },
       {
@@ -1618,14 +1743,18 @@
         "name": "junglee_chicken_4x",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
-        "selector": { "primary_protein": "chicken" },
+        "selector": {
+          "primary_protein": "chicken"
+        },
         "min": 4
       },
       {
         "_comment": "Paneer to be served once a week.",
         "name": "junglee_paneer_1x",
         "type": "selector_frequency",
-        "selector": { "primary_protein": "paneer" },
+        "selector": {
+          "primary_protein": "paneer"
+        },
         "exact": 1
       }
     ]
@@ -1634,14 +1763,18 @@
     "_comment": "NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-day sample. Salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules — needs bread slot_count 2, see the config note); rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const slot) Tue only, so flavour rice is blank whenever white rice runs. The 15-day cadences (fish/biryani/sambar) are now enforced across plans via selector_history_window rules that read saved history (paired with within-plan caps where relevant). Still deferred: 'serve a biryani day once/15 days' (positive cadence) and 'biryani not the same week as fish' (week co-occurrence) are not expressible yet; sambar needs the counter switched dal -> dal_sambar to serve it. 'Thursday special' needs the special defined; 'cut fruits' is a breakfast item.",
     "_config_note": "This counter currently has bread slot_count 1. For 'indian bread 2 follows rules' (the second, non-tawa bread the sample shows), set bread to 2 in the editor. At count 1 the pin still holds — tawa roti every day — just with no second bread.",
     "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with pinning bread 1 to tawa roti daily on this simple North-Indian counter; not relevant to NCR, so dropped.",
-    "disable": ["deep_fried_coupling"],
+    "disable": [
+      "deep_fried_coupling"
+    ],
     "rules": [
       {
         "_comment": "Two paneer gravies a week.",
         "name": "strykerncr_paneer_gravy_2x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "primary_protein": "paneer" },
+        "selector": {
+          "primary_protein": "paneer"
+        },
         "exact": 2
       },
       {
@@ -1649,7 +1782,9 @@
         "name": "strykerncr_kofta_gravy_1x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
-        "selector": { "flag": "is_veg_kofta_gravy" },
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
         "exact": 1
       },
       {
@@ -1657,7 +1792,9 @@
         "name": "strykerncr_egg_curry_1x",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
-        "selector": { "flag": "is_egg_dish" },
+        "selector": {
+          "flag": "is_egg_dish"
+        },
         "exact": 1
       },
       {
@@ -1665,7 +1802,9 @@
         "name": "strykerncr_fish_max_1",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
-        "selector": { "flag": "is_fish_dish" },
+        "selector": {
+          "flag": "is_fish_dish"
+        },
         "max": 1
       },
       {
@@ -1673,7 +1812,9 @@
         "name": "strykerncr_fish_15d_window",
         "type": "selector_history_window",
         "base_slot": "nonveg_main",
-        "selector": { "flag": "is_fish_dish" },
+        "selector": {
+          "flag": "is_fish_dish"
+        },
         "window_days": 15
       },
       {
@@ -1681,14 +1822,18 @@
         "name": "strykerncr_biryani_15d_window",
         "type": "selector_history_window",
         "base_slot": "nonveg_main",
-        "selector": { "flag": "is_nonveg_biryani" },
+        "selector": {
+          "flag": "is_nonveg_biryani"
+        },
         "window_days": 15
       },
       {
         "_comment": "A sambar once per 15 days across plans (history window). Matches any sambar dish (course_type sambar — 10 were imported into NCR). Inert until this counter serves sambar (switch dal -> dal_sambar in the editor); then it caps the cadence.",
         "name": "strykerncr_sambar_15d_window",
         "type": "selector_history_window",
-        "selector": { "course_type": "sambar" },
+        "selector": {
+          "course_type": "sambar"
+        },
         "window_days": 15
       },
       {
@@ -1696,36 +1841,58 @@
         "name": "strykerncr_fish_biryani_not_same_week",
         "type": "same_day_exclusion",
         "scope": "week",
-        "selector": { "any_of": [ { "flag": "is_nonveg_biryani" }, { "flag": "is_mixedveg_biryani" } ] },
-        "exclude": { "flag": "is_fish_dish" }
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_nonveg_biryani"
+            },
+            {
+              "flag": "is_mixedveg_biryani"
+            }
+          ]
+        },
+        "exclude": {
+          "flag": "is_fish_dish"
+        }
       },
       {
         "_comment": "Flavour rice on the days white rice is not served: Mon/Wed/Thu/Fri.",
         "name": "strykerncr_flavour_rice_no_tue",
         "type": "slot_day_restriction",
         "base_slot": "rice",
-        "allowed_weekdays": [ "mon", "wed", "thu", "fri" ]
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "thu",
+          "fri"
+        ]
       },
       {
         "_comment": "White rice (const steamed-rice slot) only on Tuesday; flavour rice is blank that day.",
         "name": "strykerncr_white_rice_tue",
         "type": "slot_day_restriction",
         "base_slot": "white_rice",
-        "allowed_weekdays": [ "tue" ]
+        "allowed_weekdays": [
+          "tue"
+        ]
       },
       {
         "_comment": "Green salad is pinned daily in salad 1 (a multi-slot expansion, so the pin is a solved cell, not a whole-slot stamp). Mark it repeatable so unique_items allows the same dish every day.",
         "name": "strykerncr_green_salad_repeatable",
         "type": "repeatable_items",
         "base_slot": "salad",
-        "selector": { "item": "green_salad" }
+        "selector": {
+          "item": "green_salad"
+        }
       },
       {
         "_comment": "Tawa roti is pinned daily in bread 1 — repeatable so it may recur every day.",
         "name": "strykerncr_tawa_roti_repeatable",
         "type": "repeatable_items",
         "base_slot": "bread",
-        "selector": { "item": "tawa_roti" }
+        "selector": {
+          "item": "tawa_roti"
+        }
       }
     ],
     "constant_items": {
@@ -1737,16 +1904,29 @@
   "DXC": {
     "_comment": "Bangalore launch site (created via the launch view). Uses the Bangalore regional ruleset + these DXC logics; the two counters (Veg Lunch, Non Veg Lunch) both carry bread/rice/curd_side so these are client-level. The 'common categories are identical across both counters' requirement is handled by shared_categories below: the planner solves the primary counter and pins its dish for each shared slot into the other counter per day (see docs/client_logics.md gap 1).",
     "_disable_comment": "Two Bangalore base rules contradict DXC's stated logic and must be dropped, not overridden. (1) mixedveg_pulao_biryani_weekly caps combined biryani+pulao at 1 day/week (variety) — DXC wants biryani 3x AND pulao 1x, so the cap is force-violated. (2) curd_raita_logic forces raita on every biryani/pulao day and plain curd otherwise; DXC serves 4 flavoured-rice days but wants raita Mon/Tue/Thu/Fri and plain curd Wed on a single curd_side slot, so the convention collides with the client's explicit weekday schedule (Wed is usually a biryani/pulao day). The theme filter is NOT exempted for rice: biryani is already placeable on north/mix days here (verified), so no override is needed.",
-    "disable": ["mixedveg_pulao_biryani_weekly", "curd_raita_logic"],
+    "disable": [
+      "mixedveg_pulao_biryani_weekly",
+      "curd_raita_logic"
+    ],
     "_shared_categories_comment": "Cross-counter sync: these categories serve the SAME dish on both counters each day (DXC's 'common categories are identical across counters'). The planner solves the primary counter (index 0), then pins its choice for each of these base slots into every other counter on the matching day (client-orchestrated, via /plan's shared_items). white_rice is included because plain steamed rice should also match; add/remove a base slot here to change the shared set.",
-    "shared_categories": ["bread", "rice", "sambar", "rasam", "curd_side", "dessert", "white_rice"],
+    "shared_categories": [
+      "bread",
+      "rice",
+      "sambar",
+      "rasam",
+      "curd_side",
+      "dessert",
+      "white_rice"
+    ],
     "rules": [
       {
         "_comment": "Flavoured rice: biryani at least 3 days a week, even on non-biryani days (the client's 'flavour rice biryani 3x even if not biryani day').",
         "name": "dxc_flavoured_rice_biryani_3x",
         "type": "selector_frequency",
         "base_slot": "rice",
-        "selector": { "flag": "is_mixedveg_biryani" },
+        "selector": {
+          "flag": "is_mixedveg_biryani"
+        },
         "min": 3
       },
       {
@@ -1754,7 +1934,9 @@
         "name": "dxc_flavoured_rice_pulao_1x",
         "type": "selector_frequency",
         "base_slot": "rice",
-        "selector": { "flag": "is_pulao" },
+        "selector": {
+          "flag": "is_pulao"
+        },
         "min": 1
       },
       {
@@ -1762,7 +1944,9 @@
         "name": "dxc_no_south_flavoured_rice",
         "type": "selector_frequency",
         "base_slot": "rice",
-        "selector": { "cuisine_family": "south_indian" },
+        "selector": {
+          "cuisine_family": "south_indian"
+        },
         "max": 0
       },
       {
@@ -1772,7 +1956,12 @@
         "base_slot": "bread",
         "min_slot_count": 1,
         "components": [
-          { "selector": { "sub_category": "plain_chapatti/phulka" }, "count": 1 }
+          {
+            "selector": {
+              "sub_category": "plain_chapatti/phulka"
+            },
+            "count": 1
+          }
         ]
       },
       {
@@ -1780,7 +1969,9 @@
         "name": "dxc_plain_chapati_repeatable",
         "type": "repeatable_items",
         "base_slot": "bread",
-        "selector": { "sub_category": "plain_chapatti/phulka" }
+        "selector": {
+          "sub_category": "plain_chapatti/phulka"
+        }
       },
       {
         "_comment": "Curd side: raita Mon/Tue/Thu/Fri, plain curd on Wednesday. Per-weekday composition on the single curd_side slot; the base curd_raita_logic is disabled above so it does not fight this schedule.",
@@ -1789,11 +1980,46 @@
         "base_slot": "curd_side",
         "min_slot_count": 1,
         "components_by_weekday": {
-          "mon": [ { "selector": { "flag": "is_raita" }, "count": 1 } ],
-          "tue": [ { "selector": { "flag": "is_raita" }, "count": 1 } ],
-          "thu": [ { "selector": { "flag": "is_raita" }, "count": 1 } ],
-          "fri": [ { "selector": { "flag": "is_raita" }, "count": 1 } ],
-          "wed": [ { "selector": { "flag": "is_plain_curd" }, "count": 1 } ]
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_plain_curd"
+              },
+              "count": 1
+            }
+          ]
         }
       }
     ]

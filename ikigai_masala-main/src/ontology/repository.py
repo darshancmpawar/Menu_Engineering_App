@@ -126,6 +126,16 @@ class OntologyRepository:
         df, pools = self.menu_data(city)
         if source_pools is None:
             return df, pools
+        # A city listed in FULL_POOL_CITIES ignores per-client pool narrowing
+        # entirely: every client plans from the whole city list. Bangalore is
+        # there because only 893 of its 4,349 rows carry `common`, and most of
+        # its clients have `source_pools = []` — so they were planning from the
+        # common fifth of the list while the other 3,456 dishes (eight client
+        # pools) sat unreachable. See note 15 in CLAUDE.md.
+        from src.constants import FULL_POOL_CITIES
+        from src.client.client_config import normalize_city
+        if (normalize_city(city) or '').strip().lower() in FULL_POOL_CITIES:
+            return df, pools
         active = get_active_pools(source_pools)
         key = (city_excel_path(city), frozenset(active))
         cached = self._filtered_by_path_and_pools.get(key)

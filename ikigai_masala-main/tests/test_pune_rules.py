@@ -77,17 +77,22 @@ class TestPuneRulesBiteOnPuneData:
     match items in it — and name the ones knowingly inert."""
 
     KNOWN_INERT = {
-        # These three are inert because the Pune list carries NO SUCH DISH — its
-        # bread pool is chapati and phulka. That is a fact about the menu, not a
-        # data gap: the rules are kept so they bite the day a maida, multigrain or
-        # oil-based bread is added.
+        # Only ONE bread rule is still inert: the Pune list carries no multigrain
+        # bread. That is a fact about the menu, not a data gap — the rule is kept
+        # so it bites the day one is added.
+        #
+        # `maida_bread_weekly` and `oil_based_bread_weekly` USED to be inert too,
+        # back when the Pune bread pool was just chapati + phulka. Deepening it
+        # (scripts/expand_side_pools.py: butter_naan / tawa_kulcha are maida,
+        # palak_poori is oil-based) activated both — which is the point of having
+        # written them. Their weekly caps now genuinely shape Pune's menus, so a
+        # re-import that dropped those breads would silently switch two rulebook
+        # rules back off; this set is what catches that.
         #
         # (`black_chana_gravy_weekly` and `leafy_veg_dry_weekly` were inert too,
         # for the opposite reason — the dishes existed but the flags were 0.
         # scripts/pune_flag_corrections.py fixed that, and this set is what stops
         # a re-import from silently undoing it.)
-        'maida_bread_weekly',
-        'oil_based_bread_weekly',
         'multigrain_bread_non_consecutive',
     }
 
@@ -162,18 +167,22 @@ class TestPuneRulesBiteOnPuneData:
                     f"{value!r} — re-run scripts/pune_flag_corrections.py"
                 )
 
-    def test_chapati_exemption_matches_the_whole_bread_pool(self, pune_pools):
-        """Pune's bread slot is chapati + phulka only. If the exemption stopped
-        covering one of them, the 20-day cooldown would empty the slot in week 2
-        — the failure R36 exists to prevent."""
+    def test_chapati_exemption_covers_the_plain_staples(self, pune_pools):
+        """R36: the two plain staples (chapati + phulka) may repeat, so the
+        20-day cooldown never empties them. The pool now also carries flavoured
+        chapatis (expand_side_pools.py) — those are ordinary variety, NOT
+        staples, so the exemption must cover exactly the two plain ones and no
+        more (a flavoured chapati repeating daily would be wrong)."""
         _df, pools = pune_pools
         bread = pools['bread']
         rule = next(
             r for r in MenuRuleLoader().load_for_city('Pune')
             if r.name == 'plain_chapati_may_repeat'
         )
-        covered = [r['item'] for _i, r in bread.iterrows() if rule._row_matches(r)]
-        assert sorted(covered) == sorted(bread['item'].tolist())
+        covered = {r['item'] for _i, r in bread.iterrows() if rule._row_matches(r)}
+        assert covered == {'chapati', 'phulka'}, covered
+        # the flavoured chapatis exist in the pool but are not exempt
+        assert 'methi_chapati' in set(bread['item']) and 'methi_chapati' not in covered
 
 
 class TestColorVarietyRule:
@@ -312,6 +321,8 @@ class TestRepeatableItemsRule:
         without = cooldown.pre_filter_pool(pool, d, 'bread', 'north', banned)
         assert list(without['item']) == []
 
+        # With the declaration the two plain staples are exempt outright, so
+        # both remain available every day — which is R36's actual payoff.
         declared = {'extra_repeatable': {
             'bread': [self._rule().repeatable_item_flags()['bread']]}}
         with_decl = cooldown.pre_filter_pool(
@@ -319,8 +330,17 @@ class TestRepeatableItemsRule:
         assert sorted(with_decl['item']) == ['chapati', 'phulka']
 
     def test_declaration_is_slot_scoped_in_the_cooldown(self):
-        """A bread declaration must not exempt the same dish in another slot."""
-        pool = pd.DataFrame([{'item': 'chapati', 'is_plain_phulka_chapathi': 1}])
+        """A bread declaration must not exempt the same dish in another slot.
+
+        Two rows so the distinction stays visible: only `chapati` is cooled
+        down, so in `bread` the declaration keeps it (2 remain) while in `rice`
+        it is banned like any ordinary dish (1 remains) — the never-starve
+        fallback doesn't fire because a candidate is still available.
+        """
+        pool = pd.DataFrame([
+            {'item': 'chapati', 'is_plain_phulka_chapathi': 1},
+            {'item': 'butter_naan', 'is_plain_phulka_chapathi': 0},
+        ])
         d = dt.date(2026, 8, 3)
         ctx = {
             'banned_by_date': {d: {'chapati'}},
@@ -329,8 +349,10 @@ class TestRepeatableItemsRule:
         }
         cooldown = ItemCooldownMenuRule(
             {'name': 'cd', 'type': 'item_cooldown', 'cooldown_days': 20})
-        assert len(cooldown.pre_filter_pool(pool, d, 'bread', 'north', ctx)) == 1
-        assert len(cooldown.pre_filter_pool(pool, d, 'rice', 'north', ctx)) == 0
+        in_bread = cooldown.pre_filter_pool(pool, d, 'bread', 'north', ctx)
+        assert sorted(in_bread['item']) == ['butter_naan', 'chapati']
+        in_rice = cooldown.pre_filter_pool(pool, d, 'rice', 'north', ctx)
+        assert list(in_rice['item']) == ['butter_naan']
 
     def test_solver_collects_the_declaration(self):
         """MenuSolver._declared_repeatable is the single collection point both

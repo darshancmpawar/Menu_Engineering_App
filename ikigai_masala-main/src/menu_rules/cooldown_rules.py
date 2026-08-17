@@ -23,7 +23,9 @@ from ortools.sat.python import cp_model
 
 from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
-from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS, repeatable_row
+from src.constants import (
+    BASE_SLOT_NAMES, REPEATABLE_SLOTS, COOLDOWN_EXEMPT_SLOTS, repeatable_row,
+)
 from .base_menu_rule import (
     BaseMenuRule,
     Diagnostic,
@@ -100,24 +102,34 @@ class ItemCooldownMenuRule(BaseMenuRule):
                         filter_context: Dict[str, Any]) -> pd.DataFrame:
         # Repeatable slots (e.g. the plain-curd station) are never cooled down —
         # the same staple is meant to recur, so history bans don't apply.
-        if base_slot in REPEATABLE_SLOTS:
+        # COOLDOWN_EXEMPT_SLOTS (curd_side/curd_rice) are exempt from the ban too,
+        # but KEEP unique_items: small condiment pools must not be drained empty
+        # by the 20-day hard ban, yet should still vary within the week and only
+        # repeat once every distinct dish is used (freshness rotates them).
+        if base_slot in REPEATABLE_SLOTS or base_slot in COOLDOWN_EXEMPT_SLOTS:
             return pool
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
-        if banned and len(pool) > 0:
-            drop = pool['item'].isin(banned)
-            # A staple item recurs by design, so the 20-day window never bans it
-            # — same exemption the plain-curd slot gets above, applied per item
-            # instead of per slot. Two sources, both honoured: the ontology-wide
-            # flags in constants (the chicken kebab) and the per-city/per-client
-            # `repeatable_items` declarations the solver collects (Pune's plain
-            # chapati). Skipping the declared set would leave a "may repeat"
-            # exemption that unique_items honours and the cooldown quietly
-            # doesn't — which starves the slot a week later instead of now.
-            declared = filter_context.get('extra_repeatable') or {}
-            staple = self._staple_mask(pool, base_slot, declared)
-            pool = pool[~(drop & ~staple)]
-        return pool
+        if not banned or len(pool) == 0:
+            return pool
+        # A staple item recurs by design, so the 20-day window never bans it
+        # — same exemption the plain-curd slot gets above, applied per item
+        # instead of per slot. Two sources, both honoured: the ontology-wide
+        # flags in constants (the chicken kebab) and the per-city/per-client
+        # `repeatable_items` declarations the solver collects (Pune's plain
+        # chapati). Skipping the declared set would leave a "may repeat"
+        # exemption that unique_items honours and the cooldown quietly
+        # doesn't — which starves the slot a week later instead of now.
+        declared = filter_context.get('extra_repeatable') or {}
+        staple = self._staple_mask(pool, base_slot, declared)
+        # No-repeat is HARD. A cooled-down dish is removed outright and the rule
+        # never "borrows back" a recent dish to fill a gap: repetition is allowed
+        # only for the slots that declare it (REPEATABLE_SLOTS /
+        # COOLDOWN_EXEMPT_SLOTS above) or for a dish declared a staple. If that
+        # empties a slot, the answer is more dishes in the ontology for that
+        # category — not a quietly repeated menu.
+        drop = pool['item'].isin(banned) & ~staple
+        return pool[~drop]
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -161,7 +173,7 @@ class ItemCooldownMenuRule(BaseMenuRule):
             for base in base_slots:
                 if (d, base) in ctx.skip_cells:
                     continue
-                if base in REPEATABLE_SLOTS:
+                if base in REPEATABLE_SLOTS or base in COOLDOWN_EXEMPT_SLOTS:
                     continue  # exempt from cooldown, so no cooldown diagnostic
                 if base not in ctx.pools:
                     continue
@@ -180,6 +192,9 @@ class ItemCooldownMenuRule(BaseMenuRule):
                 slot_label = base.replace('_', ' ')
 
                 if remaining == 0:
+                    # A real blocker: no-repeat is hard, so an emptied pool has
+                    # nothing left to serve and the solve is INFEASIBLE. The fix
+                    # is more dishes in this category for this city.
                     diags.append(Diagnostic(
                         rule=self.name,
                         rule_type=self.rule_type.value,
@@ -193,10 +208,10 @@ class ItemCooldownMenuRule(BaseMenuRule):
                             f"Pool is empty after cooldown."
                         ),
                         suggestion=(
-                            f"Lower cooldown_days for this rule, add more "
-                            f"{slot_label} items to the ontology, or choose "
-                            f"a later start date so recent history falls "
-                            f"outside the cooldown window."
+                            f"Add more {slot_label} items to this city's "
+                            f"ontology (a slot needs roughly one dish per "
+                            f"working day in the {self.cooldown_days}-day "
+                            f"window), or lower cooldown_days for this rule."
                         ),
                         affected={
                             'date': d.isoformat(),

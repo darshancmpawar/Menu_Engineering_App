@@ -1,5 +1,22 @@
 {
-  "description": "ncr menu rules — inherits the Bangalore ruleset until ncr-specific rules are defined.",
+  "description": "ncr menu rules — inherits the Bangalore ruleset, plus the NCR-specific south-bread cadence.",
   "extends": "bangalore",
-  "rules": []
+  "rules": [
+    {
+      "_comment": "NCR is a North Indian site: the dosa/idli/parotta family is a treat, not the daily roti. A counter that themes a weekday `south` has its bread locked to cuisine_family=south_indian, which would otherwise serve a south bread EVERY south day (i.e. weekly). This holds the whole family off for 15 days after any one of them is served, so with a weekly south day it lands roughly once every three weeks. When every south bread is banned the cuisine lock finds an empty set and falls back to the full bread pool, so the south day simply serves a chapati/paratha — it can never make the plan INFEASIBLE. Scoped to base_slot=bread so a south *dish* elsewhere on the menu does not trigger it.",
+      "name": "ncr_south_bread_cadence",
+      "type": "selector_history_window",
+      "base_slot": "bread",
+      "selector": {"cuisine_family": "south_indian"},
+      "window_days": 15
+    },
+    {
+      "_comment": "The within-plan half of the pair (CLAUDE.md note 23: the window handles ACROSS plans, the cap handles WITHIN one). Needed because the bread cuisine lock only runs on south/north days — a biryani/chinese/continental/mix day takes a different branch that does not touch bread, so every south bread stays a candidate there. Junglee's week 1 duly served pesarattu on the biryani Wednesday AND malabar_paratha on the south Thursday. With max 1 the single allowed day goes to the south day, which the lock forces anyway. If a counter ever themes two weekdays south this reports a 422 naming the conflict rather than quietly serving two — which is the intended behaviour.",
+      "name": "ncr_south_bread_weekly_max",
+      "type": "selector_frequency",
+      "base_slot": "bread",
+      "selector": {"cuisine_family": "south_indian"},
+      "max": 1
+    }
+  ]
 }

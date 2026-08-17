@@ -146,6 +146,9 @@ class TestItemCooldownEdgeCases:
         assert len(result) == 0
 
     def test_all_items_banned(self):
+        """No-repeat is hard: a cooled-down dish is removed outright, even if
+        that empties the slot. The fix for an empty pool is more dishes in the
+        ontology, never a quietly repeated menu."""
         rule = ItemCooldownMenuRule({"name": "cd", "type": "item_cooldown"})
         pool = pd.DataFrame({'item': ['a', 'b']})
         d = dt.date(2026, 3, 24)

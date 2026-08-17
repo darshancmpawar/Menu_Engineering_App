@@ -93,7 +93,30 @@ DEFAULT_OFF_SLOTS: Set[str] = {'curd', 'curd_rice'} | set(COMBO_CATEGORIES)
 # unique-items constraint and the item-cooldown pre-filter). ``curd`` is a
 # plain-curd station: the same plain curd is a daily staple, so it must not be
 # starved by cooldown or forced to vary day-to-day by unique_items.
-REPEATABLE_SLOTS: Set[str] = {'curd'}
+# `curd_rice` sits here with `curd` because curd rice is a STAPLE, the way
+# steamed rice is: the same bowl every day is what the station serves, not a
+# variety slot to rotate. It is therefore exempt from `unique_items` as well as
+# the cooldown. (It was only cooldown-exempt before, so `unique_items` still
+# demanded a distinct curd rice per day — ToastTab CHN has 2 and needed 3.)
+REPEATABLE_SLOTS: Set[str] = {'curd', 'curd_rice'}
+
+# Slots exempt from the item-cooldown ban ONLY — unlike REPEATABLE_SLOTS they
+# KEEP unique_items, so they still serve distinct dishes within a week and only
+# repeat once every distinct dish has been used ("once everything is done").
+#
+# The curd/raita side (``curd_side``), curd-rice station (``curd_rice``), ``soup``
+# and ``healthy_rice`` are condiment/side slots with small pools (2-13 distinct
+# dishes). The 20-day cooldown is a hard ban, so over a multi-week run it empties
+# these pools and the solve goes INFEASIBLE — a fleet sweep found this drained
+# ~18 counters by week 2-3. They are sides, not variety centrepieces, so the
+# cross-week no-repeat window is wrong for them: dropping the hard ban lets the
+# pool stay full, while unique_items still varies them within the week and the
+# soft freshness objective rotates least-recently-served first across weeks — so
+# they only repeat once the whole cycle of distinct dishes is used. Pan-India
+# (global), mirroring how plain ``curd`` is already cooldown-exempt.
+COOLDOWN_EXEMPT_SLOTS: Set[str] = {
+    'curd_side', 'curd_rice', 'soup', 'healthy_rice',
+}
 
 # The two yogurt-side categories are mutually exclusive on a single counter:
 # a counter serves EITHER plain curd OR the curd/raita side, never both. The
@@ -119,10 +142,18 @@ CONSTANT_ITEMS: Dict[str, str] = {
     'chutney': 'chutney',
 }
 
+# Slots the day's theme must NOT hard-filter by cuisine. `dessert` and
+# `curd_side` are here because a sweet or a raita does not have to match the
+# day's region: serve the region's own when there is a good one, otherwise any
+# is fine. Hard-narrowing them starved single-theme counters — L&T's all-south
+# lunch saw 4 south desserts and 3 south raitas for a 5-day week and went
+# INFEASIBLE, while Bangalore held 256 desserts. They are also in
+# THEME_FALLBACK_SLOTS, which keeps "own region first" as a *preference*.
 EXEMPT_FROM_CUISINE: Set[str] = {
     'welcome_drink', 'dal', 'sambar', 'rasam',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
     'starter', 'soup', 'salad', 'healthy_rice', 'curd_rice',
+    'dessert', 'curd_side',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
@@ -184,7 +215,40 @@ PULAO_SUBCATS: Set[str] = {
     'millet_pulao', 'mixed_grain_pulao',
 }
 
-THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry'}
+# Slots whose pool is NOT hard-filtered by cuisine but which still *prefer* the
+# day's region: the solver samples the theme-matching items first and pays a
+# fallback penalty when it has to reach outside. That is "fit its own region
+# first, otherwise take one from another region" — the rule for `dessert` and
+# `curd_side`, which have no regional obligation but should still read as local
+# when the city carries a suitable dish.
+THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
+
+# Cities where EVERY client plans from the whole city list, ignoring the
+# per-client `source_pools` narrowing (F5).
+#
+# Bangalore is here because the narrowing was costing far more than it bought:
+# only 893 of its 4,349 rows carry `common`, the other 3,456 sit in eight
+# client pools (healthineers 1,870 · continental 752 · cloudera 666 ·
+# infineon 463 · zscalar 300 · amadeus 297 · computacenter 256 · icon 103), and
+# most Bangalore clients have `source_pools = []` — so they were planning from
+# roughly a fifth of the list while the rest was unreachable. An all-south
+# counter like L&T saw 9 south desserts where the city holds 69.
+#
+# NCR is here for the same reason, and its list is even more lopsided: it has
+# NO `common` pool at all — all 1,630 rows are tagged to one of eight sites
+# (stryker 504 · carelon 443 · junglee games 353 · airtel noida 273 · sinch 247
+# · siemens 223 · sael 203 · corning 124), with 93 untagged. Every live NCR
+# client already planned from the whole list, but only by accident: their
+# `source_pools = []` resolves to common-only, which matches zero NCR rows, and
+# `filtered_menu_data` falls back to the full list when the subset comes out
+# empty. Naming NCR here makes that intentional rather than incidental, and it
+# also means a client who *does* set `source_pools` keeps the whole list instead
+# of dropping to one site's dishes.
+#
+# Deliberately a city-level switch, not a per-client edit: it is reversible in
+# one line and leaves every client row untouched. Remove a city from this set to
+# restore per-client pools.
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'ncr'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.
