@@ -3,17 +3,13 @@
     "disable": [
       "curd_raita_logic"
     ],
-    "rules": [
+    "use": [
       {
-        "name": "astra_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
+        "ref": "paneer_once_a_week",
+        "as": "astra_paneer_exact_1"
       }
     ],
+    "rules": [],
     "constant_items": {
       "curd_side": "Curd",
       "bread": "plain chapati"

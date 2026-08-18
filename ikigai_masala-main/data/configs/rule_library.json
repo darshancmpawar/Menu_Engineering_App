@@ -1,0 +1,239 @@
+{
+  "_doc": [
+    "Reusable rule components — the shelf a client picks from.",
+    "",
+    "A client file references one by name instead of restating its body:",
+    "",
+    "    \"use\": [",
+    "      \"paneer_once_a_week\",",
+    "      {\"ref\": \"selector_once_a_week\", \"as\": \"acme_mushroom_1x\",",
+    "       \"with\": {\"selector\": {\"primary_protein\": \"mushroom\"}}}",
+    "    ]",
+    "",
+    "A bare string uses the component as-is and takes its name. The object form",
+    "renames it (`as`) and shallow-merges `with` over the template per key, the",
+    "same semantics client rules already use to override a city rule — so a",
+    "component covers a family of requirements without a templating language.",
+    "",
+    "This exists because the same body was copy-pasted across clients: 'paneer",
+    "once a week' appeared verbatim in ELEVEN client files, 'mushroom once a",
+    "week' in four, 'plain chapati twice a week' in three. Each copy is a place",
+    "the wording can drift, and a fix to one is a fix to one.",
+    "",
+    "A component is only worth adding when a SECOND client needs it. One client",
+    "with an unusual requirement writes an ordinary rule in its own file."
+  ],
+
+  "paneer_once_a_week": {
+    "_doc": "Exactly one paneer dish across the week, anywhere on the counter.",
+    "type": "selector_frequency",
+    "selector": {"primary_protein": "paneer"},
+    "min": 1,
+    "max": 1
+  },
+
+  "paneer_twice_a_week": {
+    "_doc": "Exactly two paneer dishes across the week.",
+    "type": "selector_frequency",
+    "selector": {"primary_protein": "paneer"},
+    "min": 2,
+    "max": 2
+  },
+
+  "selector_once_a_week": {
+    "_doc": [
+      "Exactly one dish of some family across the week. Override `selector`",
+      "(and `base_slot` to scope it) — used for mushroom, baby corn, soya."
+    ],
+    "type": "selector_frequency",
+    "selector": {"primary_protein": "mushroom"},
+    "min": 1,
+    "max": 1
+  },
+
+  "selector_weekly_max": {
+    "_doc": [
+      "A family may appear on at most N days a week. Override `selector` and",
+      "`max`; add `base_slot` to scope it to one station."
+    ],
+    "type": "selector_frequency",
+    "selector": {"key_ingredient": "potato"},
+    "max": 1
+  },
+
+  "bread_chapati_only": {
+    "_doc": [
+      "The Indian bread slot is a chapati or phulka, every day.",
+      "A one-slot `slot_composition` component IS 'this slot must be a matching",
+      "dish' (CLAUDE.md note 20) — `fixed_daily_item` is the wrong tool, it only",
+      "makes the dish CONSISTENT and leaves the solver free to serve something",
+      "else. Self-gates on a single-bread counter."
+    ],
+    "type": "slot_composition",
+    "base_slot": "bread",
+    "min_slot_count": 1,
+    "max_slot_count": 1,
+    "components": [
+      {"selector": {"name_contains": ["chapati", "chapatti", "phulka"]},
+       "count": 1}
+    ]
+  },
+
+  "plain_chapati_twice_a_week": {
+    "_doc": "Plain chapati/phulka on exactly two days; other days vary.",
+    "type": "selector_frequency",
+    "base_slot": "bread",
+    "selector": {"flag": "is_plain_phulka_chapathi"},
+    "min": 2,
+    "max": 2
+  },
+
+  "plain_chapati_is_a_staple": {
+    "_doc": [
+      "Plain chapati may run on consecutive days — it is a staple, not a",
+      "variety slot. Needed by any client that pins or mandates it daily:",
+      "without the declaration `unique_items` forbids the repeat and the",
+      "counter goes INFEASIBLE (CLAUDE.md note 18)."
+    ],
+    "type": "repeatable_items",
+    "base_slot": "bread",
+    "selector": {"name_contains": ["plain_chapati", "plain_phulka", "phulka"]}
+  },
+
+  "indian_veg_dry_on_chinese_day": {
+    "_doc": [
+      "On the Chinese day the veg dry is a regular north or south Indian dish,",
+      "not a manchurian — the themed veg is the gravy. Both regions stay in the",
+      "pool so the objective picks whichever suits the day."
+    ],
+    "type": "theme_slot_filter",
+    "name": "theme_cuisine_filter",
+    "indian_veg_dry_themes": ["chinese"]
+  },
+
+  "nonveg_on_weekdays": {
+    "_doc": [
+      "The non-veg station runs only on the listed weekdays. Override",
+      "`allowed_weekdays` (lowercase 3-letter names)."
+    ],
+    "type": "slot_day_restriction",
+    "base_slot": "nonveg_main",
+    "allowed_weekdays": ["mon", "wed", "fri"]
+  },
+
+  "egg_dish_once_a_week": {
+    "_doc": "Exactly one egg dish in the non-veg slot across the week.",
+    "type": "selector_frequency",
+    "base_slot": "nonveg_main",
+    "selector": {"flag": "is_egg_dish"},
+    "exact": 1
+  },
+
+  "pulao_three_days_a_week": {
+    "_doc": "Exactly three pulao days in the flavoured-rice slot.",
+    "type": "selector_frequency",
+    "base_slot": "rice",
+    "selector": {"flag": "is_pulao"},
+    "min": 3,
+    "max": 3
+  },
+
+  "protein_source_daily": {
+    "_doc": [
+      "At least one dish a day whose key_ingredient is a protein source, from",
+      "flavoured rice / veg gravy / veg dry / salad / dal. `daily_min` (not",
+      "`min`) so it means EVERY day whatever the horizon length."
+    ],
+    "type": "selector_frequency",
+    "base_slot": ["rice", "veg_gravy", "veg_dry", "salad", "dal"],
+    "selector": {"any_of": [
+      {"key_ingredient": "chickpea"}, {"key_ingredient": "kidney_bean"},
+      {"key_ingredient": "black_eyed_pea"}, {"key_ingredient": "green_moong"},
+      {"key_ingredient": "moong_dal"}, {"key_ingredient": "masoor_dal"},
+      {"key_ingredient": "toor_dal"}, {"key_ingredient": "chana_dal"},
+      {"key_ingredient": "urad_dal"}, {"key_ingredient": "urad"},
+      {"key_ingredient": "mixed_dal"}, {"key_ingredient": "dal"},
+      {"key_ingredient": "paneer"}, {"key_ingredient": "soy"},
+      {"key_ingredient": "peanut"}, {"key_ingredient": "besan"}
+    ]},
+    "daily_min": 1
+  },
+
+  "protein_outside_dal_three_days": {
+    "_doc": [
+      "The protein must not always be the dal: at least 3 days carry one from",
+      "rice / veg gravy / veg dry / salad. Pair with",
+      "`protein_outside_dal_other_days` for the remaining days."
+    ],
+    "type": "selector_frequency",
+    "base_slot": ["rice", "veg_gravy", "veg_dry", "salad"],
+    "selector": {"any_of": [
+      {"key_ingredient": "chickpea"}, {"key_ingredient": "kidney_bean"},
+      {"key_ingredient": "black_eyed_pea"}, {"key_ingredient": "green_moong"},
+      {"key_ingredient": "moong_dal"}, {"key_ingredient": "masoor_dal"},
+      {"key_ingredient": "toor_dal"}, {"key_ingredient": "chana_dal"},
+      {"key_ingredient": "urad_dal"}, {"key_ingredient": "urad"},
+      {"key_ingredient": "mixed_dal"}, {"key_ingredient": "dal"},
+      {"key_ingredient": "paneer"}, {"key_ingredient": "soy"},
+      {"key_ingredient": "peanut"}, {"key_ingredient": "besan"}
+    ]},
+    "min": 3
+  },
+
+  "protein_outside_dal_other_days": {
+    "_doc": [
+      "Soft companion to the floor above: take the remaining days too whenever",
+      "no other rule has to give. A hard every-day floor would trade a whole",
+      "plan for one dish."
+    ],
+    "type": "soft_preference",
+    "mode": "prefer_daily",
+    "base_slot": ["rice", "veg_gravy", "veg_dry", "salad"],
+    "selector": {"any_of": [
+      {"key_ingredient": "chickpea"}, {"key_ingredient": "kidney_bean"},
+      {"key_ingredient": "black_eyed_pea"}, {"key_ingredient": "green_moong"},
+      {"key_ingredient": "moong_dal"}, {"key_ingredient": "masoor_dal"},
+      {"key_ingredient": "toor_dal"}, {"key_ingredient": "chana_dal"},
+      {"key_ingredient": "urad_dal"}, {"key_ingredient": "urad"},
+      {"key_ingredient": "mixed_dal"}, {"key_ingredient": "dal"},
+      {"key_ingredient": "paneer"}, {"key_ingredient": "soy"},
+      {"key_ingredient": "peanut"}, {"key_ingredient": "besan"}
+    ]},
+    "priority": "medium"
+  },
+
+  "nonveg_chicken_only": {
+    "_doc": [
+      "The non-veg station serves chicken only — no egg, mutton or fish.",
+      "Expressed as a ban on the others rather than a chicken mandate, so a day",
+      "the station is off is not forced to carry one."
+    ],
+    "type": "selector_frequency",
+    "base_slot": "nonveg_main",
+    "selector": {"any_of": [
+      {"flag": "is_egg_dish"}, {"primary_protein": "egg"},
+      {"primary_protein": "mutton"}, {"primary_protein": "lamb"},
+      {"primary_protein": "fish"}, {"primary_protein": "prawn"},
+      {"flag": "is_seafood"}
+    ]},
+    "max": 0
+  },
+
+  "curd_rice_once_a_week": {
+    "_doc": "Curd rice appears on exactly one day in the healthy-rice slot.",
+    "type": "selector_frequency",
+    "base_slot": "healthy_rice",
+    "selector": {"flag": "is_curd_rice"},
+    "exact": 1
+  },
+
+  "nonveg_dry_once_a_week": {
+    "_doc": "One dry (non-gravy) non-veg dish across the week.",
+    "type": "selector_frequency",
+    "base_slot": "nonveg_main",
+    "selector": {"any_of": [
+      {"flag": "is_nonveg_dry"}, {"flag": "is_tandoor_nonveg_dry"}
+    ]},
+    "min": 1
+  }
+}

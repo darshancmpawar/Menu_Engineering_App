@@ -4,26 +4,17 @@
       "buttermilk_twice_weekly",
       "welcome_drink_no_repeat_color"
     ],
-    "rules": [
+    "use": [
       {
-        "name": "planview_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
+        "ref": "paneer_once_a_week",
+        "as": "planview_paneer_exact_1"
       },
       {
-        "name": "planview_mushroom_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "mushroom"
-        },
-        "min": 1,
-        "max": 1
+        "ref": "selector_once_a_week",
+        "as": "planview_mushroom_exact_1"
       }
     ],
+    "rules": [],
     "constant_items": {
       "welcome_drink": "buttermilk",
       "nonveg_main__2": "boiled egg"

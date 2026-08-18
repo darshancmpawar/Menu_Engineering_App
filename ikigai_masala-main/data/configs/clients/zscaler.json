@@ -5,6 +5,12 @@
       "potato_veg_gravy_weekly",
       "potato_veg_dry_weekly"
     ],
+    "use": [
+      {
+        "ref": "selector_once_a_week",
+        "as": "zscaler_mushroom_exact_1"
+      }
+    ],
     "rules": [
       {
         "name": "zscaler_biryani_pulao_rice_2x",
@@ -35,15 +41,6 @@
         "ingredients": [
           "potato"
         ]
-      },
-      {
-        "name": "zscaler_mushroom_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "mushroom"
-        },
-        "min": 1,
-        "max": 1
       },
       {
         "name": "zscaler_babycorn_exact_1",

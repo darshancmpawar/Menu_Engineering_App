@@ -3,16 +3,13 @@
     "disable": [
       "nonveg_main_daily_pair"
     ],
-    "rules": [
+    "use": [
       {
-        "name": "ikea_paneer_exact_2",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 2,
-        "max": 2
-      },
+        "ref": "paneer_twice_a_week",
+        "as": "ikea_paneer_exact_2"
+      }
+    ],
+    "rules": [
       {
         "name": "ikea_no_egg_nonveg",
         "type": "ingredient_ban",

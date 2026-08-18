@@ -1,0 +1,46 @@
+{
+  "Moengage": {
+    "_comment": "Bangalore site (its clients.city is NULL — see scripts/backfill_client_city.sql). Mutton once a month is NOT configured: Bangalore carries zero mutton dishes.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "selector_weekly_max",
+        "as": "moengage_aloo_once_a_week",
+        "with": {
+          "selector": {
+            "key_ingredient": "potato"
+          },
+          "max": 1
+        }
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "Banned in the main course: pumpkin, brinjal, yam and bisi bele bath. ingredient_ban matches key_ingredient AND primary_protein; the bath is a named dish, so it is banned by name in the rice slot.",
+        "name": "moengage_banned_ingredients",
+        "type": "ingredient_ban",
+        "ingredients": [
+          "pumpkin",
+          "brinjal",
+          "eggplant",
+          "yam",
+          "elephant_yam"
+        ]
+      },
+      {
+        "_comment": "Bisi bele bath by name — it is a dish, not an ingredient.",
+        "name": "moengage_no_bisibele_bath",
+        "type": "selector_frequency",
+        "selector": {
+          "name_contains": [
+            "bisibele",
+            "bisi_bele",
+            "bise_bele"
+          ]
+        },
+        "max": 0
+      }
+    ],
+    "constant_items": {}
+  }
+}

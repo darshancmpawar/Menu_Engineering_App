@@ -1,16 +1,13 @@
 {
   "Cloudera": {
     "disable": [],
-    "rules": [
+    "use": [
       {
-        "name": "cloudera_paneer_exact_2",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 2,
-        "max": 2
-      },
+        "ref": "paneer_twice_a_week",
+        "as": "cloudera_paneer_exact_2"
+      }
+    ],
+    "rules": [
       {
         "name": "cloudera_special_bread_1x",
         "type": "selector_frequency",

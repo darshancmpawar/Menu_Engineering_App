@@ -1,16 +1,17 @@
 {
   "Infenion": {
     "disable": [],
-    "rules": [
+    "use": [
       {
-        "name": "infenion_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
+        "ref": "paneer_once_a_week",
+        "as": "infenion_paneer_exact_1"
       },
+      {
+        "ref": "nonveg_on_weekdays",
+        "as": "infenion_nonveg_mon_wed_fri"
+      }
+    ],
+    "rules": [
       {
         "name": "infenion_north_south_bread",
         "type": "slot_composition",
@@ -71,17 +72,6 @@
             }
           ]
         }
-      },
-      {
-        "_comment": "Non-veg is served three days a week; Tuesday and Thursday are blank.",
-        "name": "infenion_nonveg_mon_wed_fri",
-        "type": "slot_day_restriction",
-        "base_slot": "nonveg_main",
-        "allowed_weekdays": [
-          "mon",
-          "wed",
-          "fri"
-        ]
       }
     ],
     "constant_items": {}

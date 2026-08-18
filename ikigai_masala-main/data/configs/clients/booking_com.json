@@ -3,16 +3,57 @@
     "disable": [
       "mixedveg_pulao_biryani_weekly"
     ],
+    "use": [
+      {
+        "ref": "pulao_three_days_a_week",
+        "as": "booking_pulao_exact_3"
+      },
+      {
+        "ref": "plain_chapati_is_a_staple",
+        "as": "booking_plain_chapati_is_a_staple"
+      },
+      {
+        "ref": "paneer_once_a_week",
+        "as": "booking_paneer_1x"
+      },
+      {
+        "ref": "curd_rice_once_a_week",
+        "as": "booking_curd_rice_1x"
+      },
+      {
+        "ref": "nonveg_chicken_only",
+        "as": "booking_chicken_only"
+      },
+      {
+        "ref": "nonveg_dry_once_a_week",
+        "as": "booking_nonveg_dry_1x"
+      }
+    ],
     "rules": [
       {
-        "name": "booking_pulao_exact_3",
+        "_comment": "Ragi buttermilk once a week in the welcome drink.",
+        "name": "booking_ragi_buttermilk_1x",
         "type": "selector_frequency",
-        "base_slot": "rice",
+        "base_slot": "welcome_drink",
         "selector": {
-          "flag": "is_pulao"
+          "name_contains": [
+            "ragi"
+          ]
         },
-        "min": 3,
-        "max": 3
+        "exact": 1
+      },
+      {
+        "_comment": "A scoop of ice cream once a week in the dessert slot. The client asked for it to behave like white rice or curd rice — a fixed weekly item rather than a rotating choice.",
+        "name": "booking_ice_cream_1x",
+        "type": "selector_frequency",
+        "base_slot": "dessert",
+        "selector": {
+          "name_contains": [
+            "ice_cream",
+            "icecream"
+          ]
+        },
+        "exact": 1
       }
     ],
     "constant_items": {
@@ -27,6 +68,7 @@
       "curd_side": {
         "wednesday": "raita"
       }
-    }
+    },
+    "_comment": "Already covered elsewhere, so deliberately NOT duplicated here: 'indian bread chapati daily' is the `bread` constant pin below; 'raita on the biryani day, plain curd otherwise' is the curd/curd_side pins below; 'live is starter items' is how the menu import files the Live row. Tuesday-continental needs the counter's theme_map changed (a DB value), not a rule."
   }
 }

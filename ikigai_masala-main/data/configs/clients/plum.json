@@ -1,45 +1,25 @@
 {
   "Plum": {
     "disable": [],
+    "use": [
+      {
+        "ref": "pulao_three_days_a_week",
+        "as": "plum_pulao_exact_3"
+      },
+      {
+        "ref": "plain_chapati_twice_a_week",
+        "as": "plum_chapati_exact_2"
+      },
+      {
+        "ref": "paneer_once_a_week",
+        "as": "plum_paneer_exact_1"
+      },
+      {
+        "ref": "selector_once_a_week",
+        "as": "plum_mushroom_exact_1"
+      }
+    ],
     "rules": [
-      {
-        "name": "plum_pulao_exact_3",
-        "type": "selector_frequency",
-        "base_slot": "rice",
-        "selector": {
-          "flag": "is_pulao"
-        },
-        "min": 3,
-        "max": 3
-      },
-      {
-        "name": "plum_chapati_exact_2",
-        "type": "selector_frequency",
-        "base_slot": "bread",
-        "selector": {
-          "flag": "is_plain_phulka_chapathi"
-        },
-        "min": 2,
-        "max": 2
-      },
-      {
-        "name": "plum_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
-      },
-      {
-        "name": "plum_mushroom_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "mushroom"
-        },
-        "min": 1,
-        "max": 1
-      },
       {
         "_comment": "Every Friday is a chicken gravy or dry. Which second day carries the other non-veg service is not yet specified, so no day restriction is applied.",
         "name": "plum_nonveg_by_weekday",

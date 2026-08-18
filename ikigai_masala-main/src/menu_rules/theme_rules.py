@@ -287,6 +287,22 @@ class ThemeSlotFilterRule(BaseMenuRule):
         self.indian_veg_dry_themes: Set[str] = {
             str(t).strip().lower() for t in themes if str(t).strip()
         }
+        # General form: {theme: [slots that stay Indian on that theme day]}.
+        # `indian_veg_dry_themes` is the veg_dry-only shorthand and folds into
+        # it, so the three clients already using that key are unchanged.
+        # Clario needs the other half — "Chinese items are restricted to the veg
+        # dry and the flavoured rice", i.e. the gravy, starter and non-veg stay
+        # Indian. Expressing that as a frequency cap does not work: the theme
+        # filter NARROWS those slots to chinese, so a `max: 0` on chinese is
+        # forced past on the themed day and the counter goes INFEASIBLE
+        # (CLAUDE.md note 9e). It has to be the filter that stands down.
+        self.indian_slots_by_theme: Dict[str, Set[str]] = {
+            t: {'veg_dry'} for t in self.indian_veg_dry_themes
+        }
+        for theme, slots in (rule_config.get('indian_slots_by_theme') or {}).items():
+            key = str(theme).strip().lower()
+            self.indian_slots_by_theme.setdefault(key, set()).update(
+                str(s).strip() for s in slots if str(s).strip())
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
@@ -313,6 +329,10 @@ class ThemeSlotFilterRule(BaseMenuRule):
         # 'mix', 'holiday', 'normal' — no theme filtering
         return pool
 
+    def _stays_indian(self, base_slot: str, day_type: str) -> bool:
+        """True when *base_slot* is declared to stay Indian on a *day_type* day."""
+        return base_slot in self.indian_slots_by_theme.get(day_type, ())
+
     def _exclude_offtheme_cuisines(self, pool: pd.DataFrame, base_slot: str,
                                    day_type: str) -> pd.DataFrame:
         """Drop Chinese / Continental dishes on days that aren't their theme,
@@ -331,8 +351,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
         # for it, never in veg_dry even on the chinese day itself. Same shape as
         # the continental clause below: the themed veg is the gravy and the veg
         # dry stays Indian.
-        if day_type != 'chinese' or (base_slot == 'veg_dry'
-                                     and 'chinese' in self.indian_veg_dry_themes):
+        if day_type != 'chinese' or self._stays_indian(base_slot, 'chinese'):
             drop = drop | (cf == 'chinese')
         # Continental dishes only on continental days — AND never in veg_dry:
         # on a continental day the continental veg is the gravy, and the veg_dry
@@ -393,7 +412,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
         # chinese dishes are already gone from the pool by then
         # (_exclude_offtheme_cuisines), so this only has to avoid narrowing the
         # slot to the chinese-style heuristic below and pick a region instead.
-        if base_slot == 'veg_dry' and 'chinese' in self.indian_veg_dry_themes:
+        if self._stays_indian(base_slot, 'chinese'):
             return self._indian_veg_dry(pool, cfg)
 
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)
@@ -426,6 +445,8 @@ class ThemeSlotFilterRule(BaseMenuRule):
         return pool
 
     def _filter_biryani(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
+        if self._stays_indian(base_slot, 'biryani'):
+            return self._indian_veg_dry(pool, cfg)
         flag_col = _BIRYANI_FLAG_MAP.get(base_slot)
         if flag_col and flag_col in pool.columns:
             filtered = pool[pool[flag_col].map(_to_bool01) == 1]
@@ -620,7 +641,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
             # heuristic here instead would report a phantom "0 items match the
             # chinese filter" WARNING for a slot the solver never filters that
             # way — the report and the solve have to agree.
-            if base_slot == 'veg_dry' and 'chinese' in self.indian_veg_dry_themes:
+            if self._stays_indian(base_slot, 'chinese'):
                 if cuisine_col not in pool.columns:
                     return None
                 cuisines = pool[cuisine_col].map(_norm_str)

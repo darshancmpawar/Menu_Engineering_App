@@ -5,6 +5,12 @@
       "buttermilk_twice_weekly",
       "welcome_drink_no_repeat_color"
     ],
+    "use": [
+      {
+        "ref": "plain_chapati_twice_a_week",
+        "as": "vector_plain_chapati_2x"
+      }
+    ],
     "rules": [
       {
         "name": "vector_dessert_wed_only",
@@ -13,16 +19,6 @@
         "allowed_weekdays": [
           "wed"
         ]
-      },
-      {
-        "name": "vector_plain_chapati_2x",
-        "type": "selector_frequency",
-        "base_slot": "bread",
-        "selector": {
-          "flag": "is_plain_phulka_chapathi"
-        },
-        "min": 2,
-        "max": 2
       }
     ],
     "constant_items": {

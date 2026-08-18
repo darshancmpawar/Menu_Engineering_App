@@ -12,7 +12,7 @@ import pandas as pd
 from .column_mapper import _norm_str
 from src.constants import (
     SLOT_SUFFIX_SEP, BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS, COMBO_CATEGORIES,
-    NONVEG_PROTEINS, NONVEG_SLOT,
+    NONVEG_PROTEINS, NONVEG_SLOTS,
 )
 
 
@@ -31,8 +31,13 @@ def _nonveg_mask(frame: pd.DataFrame) -> pd.Series:
 
 # course_type -> slot mapping for simple 1:1 cases
 _SIMPLE_MAPPING: Dict[str, Set[str]] = {
-    'welcome_drink': {'welcome_drink', 'infused_water'},
+    # `infused_water` is its own course_type now (Booking's detox-water list),
+    # so it must NOT alias to welcome_drink any more — an infused-water slot
+    # filled from the welcome-drink pool is not the category that was asked for.
+    'welcome_drink': {'welcome_drink'},
+    'infused_water': {'infused_water'},
     'soup': {'soup'},
+    'nonveg_soup': {'nonveg_soup'},
     'salad': {'salad'},
     'starter': {'starter'},
     'bread': {'bread'},
@@ -186,7 +191,7 @@ class PoolBuilder:
         # serve a non-veg dish, even if the ontology mis-files one (e.g. an egg
         # fried rice under course_type=rice).
         for slot, pool in pools.items():
-            if slot == NONVEG_SLOT or len(pool) == 0:
+            if slot in NONVEG_SLOTS or len(pool) == 0:
                 continue
             pools[slot] = pool[~_nonveg_mask(pool)].copy()
 

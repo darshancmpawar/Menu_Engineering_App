@@ -1,10 +1,14 @@
 {
   "Stryker NCR": {
     "_comment": "NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-day sample. Salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules — needs bread slot_count 2, see the config note); rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const slot) Tue only, so flavour rice is blank whenever white rice runs. The 15-day cadences (fish/biryani/sambar) are now enforced across plans via selector_history_window rules that read saved history (paired with within-plan caps where relevant). Still deferred: 'serve a biryani day once/15 days' (positive cadence) and 'biryani not the same week as fish' (week co-occurrence) are not expressible yet; sambar needs the counter switched dal -> dal_sambar to serve it. 'Thursday special' needs the special defined; 'cut fruits' is a breakfast item.",
-    "_config_note": "This counter currently has bread slot_count 1. For 'indian bread 2 follows rules' (the second, non-tawa bread the sample shows), set bread to 2 in the editor. At count 1 the pin still holds — tawa roti every day — just with no second bread.",
-    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with pinning bread 1 to tawa roti daily on this simple North-Indian counter; not relevant to NCR, so dropped.",
     "disable": [
       "deep_fried_coupling"
+    ],
+    "use": [
+      {
+        "ref": "egg_dish_once_a_week",
+        "as": "strykerncr_egg_curry_1x"
+      }
     ],
     "rules": [
       {
@@ -24,16 +28,6 @@
         "base_slot": "veg_gravy",
         "selector": {
           "flag": "is_veg_kofta_gravy"
-        },
-        "exact": 1
-      },
-      {
-        "_comment": "Egg gravy once a week (mostly Wednesday, not compulsory — day left to the solver).",
-        "name": "strykerncr_egg_curry_1x",
-        "type": "selector_frequency",
-        "base_slot": "nonveg_main",
-        "selector": {
-          "flag": "is_egg_dish"
         },
         "exact": 1
       },
@@ -135,6 +129,8 @@
         }
       }
     ],
+    "_config_note": "This counter currently has bread slot_count 1. For 'indian bread 2 follows rules' (the second, non-tawa bread the sample shows), set bread to 2 in the editor. At count 1 the pin still holds — tawa roti every day — just with no second bread.",
+    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with pinning bread 1 to tawa roti daily on this simple North-Indian counter; not relevant to NCR, so dropped.",
     "constant_items": {
       "_comment": "salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules).",
       "salad__1": "green salad",

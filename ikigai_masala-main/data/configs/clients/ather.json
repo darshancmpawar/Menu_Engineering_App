@@ -3,6 +3,12 @@
     "disable": [
       "liquid_desserts_twice_nonconsecutive"
     ],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "ather_paneer_exact_1"
+      }
+    ],
     "rules": [
       {
         "name": "ather_dessert_thu_only",
@@ -11,15 +17,6 @@
         "allowed_weekdays": [
           "thu"
         ]
-      },
-      {
-        "name": "ather_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
       }
     ],
     "constant_items": {

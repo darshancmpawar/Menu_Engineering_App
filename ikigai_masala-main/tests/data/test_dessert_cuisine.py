@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 
+from functools import lru_cache
+
 import pandas as pd
 import pytest
 
@@ -25,8 +27,17 @@ from scripts.dessert_cuisine_corrections import (
 CITIES = ['bangalore', 'chennai', 'pune']
 
 
-def _read(city):
+@lru_cache(maxsize=None)
+def _read_cached(city):
     return pd.read_excel(os.path.join(CITY_ITEMS, f'{city}.xlsx'))
+
+
+def _read(city):
+    """Cached: the workbook is read 17 times across this file and each parse of
+    a 4,900-row x 135-column sheet costs ~5s, which was 100s of the run for no
+    benefit. Callers only read, so one frame can be shared — `.copy()` first if
+    you ever need to mutate."""
+    return _read_cached(city)
 
 
 @pytest.mark.parametrize('city', CITIES)

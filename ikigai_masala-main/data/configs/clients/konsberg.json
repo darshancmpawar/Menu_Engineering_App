@@ -1,16 +1,13 @@
 {
   "Konsberg": {
     "disable": [],
-    "rules": [
+    "use": [
       {
-        "name": "konsberg_paneer_exact_1",
-        "type": "selector_frequency",
-        "selector": {
-          "primary_protein": "paneer"
-        },
-        "min": 1,
-        "max": 1
-      },
+        "ref": "paneer_once_a_week",
+        "as": "konsberg_paneer_exact_1"
+      }
+    ],
+    "rules": [
       {
         "_comment": "Sample: Mon/Tue chicken gravy, Wed EGG PEPPER, Thu ghee-roast chicken on its chinese theme day, Fri Mughlai Chicken Biryani. Thursday is left to the theme map rather than pinned.",
         "name": "konsberg_nonveg_by_weekday",

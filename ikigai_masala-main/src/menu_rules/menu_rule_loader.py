@@ -40,6 +40,15 @@ CITY_RULES_DIR = os.getenv(
 )
 DEFAULT_CITY = 'bangalore'
 
+# The shared rule library — reusable components a client references by name
+# instead of restating the body. "Paneer once a week" was copy-pasted verbatim
+# into ELEVEN client files before this existed; each copy was a place the
+# wording could drift and a fix to one was a fix to one.
+RULE_LIBRARY_PATH = os.getenv(
+    'RULE_LIBRARY_PATH',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'rule_library.json'),
+)
+
 from .base_menu_rule import BaseMenuRule
 from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
@@ -244,6 +253,64 @@ class MenuRuleLoader:
             raise ValueError(f"Unknown rule type: {rule_type}")
         return self.RULE_CLASSES[rule_type](rule_config)
 
+    @classmethod
+    def _read_rule_library(cls) -> Dict[str, Any]:
+        """Named reusable rule bodies, keyed by component name."""
+        path = Path(RULE_LIBRARY_PATH)
+        if not path.exists():
+            return {}
+        try:
+            with open(path, 'r') as f:
+                blob = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to read rule_library.json: %s", exc)
+            return {}
+        if not isinstance(blob, dict):
+            return {}
+        return {k: v for k, v in blob.items()
+                if not k.startswith('_') and isinstance(v, dict)}
+
+    @classmethod
+    def _expand_uses(cls, uses: Any) -> List[Dict[str, Any]]:
+        """Turn a client's ``use`` list into concrete rule dicts.
+
+        Each entry is either the component's name, or
+        ``{"ref": name, "as": rule_name, "with": {overrides}}``. Overrides are a
+        per-key merge over the component — the same semantics a client rule
+        already uses to override a city rule — so one component covers a family
+        of requirements without a templating language.
+
+        An unknown ``ref`` is a hard error rather than a silent skip: a typo
+        would otherwise mean the client quietly loses a rule, which is the same
+        failure mode as the byte-for-byte client-name lookup.
+        """
+        if not uses:
+            return []
+        library = cls._read_rule_library()
+        out: List[Dict[str, Any]] = []
+        for entry in uses:
+            if isinstance(entry, str):
+                ref, alias, overrides = entry, None, {}
+            elif isinstance(entry, dict):
+                ref = entry.get('ref')
+                alias = entry.get('as')
+                overrides = entry.get('with') or {}
+            else:
+                logger.warning("Ignoring malformed `use` entry: %r", entry)
+                continue
+            component = library.get(ref)
+            if component is None:
+                raise ValueError(
+                    f"`use` references unknown rule component {ref!r}; "
+                    f"available: {sorted(library)}")
+            rule = {k: v for k, v in component.items() if k != '_doc'}
+            rule.update(overrides)
+            rule.setdefault('name', ref)
+            if alias:
+                rule['name'] = alias
+            out.append(rule)
+        return out
+
     @staticmethod
     def _parse_client_block(
         client_block: Any, counter_name: Optional[str] = None,
@@ -274,9 +341,13 @@ class MenuRuleLoader:
 
         def _layer(block: Dict[str, Any]) -> Dict[str, Any]:
             rules = block.get('rules', block.get('constraints', []))
+            # Library components come FIRST so a rule the client spells out by
+            # the same name overrides the shelf version rather than duplicating
+            # it.
+            shelf = MenuRuleLoader._expand_uses(block.get('use'))
             return {
                 'disable': list(block.get('disable') or []),
-                'rules': list(rules or []),
+                'rules': shelf + list(rules or []),
                 'constant_items': dict(block.get('constant_items') or {}),
             }
 
