@@ -1,0 +1,140 @@
+{
+  "Stryker NCR": {
+    "_comment": "NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-day sample. Salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules — needs bread slot_count 2, see the config note); rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const slot) Tue only, so flavour rice is blank whenever white rice runs. The 15-day cadences (fish/biryani/sambar) are now enforced across plans via selector_history_window rules that read saved history (paired with within-plan caps where relevant). Still deferred: 'serve a biryani day once/15 days' (positive cadence) and 'biryani not the same week as fish' (week co-occurrence) are not expressible yet; sambar needs the counter switched dal -> dal_sambar to serve it. 'Thursday special' needs the special defined; 'cut fruits' is a breakfast item.",
+    "disable": [
+      "deep_fried_coupling"
+    ],
+    "use": [
+      {
+        "ref": "egg_dish_once_a_week",
+        "as": "strykerncr_egg_curry_1x"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "Two paneer gravies a week.",
+        "name": "strykerncr_paneer_gravy_2x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 2
+      },
+      {
+        "_comment": "One kofta gravy a week.",
+        "name": "strykerncr_kofta_gravy_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "flag": "is_veg_kofta_gravy"
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "Fish at most once a WEEK within a plan (the within-plan half of once-per-15-days).",
+        "name": "strykerncr_fish_max_1",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_fish_dish"
+        },
+        "max": 1
+      },
+      {
+        "_comment": "Fish once per 15 DAYS, enforced across plans from saved history: a fish served in the last 15 days is banned until the window clears. Pairs with strykerncr_fish_max_1 (within-plan cap).",
+        "name": "strykerncr_fish_15d_window",
+        "type": "selector_history_window",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_fish_dish"
+        },
+        "window_days": 15
+      },
+      {
+        "_comment": "Biryani (nonveg) at most once per 15 days across plans (history window). The sheet's 'serve a biryani day once/15 days' positive cadence and 'not the same week as fish' co-occurrence are not expressible yet and stay deferred; this enforces the cap half.",
+        "name": "strykerncr_biryani_15d_window",
+        "type": "selector_history_window",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_nonveg_biryani"
+        },
+        "window_days": 15
+      },
+      {
+        "_comment": "A sambar once per 15 days across plans (history window). Matches any sambar dish (course_type sambar — 10 were imported into NCR). Inert until this counter serves sambar (switch dal -> dal_sambar in the editor); then it caps the cadence.",
+        "name": "strykerncr_sambar_15d_window",
+        "type": "selector_history_window",
+        "selector": {
+          "course_type": "sambar"
+        },
+        "window_days": 15
+      },
+      {
+        "_comment": "Biryani not in the same WEEK as fish (site-specific, Stryker only). scope: week makes the two families mutually exclusive across the whole plan — if the week has a fish it has no biryani, and vice versa. Covers veg (rice) and non-veg (nonveg_main) biryani.",
+        "name": "strykerncr_fish_biryani_not_same_week",
+        "type": "same_day_exclusion",
+        "scope": "week",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_nonveg_biryani"
+            },
+            {
+              "flag": "is_mixedveg_biryani"
+            }
+          ]
+        },
+        "exclude": {
+          "flag": "is_fish_dish"
+        }
+      },
+      {
+        "_comment": "Flavour rice on the days white rice is not served: Mon/Wed/Thu/Fri.",
+        "name": "strykerncr_flavour_rice_no_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "White rice (const steamed-rice slot) only on Tuesday; flavour rice is blank that day.",
+        "name": "strykerncr_white_rice_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "tue"
+        ]
+      },
+      {
+        "_comment": "Green salad is pinned daily in salad 1 (a multi-slot expansion, so the pin is a solved cell, not a whole-slot stamp). Mark it repeatable so unique_items allows the same dish every day.",
+        "name": "strykerncr_green_salad_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "salad",
+        "selector": {
+          "item": "green_salad"
+        }
+      },
+      {
+        "_comment": "Tawa roti is pinned daily in bread 1 — repeatable so it may recur every day.",
+        "name": "strykerncr_tawa_roti_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "bread",
+        "selector": {
+          "item": "tawa_roti"
+        }
+      }
+    ],
+    "_config_note": "This counter currently has bread slot_count 1. For 'indian bread 2 follows rules' (the second, non-tawa bread the sample shows), set bread to 2 in the editor. At count 1 the pin still holds — tawa roti every day — just with no second bread.",
+    "_disable_comment": "deep_fried_coupling (the Bangalore rice-bread/deep-fried family rule) conflicts with pinning bread 1 to tawa roti daily on this simple North-Indian counter; not relevant to NCR, so dropped.",
+    "constant_items": {
+      "_comment": "salad 1 = green salad daily (salad 2 follows rules); indian bread 1 = tawa roti daily (bread 2 follows rules).",
+      "salad__1": "green salad",
+      "bread__1": "tawa roti"
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "Computa Centre": {
+    "disable": [
+      "mixedveg_pulao_biryani_weekly",
+      "mixed_veg_gravy_weekly"
+    ],
+    "use": [
+      {
+        "ref": "plain_chapati_twice_a_week",
+        "as": "computa_plain_chapati_phulka_2x"
+      },
+      {
+        "ref": "paneer_once_a_week",
+        "as": "computa_paneer_exact_1"
+      }
+    ],
+    "rules": [
+      {
+        "name": "computa_biryani_pulao_rice_3x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "any_flag": [
+            "is_nonveg_biryani",
+            "is_mixedveg_biryani",
+            "is_premium_biryani",
+            "is_pulao"
+          ]
+        },
+        "min": 3
+      },
+      {
+        "name": "computa_chinese_veg_dry_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_dry",
+        "selector": {
+          "cuisine_family": "chinese"
+        },
+        "max": 1
+      },
+      {
+        "name": "computa_no_mixed_veg",
+        "type": "ingredient_ban",
+        "ingredients": [
+          "mixed_veg",
+          "mixed veg"
+        ]
+      }
+    ],
+    "constant_items": {
+      "salad": "green salad"
+    }
+  }
+}

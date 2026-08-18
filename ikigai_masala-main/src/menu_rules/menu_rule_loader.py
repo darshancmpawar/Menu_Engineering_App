@@ -19,6 +19,17 @@ CLIENT_RULES_CONFIG_PATH = os.getenv(
     str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'client_rules.json'),
 )
 
+# Directory holding ONE file per client (``<slug>.json``), each a single
+# ``{"<client name>": {disable, rules, constant_items, …}}``. This is the source
+# of truth; ``CLIENT_RULES_CONFIG_PATH`` above is the legacy single document and
+# is read only when this directory is missing or empty, so a deployment that has
+# not taken the split keeps working. The single file grew to 2,453 lines across
+# 36 clients, which made every client edit touch the same document.
+CLIENT_RULES_DIR = os.getenv(
+    'CLIENT_RULES_DIR',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'clients'),
+)
+
 # Directory holding one rules file per city (``<city>.json``). A city file may
 # ``"extends"`` another city (by bare name) to inherit its rules and override
 # by rule ``name``; ``DEFAULT_CITY`` is the reference ruleset and the fallback
@@ -28,6 +39,15 @@ CITY_RULES_DIR = os.getenv(
     str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'city_rules'),
 )
 DEFAULT_CITY = 'bangalore'
+
+# The shared rule library — reusable components a client references by name
+# instead of restating the body. "Paneer once a week" was copy-pasted verbatim
+# into ELEVEN client files before this existed; each copy was a place the
+# wording could drift and a fix to one was a fix to one.
+RULE_LIBRARY_PATH = os.getenv(
+    'RULE_LIBRARY_PATH',
+    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'rule_library.json'),
+)
 
 from .base_menu_rule import BaseMenuRule
 from .cuisine_menu_rule import CuisineMenuRule
@@ -233,6 +253,64 @@ class MenuRuleLoader:
             raise ValueError(f"Unknown rule type: {rule_type}")
         return self.RULE_CLASSES[rule_type](rule_config)
 
+    @classmethod
+    def _read_rule_library(cls) -> Dict[str, Any]:
+        """Named reusable rule bodies, keyed by component name."""
+        path = Path(RULE_LIBRARY_PATH)
+        if not path.exists():
+            return {}
+        try:
+            with open(path, 'r') as f:
+                blob = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to read rule_library.json: %s", exc)
+            return {}
+        if not isinstance(blob, dict):
+            return {}
+        return {k: v for k, v in blob.items()
+                if not k.startswith('_') and isinstance(v, dict)}
+
+    @classmethod
+    def _expand_uses(cls, uses: Any) -> List[Dict[str, Any]]:
+        """Turn a client's ``use`` list into concrete rule dicts.
+
+        Each entry is either the component's name, or
+        ``{"ref": name, "as": rule_name, "with": {overrides}}``. Overrides are a
+        per-key merge over the component — the same semantics a client rule
+        already uses to override a city rule — so one component covers a family
+        of requirements without a templating language.
+
+        An unknown ``ref`` is a hard error rather than a silent skip: a typo
+        would otherwise mean the client quietly loses a rule, which is the same
+        failure mode as the byte-for-byte client-name lookup.
+        """
+        if not uses:
+            return []
+        library = cls._read_rule_library()
+        out: List[Dict[str, Any]] = []
+        for entry in uses:
+            if isinstance(entry, str):
+                ref, alias, overrides = entry, None, {}
+            elif isinstance(entry, dict):
+                ref = entry.get('ref')
+                alias = entry.get('as')
+                overrides = entry.get('with') or {}
+            else:
+                logger.warning("Ignoring malformed `use` entry: %r", entry)
+                continue
+            component = library.get(ref)
+            if component is None:
+                raise ValueError(
+                    f"`use` references unknown rule component {ref!r}; "
+                    f"available: {sorted(library)}")
+            rule = {k: v for k, v in component.items() if k != '_doc'}
+            rule.update(overrides)
+            rule.setdefault('name', ref)
+            if alias:
+                rule['name'] = alias
+            out.append(rule)
+        return out
+
     @staticmethod
     def _parse_client_block(
         client_block: Any, counter_name: Optional[str] = None,
@@ -263,9 +341,13 @@ class MenuRuleLoader:
 
         def _layer(block: Dict[str, Any]) -> Dict[str, Any]:
             rules = block.get('rules', block.get('constraints', []))
+            # Library components come FIRST so a rule the client spells out by
+            # the same name overrides the shelf version rather than duplicating
+            # it.
+            shelf = MenuRuleLoader._expand_uses(block.get('use'))
             return {
                 'disable': list(block.get('disable') or []),
-                'rules': list(rules or []),
+                'rules': shelf + list(rules or []),
                 'constant_items': dict(block.get('constant_items') or {}),
             }
 
@@ -284,6 +366,50 @@ class MenuRuleLoader:
 
     @classmethod
     def _read_client_blob(cls) -> Dict[str, Any]:
+        """Every client's override block, keyed by ``clients.name``.
+
+        Reads ``CLIENT_RULES_DIR`` — one file per client, each holding a single
+        top-level ``{"<client name>": {...}}`` — and falls back to the legacy
+        single ``client_rules.json`` when the directory is absent or empty, so a
+        deployment that has not taken the split still works.
+
+        **The client name lives inside the file, not in the filename.** The
+        lookup is an exact byte-for-byte match against ``clients.name`` and a
+        mismatch is silent: every rule for that client loads as zero, /diagnose
+        still reports clean, and a plausible plan comes back having ignored all
+        of them. Names like ``Booking.com``, ``L&T`` and ``ToastTab CHN`` cannot
+        survive a round trip through a filesystem-safe slug, so the filename is
+        cosmetic and the key is authoritative.
+
+        A client defined in two files is a hard error rather than a silent
+        last-one-wins: that is the same class of bug as the name mismatch above,
+        and it would be invisible in a diff of either file.
+        """
+        merged: Dict[str, Any] = {}
+        directory = Path(CLIENT_RULES_DIR)
+        if directory.is_dir():
+            for path in sorted(directory.glob('*.json')):
+                try:
+                    with open(path, 'r') as f:
+                        blob = json.load(f)
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Failed to read %s: %s", path.name, exc)
+                    continue
+                if not isinstance(blob, dict):
+                    logger.warning("%s: expected an object at the top level, "
+                                   "got %s — skipped", path.name,
+                                   type(blob).__name__)
+                    continue
+                for name, block in blob.items():
+                    if name in merged:
+                        raise ValueError(
+                            f"client {name!r} is defined in more than one file "
+                            f"under {directory} (latest: {path.name}); the "
+                            f"loader cannot know which one you meant")
+                    merged[name] = block
+        if merged:
+            return merged
+
         path = Path(CLIENT_RULES_CONFIG_PATH)
         if not path.exists():
             return {}

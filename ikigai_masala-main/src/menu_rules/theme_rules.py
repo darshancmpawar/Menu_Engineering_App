@@ -258,8 +258,18 @@ class ThemeSlotFilterRule(BaseMenuRule):
         "type": "theme_slot_filter",
         "name": "theme_cuisine_filter",
         "exempt_slots": ["welcome_drink", "dal", "sambar", "rasam",
-                         "starter", "soup", "salad", "healthy_rice"]
+                         "starter", "soup", "salad", "healthy_rice"],
+        "indian_veg_dry_themes": ["chinese"]
     }
+
+    ``indian_veg_dry_themes`` names the theme days on which the ``veg_dry`` slot
+    is a regular **Indian** dish — north or south, whichever suits the rest of
+    the day — instead of a themed one. It generalises what a continental day
+    already does unconditionally: the themed veg is the *gravy*, and the veg dry
+    beside it stays Indian, so the plate reads as one cuisine plus a familiar
+    side rather than two foreign dishes. Tekion, Stryker and Stripe want the
+    same on their Chinese day. Empty by default, so no city ruleset changes
+    behaviour by adopting this key.
     """
 
     def __init__(self, rule_config: Dict[str, Any]):
@@ -273,6 +283,26 @@ class ThemeSlotFilterRule(BaseMenuRule):
             set(exempt) | set(EXEMPT_FROM_CUISINE) if exempt
             else set(EXEMPT_FROM_CUISINE)
         )
+        themes = rule_config.get('indian_veg_dry_themes') or ()
+        self.indian_veg_dry_themes: Set[str] = {
+            str(t).strip().lower() for t in themes if str(t).strip()
+        }
+        # General form: {theme: [slots that stay Indian on that theme day]}.
+        # `indian_veg_dry_themes` is the veg_dry-only shorthand and folds into
+        # it, so the three clients already using that key are unchanged.
+        # Clario needs the other half — "Chinese items are restricted to the veg
+        # dry and the flavoured rice", i.e. the gravy, starter and non-veg stay
+        # Indian. Expressing that as a frequency cap does not work: the theme
+        # filter NARROWS those slots to chinese, so a `max: 0` on chinese is
+        # forced past on the themed day and the counter goes INFEASIBLE
+        # (CLAUDE.md note 9e). It has to be the filter that stands down.
+        self.indian_slots_by_theme: Dict[str, Set[str]] = {
+            t: {'veg_dry'} for t in self.indian_veg_dry_themes
+        }
+        for theme, slots in (rule_config.get('indian_slots_by_theme') or {}).items():
+            key = str(theme).strip().lower()
+            self.indian_slots_by_theme.setdefault(key, set()).update(
+                str(s).strip() for s in slots if str(s).strip())
 
     def pre_filter_pool(self, pool: pd.DataFrame, date: dt.date,
                         base_slot: str, day_type: str,
@@ -299,6 +329,10 @@ class ThemeSlotFilterRule(BaseMenuRule):
         # 'mix', 'holiday', 'normal' — no theme filtering
         return pool
 
+    def _stays_indian(self, base_slot: str, day_type: str) -> bool:
+        """True when *base_slot* is declared to stay Indian on a *day_type* day."""
+        return base_slot in self.indian_slots_by_theme.get(day_type, ())
+
     def _exclude_offtheme_cuisines(self, pool: pd.DataFrame, base_slot: str,
                                    day_type: str) -> pd.DataFrame:
         """Drop Chinese / Continental dishes on days that aren't their theme,
@@ -313,8 +347,11 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return pool
         cf = pool['cuisine_family'].astype(str).str.strip().str.lower()
         drop = pd.Series(False, index=pool.index)
-        # Chinese dishes only on chinese days.
-        if day_type != 'chinese':
+        # Chinese dishes only on chinese days — and, where a client has asked
+        # for it, never in veg_dry even on the chinese day itself. Same shape as
+        # the continental clause below: the themed veg is the gravy and the veg
+        # dry stays Indian.
+        if day_type != 'chinese' or self._stays_indian(base_slot, 'chinese'):
             drop = drop | (cf == 'chinese')
         # Continental dishes only on continental days — AND never in veg_dry:
         # on a continental day the continental veg is the gravy, and the veg_dry
@@ -354,7 +391,30 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return filtered
         return pool.loc[filtered.index.union(extra.index)]
 
+    def _indian_veg_dry(self, pool: pd.DataFrame, cfg) -> pd.DataFrame:
+        """Narrow *pool* to north/south Indian dishes, solver's pick between them.
+
+        "Either north or south, whichever best suits that day's menu" — so this
+        keeps both and lets the objective choose, rather than pinning a region.
+        Falls back to the unfiltered pool if neither cuisine is present, the
+        same contract every other filter here uses.
+        """
+        col = cfg.cuisine_col if cfg else 'cuisine_family'
+        if col not in pool.columns:
+            return pool
+        south = cfg.cuisine_south_value if cfg else 'south_indian'
+        north = cfg.cuisine_north_value if cfg else 'north_indian'
+        filtered = pool[pool[col].map(_norm_str).isin({south, north})]
+        return filtered if len(filtered) > 0 else pool
+
     def _filter_chinese(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
+        # A client may declare that veg_dry stays Indian on a chinese day. The
+        # chinese dishes are already gone from the pool by then
+        # (_exclude_offtheme_cuisines), so this only has to avoid narrowing the
+        # slot to the chinese-style heuristic below and pick a region instead.
+        if self._stays_indian(base_slot, 'chinese'):
+            return self._indian_veg_dry(pool, cfg)
+
         flag_col = _CHINESE_FLAG_MAP.get(base_slot)
         if flag_col and flag_col in pool.columns:
             filtered = pool[pool[flag_col].map(_to_bool01) == 1]
@@ -385,6 +445,8 @@ class ThemeSlotFilterRule(BaseMenuRule):
         return pool
 
     def _filter_biryani(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
+        if self._stays_indian(base_slot, 'biryani'):
+            return self._indian_veg_dry(pool, cfg)
         flag_col = _BIRYANI_FLAG_MAP.get(base_slot)
         if flag_col and flag_col in pool.columns:
             filtered = pool[pool[flag_col].map(_to_bool01) == 1]
@@ -574,6 +636,16 @@ class ThemeSlotFilterRule(BaseMenuRule):
         the caller can skip it.
         """
         if day_type == 'chinese':
+            # Mirror pre_filter_pool: a declared Indian veg_dry is narrowed to
+            # north/south, not to the chinese-style heuristic. Projecting the
+            # heuristic here instead would report a phantom "0 items match the
+            # chinese filter" WARNING for a slot the solver never filters that
+            # way — the report and the solve have to agree.
+            if self._stays_indian(base_slot, 'chinese'):
+                if cuisine_col not in pool.columns:
+                    return None
+                cuisines = pool[cuisine_col].map(_norm_str)
+                return int(cuisines.isin({south_val, north_val}).sum())
             flag_col = _CHINESE_FLAG_MAP.get(base_slot)
             if flag_col and flag_col in pool.columns:
                 return int((pool[flag_col].map(_to_bool01) == 1).sum())

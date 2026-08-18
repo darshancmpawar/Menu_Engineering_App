@@ -258,12 +258,9 @@ def test_day_restriction_applies_to_const_slots(live_clients):
     Constant slots are stamped rather than solved, so a day restriction on
     white_rice used to be a silent no-op and the staple appeared all week.
     """
-    import json
-    from pathlib import Path
-    import src.menu_rules.menu_rule_loader as loader_mod
+    from src.menu_rules.menu_rule_loader import MenuRuleLoader
 
-    rules_path = Path(loader_mod.CLIENT_RULES_CONFIG_PATH)
-    blob = json.loads(rules_path.read_text())
+    blob = MenuRuleLoader._read_client_blob()
     restriction = [
         r for r in (blob.get('Ikea', {}).get('rules') or [])
         if r.get('base_slot') == 'white_rice'

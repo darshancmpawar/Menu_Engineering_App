@@ -1,0 +1,138 @@
+{
+  "Sinch NCR": {
+    "_comment": "NCR site 'Sinch' (city NCR). Logics from the client sheet + the two sample weeks. Bread is tawa roti daily (constant). Rice split: flavour rice Mon/Wed, white rice (the const 'white_rice' slot) Tue/Thu/Fri — so exactly one carb each day and never both. Raita (curd_side) Mon/Fri only; welcome drink Tue/Thu only; starter Wednesday only and chaats only (the last two rules are inert until a starter category, count 1, is added to this counter in the editor). The Tue/Wed/Thu drink in the sample 'Curd Prep' row is not a curd_side dish and is out of clean scope.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Chicken three times a week (Mon/Wed/Fri); egg curry twice a week (Tue/Thu).",
+        "name": "sinchncr_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "primary_protein": "chicken"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Paneer once a week (in the veg gravy).",
+        "name": "sinchncr_paneer_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "Flavour rice only Mon and Wed.",
+        "name": "sinchncr_flavour_rice_mon_wed",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "mon",
+          "wed"
+        ]
+      },
+      {
+        "_comment": "White rice only when there is no flavour rice: Tue/Thu/Fri. (white_rice is the const steamed-rice slot.)",
+        "name": "sinchncr_white_rice_tue_thu_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "tue",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Raita served only on Monday and Friday.",
+        "name": "sinchncr_raita_mon_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "curd_side",
+        "allowed_weekdays": [
+          "mon",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Welcome drink only on Tuesday and Thursday.",
+        "name": "sinchncr_welcome_drink_tue_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "welcome_drink",
+        "allowed_weekdays": [
+          "tue",
+          "thu"
+        ]
+      },
+      {
+        "_comment": "Starter is served only on Wednesday. Inert until a starter slot is added to this counter (slot_count 0 => no cells to restrict); it activates the moment the editor gives the counter a starter category.",
+        "name": "sinchncr_starter_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "starter",
+        "allowed_weekdays": [
+          "wed"
+        ]
+      },
+      {
+        "_comment": "The Wednesday starter must be a chaat (only chaats to be served). NCR's chaat starters are sub_category 'chaat_/_tikki' (dhokla, kachori, samosa_chaat) — only 3 today, so add more chaat starters if a 4th consecutive week is needed. Inactive until the starter slot exists (min_slot_count gate).",
+        "name": "sinchncr_starter_chaats_only",
+        "type": "slot_composition",
+        "base_slot": "starter",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "sub_category": "chaat_/_tikki"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {
+      "_comment": "bread = tawa roti daily.",
+      "bread": "tawa roti"
+    }
+  }
+}

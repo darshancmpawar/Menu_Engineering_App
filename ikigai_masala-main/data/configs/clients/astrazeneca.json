@@ -1,0 +1,18 @@
+{
+  "Astrazeneca": {
+    "disable": [
+      "curd_raita_logic"
+    ],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "astra_paneer_exact_1"
+      }
+    ],
+    "rules": [],
+    "constant_items": {
+      "curd_side": "Curd",
+      "bread": "plain chapati"
+    }
+  }
+}

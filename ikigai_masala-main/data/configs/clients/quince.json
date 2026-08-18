@@ -1,0 +1,17 @@
+{
+  "Quince": {
+    "disable": [
+      "curd_raita_logic"
+    ],
+    "rules": [],
+    "constant_items": {
+      "curd": {
+        "wednesday": "Curd",
+        "thursday": "Curd"
+      },
+      "curd_side": {
+        "friday": "raita"
+      }
+    }
+  }
+}

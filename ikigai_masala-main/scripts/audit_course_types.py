@@ -85,6 +85,7 @@ NAME_SIGNALS = {
 #: ``(filed course_type, name-implied course_type)`` pairs that are correct by
 #: design, so the whole class is skipped rather than listed row by row.
 LEGITIMATE_PAIRS = {
+    ('nonveg_soup', 'soup'),        # a chicken soup IS a soup, in the non-veg slot
     ('nonveg_main', 'rice'),        # chicken biryani lives in nonveg_main
     ('nonveg_main', 'bread'),       # kotthu parotta with chicken
     ('healthy_rice', 'rice'),       # healthy_rice is itself a rice slot
@@ -144,10 +145,10 @@ def unservable_rows(df: pd.DataFrame):
     this reason; that one row missed the convention. No name check would find it —
     the name is perfectly descriptive — which is why this check is structural.
     """
-    from src.constants import NONVEG_PROTEINS, NONVEG_SLOT
+    from src.constants import NONVEG_PROTEINS, NONVEG_SLOTS
     prot = df['primary_protein'].astype(str).str.strip().str.lower()
     course = df['course_type'].astype(str).str.strip().str.lower()
-    bad = df[prot.isin(NONVEG_PROTEINS) & (course != NONVEG_SLOT)]
+    bad = df[prot.isin(NONVEG_PROTEINS) & ~course.isin(NONVEG_SLOTS)]
     return [(str(r['item']), str(r['course_type']), str(r['primary_protein']))
             for _i, r in bad.iterrows()]
 

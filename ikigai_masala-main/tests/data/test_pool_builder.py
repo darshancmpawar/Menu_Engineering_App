@@ -22,8 +22,10 @@ def _make_ontology_df():
     rows.append({'item': 'tomato rasam', 'course_type': 'sambar/rasam', 'cuisine_family': 'south_indian', 'item_color': 'orange'})
     rows.append({'item': 'sambar special', 'course_type': 'sambar/rasam', 'cuisine_family': 'south_indian', 'item_color': 'yellow'})
 
-    # infused_water maps to welcome_drink
+    # infused_water is its own category (Booking's detox-water list)
     rows.append({'item': 'lemon water', 'course_type': 'infused_water', 'cuisine_family': 'indian', 'item_color': 'yellow'})
+    # a non-veg soup must survive in its own slot, unlike every other non-main
+    rows.append({'item': 'chicken broth', 'course_type': 'nonveg_soup', 'cuisine_family': 'indian', 'item_color': 'brown', 'primary_protein': 'chicken'})
 
     return pd.DataFrame(rows)
 
@@ -89,11 +91,32 @@ class TestPoolBuilder:
         assert 'sambar dal' in sambar_items
         assert 'sambar special' in sambar_items
 
-    def test_welcome_drink_includes_infused_water(self):
+    def test_infused_water_is_its_own_slot_not_a_welcome_drink(self):
+        """`infused_water` used to alias into the welcome_drink slot.
+
+        It is a category in its own right now, so an infused-water slot must
+        hold infused waters — filling it from the welcome-drink pool is not the
+        category the client asked for — and the welcome-drink slot must not
+        absorb them.
+        """
         df = _make_ontology_df()
         pools = PoolBuilder.build_pools(df)
-        items = pools['welcome_drink']['item'].tolist()
-        assert 'lemon water' in items
+        assert 'lemon water' in pools['infused_water']['item'].tolist()
+        assert 'lemon water' not in pools['welcome_drink']['item'].tolist()
+
+    def test_a_non_veg_soup_survives_in_its_own_slot(self):
+        """Non-veg dishes are dropped from every slot but the non-veg ones.
+
+        `nonveg_soup` is a non-veg slot, so the guard has to test a SET; a bare
+        `slot == 'nonveg_main'` check emptied the whole new category.
+        """
+        df = _make_ontology_df()
+        pools = PoolBuilder.build_pools(df)
+        assert 'chicken broth' in pools['nonveg_soup']['item'].tolist()
+        for slot, pool in pools.items():
+            if slot in ('nonveg_main', 'nonveg_soup'):
+                continue
+            assert 'chicken broth' not in pool['item'].tolist(), slot
 
     def test_empty_slot_raises(self):
         # Create df missing 'dessert'

@@ -1,0 +1,79 @@
+{
+  "Infenion": {
+    "disable": [],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "infenion_paneer_exact_1"
+      },
+      {
+        "ref": "nonveg_on_weekdays",
+        "as": "infenion_nonveg_mon_wed_fri"
+      }
+    ],
+    "rules": [
+      {
+        "name": "infenion_north_south_bread",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "cuisine_family": "north_indian"
+            },
+            "count": 1
+          },
+          {
+            "selector": {
+              "cuisine_family": "south_indian"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Sample menu serves exactly: Mon Murgh Do Pyaza (chicken gravy), Tue blank, Wed Punjabi Egg Masala, Thu blank, Fri Mughlai Chicken Biryani. The weekday pattern is not expressible as a theme, so it uses components_by_weekday; an empty list means 'compose nothing that day'. The Tue/Thu blanks come from infenion_nonveg_mon_wed_fri below. Monday excludes is_egg_dish because two egg dishes (egg_drumstick_curry, egg_kurma) are wrongly flagged is_south_chicken_gravy in the ontology.",
+        "name": "infenion_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {}
+  }
+}

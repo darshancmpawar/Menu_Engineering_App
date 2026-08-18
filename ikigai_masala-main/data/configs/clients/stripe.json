@@ -1,0 +1,22 @@
+{
+  "Stripe": {
+    "_comment": "Bangalore site. Mutton (2x/month) and fish (1x/week) are NOT configured: the Bangalore ontology carries zero mutton and zero fish dishes, so a rule would be inert and a pin would print a dish the kitchen has no entry for. Needs data first. 'Biryani on Wednesday' needs no rule — Wednesday is already the biryani theme day from the default theme map.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "indian_veg_dry_on_chinese_day",
+        "as": "theme_cuisine_filter"
+      },
+      {
+        "ref": "paneer_twice_a_week",
+        "as": "stripe_paneer_2_to_3",
+        "with": {
+          "min": 2,
+          "max": 3
+        }
+      }
+    ],
+    "rules": [],
+    "constant_items": {}
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "Thales": {
+    "disable": [],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "thales_paneer_exact_1"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "Wednesday chicken gravy, Friday chicken biryani, and egg on the other three days. Wednesday excludes is_egg_dish because two egg dishes are mis-flagged is_south_chicken_gravy in the ontology. The 2-gravy/1-fry split across the egg days is not yet expressed - see thales_egg_dry_once.",
+        "name": "thales_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Of the three egg days, one is a dry/fry rather than a gravy.",
+        "name": "thales_egg_dry_once",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_nonveg_dry"
+        },
+        "exclude": {
+          "primary_protein": "chicken"
+        },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  }
+}

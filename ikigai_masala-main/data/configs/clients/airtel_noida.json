@@ -1,0 +1,36 @@
+{
+  "Airtel Noida": {
+    "_comment": "NCR site 'Airtel Plot 5'. Lunch-relevant logics encoded below. Deferred (need more input / outside lunch scope): 'fish once a month' and 'paratha/rumali roti once a month' are long-horizon cadences a weekly plan can't express; 'no dish repeated in 15 days' is already covered by item_cooldown_days=20 (stricter); 'every Wednesday regional theme menu' needs the specific regional cuisine named (Wednesday is currently theme=mix).",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "Paneer to be served twice a week.",
+        "name": "airtel_paneer_2x",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 2
+      },
+      {
+        "_comment": "Non-veg dish twice a week, on Wednesday and Friday only.",
+        "name": "airtel_nonveg_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Potato dish not to be served more than twice a week.",
+        "name": "airtel_potato_max_2",
+        "type": "selector_frequency",
+        "selector": {
+          "key_ingredient": "potato"
+        },
+        "max": 2
+      }
+    ]
+  }
+}

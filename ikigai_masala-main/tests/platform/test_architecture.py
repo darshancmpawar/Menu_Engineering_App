@@ -33,8 +33,29 @@ import sys
 
 import pytest
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _repo_root() -> str:
+    """Walk up to the directory holding `pytest.ini` and `src/`.
+
+    Anchored on a marker rather than counting `..` levels: this file moved from
+    `tests/` to `tests/platform/` and a hard-coded two-levels-up silently made
+    SRC point at a directory that does not exist, so `_src_modules()` yielded
+    nothing and the 54 layering checks collapsed into one empty parametrisation
+    that passed. A guard that can quietly stop guarding is worse than none.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    while True:
+        if (os.path.isfile(os.path.join(here, 'pytest.ini'))
+                and os.path.isdir(os.path.join(here, 'src'))):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            raise RuntimeError('repo root not found above ' + __file__)
+        here = parent
+
+
+REPO = _repo_root()
 SRC = os.path.join(REPO, 'src')
+TESTS = os.path.join(REPO, 'tests')
 
 #: Packages that live *above* the domain. `src/` importing any of these is the
 #: inversion this file exists to prevent.
@@ -208,8 +229,11 @@ class TestOntologyCachesAreNotPokedByName:
         import glob
         offenders = {}
         here = os.path.abspath(__file__)
-        for path in sorted(glob.glob(os.path.join(
-                os.path.dirname(here), '*.py'))):
+        # Recursive: the suite is split into tests/clients, cities, rules,
+        # data, ui and platform, so a flat glob of this file's own directory
+        # would check six files and miss seventy.
+        for path in sorted(glob.glob(os.path.join(TESTS, '**', '*.py'),
+                                     recursive=True)):
             # This file necessarily spells the retired names out — it is the one
             # explaining them.
             if os.path.abspath(path) == here:

@@ -12,7 +12,7 @@ from ._helpers import (
     theme_label as _theme_label,
     strip_color_suffix as _strip_color_suffix,
 )
-from src.constants import DISPLAY_SLOT_NAME, NONVEG_SLOT
+from src.constants import DISPLAY_SLOT_NAME, NONVEG_SLOTS
 from ..preprocessor.pool_builder import _base_slot, _slot_num
 
 
@@ -63,7 +63,7 @@ class SolutionFormatter:
             return True
         if name.replace(' ', '_') in self._nonveg_items:
             return True
-        return _base_slot(slot_id) == NONVEG_SLOT if slot_id else False
+        return _base_slot(slot_id) in NONVEG_SLOTS if slot_id else False
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""

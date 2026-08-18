@@ -1,0 +1,42 @@
+{
+  "F5": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "nonveg_main_daily_pair",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "flag": "is_egg_dish"
+            },
+            "count": 1
+          },
+          {
+            "selector": {
+              "primary_protein": "chicken"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "f5_nonveg_tue_wed_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "tue",
+          "wed",
+          "thu"
+        ]
+      }
+    ],
+    "constant_items": {
+      "nonveg_main": {
+        "wednesday": "boiled egg"
+      }
+    }
+  }
+}

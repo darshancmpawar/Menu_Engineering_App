@@ -1,0 +1,26 @@
+{
+  "Stryker": {
+    "_comment": "Bangalore site (not 'Stryker NCR', which is a separate client). Its theme_map is empty, so the default weekday themes apply and Tuesday is the Chinese day.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "indian_veg_dry_on_chinese_day",
+        "as": "theme_cuisine_filter"
+      },
+      {
+        "ref": "protein_source_daily",
+        "as": "stryker_protein_source_daily"
+      },
+      {
+        "ref": "protein_outside_dal_three_days",
+        "as": "stryker_protein_outside_dal"
+      },
+      {
+        "ref": "protein_outside_dal_other_days",
+        "as": "stryker_protein_outside_dal_all_days"
+      }
+    ],
+    "rules": [],
+    "constant_items": {}
+  }
+}

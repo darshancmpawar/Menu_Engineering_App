@@ -1,0 +1,20 @@
+{
+  "H&M": {
+    "disable": [
+      "buttermilk_twice_weekly",
+      "welcome_drink_no_repeat_color"
+    ],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "hm_paneer_exact_1"
+      }
+    ],
+    "rules": [],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "salad": "green salad",
+      "bread": "plain chapati"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "Telstra": {
+    "disable": [],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "telstra_paneer_exact_1"
+      }
+    ],
+    "rules": [
+      {
+        "name": "telstra_nonveg_dry_1x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_nonveg_dry"
+        },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "curd": {
+        "monday": "Curd",
+        "tuesday": "Curd",
+        "friday": "Curd"
+      },
+      "curd_side": {
+        "wednesday": "raita",
+        "thursday": "raita"
+      }
+    }
+  }
+}

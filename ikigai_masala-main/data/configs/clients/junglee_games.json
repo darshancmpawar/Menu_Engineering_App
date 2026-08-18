@@ -1,0 +1,33 @@
+{
+  "Junglee Games": {
+    "_comment": "NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main across the week; paneer once. Deferred: 'one chaat item once a week' has no slot on this counter (no starter/salad category) — add a starter slot to serve it.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "egg_dish_once_a_week",
+        "as": "junglee_egg_curry_1x"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "Chicken dish to be served 4 days a week.",
+        "name": "junglee_chicken_4x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "primary_protein": "chicken"
+        },
+        "min": 4
+      },
+      {
+        "_comment": "Paneer to be served once a week.",
+        "name": "junglee_paneer_1x",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 1
+      }
+    ]
+  }
+}

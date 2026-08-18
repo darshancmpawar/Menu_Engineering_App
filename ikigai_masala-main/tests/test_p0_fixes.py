@@ -594,10 +594,10 @@ class TestPerCounterScoping:
 
     def test_real_config_scopes_the_lt_biryani_cap(self):
         """The shipped L&T entry must apply only to its non-veg counter."""
-        import json
-        from pathlib import Path
-        import src.menu_rules.menu_rule_loader as loader_mod
-        blob = json.loads(Path(loader_mod.CLIENT_RULES_CONFIG_PATH).read_text())
+        # Through the loader: the rules are one file per client under
+        # data/configs/clients/ now, and the loader is the only place that
+        # knows how they are assembled.
+        blob = MenuRuleLoader._read_client_blob()
         block = blob.get('L&T')
         if not block:
             pytest.skip('no L&T entry configured')
@@ -1539,8 +1539,11 @@ class TestResolvedSampleConflicts:
     """The three sample-vs-rulebook conflicts, as decided by the client."""
 
     def _entry(self, client):
-        import json
-        return json.load(open('data/configs/client_rules.json'))[client]
+        # Reads through the loader rather than a fixed path: the rules moved to
+        # one file per client under data/configs/clients/, and the loader is the
+        # single place that knows how they are assembled.
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        return MenuRuleLoader._read_client_blob()[client]
 
     def test_astrazeneca_serves_curd_not_raita(self):
         e = self._entry('Astrazeneca')

@@ -1,0 +1,28 @@
+{
+  "Cigna": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "nonveg_main_daily_pair",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "primary_protein": "chicken"
+            },
+            "count": 1
+          },
+          {
+            "selector": {
+              "flag": "is_egg_dish"
+            },
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "constant_items": {}
+  }
+}

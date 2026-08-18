@@ -135,9 +135,13 @@ CORRECTIONS = {
         'spinach_soup':          ('soup', 'chunky_veg_soup', None),
         'tomato_dhaniya_shorba': ('soup', 'clear_/_broth_soup', None),
         'veg_noodle_soup':       ('soup', 'asian_soup', None),
-        # A pulao filed as bread; a steamed idli/vada plate filed as a gravy.
+        # A pulao filed as bread.
         'jodhpuri_pulao': ('rice', 'north_rich_pulao', None),
-        'idly_vada':      ('bread', 'idli_/_steamed', None),
+        # `idly_vada` used to be corrected here (a steamed idli/vada plate filed
+        # as a gravy). `ncr_south_bread.py` now removes the row outright as a
+        # duplicate spelling of `idli_vada`, so naming it here is a stale entry
+        # that widens the map for a dish that no longer exists —
+        # test_rerunning_the_corrections_changes_nothing catches exactly that.
         # Raitas filed as `dessert / payasam_/_kheer` — a raita served as sweet.
         'kheera_raita':             ('curd_side', 'raita', None),
         'kheera_raita_lemon_water': ('curd_side', 'raita', None),

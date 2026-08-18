@@ -1,0 +1,23 @@
+{
+  "Plan View": {
+    "disable": [
+      "buttermilk_twice_weekly",
+      "welcome_drink_no_repeat_color"
+    ],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "planview_paneer_exact_1"
+      },
+      {
+        "ref": "selector_once_a_week",
+        "as": "planview_mushroom_exact_1"
+      }
+    ],
+    "rules": [],
+    "constant_items": {
+      "welcome_drink": "buttermilk",
+      "nonveg_main__2": "boiled egg"
+    }
+  }
+}

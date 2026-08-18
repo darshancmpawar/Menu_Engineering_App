@@ -1,0 +1,98 @@
+{
+  "Clario": {
+    "_comment": "Bangalore site. NOT configured as rules because they are DB values, not logic: 'working Mon-Thu only' is clients.working_days, and 'biryani on Monday AND Wednesday' is the counter's theme_map (today Mon=mix, Wed=biryani). 'When non-veg is on it is usually just chapati' is left out until 'usually' is pinned down — a hard rule would forbid the flavoured bread the sample also shows. 'Chinese items restricted to the veg dry and flavoured rice' is the theme filter standing down on the other cuisine-main slots, NOT a frequency cap: the filter narrows veg_gravy/starter/nonveg_main TO chinese on that day, so a `max: 0` on chinese is forced past and the counter goes INFEASIBLE (CLAUDE.md note 9e).",
+    "disable": [],
+    "use": [
+      {
+        "ref": "nonveg_on_weekdays",
+        "as": "clario_nonveg_mon_wed",
+        "with": {
+          "allowed_weekdays": [
+            "mon",
+            "wed"
+          ]
+        }
+      },
+      {
+        "ref": "plain_chapati_twice_a_week",
+        "as": "clario_chapati_2x"
+      },
+      {
+        "ref": "paneer_once_a_week",
+        "as": "clario_paneer_1x"
+      },
+      {
+        "ref": "selector_once_a_week",
+        "as": "clario_mushroom_1x",
+        "with": {
+          "selector": {
+            "primary_protein": "mushroom"
+          }
+        }
+      },
+      {
+        "ref": "selector_once_a_week",
+        "as": "clario_baby_corn_1x",
+        "with": {
+          "selector": {
+            "name_contains": [
+              "baby_corn",
+              "babycorn"
+            ]
+          }
+        }
+      },
+      {
+        "ref": "indian_veg_dry_on_chinese_day",
+        "as": "theme_cuisine_filter",
+        "with": {
+          "indian_slots_by_theme": {
+            "chinese": [
+              "veg_gravy",
+              "starter",
+              "nonveg_main"
+            ]
+          },
+          "indian_veg_dry_themes": []
+        }
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "Fresh fruit juice on two days a week (watermelon, guava, grape, mango, muskmelon…); other days take the remaining welcome-drink varieties.",
+        "name": "clario_fresh_juice_2x",
+        "type": "selector_frequency",
+        "base_slot": "welcome_drink",
+        "selector": {
+          "name_contains": [
+            "juice",
+            "crush"
+          ]
+        },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "_comment": "A fried item once or twice a week to keep the menu appealing; encoded as the upper half of the range.",
+        "name": "clario_fried_items_max_2",
+        "type": "selector_frequency",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_fried"
+            },
+            {
+              "flag": "is_deep_fried_veg_dry"
+            },
+            {
+              "flag": "is_deep_fried_starter"
+            }
+          ]
+        },
+        "min": 1,
+        "max": 2
+      }
+    ],
+    "constant_items": {}
+  }
+}

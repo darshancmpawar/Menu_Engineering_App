@@ -48,7 +48,8 @@ DEFAULT_WEEKDAY_THEMES: Dict[str, str] = {
 SLOT_SUFFIX_SEP = '__'
 
 BASE_SLOT_NAMES: List[str] = [
-    'welcome_drink', 'soup', 'salad', 'bread', 'rice',
+    'welcome_drink', 'infused_water', 'soup', 'nonveg_soup', 'salad',
+    'bread', 'rice',
     'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
     # other veg categories (shown after the mains)
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
@@ -65,7 +66,8 @@ CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
 # other veg categories → non-veg last. `slot_sort_key` and the slot editor both
 # rank by this list, so config order and display order always match.
 DISPLAY_SLOT_ORDER: List[str] = [
-    'welcome_drink', 'soup', 'salad', 'bread', 'rice', 'white_rice',
+    'welcome_drink', 'infused_water', 'soup', 'nonveg_soup', 'salad',
+    'bread', 'rice', 'white_rice',
     'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
     # other veg categories
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
@@ -87,7 +89,13 @@ COMBO_CATEGORIES: Dict[str, tuple] = {
 # Categories that are selectable per client but OFF by default (a fresh client
 # does not get them until an admin adds them in the editor): the optional
 # plain-curd station, the curd-rice station, and the combination categories.
-DEFAULT_OFF_SLOTS: Set[str] = {'curd', 'curd_rice'} | set(COMBO_CATEGORIES)
+# `infused_water` and `nonveg_soup` join the selectable-but-off set: they came
+# from one client's menu (Booking.com) and switching them on for the other 50
+# Bangalore counters would change every one of their plans.
+DEFAULT_OFF_SLOTS: Set[str] = (
+    {'curd', 'curd_rice', 'infused_water', 'nonveg_soup'}
+    | set(COMBO_CATEGORIES)
+)
 
 # Slots whose items may repeat freely across the horizon (exempt from the
 # unique-items constraint and the item-cooldown pre-filter). ``curd`` is a
@@ -116,6 +124,10 @@ REPEATABLE_SLOTS: Set[str] = {'curd', 'curd_rice'}
 # (global), mirroring how plain ``curd`` is already cooldown-exempt.
 COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     'curd_side', 'curd_rice', 'soup', 'healthy_rice',
+    # Same argument as `soup`: sides with a small pool, where a hard 20-day ban
+    # empties the slot before the cycle of distinct dishes is used up. They keep
+    # unique_items, so they still vary within the week.
+    'infused_water', 'nonveg_soup',
 }
 
 # The two yogurt-side categories are mutually exclusive on a single counter:
@@ -154,6 +166,9 @@ EXEMPT_FROM_CUISINE: Set[str] = {
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
     'starter', 'soup', 'salad', 'healthy_rice', 'curd_rice',
     'dessert', 'curd_side',
+    # An infused water and a chicken broth carry no regional identity, so the
+    # theme filter must not narrow them on a south/north/chinese day.
+    'infused_water', 'nonveg_soup',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
@@ -207,8 +222,12 @@ NONVEG_PROTEINS: Set[str] = {
     'duck', 'turkey',
 }
 
-# The only slot a non-veg dish may be served in.
+# The only slot a non-veg dish may be served in. `nonveg_main` is the primary
+# one and stays a bare string for the callers that mean exactly it; the SET is
+# what every guard should test, because a non-veg soup is also legitimately
+# non-veg and would otherwise be dropped from its own slot by `_nonveg_mask`.
 NONVEG_SLOT: str = 'nonveg_main'
+NONVEG_SLOTS: Set[str] = {'nonveg_main', 'nonveg_soup'}
 
 PULAO_SUBCATS: Set[str] = {
     'south_veg_pulao', 'north_simple_veg_pulao', 'north_rich_pulao',
@@ -266,6 +285,8 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'white_rice': 'White Rice',
     'welcome_drink': 'Welcome Drink',
     'soup': 'Soup',
+    'nonveg_soup': 'Non Veg Soup',
+    'infused_water': 'Infused Water / Detox Drink',
     'salad': 'Salad',
     'veg_gravy': 'Veg Gravy',
     'veg_dry': 'Veg Dry',

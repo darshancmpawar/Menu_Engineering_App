@@ -1,0 +1,44 @@
+{
+  "Ikea": {
+    "disable": [
+      "nonveg_main_daily_pair"
+    ],
+    "use": [
+      {
+        "ref": "paneer_twice_a_week",
+        "as": "ikea_paneer_exact_2"
+      }
+    ],
+    "rules": [
+      {
+        "name": "ikea_no_egg_nonveg",
+        "type": "ingredient_ban",
+        "ingredients": [
+          "egg"
+        ]
+      },
+      {
+        "name": "ikea_flavoured_rice_mwf",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "name": "ikea_white_rice_tue_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "tue",
+          "thu"
+        ]
+      }
+    ],
+    "constant_items": {
+      "salad": "green salad"
+    }
+  }
+}

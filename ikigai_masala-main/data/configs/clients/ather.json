@@ -1,0 +1,27 @@
+{
+  "Ather": {
+    "disable": [
+      "liquid_desserts_twice_nonconsecutive"
+    ],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "ather_paneer_exact_1"
+      }
+    ],
+    "rules": [
+      {
+        "name": "ather_dessert_thu_only",
+        "type": "slot_day_restriction",
+        "base_slot": "dessert",
+        "allowed_weekdays": [
+          "thu"
+        ]
+      }
+    ],
+    "constant_items": {
+      "salad": "mix veg salad",
+      "bread": "plain chapati"
+    }
+  }
+}

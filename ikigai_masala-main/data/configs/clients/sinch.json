@@ -1,0 +1,62 @@
+{
+  "Sinch": {
+    "disable": [],
+    "rules": [
+      {
+        "name": "sinch_egg_gravy_3x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_egg_dish"
+        },
+        "min": 3,
+        "max": 3
+      },
+      {
+        "_comment": "Wednesday is this counter's biryani day and carries the chicken biryani. With one nonveg_main slot the stated 'chicken gravy and chicken biryani on biryani day' resolves across the week: 3 egg gravies (sinch_egg_gravy_3x), one chicken gravy, one chicken biryani.",
+        "name": "sinch_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Exactly one chicken gravy in the week.",
+        "name": "sinch_chicken_gravy_once",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "any_flag": [
+            "is_north_chicken_gravy",
+            "is_south_chicken_gravy"
+          ]
+        },
+        "exclude": {
+          "flag": "is_egg_dish"
+        },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {
+      "curd": {
+        "monday": "Curd",
+        "tuesday": "Curd",
+        "thursday": "Curd",
+        "friday": "Curd"
+      },
+      "curd_side": {
+        "wednesday": "raita"
+      }
+    }
+  }
+}

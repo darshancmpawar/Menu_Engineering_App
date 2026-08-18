@@ -1,0 +1,125 @@
+{
+  "DXC": {
+    "_comment": "Bangalore launch site (created via the launch view). Uses the Bangalore regional ruleset + these DXC logics; the two counters (Veg Lunch, Non Veg Lunch) both carry bread/rice/curd_side so these are client-level. The 'common categories are identical across both counters' requirement is handled by shared_categories below: the planner solves the primary counter and pins its dish for each shared slot into the other counter per day (see docs/client_logics.md gap 1).",
+    "_disable_comment": "Two Bangalore base rules contradict DXC's stated logic and must be dropped, not overridden. (1) mixedveg_pulao_biryani_weekly caps combined biryani+pulao at 1 day/week (variety) — DXC wants biryani 3x AND pulao 1x, so the cap is force-violated. (2) curd_raita_logic forces raita on every biryani/pulao day and plain curd otherwise; DXC serves 4 flavoured-rice days but wants raita Mon/Tue/Thu/Fri and plain curd Wed on a single curd_side slot, so the convention collides with the client's explicit weekday schedule (Wed is usually a biryani/pulao day). The theme filter is NOT exempted for rice: biryani is already placeable on north/mix days here (verified), so no override is needed.",
+    "disable": [
+      "mixedveg_pulao_biryani_weekly",
+      "curd_raita_logic"
+    ],
+    "_shared_categories_comment": "Cross-counter sync: these categories serve the SAME dish on both counters each day (DXC's 'common categories are identical across counters'). The planner solves the primary counter (index 0), then pins its choice for each of these base slots into every other counter on the matching day (client-orchestrated, via /plan's shared_items). white_rice is included because plain steamed rice should also match; add/remove a base slot here to change the shared set.",
+    "shared_categories": [
+      "bread",
+      "rice",
+      "sambar",
+      "rasam",
+      "curd_side",
+      "dessert",
+      "white_rice"
+    ],
+    "rules": [
+      {
+        "_comment": "Flavoured rice: biryani at least 3 days a week, even on non-biryani days (the client's 'flavour rice biryani 3x even if not biryani day').",
+        "name": "dxc_flavoured_rice_biryani_3x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "flag": "is_mixedveg_biryani"
+        },
+        "min": 3
+      },
+      {
+        "_comment": "Flavoured rice: pulao at least once a week.",
+        "name": "dxc_flavoured_rice_pulao_1x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "flag": "is_pulao"
+        },
+        "min": 1
+      },
+      {
+        "_comment": "No South-cuisine flavoured rice (0 days).",
+        "name": "dxc_no_south_flavoured_rice",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "cuisine_family": "south_indian"
+        },
+        "max": 0
+      },
+      {
+        "_comment": "Indian bread is plain chapati every day. A slot_composition component (not fixed_daily_item, which only makes the dish CONSISTENT and lets the solver serve a non-matching bread — see CLAUDE.md note 20) mandates a plain_chapatti/phulka item (plain_chapatti or plain_phulka) in the single bread cell each day.",
+        "name": "dxc_plain_chapati_daily",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "sub_category": "plain_chapatti/phulka"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Plain chapati is a staple: only 2 such items exist, so daily service must repeat them. Exempt from unique_items and the 20-day cooldown, else week 2 has both in history and the mandate above goes INFEASIBLE (same R36/Pune pattern).",
+        "name": "dxc_plain_chapati_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "bread",
+        "selector": {
+          "sub_category": "plain_chapatti/phulka"
+        }
+      },
+      {
+        "_comment": "Curd side: raita Mon/Tue/Thu/Fri, plain curd on Wednesday. Per-weekday composition on the single curd_side slot; the base curd_raita_logic is disabled above so it does not fight this schedule.",
+        "name": "dxc_raita_except_wed_curd",
+        "type": "slot_composition",
+        "base_slot": "curd_side",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_raita"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_plain_curd"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
