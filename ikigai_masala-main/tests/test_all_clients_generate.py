@@ -22,6 +22,7 @@ Marked ``slow``: a full sweep is a real CP-SAT solve per counter.
 
 import datetime as dt
 
+import pandas as pd
 import pytest
 
 from tests.client_fixtures import APP_SETTINGS, CLIENTS
@@ -281,24 +282,40 @@ def test_day_restriction_applies_to_const_slots(live_clients):
 
 
 @pytest.mark.slow
-def test_starved_slot_warns_instead_of_failing(live_clients):
+def test_no_slot_is_silently_under_supplied(live_clients):
     """A slot with too few items repeats *and* says so, rather than 500-ing.
 
-    ToastTab's curd_rice pool holds 4 eligible items against a 5-day horizon.
-    Strict uniqueness is arithmetically impossible, so the plan must still be
-    produced with a diagnostic naming the slot.
+    This used to assert a curd_rice warning for ToastTab, on the reading that
+    `common` holds 4 curd rices against a 5-day horizon. Two later changes
+    retired that premise, both deliberate: Bangalore joined `FULL_POOL_CITIES`
+    (note 15), so its clients draw from the whole 13-dish curd_rice pool rather
+    than the `common` quarter of it; and `curd_rice` became a staple slot, which
+    `test_p0_fixes.py::test_curd_rice_is_a_staple_so_never_starved` pins as
+    never starvable however few dishes a city carries. The warning it waited for
+    can no longer be produced by that client.
+
+    So the assertion is the invariant rather than the one example: the plan is
+    returned, nothing is reported as a blocking error, and any starvation the
+    engine does find is a WARNING naming a real slot — never swallowed.
+    `test_p0_fixes.py` covers the relaxation mechanism itself at unit level.
     """
     resp, body = _plan(live_clients, 'ToastTab', 0)
     assert resp.status_code == 200, body.get('error')
-    starved = [
-        d for d in body.get('rule_diagnostics', [])
-        if d.get('affected', {}).get('base_slot') == 'curd_rice'
-        and d.get('severity') == 'warning'
-    ]
-    assert starved, (
-        "expected a warning naming curd_rice as under-supplied; got "
-        f"{[d.get('message') for d in body.get('rule_diagnostics', [])][:6]}"
-    )
+    diagnostics = body.get('rule_diagnostics', [])
+    assert not [d for d in diagnostics if d.get('severity') == 'error'], \
+        [d.get('message') for d in diagnostics if d.get('severity') == 'error']
+
+    slots = {s for day in body['solution'].values() for s in day['items']}
+    for d in diagnostics:
+        slot = d.get('affected', {}).get('base_slot')
+        if slot and 'starv' in str(d.get('message', '')).lower():
+            assert d.get('severity') == 'warning', d
+            assert any(s.split('__')[0] == slot for s in slots), (slot, sorted(slots))
+
+    curd_rice = [d for d in diagnostics
+                 if d.get('affected', {}).get('base_slot') == 'curd_rice']
+    assert not curd_rice, ('curd_rice is a staple drawing on the full '
+                           f'Bangalore pool; it should not be flagged: {curd_rice}')
 
 
 @pytest.mark.slow
@@ -423,10 +440,24 @@ def test_configured_counters_no_longer_hit_that_conflict(live_clients):
     resp, body = _plan(live_clients, 'Siemens Technology', 2,
                        start_date='2026-07-29')
     assert resp.status_code == 200, body.get('error') or body.get('message')
+    # Ask the FLAG the composition rule actually reads, not the dish name. Two
+    # of Bangalore's non-veg biryanis are not called one — `chicken_khuska` and
+    # `kashmiri_chicken_pulao` — so a name check passed only while the solver
+    # happened to pick a differently-named dish, and broke the moment anything
+    # shifted the objective. It also missed the other direction entirely: a
+    # `chicken_khuska` on a chinese day is a biryani the rule should have kept
+    # off, and reads as clean to a substring test.
+    df = live_clients._get_menu_data()[0]
+    flags = df[df['course_type'].astype(str).str.strip().str.lower()
+               == 'nonveg_main']
+    biryanis = set(
+        flags.loc[pd.to_numeric(flags['is_nonveg_biryani'], errors='coerce')
+                  .fillna(0) == 1, 'item'].astype(str).str.strip().str.lower())
+    assert biryanis, 'no non-veg biryani in the ontology at all'
     for key, day in body['solution'].items():
         nonveg = [v['item_base'] for k, v in day['items'].items()
                   if k.startswith('nonveg_main')]
-        has_biryani = any('biryani' in n for n in nonveg)
+        has_biryani = any(str(n).strip().lower() in biryanis for n in nonveg)
         if day['day_type'] == 'biryani':
             assert has_biryani, f"{key} is a biryani day but got {nonveg}"
         else:
