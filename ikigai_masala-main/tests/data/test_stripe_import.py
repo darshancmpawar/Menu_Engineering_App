@@ -49,7 +49,20 @@ def blr():
 
 @pytest.fixture(scope="module")
 def imported(blr):
-    return blr[blr["client"].map(_norm) == S.CLIENT_TOKEN.lower()]
+    """Every row Stripe is tagged on, not the rows tagged ONLY Stripe.
+
+    Exact-match was the same thing when Stripe was the newest import; the
+    Stryker, MOengage and Citrix imports then co-tagged the dishes they share
+    with it, so `chapati` reads `Booking.com,Stripe,Stryker,MOengage` and every
+    Stripe bread quietly left the set. Membership is what "the dishes this
+    import contributed" means, and it is also the eligibility the pool filter
+    computes.
+    """
+    token = S.CLIENT_TOKEN.lower()
+    tagged = blr["client"].map(
+        lambda cell: token in {t.strip().lower()
+                               for t in str(cell).split(",") if t.strip()})
+    return blr[tagged]
 
 
 @pytest.fixture(scope="module")
@@ -188,16 +201,38 @@ def test_rerunning_the_import_adds_nothing(blr):
 # The data gaps this menu exposes, recorded rather than papered over
 # --------------------------------------------------------------------------
 
-def test_bangalore_still_has_no_mutton_for_stripe(blr):
-    """Stripe's menu carries none either, so its mutton rule stays unconfigured.
+def test_the_mutton_rule_is_wired_now_that_bangalore_has_mutton():
+    """This started life as "Bangalore still has no mutton", a deliberate
+    tripwire: Stripe's logic asks for mutton 2x/month and MOengage's for once a
+    month, and while the city carried zero mutton dishes both rules would have
+    been inert — so they were left unwritten with the test set to fail the
+    moment that changed. A later client menu import added
+    `dhaba_style_mutton_curry`, the tripwire fired, and the rules are now wired.
 
-    If a mutton dish is ever added to Bangalore this test fails, which is the
-    prompt to go and wire the rule rather than leave it silently unwritten.
+    So the guard flips: mutton exists, therefore the cadence rules must exist.
     """
+    from src.menu_rules.menu_rule_loader import MenuRuleLoader
+
+    for client, window in (("Stripe", 15), ("Moengage", 30)):
+        rules = MenuRuleLoader().load_for_client(client, [])
+        by_name = {r.name: r for r in rules}
+        window_rule = next(
+            (r for n, r in by_name.items() if "mutton" in n and "window" in n),
+            None)
+        assert window_rule is not None, f"{client} has no mutton window rule"
+        assert window_rule.validate_config(), window_rule.validation_errors()
+        assert window_rule.config.get("window_days") == window, client
+        assert any("mutton" in n and n.endswith("max_1") for n in by_name), \
+            f"{client} has no within-plan mutton cap"
+
+
+def test_the_mutton_pool_is_a_single_dish(blr):
+    """Which is why both rules are caps rather than positive cadences: a target
+    would force the same one dish on a schedule regardless of the plate."""
     mutton = blr[blr["primary_protein"].map(_norm) == "mutton"]
-    assert mutton.empty, (
-        "Bangalore now has mutton — wire Stripe's mutton rule: "
-        f"{sorted(mutton['item'])}")
+    assert list(mutton["item"]) == ["dhaba_style_mutton_curry"], \
+        sorted(mutton["item"])
+    assert (mutton["course_type"].map(_norm) == "nonveg_main").all()
 
 
 def test_the_fish_pool_is_thin_enough_to_matter(blr):

@@ -63,7 +63,9 @@ def test_folded_dishes_now_carry_a_listed_protein(blr):
     names = blr['item'].map(_norm)
     expected = {
         'cholar_dalna': 'chana_dal',
-        'amti_channa_dal': 'chana_dal',
+        # `amti_channa_dal` until `canonical_dish_spellings.py` settled the
+        # house spelling of `channa`; the dish is the same row renamed.
+        'amti_chana_dal': 'chana_dal',
         'soppu_moong_palya': 'green_moong',
         'allesande_kalu_palya': 'black_eyed_pea',
         'paruppu_urundai_kuzhambu': 'toor_dal',

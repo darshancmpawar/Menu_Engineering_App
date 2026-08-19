@@ -74,12 +74,22 @@ def test_no_minority_spelling_survives(frames, city, minority):
 @pytest.mark.parametrize("city", CITIES)
 @pytest.mark.parametrize("house", sorted(set(CANONICAL.values())))
 def test_the_house_spelling_is_still_there(frames, city, house):
-    """A fold that emptied the family would pass the test above vacuously."""
-    if city in ("chennai",) and house in ("sabzi", "chana", "kadhi"):
-        pytest.skip("Chennai's list carries none of these families")
-    rx = _rx(house)
-    assert any(rx.search(n) for n in
-               frames[city]["item"].astype(str).str.strip().str.lower())
+    """A fold that emptied the family would pass the test above vacuously.
+
+    Only where the city HAS the family. The skip list used to name Chennai's
+    three known gaps by hand and went stale the moment a city turned out to
+    carry none of another family — Chennai has no handi, kolhapuri or laccha
+    dish and Pune has no laccha, which is a fact about regional menus, not a
+    fold that lost something. Deriving the precondition keeps the guard honest
+    as the city lists grow.
+    """
+    names = frames[city]["item"].astype(str).str.strip().str.lower()
+    minorities = [m for m, h in CANONICAL.items() if h == house]
+    family = _rx(house)
+    if not any(family.search(n) for n in names) and \
+            not any(_rx(m).search(n) for m in minorities for n in names):
+        pytest.skip(f"{city}'s list carries no {house} dish at all")
+    assert any(family.search(n) for n in names)
 
 
 def test_canonical_name_is_token_scoped():
@@ -105,10 +115,21 @@ def test_the_split_left_alone_is_still_split(frames):
 
 @pytest.mark.parametrize("city", sorted(DUPLICATES))
 def test_the_adjudicated_duplicates_are_gone(frames, city):
-    names = set(frames[city]["item"].astype(str).str.strip().str.lower())
-    for loser, winner in DUPLICATES[city].items():
-        assert loser not in names, f"{loser} is back"
-        assert canonical_name(winner) in names, f"{winner} was lost"
+    """One row survives each adjudicated pair, under the house spelling.
+
+    Asserting the dropped name is ABSENT was self-contradictory wherever the
+    pair is `{already-canonical row: misspelled row}` — `chicken_kolhapuri`
+    paired with `chicken_kolapuri` renames to `chicken_kolhapuri`, so the same
+    string had to be both gone and present. What a merge actually promises is
+    that the dish is there exactly once.
+    """
+    names = list(frames[city]["item"].astype(str).str.strip().str.lower())
+    for dropped, kept in DUPLICATES[city].items():
+        survivor = canonical_name(kept)
+        assert survivor in names, f"{kept} was lost"
+        assert names.count(survivor) == 1, f"{survivor} is duplicated"
+        if canonical_name(dropped) != survivor:
+            assert dropped not in names, f"{dropped} is back"
 
 
 def test_a_merge_carries_the_dropped_rows_clients_over(frames):
