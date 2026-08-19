@@ -271,6 +271,15 @@ CANONICAL_SPELLINGS = {
     "kolapuri": "kolhapuri",
     "kholapuri": "kolhapuri",
     "lacha": "laccha",
+    # The Kannada saaru/greens family, which four client menus spell five ways:
+    # saru 24 rows vs saaru 9, soppu 49 vs soppina 3 vs sappu 2.
+    "saaru": "saru",
+    "sappu": "soppu",
+    # NOT folded: `soppina` -> `soppu`. Only 3 rows, and it would merge
+    # `soppina_saru` (spice-based rasam, garlic, brown) into `soppu_saru`
+    # (which the client says is a SAMBAR, and whose colour and key_ingredient
+    # agree). Those look like two different dishes, and merging two real dishes
+    # is the mistake `ncr_fuzzy_unmerge.py` had to reverse.
 }
 
 SPELLING += [(_tok(minority), house)
@@ -343,6 +352,23 @@ def split_combo(text: str) -> list:
     return parts or [str(text).strip()]
 
 
+#: Whole dish names a menu writes differently from the name the ontology
+#: already carries. A token-level SPELLING rule cannot express these: `huli` IS
+#: sambar in Kannada, but `majjige_huli` is a buttermilk CURRY and renaming that
+#: token would invent a dish. So the mapping is per whole name.
+#:
+#: Without it the fold and `canonical_dish_spellings.DUPLICATES` fight: the
+#: merge drops the duplicate row, the next import re-adds it under the source's
+#: own spelling, and the import stops being idempotent. Citrix did exactly that
+#: with these four.
+ALIASES = {
+    "soppu_huli": "soppu_sambar",
+    "uppusaaru": "uppu_saru",
+    "upsaaru": "uppu_saru",
+    "soppu_saaru": "soppu_saru",
+}
+
+
 def to_item(name: str, drop_parentheticals: bool = False) -> str:
     """Source spelling -> the ontology's snake_case dish name.
 
@@ -360,7 +386,8 @@ def to_item(name: str, drop_parentheticals: bool = False) -> str:
     s = re.sub(r"^\d+_", "", s)
     for pat, rep in SPELLING:
         s = re.sub(pat, rep, s)
-    return re.sub(r"_+", "_", s).strip("_")
+    s = re.sub(r"_+", "_", s).strip("_")
+    return ALIASES.get(s, s)
 
 
 # ---------------------------------------------------------------------------

@@ -101,7 +101,38 @@ DUPLICATES = {
                   # both bread, north_indian; the `lacha` row is the Booking
                   # import's bare stub, the `laccha` row is `common` and
                   # fully attributed (layered_paratha, brown).
-                  "lacha_paratha": "laccha_paratha"},
+                  "lacha_paratha": "laccha_paratha",
+                  # Every one of these is a bare import stub (no sub_category,
+                  # key_ingredient or colour) colliding with the fully
+                  # attributed row it duplicates once the spelling is
+                  # canonicalised. The attributed row wins; the stub's client
+                  # tokens are folded into it. `murgh_kolhapuri`,
+                  # `dum_aloo_kolhapuri`, `sabzi_laccha_palak`,
+                  # `veg_kolhapuri_curry`, `laccha_aloo_methi` and
+                  # `laccha_aloo_palak` are stub-vs-stub from one client, so
+                  # either may go; the one dropped is the one the rename would
+                  # have collided into.
+                  "chicken_kolhapuri": "chicken_kolapuri",
+                  "dal_kolhapuri": "dal_kolapuri",
+                  "egg_kolhapuri": "egg_kholapuri",
+                  "sabakki_payasam": "sabakki_payasa",
+                  "murgh_kolhapuri": "murgh_kolapuri",
+                  "dum_aloo_kolhapuri": "dum_aloo_kholapuri",
+                  "sabzi_laccha_palak": "sabzi_lacha_palak",
+                  "veg_kolhapuri_curry": "veg_kholapuri_curry",
+                  "laccha_aloo_methi": "lacha_aloo_methi",
+                  "laccha_aloo_palak": "lacha_aloo_palak",
+                  # The saaru family. `soppu_saaru`, `soppu_huli`, `uppusaaru`
+                  # and `upsaaru` are Citrix stubs of dishes the file already
+                  # carries with full attributes. NB Citrix's printed menu puts
+                  # all four under its SAMBAR row; `soppu_saru` is re-filed as a
+                  # sambar to match (see course_type_corrections.py), but
+                  # `uppu_saru` keeps its own coconut/brown rasam attributes and
+                  # so stays a rasam. Worth the client's eye.
+                  "soppu_saaru": "soppu_saru",
+                  "soppu_huli": "soppu_sambar",
+                  "uppusaaru": "uppu_saaru",
+                  "upsaaru": "uppu_saaru"},
     "ncr": {"palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda"},
 }

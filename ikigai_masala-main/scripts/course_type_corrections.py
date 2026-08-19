@@ -185,6 +185,31 @@ CORRECTIONS = {
 #: is a lentil-dumpling gravy; `is_egg_dish` is 0 on the row and all 11 sibling veg
 #: kuzhambus carry no protein at all, so the column was simply wrong. Moving it to
 #: nonveg_main would have "fixed" the symptom by making a veg dish non-veg.
+#: item -> the key_ingredient it should carry. `key_ingredient` names an
+#: INGREDIENT; a row whose value is a category ("sambar") is selectable by no
+#: ingredient rule and misleading to read. Applied to every city that has the
+#: row, because these are `common` dishes copied across all four workbooks.
+KEY_INGREDIENT_CORRECTIONS = {
+    city: {'soppu_saru': 'leafy_greens'}
+    for city in ('bangalore', 'chennai', 'pune', 'ncr')
+}
+
+#: A SAMBAR filed as a rasam in all four workbooks, and the row said so itself:
+#: its `key_ingredient` was the literal string "sambar" (a category, not an
+#: ingredient) and its colour is `yellow`, matching `soppu_sambar` rather than
+#: the brown/green of every other saaru. Citrix's printed menu puts `soppu
+#: saaru` under its SAMBAR row too, and the client confirmed it. `leafy_sambar`
+#: is the sub_category `heerekai_soppu_sambar` already uses.
+#:
+#: `soppina_saru` is deliberately NOT folded in: it carries different
+#: attributes (spice-based rasam, garlic, brown) and looks like a different
+#: dish, and merging two real dishes is the mistake ncr_fuzzy_unmerge.py had to
+#: reverse.
+_SAARU_REFILE = {'soppu_saru': ('sambar', 'leafy_sambar', None)}
+
+for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
+    CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)
+
 PROTEIN_CORRECTIONS = {
     'chennai': {
         'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
@@ -216,6 +241,15 @@ def apply_corrections(df: pd.DataFrame, city: str):
             changes.append((item, f'protein={before}',
                             f'protein={want or "(veg)"}', ''))
 
+    for item, want in KEY_INGREDIENT_CORRECTIONS.get(city, {}).items():
+        hits = df.index[df['item'].astype(str).str.strip() == item]
+        for idx in hits:
+            before = str(df.at[idx, 'key_ingredient']).strip()
+            if before == want:
+                continue
+            df.at[idx, 'key_ingredient'] = want
+            changes.append((item, f'key={before}', f'key={want}', ''))
+
     for item, (course, sub, form) in CORRECTIONS.get(city, {}).items():
         hits = df.index[df['item'].astype(str).str.strip() == item]
         if len(hits) == 0:
@@ -241,7 +275,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     total, missing_any = 0, False
-    for city in sorted(set(CORRECTIONS) | set(PROTEIN_CORRECTIONS)):
+    for city in sorted(set(CORRECTIONS) | set(PROTEIN_CORRECTIONS)
+                       | set(KEY_INGREDIENT_CORRECTIONS)):
         path = os.path.join(CITY_ITEMS, f'{city}.xlsx')
         if not os.path.exists(path):
             print(f'{city}: no workbook at {path}', file=sys.stderr)
