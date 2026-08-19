@@ -778,6 +778,97 @@ def refile_rice(item: str, course: str) -> str:
     return course
 
 
+#: Name tails that identify a dish's course, most specific first. A printed row
+#: says where a dish was SERVED; these say what it IS, which is what decides
+#: which pool it belongs in. Order matters — `sambar_rice` is a rice, not a
+#: sambar, so the rice tails are consulted before the lentil ones.
+_COURSE_TAILS = (
+    ("rice", ("rice", "sadam", "biryani", "briyani", "pulao", "pilaf",
+              "khichdi", "khichadi", "kushka", "khuska", "chitranna", "bath",
+              "noodles", "chowmein")),
+    ("sambar", ("sambar", "huli")),
+    # `saru` is deliberately absent: most saarus are rasams, but `soppu_saru`
+    # is a SAMBAR (the client corrected it, and its colour and key_ingredient
+    # agree), so the word does not settle the question on its own.
+    ("rasam", ("rasam", "charu")),
+    ("dal", ("dal", "paruppu", "pappu")),
+    ("veg_gravy", ("gravy", "curry", "masala", "kurma", "korma", "kuzhambu",
+                   "kozhambu", "kootu", "kadhi", "makhani", "butter_masala")),
+    ("bread", ("dosa", "dosai", "idli", "idly", "uttapam", "uthappam", "appam",
+               "idiyappam", "paratha", "parotta", "roti", "chapati", "chapatti",
+               "poori", "puri", "naan", "kulcha", "phulka", "adai", "pesarattu",
+               "bhatura", "batura", "chapathi", "chappathi", "kali", "koozh",
+               "sevai", "upma", "poha", "pongal", "kichadi", "khichadi")),
+    ("starter", ("vada", "vadai", "bonda", "bajji", "bhaji", "pakoda",
+                 "pakora", "samosa", "cutlet", "tikki", "roll", "kachori",
+                 "chaat", "chat", "manchurian", "65")),
+    ("veg_dry", ("poriyal", "palya", "thoran", "usili", "sukka", "porial")),
+    ("salad", ("salad", "sundal", "kosambari", "kosumalli")),
+    ("dessert", ("halwa", "kesari", "payasam", "kheer", "laddu", "laddoo",
+                 "burfi", "barfi", "jamun", "jamoon", "pak", "sweet", "poli",
+                 "obbattu", "holige", "jalebi", "rasgulla", "basundi")),
+    ("welcome_drink", ("juice", "lassi", "milkshake", "sharbath", "sharbat",
+                       "mojito", "cooler", "panaka", "neer", "tea", "coffee")),
+    ("soup", ("soup", "shorba", "broth")),
+    ("curd_side", ("raita", "raitha", "pachadi")),
+)
+
+
+#: Words that join two halves of a printed plate: "Chapathi with Chicken
+#: Curry", "Rava Idli with Sambar and Chutney", "Bajji & Bonda".
+_PLATE_JOINERS = ("with", "and")
+
+
+def looks_like_a_plate(item: str) -> bool:
+    """Is this a whole plate written as one line rather than a dish?
+
+    A menu bank lists what a site sells, so it mixes dishes with the combos
+    they are sold in. "Chapathi with Chicken Curry" is two dishes the file also
+    lists separately; imported whole it becomes a "dish" no kitchen has an
+    entry for and no rule can reason about — its colour, cuisine and protein
+    are all ambiguous because it is two dishes.
+
+    The test is a joiner word with a **course-bearing token on both sides**, so
+    genuine names survive: `aloo_gobhi_and_methi` is one dish (no course word),
+    `dal_makhani` has no joiner, and `curd_rice_with_tadka` names a dish plus a
+    tempering rather than two courses.
+    """
+    toks = [t for t in str(item).split("_") if t]
+    for i, tok in enumerate(toks):
+        if tok not in _PLATE_JOINERS:
+            continue
+        left = course_from_name("_".join(toks[:i]))
+        right = course_from_name("_".join(toks[i + 1:]))
+        # Same course on both sides is still a plate: "veg biryani and curd
+        # rice" and "bajji and bonda" are each two dishes. A genuine compound
+        # name has no course word on one of the sides — `aloo_gobhi_and_methi`
+        # names three vegetables, `dal_tadka_with_butter` a dal and a fat.
+        if left and right:
+            return True
+    return False
+
+
+def course_from_name(item: str) -> str:
+    """The course a dish NAME implies, or "" when the name does not say.
+
+    Used where a printed category is too coarse or genuinely mixed — Chennai's
+    "Tiffin / South Indian" row holds both dosas and vadas, its "Main Meal" row
+    holds sambar, rasam and plain rice. Returning "" rather than guessing is
+    the point: the caller falls back to the printed category, which is better
+    evidence than a shrug.
+    """
+    # Scan from the END backwards and take the first token that names a
+    # course. The last word is usually the dish's form — `sambar_rice` is a
+    # rice, `idli_sambar` is a sambar — but not always: `dal_fry` ends in a
+    # cooking method, and only the token before it says what the dish is.
+    toks = [t for t in str(item).split("_") if t]
+    for tok in reversed(toks):
+        for course, tails in _COURSE_TAILS:
+            if tok in tails:
+                return course
+    return ""
+
+
 def refile_lentils(item: str, course: str) -> str:
     """Re-file a lentil-family dish by its NAME rather than its printed row.
 
@@ -872,6 +963,17 @@ class ImportSpec:
     #: split a cell like "Puri + Chapti" into two dishes. Off by default —
     #: only opt in where the source actually writes combos that way.
     split_combos: bool = False
+    #: {snake_case dish: {site, …}} when the source says WHICH of the client's
+    #: sites serve each dish. A new row is then tagged with its real sites
+    #: (promoted to `common` at `common_at`) instead of one synthetic token.
+    #: Matters because a city outside `FULL_POOL_CITIES` narrows each client to
+    #: `common` plus its own pools — a dish tagged only "Chennai Bank" would be
+    #: invisible to every Chennai client.
+    client_by_item: Dict[str, Set[str]] = field(default_factory=dict)
+    #: {snake_case dish: item_color} when the source states the food colour.
+    #: `item_color` drives the colour-variety rules and a blank is invisible to
+    #: them, so a source that supplies it is worth reading.
+    colour_by_item: Dict[str, str] = field(default_factory=dict)
 
 
 def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
@@ -976,9 +1078,16 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
             toks = [t.strip() for t in cur.split(",") if t.strip()]
             if any(t.lower() == "common" for t in toks):
                 continue
-            if any(t.lower() == spec.client_token.lower() for t in toks):
+            # Tag with the dish's REAL sites where the source names them, the
+            # flat token otherwise. It has to be the same identity the new-row
+            # branch writes, or a re-run finds none of its own tags present and
+            # appends the flat token to all of them, for ever.
+            want = sorted(spec.client_by_item.get(i) or {spec.client_token})
+            have = {t.lower() for t in toks}
+            fresh = [w for w in want if w.lower() not in have]
+            if not fresh:
                 continue
-            toks.append(spec.client_token)
+            toks.extend(fresh)
             frame.at[idx, "client"] = ("common" if len(toks) >= spec.common_at
                                        else ",".join(toks))
             retag += 1
@@ -996,8 +1105,11 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
             r["primary_protein"] = protein
             r["sub_category"] = ""
             r["key_ingredient"] = ""
-            r["item_color"] = ""
-            r["client"] = spec.client_token
+            r["item_color"] = spec.colour_by_item.get(item, "")
+            sites = sorted(spec.client_by_item.get(item, ()))
+            r["client"] = ("common" if len(sites) >= spec.common_at
+                           else ",".join(sites) if sites
+                           else spec.client_token)
             if protein == "egg" and "is_egg_dish" in r.index:
                 r["is_egg_dish"] = 1
             if protein in ("fish", "prawn", "crab"):

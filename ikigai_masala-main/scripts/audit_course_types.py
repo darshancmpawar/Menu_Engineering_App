@@ -94,6 +94,11 @@ LEGITIMATE_PAIRS = {
     ('dessert', 'bread'),           # badam puri, bread halwa
     ('dessert', 'rasam'),           # adhirasam
     ('starter', 'bread'),           # bhel puri, pani poori
+    # A tiffin plate named for what it is soaked in. Sambar vada is a vada
+    # (starter) and sambar idli is an idli (bread) — in both the sambar is the
+    # medium, not the dish, so neither belongs in the `sambar` slot where it
+    # would be served as the day's sambar.
+    ('starter', 'sambar'), ('bread', 'sambar'),
     ('accompaniment', 'bread'),     # akki papad, dosa chutney
     ('welcome_drink', 'rice'),      # rice sherbat, kokum sharbath
     ('welcome_drink', 'curd_side'), ('welcome_drink', 'sambar'),  # sambaram
