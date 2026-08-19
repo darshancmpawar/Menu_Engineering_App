@@ -209,12 +209,73 @@ SPELLING = [
     # spelling them the other creates a second row for the same dish:
     # `chana` 153 rows vs `channa` 16, `kadhi` 13 vs `kadi` 2. NB `kadhi` (the
     # yogurt curry) is NOT `kadai` (the wok) — that pair is in KEEP_APART.
-    (_tok("channa"), "chana"),
-    (_tok("kadi"), "kadhi"),
     # "Haramoonghj mughlai" — not a word in any language; hara moong is the
     # only reading, and a menu printing "Haramoonghj" is worse than a fold.
     (_tok("haramoonghj"), "hara_moong"),
+    # --- fourth pass: Stryker Bangalore's seven weekly grids.
+    (_tok("saseme"), "sesame"),
+    (_tok("kebeb"), "kebab"),
+    (_tok("birayni", "biryanai"), "biryani"),
+    (_tok("tringa"), "tiranga"),
+    (_tok("manchurain"), "manchurian"),
+    (_tok("garvy"), "gravy"),
+    (_tok("birayani"), "biryani"),
+    (_tok("capcicum"), "capsicum"),
+    (_tok("shimlamirch"), "shimla_mirch"),
+    (_tok("wih"), "with"),
+    (_tok("pineaplle"), "pineapple"),
+    (_tok("gujarathi", "gujrathi"), "gujarati"),
+    (_tok("channadal"), "chana_dal"),
+    (_tok("khushka"), "khuska"),
+    (_tok("tindly"), "tindli"),
+    (_tok("compond"), "compound"),
+    (_tok("dalimbe"), "dalimba"),
+    (_tok("thalesseri"), "thalassery"),
+    # --- fifth pass: Citrix's master menu. Targets checked against Bangalore's
+    # own counts: payasam 28 vs payasa 1, handi 26 vs hundi 3, kolhapuri the
+    # correct spelling of a three-way split (6/4/3), do_pyaza 13 vs do_pyaz 1.
+    (_tok("durmstick"), "drumstick"),
+    (_tok("yello"), "yellow"),
+    (_tok("punjabhi"), "punjabi"),
+    (_tok("chiili"), "chilli"),
+    (_tok("pualo"), "pulao"),
+    (_tok("guntoor"), "guntur"),
+    (_tok("haryali"), "hariyali"),
+    (_tok("makhni"), "makhani"),
+    (_tok("pudhina"), "pudina"),
+    (r"knol_knol", "knol_khol"),
+    (r"do_pyaz(?![a-z0-9])", "do_pyaza"),
 ]
+
+#: **One dish, one spelling** — the minority transliterations the city workbooks
+#: are folded onto by `canonical_dish_spellings.py`, which imports this map.
+#:
+#: It lives here, with the rest of the vocabulary, because the two halves must
+#: never disagree: the workbook is renamed to the house spelling AND every
+#: incoming name is rewritten to it. Keep them in separate lists and each
+#: import quietly adds a second row for a dish already present — `channa`
+#: rewritten but `subzi` not, `kolhapuri` rewritten but `lacha` not, and so on.
+#: Booking's import drifted from 0 new dishes to 9, then to 3, then to 3 again
+#: chasing exactly that gap.
+#:
+#: Counts behind each choice (Bangalore): chana 153/channa 16, kadhi 13/kadi 2,
+#: sabzi 77/subzi 13, payasam 28/payasa 1, handi 26/hundi 3, do_pyaza 13/do_pyaz
+#: 1, laccha the standard spelling, kolhapuri correct across a 6/4/3 split.
+CANONICAL_SPELLINGS = {
+    "channa": "chana",
+    "kadi": "kadhi",
+    "subzi": "sabzi",
+    "sabji": "sabzi",
+    "payasa": "payasam",
+    "hundi": "handi",
+    "kolapuri": "kolhapuri",
+    "kholapuri": "kolhapuri",
+    "lacha": "laccha",
+}
+
+SPELLING += [(_tok(minority), house)
+             for minority, house in CANONICAL_SPELLINGS.items()]
+
 
 #: A parenthesised aside describes how a dish is served or where it is from —
 #: "Chicken tikka Masala(Boneless)", "Mysore Rasam (Karnataka)", "Soya veg
@@ -223,11 +284,63 @@ SPELLING = [
 _PARENTHETICAL = re.compile(r"\([^)]*\)?")
 
 
+#: Cells that hold a placeholder rather than a dish. Printed menus write "Na",
+#: "-", "--" for a day a category is not served; imported literally they become
+#: dishes named `na` and `nil`.
+PLACEHOLDERS = {"na", "n/a", "n.a.", "nil", "none", "-", "--", "---", "x",
+                "tbd", "no", "nothing",
+                # a day the site is closed is not a dish
+                "holiday", "closed", "off", "leave", "no service"}
+
+
+def is_placeholder(text: str) -> bool:
+    s = str(text).strip().lower().strip(".-–— ")
+    return not s or s in PLACEHOLDERS
+
+
 def norm(v) -> str:
     """A cell's text with newlines and runs of whitespace flattened."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return ""
     return re.sub(r"\s+", " ", str(v).replace("\n", " ")).strip()
+
+
+#: A printed cell often holds two dishes — "Puri + Chapti", "Idli + Chutney",
+#: "Veg Cutlet /Green Chutney". Imported whole it becomes one dish named after
+#: both, which no rule can reason about and no kitchen has an entry for.
+_COMBO_SPLIT = re.compile(r"\s*(?:\+|&|,| and )\s*", re.I)
+
+
+#: Column headers that mark a NON-dish column in a printed grid: portion sizes
+#: and nutrition blocks sit between the day columns in several client menus.
+#: Their numbers filter out as numeric, but `allergen` holds words ("gluten",
+#: "dairy") and `Kg/Pcs` holds "Adq" — both import as dishes if not skipped.
+QUANTITY_HEADERS = {"kcal", "pro", "protein", "fat", "carb", "carbs", "fiber",
+                    "fibre", "allergen", "allergens", "kg/pcs", "kg", "pcs",
+                    "qty", "quantity", "gms", "grams"}
+
+
+def quantity_columns(sheet, scan_rows: int = 8) -> set:
+    """Columns holding a portion size or a nutrition value rather than a dish."""
+    cols: set = set()
+    for r in range(min(scan_rows, sheet.shape[0])):
+        row = [norm(sheet.iat[r, c]).strip().lower()
+               for c in range(sheet.shape[1])]
+        if sum(1 for v in row if v in QUANTITY_HEADERS) >= 2:
+            cols |= {c for c, v in enumerate(row) if v in QUANTITY_HEADERS}
+    return cols
+
+
+def split_combo(text: str) -> list:
+    """["Puri", "Chapti"] from "Puri + Chapti"; [text] when there is no combo.
+
+    Only splits on `+` — the separator these menus use for "served with". `&`
+    and `and` are left alone because they appear INSIDE dish names ("Aloo
+    Gobhi and Methi", "Salt & Pepper"), where splitting would invent two
+    dishes that do not exist.
+    """
+    parts = [p.strip() for p in re.split(r"\s*\+\s*", str(text)) if p.strip()]
+    return parts or [str(text).strip()]
 
 
 def to_item(name: str, drop_parentheticals: bool = False) -> str:
@@ -272,6 +385,36 @@ SAME_DISH = {
     ("chettinad", "chettinadu"),
     ("potato", "potatoes"),      # singular/plural, one dish
     ("mix", "mixed"),            # mix veg / mixed veg, one dish
+    # Transliteration pairs. Each names ONE dish, and both spellings are real
+    # words, so without listing them the fold reads the pair as ambiguous and
+    # the ontology ends up carrying the dish twice.
+    ("kebab", "kabab"),
+    ("pakora", "pakoda"),
+    ("sukka", "sukha"),
+    ("korma", "kurma"),
+    ("gobi", "gobhi"),
+    ("phulka", "fulka"),
+    ("paratha", "parantha"),
+    ("ajwain", "ajwaini"),
+    # Bangalore is split between `chapatti` (34 rows) and `chapati` (14), and
+    # `canonical_dish_spellings.py` deliberately leaves that alone — both are
+    # ordinary transliterations and the name is printed on a menu, so which one
+    # wins is the client's call. Listing the pair here does not rename anything;
+    # it stops each new client import ADDING the other spelling beside a dish
+    # the ontology already carries, which is how a split of 48 rows becomes a
+    # split of 80.
+    ("chapatti", "chapati"),
+    # Same treatment, same reason — the ontology is split and an import must
+    # not deepen it: lauki 30 / louki 14, tendly 4 / tendli 2, and the
+    # three-way pattani 7 / battani 6 / patani 2.
+    ("lauki", "louki"),
+    ("tendli", "tendly"),
+    ("pattani", "battani"),
+    ("pattani", "patani"),
+    ("battani", "patani"),
+    ("sliced", "slice"),
+    ("pakoda", "pakodi"),
+    ("singaporean", "singapore"),
     ("chaat", "chat"),           # `chaat` is the ontology's spelling
     ("ice", "iced"),             # peach ice / iced tea
     ("badushahi", "badhushai"),  # one Karnataka sweet, two transliterations
@@ -284,6 +427,20 @@ SAME_DISH = {
 
 _KEEP_APART_KEYS = {tuple(sorted(p)) for p in KEEP_APART}
 _SAME_DISH_KEYS = {tuple(sorted(p)) for p in SAME_DISH}
+
+
+def _same_dish(x: str, y: str) -> bool:
+    """Do these two tokens name the same thing?
+
+    Listed pairs, plus the general case they kept turning up as: a trailing
+    plural. `millet`/`millets`, `fruit`/`fruits`, `cluster_bean`/`cluster_beans`
+    are one dish written two ways, and enumerating every noun a kitchen might
+    pluralise is a losing game.
+    """
+    if tuple(sorted((x, y))) in _SAME_DISH_KEYS:
+        return True
+    a, b = sorted((x, y), key=len)
+    return len(b) > 2 and b in (a + "s", a + "es")
 
 
 def _tokens(name: str) -> list:
@@ -338,7 +495,7 @@ def fold_similar(names: Iterable[str], vocab: Optional[dict] = None,
                     report.setdefault("kept_apart", []).append((other, n))
                 continue
             known = (vocab.get(x, 0) > 0, vocab.get(y, 0) > 0)
-            same = tuple(sorted((x, y))) in _SAME_DISH_KEYS
+            same = _same_dish(x, y)
             if all(known) and not same:
                 kept.append(n)                      # both real words: ambiguous
                 if report is not None:
@@ -390,7 +547,7 @@ def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
         key = tuple(sorted((x, y)))
         if key in _KEEP_APART_KEYS:
             continue
-        if key in _SAME_DISH_KEYS:
+        if _same_dish(x, y):
             return other
         if not (vocab.get(x, 0) > 0 and vocab.get(y, 0) > 0):
             return other
@@ -587,19 +744,37 @@ def refile_lentils(item: str, course: str) -> str:
     return course
 
 
-def generic_row_names() -> Set[str]:
-    """Names that are a CATEGORY, not a dish ("sambar", "salad", "sweet").
+#: Names that are a CATEGORY, not a dish. A menu printing "Sweet" or "Veg Dry"
+#: is useless and no colour or ingredient rule can reason about the row. This is
+#: the union across cities plus the app's own base-slot names, because an import
+#: reads a grid where the category labels sit in the same columns as the dishes
+#: and one always slips through.
+_EXTRA_GENERIC = {
+    "sambar", "rasam", "salad", "dal", "sweet", "chutney", "rice", "veg_gravy",
+    "veg_dry", "curd", "soup", "bread", "dessert", "starter", "gravy", "raita",
+    "welcome_drink", "nonveg_main", "non_veg", "veg", "papad", "pickle",
+    "indian_bread", "flavour_rice", "flavoured_rice", "spl_item", "special",
+    "combo", "accompaniments", "condiments",
+}
 
-    The menu cannot print one and no colour or ingredient rule can reason about
-    it. `remove_generic_rows.py` deletes these; importing one straight back in
-    would undo that, so reuse its list rather than keeping a second copy.
+
+def generic_row_names() -> Set[str]:
+    """Category names an import must never add as dishes.
+
+    `remove_generic_rows.py` deletes these from the workbooks; importing one
+    straight back in would undo that, so its list is reused rather than kept in
+    a second copy. NB its `GENERIC_ROWS` is a **city -> names** mapping, so it
+    has to be flattened — iterating it directly yields the city names
+    (`chennai`, `ncr`, `pune`) and the guard silently matched nothing.
     """
+    names = set(_EXTRA_GENERIC)
     try:
         from remove_generic_rows import GENERIC_ROWS
-        return {str(g).strip().lower() for g in GENERIC_ROWS}
+        for per_city in GENERIC_ROWS.values():
+            names |= {str(g).strip().lower() for g in per_city}
     except Exception:                                    # pragma: no cover
-        return {"sambar", "rasam", "salad", "dal", "sweet", "chutney",
-                "rice", "veg_gravy", "curd", "soup"}
+        pass
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -636,6 +811,13 @@ class ImportSpec:
     #: cannot be placed by `nonveg_main_daily_pair` at all, and the menu's own
     #: row labels are better evidence than a name heuristic.
     style_by_label: Dict[str, str] = field(default_factory=dict)
+    #: snake_case dish names to never import: the const-slot staples every
+    #: printed menu repeats daily (steamed rice, curd, papad) and the station
+    #: names that are not dishes ("make your own salad", "live counter").
+    skip_items: Set[str] = field(default_factory=set)
+    #: split a cell like "Puri + Chapti" into two dishes. Off by default —
+    #: only opt in where the source actually writes combos that way.
+    split_combos: bool = False
 
 
 def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
@@ -656,11 +838,24 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
         if not course:
             continue
         style = spec.style_by_label.get(key, "")
-        for d in dishes:
-            item = spec.clean_name(d)
-            if not item:
+        raw_dishes = dishes
+        if spec.split_combos:
+            raw_dishes = [p for d in dishes for p in split_combo(d)]
+        for d in raw_dishes:
+            if is_placeholder(d):
                 continue
-            by_course[spec.refile(item, course)].add(item)
+            item = spec.clean_name(d)
+            if not item or item in spec.skip_items:
+                continue
+            landing = spec.refile(item, course)
+            # A dish whose NAME declares an animal protein must not be filed in
+            # a veg slot: `PoolBuilder._nonveg_mask` drops it from that pool and
+            # it becomes unservable. Printed menus mix them — Stryker's "Spl
+            # item" row runs veg cutlets and an egg pepper masala on alternate
+            # days — so the row label cannot be trusted for this one thing.
+            if landing not in NONVEG_COURSES and protein_for(item, landing):
+                landing = "nonveg_main"
+            by_course[landing].add(item)
             if style:
                 style_of.setdefault(item, style)
 
@@ -767,6 +962,24 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
     return pd.DataFrame(rows), retag, report, fold_log
 
 
+def write_workbook(frame: pd.DataFrame, path: Path) -> None:
+    """Write *frame* to *path* atomically.
+
+    `to_excel` truncates the target and then streams into it, so a run that is
+    interrupted part-way — a timeout, a Ctrl-C — leaves a 0-byte workbook and
+    the city's whole item list is gone. That happened. Writing to a sibling
+    temp file and renaming makes the swap atomic: the workbook is either the
+    old one or the new one, never a half-written one.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        frame.to_excel(tmp, index=False)
+        tmp.replace(path)
+    finally:
+        if tmp.exists():                                 # pragma: no cover
+            tmp.unlink()
+
+
 def run_import(spec: ImportSpec, dry_run: bool = False):
     """Read the city workbook, apply *spec*, print the report, write it back."""
     city = pd.read_excel(spec.city_path)
@@ -793,6 +1006,6 @@ def run_import(spec: ImportSpec, dry_run: bool = False):
         print("[dry-run] nothing written")
         return city, new_df
     out = pd.concat([city, new_df], ignore_index=True) if len(new_df) else city
-    out.to_excel(spec.city_path, index=False)
+    write_workbook(out, spec.city_path)
     print(f"wrote {spec.city_path.name}")
     return out, new_df

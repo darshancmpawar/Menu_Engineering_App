@@ -151,7 +151,7 @@ def main(dry_run: bool = False):
             print(f"    ! no form in the name: {sorted(unresolved)[:8]}"
                   f"{' …' if len(unresolved) > 8 else ''}")
         if filled and not dry_run:
-            out.to_excel(path, index=False)
+            _atomic_to_excel(out, path, index=False)
             print(f"[{city}] wrote {path.name}")
     print(f"\n{total_filled} dish(es) made placeable; "
           f"{total_left} still need the client's menu to say dry or gravy")
@@ -163,3 +163,18 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     main(dry_run=ap.parse_args().dry_run)
+
+
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)

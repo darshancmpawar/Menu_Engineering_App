@@ -454,7 +454,7 @@ def expand(dry_run=False):
         return summary
 
     for slug in CITIES:
-        dfs[slug].to_excel(CITY_DIR / f"{slug}.xlsx", index=False)
+        _atomic_to_excel(dfs[slug], CITY_DIR / f"{slug}.xlsx", index=False)
     print("\nwrote 4 city workbooks")
     return summary
 
@@ -464,3 +464,18 @@ if __name__ == "__main__":
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     expand(dry_run=args.dry_run)
+
+
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)

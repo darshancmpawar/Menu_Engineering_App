@@ -80,10 +80,25 @@ def main() -> None:
                  and (ncr['course_type'] == 'sambar').sum())
     out = add_sambar(blr, ncr)
     added = len(out) - len(ncr)
-    out.to_excel(_NCR, index=False)
+    _atomic_to_excel(out, _NCR, index=False)
     after = int((out['course_type'] == 'sambar').sum())
     print(f"NCR sambar: {before} -> {after} (+{added} row(s) written to {_NCR})")
 
 
 if __name__ == '__main__':
     main()
+
+
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)

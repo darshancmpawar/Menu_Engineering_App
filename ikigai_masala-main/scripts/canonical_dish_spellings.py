@@ -36,25 +36,25 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 CITIES = ("bangalore", "pune", "chennai", "ncr")
 
-#: minority spelling -> house spelling, as whole snake_case tokens.
-CANONICAL = {
-    "channa": "chana",
-    "kadi": "kadhi",
-    # sabzi 77 rows vs subzi 13 (Bangalore) — one word, two transliterations.
-    # `subz` (37 rows) is deliberately NOT folded: it is the shorter form used
-    # as a word in its own right, and `subz_makhani` -> `sabzi_makhani` would
-    # rename the dish rather than respell it.
-    "subzi": "sabzi",
-    "sabji": "sabzi",
-}
+from menu_import import CANONICAL_SPELLINGS  # noqa: E402
+
+#: The vocabulary lives in `menu_import.CANONICAL_SPELLINGS` — one source of
+#: truth, because this script renames the WORKBOOK to the house spelling while
+#: the importer rewrites every INCOMING name to it, and the two halves must not
+#: disagree. Split across two lists, each import silently adds a second row for
+#: a dish already present.
+CANONICAL = dict(CANONICAL_SPELLINGS)
 
 #: Splits looked at and left alone, with the count that decided it. Kept so the
 #: judgement is visible rather than looking like an oversight.
@@ -74,11 +74,19 @@ KNOWN_SPLITS = {
 #:   palak_kadi / palak_kadhi                both dal, leafy_dal, key palak.
 #:   kadi_pakdoa / kadi_pakoda               both dal, leafy_dal, key kadi;
 #:       `pakdoa` is a typo of `pakoda`.
+#:   subz_nawabi_hundi / subz_nawabi_handi   both veg_gravy, north_indian; the
+#:       `hundi` row is the bare stub the Booking import created (no
+#:       sub_category, key_ingredient or colour), the `handi` row is complete.
 #:
 #: The dropped row's `client` tokens are merged into the survivor, so no client
 #: silently loses a dish it makes.
 DUPLICATES = {
-    "bangalore": {"black_channa_pulao": "black_chana_pulao"},
+    "bangalore": {"black_channa_pulao": "black_chana_pulao",
+                  "subz_nawabi_hundi": "subz_nawabi_handi",
+                  # both bread, north_indian; the `lacha` row is the Booking
+                  # import's bare stub, the `laccha` row is `common` and
+                  # fully attributed (layered_paratha, brown).
+                  "lacha_paratha": "laccha_paratha"},
     "ncr": {"palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda"},
 }
@@ -180,7 +188,7 @@ def main(dry_run: bool = False):
             continue
         total += len(renamed)
         if not dry_run:
-            out.to_excel(path, index=False)
+            _atomic_to_excel(out, path, index=False)
             print(f"[{city}] wrote {path.name} "
                   f"({len(renamed)} renamed, {len(merged)} merged)")
     print(f"\n{total} dish name(s) canonicalised")
@@ -194,3 +202,18 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     main(dry_run=ap.parse_args().dry_run)
+
+
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
