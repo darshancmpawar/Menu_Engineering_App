@@ -38,6 +38,21 @@ import sys
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 CITY_ITEMS = os.path.join(
@@ -90,6 +105,19 @@ CORRECTIONS = {
         # served a dosa as their dal. `lentil-based_dosa_(adai/pesarattu)` is the
         # sub_category pesarattu and adai_dosa already use.
         'moong_dal_dosa': ('bread', 'lentil-based_dosa_(adai/pesarattu)', None),
+        # Three rices the client menu imports filed elsewhere, because a printed
+        # grid puts whatever the day needs in whatever row has space: the first
+        # two came in under MOengage's "DAL / SAMBAR" row and the third under
+        # Citrix's "Raitha/Chutney". Left there they are served as the day's dal
+        # or its raita. `menu_import.refile_rice` now catches the pattern at
+        # import time; these three predate it.
+        # Each sub_category is taken from a direct sibling already in the file:
+        # `vegetable_millets_khichdi` is rice / north_khichdi, `red_rice_pulao`
+        # is rice / north_simple_veg_pulao, and the veg biryanis are
+        # north_veg_biryani.
+        'millets_khichdi':   ('rice', 'north_khichdi', None),
+        'red_rice_pilaf':    ('rice', 'north_simple_veg_pulao', None),
+        'veg_kofta_biryani': ('rice', 'north_veg_biryani', None),
     },
     # NCR arrived from a mapping pipeline that inherited a modal flag vector per
     # sub_category, so a dish landing in the wrong sub_category (e.g. a chicken
@@ -157,6 +185,31 @@ CORRECTIONS = {
 #: is a lentil-dumpling gravy; `is_egg_dish` is 0 on the row and all 11 sibling veg
 #: kuzhambus carry no protein at all, so the column was simply wrong. Moving it to
 #: nonveg_main would have "fixed" the symptom by making a veg dish non-veg.
+#: item -> the key_ingredient it should carry. `key_ingredient` names an
+#: INGREDIENT; a row whose value is a category ("sambar") is selectable by no
+#: ingredient rule and misleading to read. Applied to every city that has the
+#: row, because these are `common` dishes copied across all four workbooks.
+KEY_INGREDIENT_CORRECTIONS = {
+    city: {'soppu_saru': 'leafy_greens'}
+    for city in ('bangalore', 'chennai', 'pune', 'ncr')
+}
+
+#: A SAMBAR filed as a rasam in all four workbooks, and the row said so itself:
+#: its `key_ingredient` was the literal string "sambar" (a category, not an
+#: ingredient) and its colour is `yellow`, matching `soppu_sambar` rather than
+#: the brown/green of every other saaru. Citrix's printed menu puts `soppu
+#: saaru` under its SAMBAR row too, and the client confirmed it. `leafy_sambar`
+#: is the sub_category `heerekai_soppu_sambar` already uses.
+#:
+#: `soppina_saru` is deliberately NOT folded in: it carries different
+#: attributes (spice-based rasam, garlic, brown) and looks like a different
+#: dish, and merging two real dishes is the mistake ncr_fuzzy_unmerge.py had to
+#: reverse.
+_SAARU_REFILE = {'soppu_saru': ('sambar', 'leafy_sambar', None)}
+
+for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
+    CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)
+
 PROTEIN_CORRECTIONS = {
     'chennai': {
         'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
@@ -188,6 +241,15 @@ def apply_corrections(df: pd.DataFrame, city: str):
             changes.append((item, f'protein={before}',
                             f'protein={want or "(veg)"}', ''))
 
+    for item, want in KEY_INGREDIENT_CORRECTIONS.get(city, {}).items():
+        hits = df.index[df['item'].astype(str).str.strip() == item]
+        for idx in hits:
+            before = str(df.at[idx, 'key_ingredient']).strip()
+            if before == want:
+                continue
+            df.at[idx, 'key_ingredient'] = want
+            changes.append((item, f'key={before}', f'key={want}', ''))
+
     for item, (course, sub, form) in CORRECTIONS.get(city, {}).items():
         hits = df.index[df['item'].astype(str).str.strip() == item]
         if len(hits) == 0:
@@ -213,7 +275,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     total, missing_any = 0, False
-    for city in sorted(set(CORRECTIONS) | set(PROTEIN_CORRECTIONS)):
+    for city in sorted(set(CORRECTIONS) | set(PROTEIN_CORRECTIONS)
+                       | set(KEY_INGREDIENT_CORRECTIONS)):
         path = os.path.join(CITY_ITEMS, f'{city}.xlsx')
         if not os.path.exists(path):
             print(f'{city}: no workbook at {path}', file=sys.stderr)
@@ -236,7 +299,7 @@ def main(argv=None) -> int:
             print(f'  {item:30s} {old:34s} -> {new}{extra}')
         total += len(real)
         if not args.dry_run:
-            after.to_excel(path, index=False)
+            _atomic_to_excel(after, path, index=False)
 
     if args.dry_run:
         print('\nnothing written (--dry-run)')

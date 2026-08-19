@@ -153,10 +153,34 @@ class TestTheCorrectionsAreStillApplied:
         assert not changes['cuisine_family']
         assert before.equals(after)
 
-    def test_veg_only_cities_get_the_columns_but_no_rows(self):
-        for city in ('bangalore', 'pune'):
-            df = _read(city)
-            assert int(_to01(df['is_seafood']).sum()) == 0, city
+    def test_a_city_with_no_seafood_still_gets_the_columns(self):
+        """Pune is all-veg, so it carries the columns and no rows.
+
+        Bangalore used to be listed here too — it had chicken and egg but no
+        fish. Stripe's menu brought two fish dishes in, which is a real change
+        in the data rather than a regression, so the assertion moved to the
+        one below: whatever seafood a city has must be tagged properly.
+        """
+        df = _read('pune')
+        assert 'is_seafood' in df.columns and 'is_fish_dish' in df.columns
+        assert int(_to01(df['is_seafood']).sum()) == 0
+
+    @pytest.mark.parametrize('city', CITIES)
+    def test_every_seafood_row_declares_its_ingredient(self, city):
+        """The ingredient-ban bug, stated as an invariant.
+
+        `ingredient_ban_rule` matches `key_ingredient` AND `primary_protein`, so
+        a fish row with a blank or chicken `key_ingredient` escapes a fish ban
+        and gets caught by a chicken one. An import that adds a fish dish
+        without running this script leaves exactly that hole — Stripe's two did.
+        """
+        df = _read(city)
+        rows = df[_to01(df['is_seafood']) == 1]
+        for _, r in rows.iterrows():
+            prot = str(r['primary_protein']).strip().lower()
+            key = str(r['key_ingredient']).strip().lower()
+            assert key == prot, f"{city}: {r['item']} key={key!r} protein={prot!r}"
+            assert not str(r['sub_category']).strip().lower().startswith('chicken')
 
     def test_fish_is_a_subset_of_seafood(self, chennai):
         """`is_fish_dish` is the fish-only subset; a future prawn or crab row is

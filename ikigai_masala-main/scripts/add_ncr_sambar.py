@@ -23,6 +23,21 @@ from pathlib import Path
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 _ROOT = Path(__file__).resolve().parent.parent
 _BLR = _ROOT / 'data' / 'raw' / 'city_items' / 'bangalore.xlsx'
 _NCR = _ROOT / 'data' / 'raw' / 'city_items' / 'ncr.xlsx'
@@ -80,7 +95,7 @@ def main() -> None:
                  and (ncr['course_type'] == 'sambar').sum())
     out = add_sambar(blr, ncr)
     added = len(out) - len(ncr)
-    out.to_excel(_NCR, index=False)
+    _atomic_to_excel(out, _NCR, index=False)
     after = int((out['course_type'] == 'sambar').sum())
     print(f"NCR sambar: {before} -> {after} (+{added} row(s) written to {_NCR})")
 

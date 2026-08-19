@@ -2,15 +2,28 @@
   "bangalore.xlsx": [
     "amadeus",
     "booking.com",
+    "citrix",
     "cloudera",
     "computacenter",
     "continental",
     "healthineers",
     "icon",
     "infineon",
+    "moengage",
+    "stripe",
+    "stryker",
     "zscalar"
   ],
-  "chennai.xlsx": [],
+  "chennai.xlsx": [
+    "accenture",
+    "icon",
+    "ltm",
+    "rntbci",
+    "tata communications",
+    "toast tab",
+    "wells fargo",
+    "world bank"
+  ],
   "ncr.xlsx": [
     "airtel noida",
     "carelon",

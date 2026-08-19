@@ -25,6 +25,21 @@ from pathlib import Path
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 CITIES = ["bangalore", "pune", "chennai", "ncr"]
@@ -85,7 +100,7 @@ def main(dry_run=False):
         tok = kept.iloc[0].get("client") if len(kept) else ""
         print(f"{slug}: merged {DROP} -> {KEEP} (client now: {tok})")
         if not dry_run:
-            out.to_excel(path, index=False)
+            _atomic_to_excel(out, path, index=False)
     if dry_run:
         print("[dry-run] nothing written")
 

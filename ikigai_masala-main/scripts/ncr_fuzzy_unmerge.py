@@ -46,6 +46,21 @@ import sys
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 CITY_ITEMS = os.path.join(
@@ -165,7 +180,7 @@ def main(argv=None) -> int:
     for item, kind, detail in changes:
         print(f'  {kind:7} {item:26} -> {detail}')
     if not args.dry_run:
-        after.to_excel(path, index=False)
+        _atomic_to_excel(after, path, index=False)
         print(f'\nrewrote {len(real)} change(s) ({len(skips)} skipped)')
     else:
         print('\nnothing written (--dry-run)')

@@ -33,6 +33,21 @@ from pathlib import Path
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 NCR = CITY_DIR / "ncr.xlsx"
@@ -116,7 +131,7 @@ def main(dry_run=False):
         print("[dry-run] nothing written")
         return out
     if added:
-        out.to_excel(NCR, index=False)
+        _atomic_to_excel(out, NCR, index=False)
         print(f"wrote {NCR.name}")
     return out
 

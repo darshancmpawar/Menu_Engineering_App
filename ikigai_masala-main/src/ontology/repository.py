@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
@@ -132,12 +133,22 @@ class OntologyRepository:
         # its clients have `source_pools = []` — so they were planning from the
         # common fifth of the list while the other 3,456 dishes (eight client
         # pools) sat unreachable. See note 15 in CLAUDE.md.
+        #
+        # The check is on the RESOLVED workbook, not on the city string. A
+        # client whose `clients.city` is null reads Bangalore's list (that is
+        # what `city_excel_path` falls back to) but used to be denied
+        # Bangalore's pool policy, because `normalize_city(None)` matches
+        # nothing — so it planned from `common` alone, roughly a fifth of the
+        # list, while reading the file the other four fifths live in. Stripe is
+        # one of five clients with a null city, and it made every dish its own
+        # menu import had just added invisible to it. Keying by resolved path is
+        # also what the caches above do (note 17): one identity, one policy.
         from src.constants import FULL_POOL_CITIES
-        from src.client.client_config import normalize_city
-        if (normalize_city(city) or '').strip().lower() in FULL_POOL_CITIES:
+        path = city_excel_path(city)
+        if Path(path).stem.strip().lower() in FULL_POOL_CITIES:
             return df, pools
         active = get_active_pools(source_pools)
-        key = (city_excel_path(city), frozenset(active))
+        key = (path, frozenset(active))
         cached = self._filtered_by_path_and_pools.get(key)
         if cached is None:
             with self._lock:

@@ -1,0 +1,3 @@
+
+# atomic-write temp files from the ontology correction scripts
+*.xlsx.tmp

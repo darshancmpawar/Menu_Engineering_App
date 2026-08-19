@@ -38,6 +38,21 @@ from pathlib import Path
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 
@@ -131,7 +146,7 @@ def main(dry_run=False, city=None):
         print(f"  folded {n} row(s)")
         report(df)
         if n and not dry_run:
-            df.to_excel(path, index=False)
+            _atomic_to_excel(df, path, index=False)
             print(f"  wrote {path.name}")
         elif dry_run:
             print("  [dry-run] nothing written")
