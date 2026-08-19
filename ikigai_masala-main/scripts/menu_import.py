@@ -725,6 +725,32 @@ COURSE_PRIORITY = [
 ]
 
 
+#: Tails that make a dish a RICE whatever row it was printed on. Deliberately
+#: narrow: `bath` is excluded because `kesari_bath` is a sweet named for a rice
+#: dish, and `rice` because `curd_rice` belongs to the curd-rice station.
+_RICE_TAILS = ("khichdi", "khichadi", "pulao", "biryani", "pilaf", "kushka",
+               "khuska", "chitranna")
+
+#: Courses that are already a correct home for a rice-named dish.
+_RICE_OK = ("rice", "healthy_rice", "nonveg_main")
+
+
+def refile_rice(item: str, course: str) -> str:
+    """A khichdi printed in the dal row is still a rice.
+
+    Printed menus put whatever the day needs in whatever row has space —
+    `millets_khichdi` and `red_rice_pilaf` came in under "DAL / SAMBAR", and
+    `veg_kofta_biryani` under "Raitha/Chutney". Left there they are served as a
+    dal or a raita. `audit_course_types.py` catches exactly this after the fact
+    and fails the build, so the import should not create it in the first place.
+    """
+    if course in _RICE_OK:
+        return course
+    if item.rsplit("_", 1)[-1] in _RICE_TAILS:
+        return "rice"
+    return course
+
+
 def refile_lentils(item: str, course: str) -> str:
     """Re-file a lentil-family dish by its NAME rather than its printed row.
 
@@ -732,6 +758,7 @@ def refile_lentils(item: str, course: str) -> str:
     "Pulses - 2" both carry sambars, so `traditional_sambar` landed in rasam and
     `karnataka_sambar` in dal. The dish name is the better evidence.
     """
+    course = refile_rice(item, course)
     if course not in ("dal", "rasam", "sambar"):
         return course
     tail = item.rsplit("_", 1)[-1]

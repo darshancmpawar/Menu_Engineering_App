@@ -45,6 +45,21 @@ from src.preprocessor.column_mapper import ColumnMapper  # noqa: E402
 from src.preprocessor.data_cleanser import DataCleanser  # noqa: E402
 from src.preprocessor.pool_builder import PoolBuilder  # noqa: E402
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 CITY_ITEMS_DIR = REPO_ROOT / 'data' / 'raw' / 'city_items'
 REFERENCE_CITY = 'bangalore'
 
@@ -194,18 +209,3 @@ def main(argv=None) -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
-
-
-def _atomic_to_excel(frame, path, **kw):
-    """Write via a temp file + rename.
-
-    `to_excel` truncates the target before streaming into it, so an
-    interrupted run leaves a 0-byte workbook and the city's item list is
-    gone. That happened once; it must not happen twice.
-    """
-    import pathlib as _pl
-    p = _pl.Path(path)
-    tmp = p.with_name(p.name + ".tmp")
-    kw.setdefault("index", False)
-    frame.to_excel(tmp, **kw)
-    tmp.replace(p)

@@ -49,6 +49,21 @@ CITIES = ("bangalore", "pune", "chennai", "ncr")
 
 from menu_import import CANONICAL_SPELLINGS  # noqa: E402
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 #: The vocabulary lives in `menu_import.CANONICAL_SPELLINGS` — one source of
 #: truth, because this script renames the WORKBOOK to the house spelling while
 #: the importer rewrites every INCOMING name to it, and the two halves must not
@@ -202,18 +217,3 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     main(dry_run=ap.parse_args().dry_run)
-
-
-def _atomic_to_excel(frame, path, **kw):
-    """Write via a temp file + rename.
-
-    `to_excel` truncates the target before streaming into it, so an
-    interrupted run leaves a 0-byte workbook and the city's item list is
-    gone. That happened once; it must not happen twice.
-    """
-    import pathlib as _pl
-    p = _pl.Path(path)
-    tmp = p.with_name(p.name + ".tmp")
-    kw.setdefault("index", False)
-    frame.to_excel(tmp, **kw)
-    tmp.replace(p)

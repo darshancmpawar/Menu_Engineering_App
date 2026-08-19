@@ -2,13 +2,16 @@
   "bangalore.xlsx": [
     "amadeus",
     "booking.com",
+    "citrix",
     "cloudera",
     "computacenter",
     "continental",
     "healthineers",
     "icon",
     "infineon",
+    "moengage",
     "stripe",
+    "stryker",
     "zscalar"
   ],
   "chennai.xlsx": [],

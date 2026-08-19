@@ -38,6 +38,21 @@ import sys
 
 import pandas as pd
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 CITY_ITEMS = os.path.join(
@@ -90,6 +105,19 @@ CORRECTIONS = {
         # served a dosa as their dal. `lentil-based_dosa_(adai/pesarattu)` is the
         # sub_category pesarattu and adai_dosa already use.
         'moong_dal_dosa': ('bread', 'lentil-based_dosa_(adai/pesarattu)', None),
+        # Three rices the client menu imports filed elsewhere, because a printed
+        # grid puts whatever the day needs in whatever row has space: the first
+        # two came in under MOengage's "DAL / SAMBAR" row and the third under
+        # Citrix's "Raitha/Chutney". Left there they are served as the day's dal
+        # or its raita. `menu_import.refile_rice` now catches the pattern at
+        # import time; these three predate it.
+        # Each sub_category is taken from a direct sibling already in the file:
+        # `vegetable_millets_khichdi` is rice / north_khichdi, `red_rice_pulao`
+        # is rice / north_simple_veg_pulao, and the veg biryanis are
+        # north_veg_biryani.
+        'millets_khichdi':   ('rice', 'north_khichdi', None),
+        'red_rice_pilaf':    ('rice', 'north_simple_veg_pulao', None),
+        'veg_kofta_biryani': ('rice', 'north_veg_biryani', None),
     },
     # NCR arrived from a mapping pipeline that inherited a modal flag vector per
     # sub_category, so a dish landing in the wrong sub_category (e.g. a chicken
@@ -247,18 +275,3 @@ def main(argv=None) -> int:
 
 if __name__ == '__main__':
     raise SystemExit(main())
-
-
-def _atomic_to_excel(frame, path, **kw):
-    """Write via a temp file + rename.
-
-    `to_excel` truncates the target before streaming into it, so an
-    interrupted run leaves a 0-byte workbook and the city's item list is
-    gone. That happened once; it must not happen twice.
-    """
-    import pathlib as _pl
-    p = _pl.Path(path)
-    tmp = p.with_name(p.name + ".tmp")
-    kw.setdefault("index", False)
-    frame.to_excel(tmp, **kw)
-    tmp.replace(p)

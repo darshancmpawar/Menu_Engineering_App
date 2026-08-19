@@ -62,6 +62,21 @@ CITIES = ("bangalore", "pune", "chennai", "ncr")
 
 from menu_import import nonveg_structural_flags  # noqa: E402
 
+def _atomic_to_excel(frame, path, **kw):
+    """Write via a temp file + rename.
+
+    `to_excel` truncates the target before streaming into it, so an
+    interrupted run leaves a 0-byte workbook and the city's item list is
+    gone. That happened once; it must not happen twice.
+    """
+    import pathlib as _pl
+    p = _pl.Path(path)
+    tmp = p.with_name(p.name + ".tmp")
+    kw.setdefault("index", False)
+    frame.to_excel(tmp, **kw)
+    tmp.replace(p)
+
+
 #: Only `nonveg_main` is composed by `nonveg_main_daily_pair`, so only its rows
 #: need a dry/gravy/biryani form. A `nonveg_soup` has one form — soup — and
 #: giving a shorba `is_nonveg_gravy` would be wrong data for no gain.
@@ -163,18 +178,3 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     main(dry_run=ap.parse_args().dry_run)
-
-
-def _atomic_to_excel(frame, path, **kw):
-    """Write via a temp file + rename.
-
-    `to_excel` truncates the target before streaming into it, so an
-    interrupted run leaves a 0-byte workbook and the city's item list is
-    gone. That happened once; it must not happen twice.
-    """
-    import pathlib as _pl
-    p = _pl.Path(path)
-    tmp = p.with_name(p.name + ".tmp")
-    kw.setdefault("index", False)
-    frame.to_excel(tmp, **kw)
-    tmp.replace(p)
