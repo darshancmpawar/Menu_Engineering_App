@@ -1432,6 +1432,7 @@ chennai,avicha_kadalai,starter,Wells Fargo,no colour-bearing word in the name
 chennai,bread_biryani,rice,Wells Fargo,no colour-bearing word in the name
 chennai,chilli_idli,bread,"RNTBCI,Wells Fargo",no colour-bearing word in the name
 chennai,idiyappam_biryani,rice,TATA COMMUNICATIONS,no colour-bearing word in the name
+chennai,jeerasam,rasam,common,no colour-bearing word in the name
 chennai,karamani_sundal,salad,TATA COMMUNICATIONS,no colour-bearing word in the name
 chennai,lemon_poha,bread,"RNTBCI,Wells Fargo",no colour-bearing word in the name
 chennai,mor_kolambu_vada,starter,TATA COMMUNICATIONS,no colour-bearing word in the name
@@ -1840,6 +1841,7 @@ ncr,icecream,veg_gravy,Siemens,no colour-bearing word in the name
 ncr,idli_vada,bread,"SAEL,Stryker",no colour-bearing word in the name
 ncr,imarthi,dessert,SAEL,no colour-bearing word in the name
 ncr,imarti,dessert,SAEL,no colour-bearing word in the name
+ncr,inji_rasam,rasam,nan,no colour-bearing word in the name
 ncr,jai_poori_aloo_pyaaz,bread,Carelon,no colour-bearing word in the name
 ncr,jaipuri_bhindi_masala,veg_dry,Carelon,no colour-bearing word in the name
 ncr,jal_jeera,veg_gravy,Stryker,no colour-bearing word in the name
@@ -1853,6 +1855,7 @@ ncr,jeera_lauki,veg_dry,Carelon,no colour-bearing word in the name
 ncr,jeera_potato,veg_gravy,Junglee Games,no colour-bearing word in the name
 ncr,jeera_tadka_raita,curd_side,Airtel Noida,no colour-bearing word in the name
 ncr,jeera_wali_moong_dal,dal,Carelon,no colour-bearing word in the name
+ncr,jeerasam,rasam,nan,no colour-bearing word in the name
 ncr,jodhpuri_aloo,veg_dry,Junglee Games,no colour-bearing word in the name
 ncr,jodhpuri_dal_tadka,dal,Siemens,no colour-bearing word in the name
 ncr,jodhpuri_ladoo,dessert,"Carelon,Sinch",no colour-bearing word in the name
@@ -2397,3 +2400,5 @@ ncr,yellow_moong_dal_tadka,dal,Carelon,no colour-bearing word in the name
 ncr,yellow_rice,rice,Stryker,no colour-bearing word in the name
 ncr,zeera_aloo,veg_gravy,Airtel Noida,no colour-bearing word in the name
 ncr,zeera_raita,curd_side,Stryker,no colour-bearing word in the name
+pune,dal_rasam,rasam,common,no colour-bearing word in the name
+pune,jeerasam,rasam,common,no colour-bearing word in the name

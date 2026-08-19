@@ -194,6 +194,32 @@ KEY_INGREDIENT_CORRECTIONS = {
     for city in ('bangalore', 'chennai', 'pune', 'ncr')
 }
 
+#: The seven Chennai `veg_gravy` rows no evidence could settle, adjudicated one
+#: at a time. `test_chennai_rules.py` requires the column to be complete for the
+#: slots an `attribute_grouping` rule groups by — a blank there is not a neutral
+#: value, it is a dish the rule cannot place in any group — and these are the
+#: rows `complete_ontology.py` correctly refused: their words (`kootu`,
+#: `kuzhambu`, `kurma`) name a PREPARATION, and the ontology's own rows for each
+#: are spread across whatever vegetable went in, so no token vote can converge.
+#:
+#: Each takes the value its own family already uses: `pasta` (the 5 vegetarian
+#: pasta rows), `mixed_vegetables` (36 of the kurma rows, and all three of these
+#: name "veg" rather than a vegetable), `raw_banana` (valakai IS raw banana; 7
+#: rows use the value). `turkey_berry` is a new value — sundakkai is a real
+#: ingredient the vocabulary simply lacked, and the kuzhambu convention is to
+#: name the vegetable, so borrowing `mixed_vegetables` would have been wrong
+#: about a single-ingredient dish.
+_CHENNAI_VEG_GRAVY_KEYS = {
+    'indian_style_pasta': 'pasta',
+    'veg_pasta': 'pasta',
+    'kadai_veg_gravy': 'mixed_vegetables',
+    'veg_chettinad_kurma': 'mixed_vegetables',
+    'poriyal_kootu': 'mixed_vegetables',
+    'valakai_kara_curry': 'raw_banana',
+    'sunda_vatha_kuzhambu': 'turkey_berry',
+}
+KEY_INGREDIENT_CORRECTIONS['chennai'].update(_CHENNAI_VEG_GRAVY_KEYS)
+
 #: A SAMBAR filed as a rasam in all four workbooks, and the row said so itself:
 #: its `key_ingredient` was the literal string "sambar" (a category, not an
 #: ingredient) and its colour is `yellow`, matching `soppu_sambar` rather than
@@ -205,7 +231,14 @@ KEY_INGREDIENT_CORRECTIONS = {
 #: attributes (spice-based rasam, garlic, brown) and looks like a different
 #: dish, and merging two real dishes is the mistake ncr_fuzzy_unmerge.py had to
 #: reverse.
-_SAARU_REFILE = {'soppu_saru': ('sambar', 'leafy_sambar', None)}
+_SAARU_REFILE = {
+    'soppu_saru': ('sambar', 'leafy_sambar', None),
+    # Client-confirmed, and Citrix's printed Bangalore menu agrees: it files
+    # `uppusaaru` / `upsaaru` under its SAMBAR row. The row's own coconut/brown
+    # attributes read rasam-like, which is why this one was held back for the
+    # client's word rather than moved with `soppu_saru`.
+    'uppu_saru': ('sambar', 'vegetable_sambar', None),
+}
 
 for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
     CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)

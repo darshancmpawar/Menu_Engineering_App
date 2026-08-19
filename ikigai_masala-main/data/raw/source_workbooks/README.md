@@ -81,6 +81,18 @@ attachments and would have been lost.
 8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
    are what adds new non-veg rows with no form flag
 9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
-10. `scripts/build_pool_token_map.py`
+10. `scripts/complete_ontology.py` — **last of the writers**, because it learns
+    every rule it applies from the rows already classified, so it needs the
+    imports, the re-files and the flag corrections to have happened first. It
+    runs to a fixed point internally; a second invocation is a no-op.
+11. `scripts/fill_item_colours.py` — same argument, for `item_color`
+12. `scripts/drop_dead_columns.py` — schema only, so order does not matter
+13. `scripts/build_pool_token_map.py`
 
-Steps 3, 7 and 8 are order-sensitive for the reasons their docstrings give.
+Steps 3, 7, 8 and 10 are order-sensitive for the reasons their docstrings give.
+
+The whole chain is **convergent**: run it twice and the second pass reports
+"already correct" everywhere. That is the check worth doing after any re-import,
+because it catches two scripts disagreeing — `expand_side_pools.py` maintains a
+floor of 12 rasam per city, so moving a dish out of `rasam` makes it share two
+back in, and that is the system working rather than a fault.
