@@ -172,7 +172,55 @@ SPELLING = [
     (_tok("parata"), "paratha"),
     (_tok("meeta"), "meetha"),
     (_tok("thondekkai"), "thondekai"),
+    # --- third pass: Stripe's two menus. Each target below is the spelling
+    # Bangalore already uses, checked against the ontology rather than assumed
+    # (`ajwain` 5 rows vs `ajawin` 1; `payasam` 28; `jamun` 10; `manchurian` 28;
+    # `amritsari` 11; `gujarati` 10; `lavang_latika`, `kachumber_salad`,
+    # `balushahi` present). `muradabadi` is deliberately absent: neither it nor
+    # `moradabadi` is in any city list, so both spellings of the place name are
+    # merely new vocabulary, not a typo to correct.
+    # `chapti` only — NOT `chapathi`. Bangalore is genuinely split between
+    # `chapatti` (34 rows) and `chapati` (14), both ordinary transliterations,
+    # so rewriting `chapathi` to one of them turns a name the fold would have
+    # merged into a third spelling that matches neither. `chapti` is a typo with
+    # no rows behind it, so it is safe.
+    (_tok("chapti"), "chapati"),
+    (_tok("partha"), "paratha"),
+    (_tok("ajawni"), "ajwain"),
+    (_tok("grean"), "green"),
+    (_tok("paysam"), "payasam"),
+    (_tok("jammun"), "jamun"),
+    (_tok("kuchmber"), "kachumber"),
+    (_tok("cucumbar"), "cucumber"),
+    (_tok("munchrina"), "manchurian"),
+    (_tok("amritasri"), "amritsari"),
+    (_tok("gujrati"), "gujarati"),
+    (_tok("arahar"), "arhar"),
+    (_tok("launk"), "lavang"),
+    (_tok("balushai"), "balushahi"),
+    (_tok("kolkatta"), "kolkata"),
+    (_tok("chickepeas"), "chickpeas"),
+    (_tok("pototo"), "potato"),
+    (_tok("avacado"), "avocado"),
+    (_tok("honye"), "honey"),
+    (r"jeerarasam", "jeera_rasam"),
+    (r"potatomcauliflower", "potato_cauliflower"),
+    # The ontology writes these two overwhelmingly one way, so an import
+    # spelling them the other creates a second row for the same dish:
+    # `chana` 153 rows vs `channa` 16, `kadhi` 13 vs `kadi` 2. NB `kadhi` (the
+    # yogurt curry) is NOT `kadai` (the wok) — that pair is in KEEP_APART.
+    (_tok("channa"), "chana"),
+    (_tok("kadi"), "kadhi"),
+    # "Haramoonghj mughlai" — not a word in any language; hara moong is the
+    # only reading, and a menu printing "Haramoonghj" is worse than a fold.
+    (_tok("haramoonghj"), "hara_moong"),
 ]
+
+#: A parenthesised aside describes how a dish is served or where it is from —
+#: "Chicken tikka Masala(Boneless)", "Mysore Rasam (Karnataka)", "Soya veg
+#: Cutlet(tasting)". It is not part of the dish name, and keeping it produces a
+#: near-duplicate of the same dish written without it.
+_PARENTHETICAL = re.compile(r"\([^)]*\)?")
 
 
 def norm(v) -> str:
@@ -182,9 +230,16 @@ def norm(v) -> str:
     return re.sub(r"\s+", " ", str(v).replace("\n", " ")).strip()
 
 
-def to_item(name: str) -> str:
-    """Source spelling -> the ontology's snake_case dish name."""
+def to_item(name: str, drop_parentheticals: bool = False) -> str:
+    """Source spelling -> the ontology's snake_case dish name.
+
+    *drop_parentheticals* removes "(Boneless)", "(Karnataka)", "(tasting)" and
+    the like before normalising. Off by default so an importer opts in only
+    when its source actually annotates dish names that way.
+    """
     s = str(name).strip().lower()
+    if drop_parentheticals:
+        s = _PARENTHETICAL.sub(" ", s)
     s = s.replace("&", " and ").replace("/", " ")
     s = re.sub(r"[()\[\],.\'\"`]", " ", s)
     s = re.sub(r"^\s*\d+\s*[.)]\s*", "", s)   # printed-menu numbering
@@ -216,9 +271,15 @@ SAME_DISH = {
     ("mysore_pak", "mysorepak"),
     ("chettinad", "chettinadu"),
     ("potato", "potatoes"),      # singular/plural, one dish
+    ("mix", "mixed"),            # mix veg / mixed veg, one dish
     ("chaat", "chat"),           # `chaat` is the ontology's spelling
     ("ice", "iced"),             # peach ice / iced tea
     ("badushahi", "badhushai"),  # one Karnataka sweet, two transliterations
+    # The same battered fritter, south (bajji) and west (bhaji). Both spellings
+    # are real vocabulary, so only this listing stops `mirchi_bhaji` being
+    # imported alongside the `mirchi_bajji` Bangalore already carries. The pair
+    # only ever merges names that are otherwise token-for-token identical.
+    ("bajji", "bhaji"),
 }
 
 _KEEP_APART_KEYS = {tuple(sorted(p)) for p in KEEP_APART}
@@ -339,16 +400,22 @@ def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
 def vocab_from(frame: pd.DataFrame, client_token: Optional[str] = None) -> dict:
     """Token frequency of the dish names the city carries BEFORE this import.
 
-    Rows a previous run of the SAME import added (``client`` is exactly this
-    import's token) are excluded, or the script would not be idempotent: after a
-    first run those names are in the vocabulary, so a pair that merged as "one
-    side is a typo nobody uses" now reads as "both sides are known words",
-    splits, and the re-run adds back the dishes that were deliberately folded
-    away.
+    Rows a previous run of the SAME import added are excluded, or the script
+    would not be idempotent: after a first run those names are in the
+    vocabulary, so a pair that merged as "one side is a typo nobody uses" now
+    reads as "both sides are known words", splits, and the re-run adds back the
+    dishes that were deliberately folded away.
+
+    The match is on the client LIST, not on the whole cell. It used to compare
+    the cell to the token exactly, which held only while this was the sole
+    importer: the moment a second client's import re-tagged one of these rows it
+    became "Booking.com,Stripe", stopped matching, rejoined the vocabulary, and
+    Booking's re-run started adding dishes again.
     """
     if client_token and "client" in frame.columns:
-        mine = (frame["client"].astype(str).str.strip().str.lower()
-                == client_token.lower())
+        token = client_token.strip().lower()
+        mine = frame["client"].astype(str).map(
+            lambda v: token in {t.strip().lower() for t in str(v).split(",")})
         frame = frame[~mine]
     counts: dict = {}
     for name in frame["item"].astype(str):
@@ -385,6 +452,14 @@ NONVEG = {"chicken": "chicken", "mutton": "mutton", "lamb": "lamb",
 #: in it still gets the default protein rather than reading as vegetarian.
 NONVEG_COURSES = ("nonveg_main", "nonveg_soup")
 
+#: Words that make a meat word in the same name mean the meat-FREE version:
+#: `soya_keema`, `keema_veg_biryani`, `veg_seekh_kabab`, `red_velvet_pastry_egg_less`.
+#: Without these a soya keema is stamped `primary_protein=chicken`, and
+#: `PoolBuilder._nonveg_mask` then drops it from the veg pool it belongs to —
+#: the dish becomes unservable rather than merely mislabelled.
+VEG_QUALIFIERS = {"veg", "vegetable", "vegetarian", "soya", "soyabean", "soy",
+                  "mushroom", "paneer", "tofu", "jackfruit", "less"}
+
 
 def cuisine_for(item: str, course: str) -> str:
     if any(t in item for t in CHINESE):
@@ -398,10 +473,83 @@ def cuisine_for(item: str, course: str) -> str:
     return "north_indian"
 
 
+#: Name words that say a non-veg dish is served DRY / semi-dry.
+DRY_WORDS = ("dry", "fry", "fried", "roast", "sukka", "sukha", "kebab", "kabab",
+             "tikka", "65", "finger", "fingers", "tandoori", "grill", "grilled",
+             "pepper", "chilli", "manchurian", "crispy", "popcorn", "majestic",
+             "varuval", "ghee_roast", "peri")
+
+#: Name words that say it is served in a GRAVY.
+GRAVY_WORDS = ("curry", "masala", "korma", "kurma", "gravy", "butter",
+               "makhani", "pyaza", "pyaz", "lababdar", "kadai", "handi",
+               "salan", "stew", "kuzhambu", "rogan", "tariwala", "do_pyaza",
+               "chettinad", "vindaloo", "dopyaza")
+#: NB `shorba` is deliberately absent — it is a SOUP, and Bangalore files its
+#: shorbas under `nonveg_soup`. Reading it as a gravy would have stamped a
+#: gravy flag on five soups.
+
+
+def nonveg_structural_flags(item: str, protein: str, cuisine: str,
+                            style: str = "") -> Set[str]:
+    """The flags a non-veg dish needs to be PLACEABLE, from its name and row.
+
+    Not cosmetic. `slot_composition`'s `nonveg_main_daily_pair` composes a 2-4
+    slot non-veg counter as "one `is_nonveg_dry` + one north/south chicken
+    gravy" every day, so a dish carrying neither flag can never be placed on
+    such a counter at all. The first import left every `is_*` at 0 and so added
+    18 non-veg dishes that were, in practice, unservable — and forcing one in
+    with a `min: 1` frequency rule made the whole counter INFEASIBLE rather
+    than simply not choosing it.
+
+    *style* is the printed menu's own verdict ("dry" / "gravy") when its row
+    label carries one — Stripe prints "Non-Veg Semi Dry or Dry" and "Non-Veg
+    Curry or Main Course" as separate rows, which is better evidence than any
+    name heuristic. The name decides when the label does not, and a biryani is
+    a biryani whatever row it was printed on.
+    """
+    toks = set(item.split("_"))
+    out: Set[str] = set()
+
+    if "biryani" in toks:
+        return {"is_nonveg_biryani", "is_biryani_item"}
+
+    dry = style == "dry" or (not style and bool(toks & set(DRY_WORDS)))
+    gravy = style == "gravy" or (not style and bool(toks & set(GRAVY_WORDS)))
+    # A name can say both ("chicken tikka masala"): gravy wins, it is the dish's
+    # form. With the label present only the label speaks.
+    if gravy:
+        out.add("is_nonveg_gravy")
+        if protein == "chicken":
+            out.add("is_south_chicken_gravy" if cuisine == "south_indian"
+                    else "is_north_chicken_gravy")
+    elif dry:
+        out.add("is_nonveg_dry")
+    return out
+
+
 def protein_for(item: str, course: str) -> str:
+    """The animal protein a dish NAME declares, or "" if it declares none.
+
+    Two traps, both of which stamped the wrong protein onto real dishes:
+
+    * `\\b` does not fire next to `_`, so `\\bfish` never matched
+      `tawa_fish_fry` and the dish fell through to the non-veg default and was
+      filed as chicken. Only a name STARTING with the protein word worked.
+      Same lookaround boundary as `_tok`.
+    * the first dict entry to match won regardless of where it sat in the name,
+      so `anda_keema_ghotala` (an egg dish) matched `keema` and became chicken.
+      The earliest match in the name is the one that names the dish.
+    """
+    best, best_at = "", None
     for token, protein in NONVEG.items():
-        if re.search(rf"\b{token}", item):
-            return protein
+        m = re.search(rf"(?<![a-z0-9]){token}", item)
+        if m and (best_at is None or m.start() < best_at):
+            best, best_at = protein, m.start()
+    if best:
+        # a meat word qualified as meat-free — soya keema, keema veg biryani
+        if set(item.split("_")) & VEG_QUALIFIERS and course not in NONVEG_COURSES:
+            return ""
+        return best
     return "" if course not in NONVEG_COURSES else "chicken"
 
 
@@ -480,6 +628,14 @@ class ImportSpec:
     #: the app's categories. Defaults to the lentil-family re-filing.
     refile: Callable[[str, str], str] = refile_lentils
     course_priority: Sequence[str] = tuple(COURSE_PRIORITY)
+    #: raw source name -> snake_case dish name. Override to opt into
+    #: `to_item(..., drop_parentheticals=True)` or any source-specific cleanup.
+    clean_name: Callable[[str], str] = to_item
+    #: '<block>||<label>' -> "dry" or "gravy", when the printed row says which.
+    #: A non-veg dish carrying neither `is_nonveg_dry` nor a chicken-gravy flag
+    #: cannot be placed by `nonveg_main_daily_pair` at all, and the menu's own
+    #: row labels are better evidence than a name heuristic.
+    style_by_label: Dict[str, str] = field(default_factory=dict)
 
 
 def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
@@ -491,6 +647,7 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
     """
     existing = {str(i).strip().lower(): idx for idx, i in frame["item"].items()}
     by_course: dict = defaultdict(set)
+    style_of: dict = {}          # dish -> "dry"/"gravy", from its printed row
     for key, dishes in raw.items():
         label = key.split("||", 1)[1]
         if label in spec.skip_labels:
@@ -498,11 +655,14 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
         course = spec.category_map.get(key)
         if not course:
             continue
+        style = spec.style_by_label.get(key, "")
         for d in dishes:
-            item = to_item(d)
+            item = spec.clean_name(d)
             if not item:
                 continue
             by_course[spec.refile(item, course)].add(item)
+            if style:
+                style_of.setdefault(item, style)
 
     generic = generic_row_names()
 
@@ -581,7 +741,8 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
             nid += 1
             r["item"] = item
             r["course_type"] = course
-            r["cuisine_family"] = cuisine_for(item, course)
+            cuisine = cuisine_for(item, course)
+            r["cuisine_family"] = cuisine
             protein = protein_for(item, course)
             r["primary_protein"] = protein
             r["sub_category"] = ""
@@ -592,6 +753,14 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
                 r["is_egg_dish"] = 1
             if protein in ("fish", "prawn", "crab"):
                 for c in ("is_seafood", "is_fish_dish"):
+                    if c in r.index:
+                        r[c] = 1
+                r["key_ingredient"] = protein   # or an ingredient ban misses it
+            # Without these the dish is in the pool but no composition can
+            # place it — see `nonveg_structural_flags`.
+            if course in NONVEG_COURSES:
+                for c in nonveg_structural_flags(item, protein, cuisine,
+                                                 style_of.get(item, "")):
                     if c in r.index:
                         r[c] = 1
             rows.append(r)

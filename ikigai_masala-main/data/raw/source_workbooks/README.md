@@ -28,6 +28,8 @@ attachments and would have been lost.
 | `chennai_sample_menu.xlsx` | Chennai | Toast Tab's 7-day service history (sheet `Toasttab`) | `docs/chennai_client_logic.md`, the `ToastTab CHN` client rules |
 | `bangalore_client_logics.xlsx` | Bangalore | **the Bangalore rulebook** — 158 logic statements across 32 clients, hard and soft mixed together, in one sheet named `Banglore`. This is the main regional ruleset; it is per-CLIENT logics rather than city-level rules | `docs/client_logics.md`, the Bangalore entries in `configs/client_rules.json` |
 | `NCR_menu_items.xlsx` | NCR | pre-mapped item list (already in master schema) for 8 NCR clients, with its own `Mapping_Log` / `Review_Required` / `Data_Quality_Log` sheets. **Its `ACCEPT_REVIEW` fuzzy matches are the provenance for `scripts/ncr_fuzzy_unmerge.py`** — the reversal cites the exact merges it undoes | `city_items/ncr.xlsx`, `docs/ncr_client_logic.md` |
+| `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `scripts/import_booking_menu.py` |
+| `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `scripts/import_stripe_menu.py` |
 
 ## Adding a city
 
@@ -49,10 +51,36 @@ attachments and would have been lost.
    pool for counters with a south-themed weekday). Each is
    idempotent, and each has a test that fails if its corrections are missing.
 
-   **Order matters in one place**: run `scripts/merge_duplicate_curd.py` BEFORE
+   **Order matters in two places**: run `scripts/merge_duplicate_curd.py` BEFORE
    `scripts/expand_side_pools.py`. The merge removes a `curd_side` row
    (`plain_curd`), so running it afterwards drops that category back below its
-   share target and leaves the pool one dish short.
+   share target and leaves the pool one dish short. And run
+   `scripts/canonical_dish_spellings.py` BEFORE any client menu import
+   (`import_booking_menu.py`, `import_stripe_menu.py`): the importer rewrites an
+   incoming `channa` to `chana`, so while both spellings are alive in the
+   workbook the fold reads the pair as two real words and the import adds a
+   second row for a dish that is already there.
+
+   Also pan-city: `scripts/misspelled_protein_names.py` (meat-named dishes the
+   mapping pipeline left sitting in veg pools) and
+   `scripts/canonical_dish_spellings.py` (one dish, one spelling).
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
 5. Declare the city's categories in `city_items/ontology_categories.json`.
+
+## Correction scripts, in the order they must run
+
+1. `scripts/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
+2. `scripts/misspelled_protein_names.py` — meat-named rows left in veg pools
+3. `scripts/canonical_dish_spellings.py` — one dish, one spelling
+4. `scripts/merge_duplicate_curd.py` — before `expand_side_pools.py`
+5. the per-city corrections (`seafood_taxonomy`, `course_type_corrections`,
+   `remove_generic_rows`, `dessert_cuisine_corrections`, the `ncr_*` set)
+6. `scripts/expand_side_pools.py`
+7. the client menu imports (`import_booking_menu.py`, `import_stripe_menu.py`)
+8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
+   are what adds new non-veg rows with no form flag
+9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
+10. `scripts/build_pool_token_map.py`
+
+Steps 3, 7 and 8 are order-sensitive for the reasons their docstrings give.

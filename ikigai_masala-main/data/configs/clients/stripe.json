@@ -1,6 +1,6 @@
 {
   "Stripe": {
-    "_comment": "Bangalore site. Mutton (2x/month) and fish (1x/week) are NOT configured: the Bangalore ontology carries zero mutton and zero fish dishes, so a rule would be inert and a pin would print a dish the kitchen has no entry for. Needs data first. 'Biryani on Wednesday' needs no rule — Wednesday is already the biryani theme day from the default theme map.",
+    "_comment": "Bangalore site, one counter, nonveg_main x2 (the menu's 'Non-Veg Semi Dry or Dry' + 'Non-Veg Curry or Main Course' pair). Fish is wired now that Stripe's own two sample weeks brought `fish_finger` and `tawa_fish_fry` into the Bangalore list. It is min=max=1 rather than a hard weekly guarantee: two dishes against the 20-day item cooldown support fish roughly every ten days, and `selector_frequency` caps `min` to what is actually placeable, so a week where both are cooled down relaxes instead of going INFEASIBLE. Both dishes needed `is_nonveg_dry` before the rule could be satisfied at all - `nonveg_main_daily_pair` spends both cells on one dry + one chicken gravy, so a dish with no form flag cannot be placed and forcing one made the counter INFEASIBLE (see scripts/nonveg_structural_flags.py). Mutton (2x/month) is still NOT configured: Bangalore carries zero mutton and so does Stripe's own menu, so a rule would be inert and a pin would print a dish with no ontology row behind it. test_stripe_import.py::test_bangalore_still_has_no_mutton_for_stripe fails the moment that changes. 'Biryani on Wednesday' needs no rule - Wednesday is already the biryani theme day.",
     "disable": [],
     "use": [
       {
@@ -13,6 +13,16 @@
         "with": {
           "min": 2,
           "max": 3
+        }
+      },
+      {
+        "ref": "selector_once_a_week",
+        "as": "stripe_fish_1x_week",
+        "with": {
+          "base_slot": "nonveg_main",
+          "selector": {
+            "flag": "is_fish_dish"
+          }
         }
       }
     ],
