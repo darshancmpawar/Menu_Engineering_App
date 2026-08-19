@@ -1070,6 +1070,7 @@ bangalore,corn_fried_rice,rice,key_ingredient,no word its siblings agree about
 bangalore,corn_fried_rice,rice,sub_category,no word its siblings agree about
 bangalore,corn_mix_green_salad,salad,key_ingredient,no word its siblings agree about
 bangalore,corn_mix_green_salad,salad,sub_category,no word its siblings agree about
+bangalore,corn_mushroom_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,corn_mushroom_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,corn_mutter_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,corn_mutter_curry,veg_gravy,key_ingredient,no word its siblings agree about
@@ -1901,6 +1902,7 @@ bangalore,hyderabadi_hariyali_chicken_curry,nonveg_main,nonveg_biryani_region,no
 bangalore,hyderabadi_murgh_korma,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,hyderabadi_murgh_korma,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,hyderabadi_murgh_korma,nonveg_main,sub_category,no word its siblings agree about
+bangalore,hyderabadi_mushroom_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,hyderabadi_mushroom_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,hyderabadi_paneer_kurma,veg_gravy,sub_category,no word its siblings agree about
 bangalore,hyderabadi_veg_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
@@ -2012,6 +2014,7 @@ bangalore,kadai_soya_masala,veg_gravy,sub_category,no word its siblings agree ab
 bangalore,kadai_style_mixed_vegetable_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,kadai_style_mixed_vegetable_curry,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,kadai_style_mixed_vegetable_curry,veg_gravy,sub_category,no word its siblings agree about
+bangalore,kadai_veg_and_babycorn,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,kadai_veg_and_babycorn,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,kadai_veg_and_babycorn,veg_gravy,sub_category,no word its siblings agree about
 bangalore,kadai_vegetable_masala,veg_dry,key_ingredient,no word its siblings agree about
@@ -2069,6 +2072,7 @@ bangalore,kali_mirch_paratha,bread,key_ingredient,no word its siblings agree abo
 bangalore,kali_mirch_paratha,bread,sub_category,no word its siblings agree about
 bangalore,kali_mirch_rasam,rasam,key_ingredient,no word its siblings agree about
 bangalore,kali_mirch_rasam,rasam,sub_category,no word its siblings agree about
+bangalore,kali_mirch_veg_kofta_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,kali_mirch_veg_kofta_curry,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,kali_mirch_veg_kofta_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,kalonji_chapati,bread,sub_category,no word its siblings agree about
@@ -2232,6 +2236,7 @@ bangalore,kukkad_curry,nonveg_main,nonveg_biryani_region,no word its siblings ag
 bangalore,kukkad_curry,nonveg_main,sub_category,no word its siblings agree about
 bangalore,kumbalakayi_sambar,sambar,key_ingredient,no word its siblings agree about
 bangalore,kumbh_kaju_shabnam,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,kumbh_kaju_shabnam,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,kumbh_kaju_shabnam,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,kumbh_kaju_shabnam,veg_gravy,sub_category,no word its siblings agree about
 bangalore,kumblekai_majjige_huli,curd_side,is_* flags,no attribute or word its siblings agree about
@@ -2418,6 +2423,7 @@ bangalore,malai_chicken_curry,nonveg_main,nonveg_biryani_region,no word its sibl
 bangalore,malai_chicken_curry,nonveg_main,sub_category,no word its siblings agree about
 bangalore,malai_chicken_dry,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,malai_chicken_dry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+bangalore,malai_lauki_kofta_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,malai_lauki_kofta_curry,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,malai_lauki_kofta_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,malai_sandwich,dessert,dessert_form,no word its siblings agree about
@@ -2517,6 +2523,7 @@ bangalore,matar_chale_masala,veg_gravy,is_* flags,no attribute or word its sibli
 bangalore,matar_chale_masala,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,matar_chale_masala,veg_gravy,sub_category,no word its siblings agree about
 bangalore,matar_khuska,rice,key_ingredient,no word its siblings agree about
+bangalore,matar_mushroom_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,matar_mushroom_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,matar_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,matar_pulao,rice,sub_category,no word its siblings agree about
@@ -2562,8 +2569,10 @@ bangalore,methi_chicken_curry,nonveg_main,gravy_region,no word its siblings agre
 bangalore,methi_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,methi_chicken_curry,nonveg_main,sub_category,no word its siblings agree about
 bangalore,methi_egg_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+bangalore,methi_malai_corn,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,methi_malai_corn,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,methi_malai_corn,veg_gravy,sub_category,no word its siblings agree about
+bangalore,methi_malai_matar,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,methi_malai_matar,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,methi_malai_matar,veg_gravy,sub_category,no word its siblings agree about
 bangalore,methi_murgh_dry,nonveg_main,gravy_region,no word its siblings agree about
@@ -2907,13 +2916,19 @@ bangalore,mushroom_capsicum_pepper_fry,veg_dry,sub_category,no word its siblings
 bangalore,mushroom_chilli,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,mushroom_chilli,veg_gravy,sub_category,no word its siblings agree about
 bangalore,mushroom_dum_biryani,rice,sub_category,no word its siblings agree about
+bangalore,mushroom_ghee_roast_semi_gravy,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,mushroom_ghee_roast_semi_gravy,veg_gravy,sub_category,no word its siblings agree about
 bangalore,mushroom_kabab,starter,key_ingredient,no word its siblings agree about
 bangalore,mushroom_kabab,starter,sub_category,no word its siblings agree about
+bangalore,mushroom_kali_mirch,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,mushroom_kali_mirch,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,mushroom_kali_mirch,veg_gravy,sub_category,no word its siblings agree about
+bangalore,mushroom_kali_mirch_masala,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,mushroom_kali_mirch_masala,veg_gravy,sub_category,no word its siblings agree about
+bangalore,mushroom_makhani,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,mushroom_makhani,veg_gravy,sub_category,no word its siblings agree about
 bangalore,mushroom_peas_curry,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,mushroom_peas_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,mushroom_peas_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,mushroom_vegetable_chilli,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,mushroom_vegetable_chilli,veg_gravy,sub_category,no word its siblings agree about
@@ -2982,6 +2997,7 @@ bangalore,nilgiri_chicken_curry,nonveg_main,gravy_region,no word its siblings ag
 bangalore,nilgiri_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,nilgiri_chicken_curry,nonveg_main,sub_category,no word its siblings agree about
 bangalore,nilgiri_mushroom_peas_curry,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,nilgiri_mushroom_peas_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,nilgiri_mushroom_peas_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,nilgiri_veg_korma,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,nilgiri_veg_korma,veg_gravy,sub_category,no word its siblings agree about
@@ -3115,6 +3131,7 @@ bangalore,paneer_fried_rice,rice,sub_category,no word its siblings agree about
 bangalore,paneer_hara_pyaaz,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,paneer_in_chilli_basil_sauce,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,paneer_kalan,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,paneer_kali_mirch,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,paneer_manchurian,veg_gravy,sub_category,no word its siblings agree about
 bangalore,paneer_tikka_biryani,rice,flavoured_rice_region,no word its siblings agree about
 bangalore,paneer_tikka_biryani,rice,sub_category,no word its siblings agree about
@@ -3305,7 +3322,9 @@ bangalore,potato_cauliflower_milagupirati,veg_dry,sub_category,no word its sibli
 bangalore,potato_mayonnaise_salad,salad,key_ingredient,no word its siblings agree about
 bangalore,potato_mayonnaise_salad,salad,sub_category,no word its siblings agree about
 bangalore,potato_mushroom_curry,veg_gravy,gravy_region,no word its siblings agree about
+bangalore,potato_mushroom_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,potato_mushroom_curry,veg_gravy,sub_category,no word its siblings agree about
+bangalore,potato_mushroom_gassi,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,potato_mushroom_gassi,veg_gravy,sub_category,no word its siblings agree about
 bangalore,potato_varuval,veg_dry,sub_category,no word its siblings agree about
 bangalore,potato_wedges,starter,key_ingredient,no word its siblings agree about
@@ -3365,6 +3384,7 @@ bangalore,punjabi_kadhi,veg_gravy,key_ingredient,no word its siblings agree abou
 bangalore,punjabi_murgh_masala,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,punjabi_murgh_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,punjabi_murgh_masala,nonveg_main,sub_category,no word its siblings agree about
+bangalore,punjabi_mushroom_masala,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,punjabi_mushroom_masala,veg_gravy,sub_category,no word its siblings agree about
 bangalore,punjabi_pakodi_kadhi,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,punjabi_pindi_chole,veg_gravy,key_ingredient,no word its siblings agree about

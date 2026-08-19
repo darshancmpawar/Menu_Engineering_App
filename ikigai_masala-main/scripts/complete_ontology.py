@@ -33,24 +33,18 @@ already classifies, and only channels that reproduce those labels are used:
    already uses for dishes with that word in the name; a word nobody agrees
    about proposes nothing and the row stays blank and is reported.
 
-Premium is the exception — it is not learned, because the client stated the
-rule: *"premium is a dish like paneer, baby corn, mushroom, a lot of vegetable
-will increase the cost of the items, and rich continental stuff"*. Calibrating
-it against the 383 rows already flagged gives **recall 0.945**, and inspecting
-the apparent false positives shows they are the ontology's own gaps rather than
-this predicate's errors: `chilli_paneer_gravy`, `kadai_mushroom`,
-`vegetable_au_gratin` and `malai_kofta_curry` are premium by the client's rule
-and were missed only because premium had been applied by `sub_category`, so a
-paneer dish filed under `chilli_gravy` never got it.
-
-**One clause of the client's rule is deliberately NOT applied**: "a lot of
-vegetable". Read as the catch-all `key_ingredient == mixed_vegetables` it would
-mark 438 more rows premium — rows the ontology explicitly flags as *not*
-premium, and `mixed_veg_curry` is the largest sub_category there is, so it would
-leave `premium_veg_gravy_exactly_one` picking the day's premium dish out of
-almost the whole pool. The rich mixed-veg *preparations* (`navratan`) are
-applied by name; the blanket reading is reported and left for the client. See
-`--report-mixed-veg`.
+**Premium is reported, not written.** The client stated the rule — *"premium is
+a dish like paneer, baby corn, mushroom, a lot of vegetable will increase the
+cost of the items, and rich continental stuff"* — and `is_premium` encodes it
+faithfully. But the three premium flags are the inputs to shipped COST rules
+that serve exactly one premium gravy and one premium veg dry a *week*, and
+applying the client's definition takes `is_premium_gravy` from 174 rows to 463,
+at which point that rule stops meaning "the week's showcase dish" and starts
+meaning "paneer at most once a week". That is a menu-policy decision rather
+than a data gap, so it goes back to the client: `--report-premium` prints what
+their definition would mark, and `APPLY_PREMIUM` is the switch once they have
+chosen. See the comment on that constant, and `--report-mixed-veg` for the one
+clause that is over-broad on its own terms.
 
 `richness_score` is untouched: 6,092 of 6,169 Bangalore rows are 0 and nothing
 reads it, so filling it would be inventing a number with no meaning. Flags that
@@ -220,6 +214,33 @@ MIXED_VEG_CATCHALL = "mixed_vegetables"
 #: are not premium.
 RICH_WORDS = {"malai", "cream", "creamy", "cheese", "alfredo", "gratin",
               "bechamel", "mornay"}
+
+#: **The premium flags are reported, never written.** They are not descriptive
+#: attributes — they are the inputs to three shipped COST rules, and those rules
+#: are calibrated to how many dishes carry them:
+#:
+#:     premium_veg_gravy_exactly_one   is_premium_gravy   @veg_gravy  exact: 1
+#:     premium_veg_dry_exactly_one     is_premium_veg_dry @veg_dry    exact: 1
+#:     premium_veg_daily_max_1         is_premium_veg     daily_max: 1
+#:
+#: `exact: 1` counts DAYS, so it means "one premium veg gravy a *week*" — the
+#: week's one showcase dish. Chennai's ruleset even records the count it was
+#: written against ("One premium veg gravy a week (25 eligible rows)").
+#:
+#: The client's definition — paneer, baby corn, mushroom, rich continental — is
+#: a statement about COST, and applied literally it marks 1,247 Bangalore rows
+#: premium and takes `is_premium_gravy` from 174 to 463. Both readings are
+#: defensible and they are not compatible: at 463 the weekly rule stops meaning
+#: "the showcase dish" and starts meaning "paneer at most once a week", which
+#: fights `paneer_prefers_mix_south_north` and would leave a themed day whose
+#: gravies are ALL premium forcing the cap past `exact: 1` — the reportable
+#: conflict of note 9e.
+#:
+#: That is a menu-policy decision, not a data gap, so it goes back to the
+#: client: `--report-premium` prints what their definition would mark, per city
+#: and per flag. Flipping `APPLY_PREMIUM` to True is the whole change once they
+#: have chosen, and the weekly caps would need re-deriving with it.
+APPLY_PREMIUM = False
 
 #: Which premium flag applies to which course.
 PREMIUM_FLAG_BY_COURSE = {
@@ -494,12 +515,13 @@ def apply(d: pd.DataFrame, learned_text: dict, attribute_rules: dict,
             unresolved.append((str(row["item"]), course, "is_* flags",
                                "no attribute or word its siblings agree about"))
 
-    # 5. premium — the client's stated rule, on every row of its courses
-    for idx in d.index:
-        course = _norm(d.at[idx, "course_type"])
-        if course in PREMIUM_FLAG_BY_COURSE and is_premium(d.loc[idx]):
-            for column in PREMIUM_FLAG_BY_COURSE[course]:
-                turn_on(idx, column, "client's premium rule")
+    # 5. premium — reported rather than written; see APPLY_PREMIUM
+    if APPLY_PREMIUM:                                          # pragma: no cover
+        for idx in d.index:
+            course = _norm(d.at[idx, "course_type"])
+            if course in PREMIUM_FLAG_BY_COURSE and is_premium(d.loc[idx]):
+                for column in PREMIUM_FLAG_BY_COURSE[course]:
+                    turn_on(idx, column, "client's premium rule")
 
     # 6. is_rule_ready — what the row actually holds, never lowered
     if "is_rule_ready" in d.columns:
@@ -565,10 +587,40 @@ def report_mixed_veg(frames):
         print(f"    {name}")
 
 
-def main(dry_run: bool = False, mixed_veg: bool = False):
+def report_premium(frames):
+    """What the client's definition would mark, against what the rules expect."""
+    print("The client's rule — paneer / baby corn / mushroom / rich continental "
+          "— against\nwhat each flag carries today. These are NOT applied: see "
+          "APPLY_PREMIUM.\n")
+    print(f"{'city':<11}{'flag':<20}{'today':>7}{'client rule':>13}")
+    for city, d in frames.items():
+        course = d["course_type"].astype(str).str.strip().str.lower()
+        premium = d.apply(is_premium, axis=1)
+        numeric = _numeric_flags(d)
+        for flag in ("is_premium_veg", "is_premium_gravy", "is_premium_veg_dry"):
+            if flag not in numeric.columns:
+                continue
+            scope = course.map(
+                lambda c: flag in PREMIUM_FLAG_BY_COURSE.get(c, ()))
+            would = int(((numeric[flag] == 1) | (premium & scope)).sum())
+            print(f"{city:<11}{flag:<20}{int((numeric[flag] == 1).sum()):>7}"
+                  f"{would:>13}")
+    print("\n`premium_veg_gravy_exactly_one` and `premium_veg_dry_exactly_one` "
+          "serve ONE\npremium dish a week each. At the client-rule counts that "
+          "reads as 'paneer at\nmost once a week', which is a menu-policy "
+          "change rather than a data fix — so\nit needs the client's word "
+          "before it is applied, and the weekly caps would\nneed re-deriving "
+          "with it.")
+
+
+def main(dry_run: bool = False, mixed_veg: bool = False,
+         premium: bool = False):
     frames = load()
     if mixed_veg:
         report_mixed_veg(frames)
+        return
+    if premium:
+        report_premium(frames)
         return
     bare_before = {c: int(flagless(d).sum()) for c, d in frames.items()}
     total = defaultdict(list)
@@ -629,5 +681,9 @@ if __name__ == "__main__":
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report-mixed-veg", action="store_true",
                     help="size the clause this deliberately does not apply")
+    ap.add_argument("--report-premium", action="store_true",
+                    help="what the client's premium rule would mark, and why "
+                         "it is not applied")
     args = ap.parse_args()
-    main(dry_run=args.dry_run, mixed_veg=args.report_mixed_veg)
+    main(dry_run=args.dry_run, mixed_veg=args.report_mixed_veg,
+         premium=args.report_premium)

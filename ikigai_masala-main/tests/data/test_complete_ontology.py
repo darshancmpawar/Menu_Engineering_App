@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 from scripts.complete_ontology import (
+    APPLY_PREMIUM,
     COLUMN_MIRRORS,
     COLUMN_SCOPE,
     COURSE_MIRRORS,
@@ -230,19 +231,29 @@ class TestPremiumIsTheClientsRuleNotTheDatas:
         assert is_premium({'item': 'cottage_cheese_tikka', 'key_ingredient': '',
                            'cuisine_family': 'north_indian'})
 
-    def test_the_premium_rule_only_writes_to_its_own_courses(self, learned):
-        """A `dal` is never given a premium flag by this channel, however
-        paneer-ish its name — `PREMIUM_FLAG_BY_COURSE` is the whole scope."""
+    def test_the_predicate_is_reported_and_not_written(self, learned):
+        """The flags are inputs to three shipped COST rules, and `exact: 1`
+        counts DAYS — one premium gravy a *week*, the showcase dish. Applying
+        the client's cost definition takes `is_premium_gravy` from 174 rows to
+        463, at which point that rule reads as "paneer at most once a week".
+        That is a menu-policy change, so it needs the client's word.
+        """
+        assert APPLY_PREMIUM is False
         learned_text, attribute_rules, flag_tokens, exclusive, _ = learned
         frame = _synthetic([
-            {'item': 'paneer_makhani_dal', 'course_type': 'dal'},
             {'item': 'paneer_butter_masala', 'course_type': 'veg_gravy'},
         ])
         _, filled, _ = apply(frame, learned_text, attribute_rules, flag_tokens,
                              exclusive)
-        premium = {(i, c) for i, c, _ in filled if c.startswith('is_premium')}
-        assert not [i for i, _ in premium if i == 'paneer_makhani_dal']
-        assert ('paneer_butter_masala', 'is_premium_veg') in premium
+        assert not [c for _, c, why in filled if 'premium' in str(why)]
+
+    def test_the_shipped_counts_still_match_what_the_rules_expect(self, frames):
+        """Chennai's ruleset records the count it was written against — "One
+        premium veg gravy a week (25 eligible rows)". If a later pass inflates
+        the pool, that comment silently stops being true."""
+        num = _numeric_flags(frames['chennai'])
+        assert 20 <= int((num['is_premium_gravy'] == 1).sum()) <= 30
+        assert int((num['is_premium_veg_dry'] == 1).sum()) <= 10
 
     def test_the_mixed_vegetable_catchall_was_not_applied(self, everything):
         """The one clause deliberately left out.
