@@ -43,7 +43,7 @@
       "ignore_rice_gravy_color_diff_on_chinese_day": true
     },
     {
-      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them \u2014 uniqueness is already lifted for that by the arithmetic starved-slot exception. The 20-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot \u2014 plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
+      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them — uniqueness is already lifted for that by the arithmetic starved-slot exception. The 20-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot — plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
       "name": "raita_is_a_staple",
       "type": "repeatable_items",
       "base_slot": "curd_side",
@@ -291,6 +291,78 @@
       "non_consecutive": true
     },
     {
+      "_comment": "State rule: any Chinese fried rice variant, max once a week. Pune carries three (schezwan_fried_rice, veg_fried_rice, veg_hakka_noodles) — the noodles are filed under `rice` because that is the carb slot, which is why the flag rather than the name is the selector.",
+      "name": "chinese_fried_rice_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_chinese_fried_rice"
+      },
+      "base_slot": "rice",
+      "max": 1
+    },
+    {
+      "_comment": "State rule: Chinese is allowed only once per 7 days. `max` counts DAYS, so this is one Chinese DAY a week rather than one Chinese dish — which is the point, otherwise a chinese rice and a chinese veg dry on the same day would spend two of the week's allowance. Scoped to the cuisine-main slots; an incidental chinese salad or chutney is not what makes a day Chinese. No Pune counter themes a weekday chinese today, so nothing forces this cap past its limit (note 9e).",
+      "name": "chinese_cuisine_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "cuisine_family": "chinese"
+      },
+      "base_slot": [
+        "rice",
+        "veg_gravy",
+        "veg_dry",
+        "starter"
+      ],
+      "max": 1
+    },
+    {
+      "_comment": "State rule: legume gravies, not more than once a week. 24 of Pune's 103 veg gravies are whole-legume (chana, rajma, chole, lobia). This is the umbrella the black-chana and kabuli-chana caps below sit under — with legume total at 1/day-a-week those two become redundant rather than wrong, and they are kept because the client stated them separately.",
+      "name": "legume_gravy_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_whole_legume_based"
+      },
+      "base_slot": "veg_gravy",
+      "max": 1
+    },
+    {
+      "_comment": "State rule: mix-veg or aloo dry should appear roughly once a week, COMPULSORY — so a `min`, not a cap. 27 of Pune's 92 veg dries qualify (14 potato, 13 mixed_vegetables), and `selector_frequency` caps `min` to what is actually placeable, so a week where the cooldown has taken them all relaxes instead of going INFEASIBLE.",
+      "name": "mixveg_or_aloo_dry_weekly",
+      "type": "selector_frequency",
+      "selector": {
+        "any_of": [
+          {
+            "key_ingredient": "potato"
+          },
+          {
+            "key_ingredient": "mixed_vegetables"
+          }
+        ]
+      },
+      "base_slot": "veg_dry",
+      "min": 1
+    },
+    {
+      "_comment": "State rule: kofta needs a minimum 7-day gap AND must not repeat on consecutive weeks. `veg_kofta_gravy_weekly` below gives the 7-day gap inside one plan; this is the across-plans half, read from saved history — a 14-day window is what 'not on consecutive weeks' means. Pairs the same way as kadhi and leafy veg dry.",
+      "name": "kofta_14d_window",
+      "type": "selector_history_window",
+      "selector": {
+        "flag": "is_veg_kofta_gravy"
+      },
+      "base_slot": "veg_gravy",
+      "window_days": 14
+    },
+    {
+      "_comment": "State rule: sugar-syrup sweets not on consecutive days — gulab jamun, balushahi, jalebi, boondi laddu (10 of Pune's 57 desserts). `dessert_form_non_consecutive` is a different rule: it stops the FORM (dry/wet) repeating, which a syrup sweet and a halwa can both satisfy while still being syrup on both days.",
+      "name": "sugar_syrup_dessert_non_consecutive",
+      "type": "selector_frequency",
+      "selector": {
+        "flag": "is_sugar_syrup_heavy_dessert"
+      },
+      "base_slot": "dessert",
+      "non_consecutive": true
+    },
+    {
       "_comment": "R33 — dal colour must not repeat on consecutive days.",
       "name": "dal_colour_non_consecutive",
       "type": "attribute_grouping",
@@ -377,7 +449,7 @@
       ]
     },
     {
-      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only \u2014 see SameDayExclusionRule._hits.",
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only — see SameDayExclusionRule._hits.",
       "name": "paneer_not_with_soya_babycorn_chole_mushroom",
       "type": "same_day_exclusion",
       "selector": {
