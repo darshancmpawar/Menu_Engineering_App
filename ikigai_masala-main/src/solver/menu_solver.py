@@ -248,16 +248,33 @@ def _min_distinct_for_day(cfg: SolverConfig, day_type: str) -> int:
     return cfg.min_distinct_colors_per_day
 
 
-def _combo_day_variant(base_slot: str, di: int, n_days: int) -> str:
-    """Return the component course_type a combination slot uses on day *di*.
+def _combo_minority_days(n_days: int) -> frozenset:
+    """Which day indices a combination slot gives to its minority component.
 
-    The minority variant fills the last ``combo_minority_count(n_days)`` days
-    of the horizon; the majority variant fills the rest. Deterministic by day
-    index, so the split is stable across regenerate.
+    Spread evenly, so the two components ALTERNATE rather than run in blocks —
+    client rule: "when the combined slots are used it should alternate". The
+    minority used to fill the last ``combo_minority_count(n_days)`` days, which
+    over a working week meant dal / dal / dal / sambar / sambar: three days of
+    one and then two of the other, which is what the client is asking not to
+    happen. Even spreading gives dal / sambar / dal / sambar / dal.
+
+    ``combo_minority_count`` guarantees the minority never exceeds half the
+    horizon, so stepping by ``n_days / n_minority`` from an offset of 1 never
+    places two minority days together and never runs past the horizon.
+    Deterministic by day index, so the split is still stable across regenerate.
     """
-    majority, minority = COMBO_CATEGORIES[base_slot]
     n_minority = combo_minority_count(n_days)
-    return minority if di >= (n_days - n_minority) else majority
+    if n_minority <= 0:
+        return frozenset()
+    step = n_days / n_minority
+    return frozenset(min(int(i * step) + 1, n_days - 1)
+                     for i in range(n_minority))
+
+
+def _combo_day_variant(base_slot: str, di: int, n_days: int) -> str:
+    """Return the component course_type a combination slot uses on day *di*."""
+    majority, minority = COMBO_CATEGORIES[base_slot]
+    return minority if di in _combo_minority_days(n_days) else majority
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:

@@ -16,19 +16,44 @@ class TestComboSplit:
         for n in range(1, 21):
             assert combo_minority_count(n) <= n // 2
 
-    def test_dal_rasam_variant_by_day(self):
-        # 5 days: majority (dal) on days 0-2, minority (rasam) on days 3-4.
+    def test_dal_rasam_alternates_across_the_week(self):
+        """Client rule: "when the combined slots are used it should alternate".
+
+        The minority used to fill the last `combo_minority_count(n)` days, so a
+        working week ran dal / dal / dal / rasam / rasam — three days of one and
+        then two of the other, which is exactly what the client asked not to
+        happen. The counts are unchanged; only the placement is.
+        """
         got = [_combo_day_variant('dal_rasam', di, 5) for di in range(5)]
-        assert got == ['dal', 'dal', 'dal', 'rasam', 'rasam']
+        assert got == ['dal', 'rasam', 'dal', 'rasam', 'dal']
 
-    def test_sambar_rasam_variant_by_day(self):
+    def test_sambar_rasam_alternates_across_the_week(self):
         got = [_combo_day_variant('sambar_rasam', di, 5) for di in range(5)]
-        assert got == ['rasam', 'rasam', 'rasam', 'sambar', 'sambar']
+        assert got == ['rasam', 'sambar', 'rasam', 'sambar', 'rasam']
 
-    def test_dal_sambar_variant_by_day(self):
-        # dal is the majority: dal on days 0-2, sambar on days 3-4.
+    def test_dal_sambar_alternates_across_the_week(self):
         got = [_combo_day_variant('dal_sambar', di, 5) for di in range(5)]
-        assert got == ['dal', 'dal', 'dal', 'sambar', 'sambar']
+        assert got == ['dal', 'sambar', 'dal', 'sambar', 'dal']
+
+    def test_the_minority_never_lands_on_consecutive_days(self):
+        """The property that makes it an alternation rather than a reshuffle.
+        `combo_minority_count` keeps the minority at or under half the horizon,
+        so an even spread can always avoid putting two together.
+        """
+        from src.constants import COMBO_CATEGORIES
+        for combo, (_majority, minority) in COMBO_CATEGORIES.items():
+            for n in range(2, 22):
+                got = [_combo_day_variant(combo, di, n) for di in range(n)]
+                pairs = [(a, b) for a, b in zip(got, got[1:])]
+                assert (minority, minority) not in pairs, (combo, n, got)
+
+    def test_the_split_keeps_the_configured_counts(self):
+        """Spreading must not change how many days each component gets."""
+        from src.constants import COMBO_CATEGORIES
+        for combo, (_majority, minority) in COMBO_CATEGORIES.items():
+            for n in range(1, 22):
+                got = [_combo_day_variant(combo, di, n) for di in range(n)]
+                assert got.count(minority) == combo_minority_count(n), (combo, n)
 
 
 class TestComboRegistration:
