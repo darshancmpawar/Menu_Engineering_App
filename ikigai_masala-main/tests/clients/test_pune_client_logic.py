@@ -236,8 +236,21 @@ class TestWeeklyRhythm:
 
 
 class TestNoDiagnosticNoise:
+    #: The one warning this counter legitimately emits, so any OTHER warning
+    #: still fails. Amadeus Pune themes Tuesday `south` and Pune's entire
+    #: 24-dish bread pool is North Indian, so the bread cuisine lock finds
+    #: nothing south and falls back to the full pool — Tuesday's roti is a North
+    #: Indian one. `would_succeed` stays true and the plan is fine; the warning
+    #: is the tool correctly reporting that a configured theme cannot be honoured
+    #: for that slot. It surfaced when `client_fixtures.py` was regenerated from
+    #: the live table, which themes Tuesday south where the old hand-edited
+    #: snapshot said north. Resolving it is the client's call: either Tuesday is
+    #: not a south day for this site, or Pune's bread pool needs South Indian
+    #: dishes (a Maharashtrian site plausibly does not want a dosa).
+    _KNOWN = ('theme_cuisine_filter', 'bread', 'south')
+
     def test_diagnose_is_clean(self, amadeus_pune_row, monkeypatch):
-        """No errors AND no warnings.
+        """No errors, and no warnings beyond the one documented above.
 
         The warnings this used to emit were both wrong: bread and welcome_drink
         are declared staples (chapati daily, buttermilk daily), so "items will
@@ -261,11 +274,18 @@ class TestNoDiagnosticNoise:
         })
         body = resp.get_json()
         assert resp.status_code == 200
+        rule, slot, day_type = self._KNOWN
         noisy = [
             d for d in body['rule_diagnostics']
             if d['severity'] in ('error', 'warning')
+            and not (d['rule'] == rule
+                     and (d.get('affected') or {}).get('slot') == slot
+                     and (d.get('affected') or {}).get('day_type') == day_type)
         ]
         assert not noisy, noisy
+        assert not [d for d in body['rule_diagnostics']
+                    if d['severity'] == 'error'], 'no ERROR may be tolerated'
+        assert body['summary']['would_succeed'] is True
 
 
 class TestEngineFixesThisClientNeeded:
