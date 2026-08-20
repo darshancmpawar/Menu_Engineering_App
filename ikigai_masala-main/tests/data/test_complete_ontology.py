@@ -239,12 +239,13 @@ class TestPremiumIsTheClientsRuleNotTheDatas:
         That is a menu-policy change, so it needs the client's word.
         """
         assert APPLY_PREMIUM is False
-        learned_text, attribute_rules, flag_tokens, exclusive, _ = learned
+        (learned_text, attribute_rules, flag_tokens, exclusive, by_dish_text,
+         _) = learned
         frame = _synthetic([
             {'item': 'paneer_butter_masala', 'course_type': 'veg_gravy'},
         ])
         _, filled, _ = apply(frame, learned_text, attribute_rules, flag_tokens,
-                             exclusive)
+                             exclusive, by_dish_text)
         assert not [c for _, c, why in filled if 'premium' in str(why)]
 
     def test_the_shipped_counts_still_match_what_the_rules_expect(self, frames):
@@ -288,7 +289,8 @@ class TestFillsStayInsideTheirScope:
     @pytest.mark.parametrize('column', [c for c, s in COLUMN_SCOPE.items() if s])
     def test_a_scoped_column_is_never_filled_outside_its_courses(
             self, learned, column):
-        learned_text, attribute_rules, flag_tokens, exclusive, _ = learned
+        (learned_text, attribute_rules, flag_tokens, exclusive, by_dish_text,
+         _) = learned
         wrong_course = 'dessert' if 'dessert' not in COLUMN_SCOPE[column] \
             else 'veg_gravy'
         frame = _synthetic([
@@ -296,7 +298,7 @@ class TestFillsStayInsideTheirScope:
             {'item': 'moong_dal_tadka', 'course_type': wrong_course},
         ])
         out, filled, _ = apply(frame, learned_text, attribute_rules,
-                               flag_tokens, exclusive)
+                               flag_tokens, exclusive, by_dish_text)
         assert column not in {c for _, c, _ in filled}
         assert out[column].isna().all()
 
@@ -328,10 +330,11 @@ class TestRunningItAgainChangesNothing:
         """Not merely tidiness: this script re-learns from its own output, so
         without converging inside one run every invocation would find more work
         and the workbooks would never settle."""
-        learned_text, attribute_rules, flag_tokens, exclusive, _ = learned
+        (learned_text, attribute_rules, flag_tokens, exclusive, by_dish_text,
+         _) = learned
         for city, d in frames.items():
             _, filled, _ = apply(d, learned_text, attribute_rules, flag_tokens,
-                                 exclusive)
+                                 exclusive, by_dish_text)
             assert not filled, (city, filled[:5])
 
     def test_the_flagless_rows_are_essentially_gone(self, frames):
@@ -339,14 +342,20 @@ class TestRunningItAgainChangesNothing:
         rows carried no flag at all."""
         assert int(flagless(frames['bangalore']).sum()) < 250
         assert int(flagless(frames['chennai']).sum()) < 25
-        for city in ('pune', 'ncr'):
-            assert int(flagless(frames[city]).sum()) < 5, city
+        # Pune's ceiling is not 5 any more: the Corning Chakan import added 130
+        # Maharashtrian dishes, and the words in `patodi` and `fodanich_waran`
+        # are ones no other row has ever carried, so a handful reach no channel
+        # at all and are reported rather than guessed at.
+        assert int(flagless(frames['pune']).sum()) < 30
+        assert int(flagless(frames['ncr']).sum()) < 5
 
     def test_a_fill_never_overwrites_what_was_already_there(self, frames, learned):
         """Monotone by construction: values only appear, never change."""
-        learned_text, attribute_rules, flag_tokens, exclusive, _ = learned
+        (learned_text, attribute_rules, flag_tokens, exclusive, by_dish_text,
+         _) = learned
         d = frames['chennai']
-        out, _, _ = apply(d, learned_text, attribute_rules, flag_tokens, exclusive)
+        out, _, _ = apply(d, learned_text, attribute_rules, flag_tokens,
+                          exclusive, by_dish_text)
         for column in ('sub_category', 'key_ingredient', 'course_type', 'item'):
             had = d[column].notna()
             assert (out.loc[had, column].astype(str)

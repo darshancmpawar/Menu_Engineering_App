@@ -87,11 +87,17 @@ attachments and would have been lost.
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
     pass then implies a sub_category and flags from.
-11. `scripts/complete_ontology.py` — **last of the writers**, because it learns
+11. `scripts/fill_item_colours.py` — the same argument as the dictionary, for
+    `item_color`, and it must come BEFORE `complete_ontology.py`. It reads only
+    dish names and the colours already present, so nothing that pass fills can
+    help it — while `is_rule_ready` is derived FROM `item_color`, so running it
+    afterwards leaves a row that a re-run then finds newly complete, and the
+    chain stops converging.
+12. `scripts/complete_ontology.py` — **last of the writers**, because it learns
     every rule it applies from the rows already classified, so it needs the
-    imports, the re-files and the flag corrections to have happened first. It
-    runs to a fixed point internally; a second invocation is a no-op.
-12. `scripts/fill_item_colours.py` — same argument, for `item_color`
+    imports, the re-files, the flag corrections, the ingredient dictionary and
+    the colours to have happened first. It runs to a fixed point internally; a
+    second invocation is a no-op.
 13. `scripts/drop_dead_columns.py` — schema only, so order does not matter
 14. `scripts/build_pool_token_map.py`
 
