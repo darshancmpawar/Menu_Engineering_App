@@ -64,12 +64,19 @@ CITY_ITEMS = os.path.join(
 
 #: ``city -> [item names]``. Names are matched exactly (stripped), never as
 #: substrings, so removing `sweet` cannot take `dry_sweet` with it.
+#: `curd_base` is the recipe base a raita is built FROM, not a dish — the client
+#: confirmed it. It sits in `curd_side` in three cities with `sub_category: curd`
+#: and `key_ingredient: yogurt`, so it looks servable to every diagnostic while
+#: a menu printing "Curd Base" as the day's yogurt side says nothing. Same
+#: argument as the category-named rows below, arriving by a different route: the
+#: name describes a component of a dish rather than the dish.
 GENERIC_ROWS = {
+    'bangalore': ['curd_base'],
     'chennai': [
-        'brinjal', 'chutney', 'darbar_soup', 'dry_sweet', 'local_salna',
-        'milk_sweet', 'sweet', 'toast_salad', 'veg_gravy',
+        'brinjal', 'chutney', 'curd_base', 'darbar_soup', 'dry_sweet',
+        'local_salna', 'milk_sweet', 'sweet', 'toast_salad', 'veg_gravy',
     ],
-    'pune': ['salad', 'sweet'],
+    'pune': ['curd_base', 'salad', 'sweet'],
     'ncr': [
         'chutney', 'dal', 'dessert', 'gravy', 'raita', 'rasam', 'rice',
         'salad', 'sambar', 'veg_dry',

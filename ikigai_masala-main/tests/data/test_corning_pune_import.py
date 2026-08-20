@@ -219,6 +219,37 @@ class TestAMisfiledCombinationCannotReachTheBreadSlot:
                            pune["course_type"].map(_norm)))
         assert by_item.get("pav") == "bread"
 
+    def test_pav_is_not_a_plain_phulka_or_chapathi(self, pune):
+        """Client-confirmed, and it is what R36's staple exemption selects on.
+
+        All three cities carrying the dish filed it `plain_chapatti/phulka` with
+        `key_ingredient: pav` — the name's own first word, the mapping
+        pipeline's fingerprint. An exemption is permission to repeat EVERY DAY,
+        and a pav is a leavened roll served alongside a bhaji once a week. It is
+        refined flour, so it counts against `maida_bread_weekly` instead.
+        """
+        row = pune[pune["item"].map(_norm) == "pav"]
+        assert len(row) == 1
+        row = row.iloc[0]
+        assert int(pd.to_numeric(row["is_plain_phulka_chapathi"],
+                                 errors="coerce") or 0) == 0
+        assert int(pd.to_numeric(row["is_maida_bread"], errors="coerce") or 0) == 1
+        assert _norm(row["sub_category"]) == "pav_/_bun"
+        assert _norm(row["key_ingredient"]) == "maida"
+
+    def test_the_staple_exemption_covers_only_the_two_plain_breads(self):
+        """Which is the whole reason the pav row had to be corrected: R36 says
+        plain atta phulka/chapathi, and the exemption must not reach further."""
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        from src.ontology.repository import repository
+
+        _df, pools = repository.menu_data("Pune")
+        rule = next(r for r in MenuRuleLoader().load_for_city("Pune")
+                    if r.name == "plain_chapati_may_repeat")
+        covered = {_norm(r["item"]) for _i, r in pools["bread"].iterrows()
+                   if rule._row_matches(r)}
+        assert covered == {"chapati", "phulka"}, covered
+
 
 class TestThePuneConventionsStillHold:
 
