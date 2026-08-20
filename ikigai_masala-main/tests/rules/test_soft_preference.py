@@ -260,3 +260,212 @@ class TestPreferDayTypes:
             'day_types': ['north']})
         ctx = self._ctx_with_themes([d0], ['north'])
         assert rule.get_objective_terms(model, ctx) == []
+
+
+class TestMatchAttribute:
+    """`match_attribute` — two slots should agree on one attribute.
+
+    Citrix: "if veg gravy is north then veg dry should be north" and "flavoured
+    rice and veg gravy should be of the same region". SOFT because the client's
+    own instruction was "if I give south I can use north fallback" — so a south
+    rice pulls a south gravy when one is free and falls back to north rather
+    than failing.
+    """
+
+    _REGIONS = ['north_indian', 'south_indian']
+
+    def _rule(self, **over):
+        cfg = {
+            'name': 'region', 'mode': 'match_attribute', 'weight': 1000,
+            'group_by': 'cuisine_family', 'values': list(self._REGIONS),
+            'base_slot_a': 'rice', 'base_slot_b': 'veg_gravy',
+        }
+        cfg.update(over)
+        return SoftPreferenceRule(cfg)
+
+    # ----- config -----
+
+    def test_valid_config(self):
+        r = self._rule()
+        assert r.validate_config(), r.validation_errors()
+        assert r.rule_type == MenuRuleType.SOFT_PREFERENCE
+        assert r.severity == MenuRuleSeverity.SOFT
+
+    def test_requires_group_by(self):
+        r = self._rule(group_by=None)
+        assert not r.validate_config()
+        assert any('group_by' in e for e in r.validation_errors())
+
+    def test_requires_both_slots(self):
+        assert not self._rule(base_slot_b=None).validate_config()
+        assert not self._rule(base_slot_a=None).validate_config()
+
+    def test_rejects_the_same_slot_on_both_sides(self):
+        # One slot matching itself penalises nothing; the inverse of that ask is
+        # avoid_attribute_repeat, so a config saying this is a mistake.
+        r = self._rule(base_slot_b='rice')
+        assert not r.validate_config()
+        assert any('two different slots' in e for e in r.validation_errors())
+
+    def test_requires_at_least_two_values(self):
+        assert not self._rule(values=['north_indian']).validate_config()
+        assert not self._rule(values=None).validate_config()
+
+    def test_values_are_normalised(self):
+        # Normalised exactly as the column itself is (`_norm_str`: strip +
+        # lowercase, nothing else), so the two sides of the comparison agree.
+        r = self._rule(values=[' North_Indian ', 'SOUTH_INDIAN'])
+        assert r.values == ['north_indian', 'south_indian']
+
+    def test_a_value_is_matched_case_insensitively_against_the_column(self):
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'South_Indian'}])
+        gravy = _cell(model, 0, 'veg_gravy',
+                      [{'cuisine_family': 'NORTH_INDIAN'},
+                       {'cuisine_family': 'south_indian '}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(gravy.x_vars[1]) == 1
+
+    # ----- behaviour -----
+
+    def _ctx2(self, cells, n=2):
+        return _ctx(cells, n)
+
+    def test_gravy_follows_a_south_rice(self):
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'south_indian'}])
+        gravy = _cell(model, 0, 'veg_gravy',
+                      [{'cuisine_family': 'north_indian'},
+                       {'cuisine_family': 'south_indian'}])
+        rule = self._rule()
+        terms = rule.get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(gravy.x_vars[1]) == 1, "south rice must pull a south gravy"
+
+    def test_gravy_follows_a_north_rice(self):
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'north_indian'}])
+        gravy = _cell(model, 0, 'veg_gravy',
+                      [{'cuisine_family': 'north_indian'},
+                       {'cuisine_family': 'south_indian'}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(gravy.x_vars[0]) == 1
+
+    def test_north_fallback_when_no_south_gravy_exists(self):
+        """The client's own wording: "if I give south I can use north fallback"
+        — soft, so a day whose gravy pool is north-only still solves."""
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'south_indian'}])
+        gravy = _cell(model, 0, 'veg_gravy', [{'cuisine_family': 'north_indian'}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(gravy.x_vars[0]) == 1
+        assert solver.Value(rice.x_vars[0]) == 1
+
+    def test_rice_moves_when_the_gravy_is_the_fixed_side(self):
+        """Symmetric: neither slot is the declared driver, so whichever has the
+        freer pool is the one that moves."""
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice',
+                     [{'cuisine_family': 'north_indian'},
+                      {'cuisine_family': 'south_indian'}])
+        gravy = _cell(model, 0, 'veg_gravy', [{'cuisine_family': 'south_indian'}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.Value(rice.x_vars[1]) == 1
+
+    def test_an_unlisted_cuisine_on_one_side_is_left_alone(self):
+        """A Chinese day carries none of the listed values, so the rule says
+        nothing — without the guard it would penalise every listed value on the
+        other side and push the gravy off north AND south entirely."""
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'chinese'}])
+        gravy = _cell(model, 0, 'veg_gravy',
+                      [{'cuisine_family': 'north_indian'},
+                       {'cuisine_family': 'south_indian'}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        assert terms == []
+
+    def test_a_multi_cell_slot_serving_both_regions_matches_either(self):
+        """`veg_dry_north_south_pair` mandates one north + one south veg dry. A
+        north gravy beside that pair IS matched — the rule asks "is my value
+        present on the other side", not "are the two values equal", so it does
+        not fight the composition."""
+        model = cp_model.CpModel()
+        gravy = _cell(model, 0, 'veg_gravy', [{'cuisine_family': 'north_indian'}])
+        dry_n = _cell(model, 0, 'veg_dry', [{'cuisine_family': 'north_indian'}])
+        dry_s = _cell(model, 0, 'veg_dry', [{'cuisine_family': 'south_indian'}])
+        rule = self._rule(base_slot_a='veg_gravy', base_slot_b='veg_dry')
+        terms = rule.get_objective_terms(model, self._ctx2([gravy, dry_n, dry_s], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        # The gravy's region is present in the veg_dry pair, so that direction
+        # costs nothing; only the unmatched south dry is penalised.
+        assert solver.ObjectiveValue() == -1000
+
+    def test_a_matched_day_costs_nothing(self):
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'south_indian'}])
+        gravy = _cell(model, 0, 'veg_gravy', [{'cuisine_family': 'south_indian'}])
+        terms = self._rule().get_objective_terms(model, self._ctx2([rice, gravy], 1))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.ObjectiveValue() == 0
+
+    def test_selector_narrows_which_dishes_participate(self):
+        """`selector_a`/`selector_b` are optional extra narrowing: only the
+        flavoured rices should be compared, not a plain steamed one."""
+        model = cp_model.CpModel()
+        rice = _cell(model, 0, 'rice', [{'cuisine_family': 'south_indian',
+                                        'is_flavoured': 0}])
+        gravy = _cell(model, 0, 'veg_gravy',
+                      [{'cuisine_family': 'north_indian'},
+                       {'cuisine_family': 'south_indian'}])
+        rule = self._rule(selector_a={'flag': 'is_flavoured'})
+        # The one rice candidate is filtered out, so there is nothing to match.
+        assert rule.get_objective_terms(model, self._ctx2([rice, gravy], 1)) == []
+
+    def test_each_day_is_scored_independently(self):
+        model = cp_model.CpModel()
+        cells = []
+        for di, region in enumerate(('south_indian', 'north_indian')):
+            cells.append(_cell(model, di, 'rice', [{'cuisine_family': region}]))
+            cells.append(_cell(model, di, 'veg_gravy',
+                               [{'cuisine_family': 'north_indian'},
+                                {'cuisine_family': 'south_indian'}]))
+        terms = self._rule().get_objective_terms(model, self._ctx2(cells, 2))
+        solver, status = _maximize(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert solver.ObjectiveValue() == 0
+        assert solver.Value(cells[1].x_vars[1]) == 1   # day0 gravy south
+        assert solver.Value(cells[3].x_vars[0]) == 1   # day1 gravy north
+
+
+class TestBaseSlotListNormalisation:
+    """A LIST base_slot used to fall through to the single-name branch, where
+    `c.base_slot != ['a', 'b']` is always true — so the rule matched nothing and
+    went silently inert, the same failure class as the bread cuisine lock."""
+
+    def test_different_day_accepts_a_list_of_slots(self):
+        model = cp_model.CpModel()
+        a = _cell(model, 0, 'veg_gravy', [{'flag_a': 1}])
+        b = _cell(model, 0, 'veg_dry', [{'flag_b': 1}])
+        rule = SoftPreferenceRule({
+            'name': 'x', 'mode': 'different_day', 'weight': 1000,
+            'selector_a': {'flag': 'flag_a'}, 'base_slot_a': ['veg_gravy', 'rice'],
+            'selector_b': {'flag': 'flag_b'}, 'base_slot_b': ['veg_dry']})
+        terms = rule.get_objective_terms(model, _ctx([a, b], 1))
+        assert terms, "a list base_slot_a must still match its slots"
+
+    def test_a_string_base_slot_is_unchanged(self):
+        r = SoftPreferenceRule({'name': 'x', 'mode': 'avoid_consecutive',
+                                'base_slot': 'rice', 'selector': {'flag': 'f'}})
+        assert r.base_slot == 'rice'
+        assert r.base_slots == {'rice'}

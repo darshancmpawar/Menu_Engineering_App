@@ -371,21 +371,29 @@ class ThemeSlotFilterRule(BaseMenuRule):
         ``slot_composition`` rule can place one themed dish + one regional gravy.
         A single-nonveg counter is returned unchanged.
 
-        A counter serving 3+ also keeps the structural families a bigger
-        composition places — dry, kebab/tandoor and egg. The filter's job is to
-        guarantee the *themed* dish is available, not to make every dish on the
-        counter themed: narrowing a 5-dish station to biryani + chicken gravy
-        left it 0 dry and 2 egg items against a composition wanting one of each
-        every day, which is unsatisfiable however the solver picks. The themed
-        dish is still guaranteed — the composition rule mandates it.
+        A multi-dish counter also keeps the structural families a composition
+        places — dry, kebab/tandoor and egg. The filter's job is to guarantee
+        the *themed* dish is available, not to make every dish on the counter
+        themed: narrowing a 5-dish station to biryani + chicken gravy left it 0
+        dry and 2 egg items against a composition wanting one of each every day,
+        which is unsatisfiable however the solver picks. The themed dish is
+        still guaranteed — the composition rule mandates it.
+
+        This used to apply only at 3+ dishes, which made the same hole at 2 —
+        Bakertilly's "only on biryani day we will have chicken dry" needs a dry
+        available on its biryani day, and the narrowed pool held none, so the
+        component silently dropped and Wednesday came back biryani + gravy.
+        Widening at 2 cannot change what the DEFAULT ruleset produces: with two
+        cells and `nonveg_main_daily_pair` mandating the themed dish plus a
+        regional gravy, both cells are already determined. It only lets a client
+        that overrides that composition have its second dish be available.
         """
         if base_slot != 'nonveg_main' or not _has_multi_nonveg(cfg):
             return filtered
         keep = _nonveg_regional_gravy_mask(pool)
-        if _nonveg_slot_count(cfg) >= 3:
-            for col in _NONVEG_STRUCTURAL_FLAGS:
-                if col in pool.columns:
-                    keep = keep | (pool[col].map(_to_bool01) == 1)
+        for col in _NONVEG_STRUCTURAL_FLAGS:
+            if col in pool.columns:
+                keep = keep | (pool[col].map(_to_bool01) == 1)
         extra = pool[keep]
         if len(extra) == 0:
             return filtered

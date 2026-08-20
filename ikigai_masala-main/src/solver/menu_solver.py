@@ -661,6 +661,8 @@ class MenuSolver:
             'ricebread_ban_day': self.ricebread_ban_day,
             'pools': self.pools,
             'extra_repeatable': self._declared_repeatable(),
+            'extra_cooldown_exempt': self._declared_repeatable(
+                'cooldown_exempt_item_flags'),
         }
 
         for di, d in enumerate(dates):
@@ -829,18 +831,22 @@ class MenuSolver:
             model.Add(sum(picked) <= len(picked) - 1)
         return out
 
-    def _declared_repeatable(self):
-        """Collect ``repeatable_item_flags()`` from every rule that declares one.
+    def _declared_repeatable(self, hook: str = 'repeatable_item_flags'):
+        """Collect *hook* from every rule that declares one.
 
         A rule that deliberately repeats a dish (see FixedDailyItemRule) declares
         the selector it needs exempted from ``unique_items``, so the rule creating
         the repetition and the rule forbidding one cannot disagree. Scoped to the
         client whose config carries the rule, unlike the ontology-wide
         REPEATABLE_ITEM_FLAGS_BY_SLOT.
+
+        ``hook='cooldown_exempt_item_flags'`` collects the narrower declaration —
+        exempt from the history ban but still subject to ``unique_items`` — which
+        is the per-client form of ``COOLDOWN_EXEMPT_SLOTS``.
         """
         out: Dict[str, List[Any]] = {}
         for rule in (self.menu_rules or []):
-            fn = getattr(rule, 'repeatable_item_flags', None)
+            fn = getattr(rule, hook, None)
             if not callable(fn):
                 continue
             try:
@@ -848,8 +854,8 @@ class MenuSolver:
                     out.setdefault(slot, []).append(matchers)
             except Exception as exc:  # noqa: BLE001 — a bad rule must not block
                 logger.warning(
-                    "%s.repeatable_item_flags() raised: %s",
-                    getattr(rule, 'name', type(rule).__name__), exc)
+                    "%s.%s() raised: %s",
+                    getattr(rule, 'name', type(rule).__name__), hook, exc)
         return out
 
     def _build_context(
