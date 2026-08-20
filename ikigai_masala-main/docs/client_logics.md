@@ -171,6 +171,22 @@ All three were settled by the client; the config now matches the decision.
 - **Cloudera's sample covers four days and its Wednesday and Thursday columns are
   identical** — likely a draft rather than a rule. Not treated as evidence.
 
+### DB changes the `client_update.xlsx` rules need
+
+None of these are rules; they are `clients` column values, so they cannot be
+fixed in a config file.
+
+| Client | Change | Why |
+|---|---|---|
+| **Clario** | `working_days = ['monday','tuesday','wednesday','thursday']` | "Only operation is from Monday to Thursday" / "WORKING IS ONLY FROM MON TO THURSDAY". The column is empty today, so Clario is planned Mon-Fri. |
+| **Clario** | `theme_map.monday = 'biryani'` (today `mix`) | "Biryani will be served on Monday **and** Wednesday". Wednesday is already `biryani`. |
+| **Tekion CHN** | `theme_map` = Tekion BLR's (Mon `mix`, Tue `chinese`, Wed `north`, Thu `mix`, Fri `biryani`) | "Its rules are the same as Tekion BLR", and those rules are pinned to weekdays. Today CHN is Mon/Tue `mix`, Wed `south`, Thu `biryani`, Fri `north`, so the Chinese Tuesday lands on a mix day and the Friday chicken biryani on a north one. Nothing fails — a composition component with nothing eligible relaxes — but the menu is not the one the client pictured. |
+| **Booking.com** | `slot_counts.starter = 2` | Its `constant_items.starter__2` pin ("veg kati roll all day") is silently dropped, because the live counter serves one starter. |
+| **Moengage, Stryker** | fill in `theme_map` and `slot_counts` | Both live rows carry an empty `theme_map` (so the app-wide default applies: Mon mix, Tue chinese, Wed biryani, Thu south, Fri north) and near-empty `slot_counts` (Stryker `{}`, Moengage `{nonveg_main: 2}`), so every other category defaults to 1. Functional, but nothing about these two counters was actually chosen. |
+
+Not needed: Booking's Tuesday is already `continental`, and Citrix's, AT&T's and
+Bakertilly's theme maps already match what their rules assume.
+
 ---
 
 ## Scope: lunch only
@@ -569,19 +585,34 @@ are read, not because it is pending:
 - Tessolve's breakfast and dinner sections in the transcription below are
   reference only. The lunch section is what the tool targets.
 
-### 10. Cross-slot cuisine complementarity within a day
-*Tekion*
+### 10. Cross-slot cuisine complementarity within a day — **HALF BUILT**
+*Tekion (differ), Citrix (match)*
 
 > "on any day theme except chinese, if veg dry is south the veg gravy should be
 > north or vice versa, not from same family" — Tekion
 
-A constraint *between two slots on the same day*, conditioned on the day's theme.
-The existing rule types cover a slot's own candidates (`attribute_grouping`), a
-selector's count across the horizon (`selector_frequency`) and a slot family's
-per-day mix (`slot_composition`) — none relates the cuisine of one slot to the
-cuisine of a different slot. Closest existing precedent is the built-in
-rice≠gravy colour constraint in `MenuSolver`, which is hard-coded rather than
-config-driven; this wants the same shape, generalised and driven by config.
+> "if veg gravy is north then veg dry should be north" / "flavour rice and veg
+> gravy should be of the same region" — Citrix
+
+A constraint *between two slots on the same day*. None of the rule types related
+one slot's cuisine to another's: they cover a slot's own candidates
+(`attribute_grouping`), a selector's count across the horizon
+(`selector_frequency`) and a slot family's per-day mix (`slot_composition`).
+
+**Citrix's direction is built**: `soft_preference` gained a `match_attribute`
+mode, and both its rules are wired (see the Citrix section). It penalises "slot A
+serves value v and slot B serves nothing of value v" rather than "the two values
+differ", so a 2-dish `veg_dry` mandated one north + one south by
+`veg_dry_north_south_pair` still counts as matching a north gravy instead of
+fighting that composition. Soft, and required to name the `values` it compares, so
+a chinese day (where neither slot carries a listed value) is left to the theme
+rules.
+
+**Tekion's direction — "not from the same family" — is the inverse and is NOT
+built.** It is a small addition (invert the penalty into a `differ_attribute`
+mode), deliberately deferred until it is wired for a client rather than shipped as
+unused surface. Note it is also conditioned on the day's theme ("except chinese"),
+which `match_attribute` has no equivalent for yet.
 
 ### 11. Regional themes beyond the six
 *Booking.com*
@@ -613,6 +644,17 @@ than assumed.
 | Biryani on Wednesday | TODO | Verify the counter's `theme_map` sets Wednesday = biryani |
 | Plain chapati 2×, phulka 1×, Tue phulka + ragi mudde, other days flavoured, no south bread | TODO | Several `selector_frequency` rules + a bread cuisine restriction |
 
+### AT&T
+From the `client_update.xlsx` rules sheet.
+
+| Requirement | Status | Mechanism |
+|---|---|---|
+| Indian bread is chapathi and flavoured chapathi only | DONE | `att_bread_chapati_only` (the `bread_chapati_only` component) |
+| Daily curd, except on the biryani day it is raita | DONE | `curd_raita_logic`, the city ruleset's own curd_side rule — not restated per client |
+| Paneer once a week | DONE | `att_paneer_1x` |
+| Soya or kofta once a week | DONE | `att_soya_or_kofta_1x` (one rule, since the client offered them as alternatives) |
+| 3 days pulao in the flavoured rice | DONE | `att_pulao_3x` |
+
 ### Ather
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -623,11 +665,36 @@ than assumed.
 | 3 days curd, 2 days curd + raita | TODO | `constant_items` for `curd` / `curd_side`, as Telstra has |
 | Healthy rice is only red rice daily | TODO | `constant_items.healthy_rice`, as Cloudera has |
 
+### Bakertilly
+From the `client_update.xlsx` rules sheet. Two non-veg dishes a day; Wednesday is
+the biryani day.
+
+| Requirement | Status | Mechanism |
+|---|---|---|
+| Weekly 1 paneer | DONE | `bakertilly_paneer_1x` |
+| On the biryani day only bread, rasam, veg curry, flavoured rice, white rice and salad | DONE | four `slot_day_restriction` rules standing down veg_dry / dal / sambar / dessert on Wednesday |
+| Only on the biryani day, chicken dry as well | DONE | `bakertilly_nonveg_dry_only_on_biryani_day` forbids it elsewhere (`allowed_day_types`), and the `nonveg_main_daily_pair` override places it on Wednesday |
+| Daily curd, except on the biryani day it is raita | DONE | `curd_raita_logic` |
+
+**Two of the client's own rules disagree** about the curd on a Wednesday: the
+day-list says everything not named is blank, while the curd rule names the
+biryani day explicitly. `curd_side` is KEPT on Wednesday as a raita — a biryani
+without one is not a menu this kitchen would print — and this is worth the
+client's confirmation.
+
+Also worth knowing: the base ruleset composes a 2-4 dish non-veg counter as one
+DRY plus one regional chicken gravy **every** day, which contradicts "only on
+biryani day we will have chicken dry" head-on. The counter came back INFEASIBLE
+with the pre-flight reporting a clean bill of health, because neither rule is
+wrong on its own. The fix overrides `nonveg_main_daily_pair` for this client
+rather than disabling it, so the daily chicken gravy the base rule wanted
+survives.
+
 ### Booking.com
 | Requirement | Status | Mechanism |
 |---|---|---|
 | Curd daily, raita when biryani | DONE | `constant_items` curd/curd_side split |
-| Extra item veg kati roll all day | DONE | `constant_items.starter__2` |
+| Extra item veg kati roll all day | **INERT** | `constant_items.starter__2`, but the live counter serves `starter: 1` so there is no `starter__2` cell and the pin is dropped with a warning. **DB change: raise Booking's `starter` count to 2** (or move the pin to `starter`, which resolves to the last expansion) |
 | 3 pulao in a week | DONE | `booking_pulao_exact_3` |
 | Plain chapati daily | DONE | `constant_items.bread` |
 | 2 soups: one veg, one non-veg | TODO | `slot_composition` on `soup` with `min_slot_count: 2` |
@@ -638,6 +705,39 @@ than assumed.
 | 2 non-veg mains: chicken + egg gravy daily | DONE | `nonveg_main_daily_pair` (per-client) |
 | Indian bread: varieties of chapati/paratha in a week | TODO | Bread sub-category restriction |
 | White rice weekly once; no flavoured rice that day; never on chinese or biryani day | TODO | Needs gap 2 for the theme exclusion |
+
+### Citrix
+From the `client_update.xlsx` rules sheet. One dish per slot; Mon-Thu are `mix`,
+Friday is the biryani day.
+
+| Requirement | Status | Mechanism |
+|---|---|---|
+| Welcome drink will be buttermilk only | DONE | `citrix_welcome_drink_is_buttermilk` (a one-slot composition component) + `citrix_buttermilk_may_recur_across_weeks` |
+| Phulka or chapati only for the Indian bread | DONE | `citrix_bread_chapati_only` + `citrix_plain_chapati_is_a_staple` |
+| If the veg gravy is north the veg dry should be north | DONE | `citrix_veg_gravy_and_veg_dry_same_region` (`soft_preference` `match_attribute`) |
+| Flavoured rice and veg gravy of the same region | DONE | `citrix_rice_and_veg_gravy_same_region` |
+| Non-veg: Mon & Wed chicken gravy, Tue egg curry, Fri biryani | DONE | `citrix_nonveg_by_weekday` (`components_by_weekday`) |
+| The region should not be the same on 2 consecutive days for flavoured rice, veg gravy and veg dry | DONE | six `avoid_consecutive` rules, one per (slot, region) |
+
+Both region rules are **soft**, on the client's own instruction ("if I give south
+I can use north fallback"): a south rice pulls a south gravy when one is free and
+falls back to north rather than failing. Together with the alternation the plate
+comes out south / north / south / north / south across the week.
+
+**THURSDAY is unscheduled** — the client named Mon, Tue, Wed and Fri and said
+nothing about it, so Thursday's non-veg dish is left to the solver. One guard is
+added: `citrix_biryani_only_on_biryani_day`, because a `mix` day is not narrowed
+by the theme filter at all, so without it the solver could spend the week's one
+chicken biryani on Thursday and leave Friday's mandate unsatisfiable.
+
+`buttermilk_twice_weekly` is **disabled** for this client. The city rule puts
+buttermilk on exactly two non-consecutive welcome-drink days, which is the
+opposite of what Citrix asked; together they are unsatisfiable and the counter was
+INFEASIBLE with a clean pre-flight. Note also that Tessolve's "welcome drink only
+buttermilk" is met with a `constant_items` pin of ONE dish — Citrix wants the
+family, which is why it needed the composition plus the cooldown exemption
+(Bangalore carries 10 buttermilks, fewer than a daily slot needs across a 20-day
+window).
 
 ### Cloudera
 | Requirement | Status | Mechanism |
@@ -855,6 +955,30 @@ No `client_rules.json` entry.
 | 1 day paneer | TODO | `selector_frequency` exact 1 |
 | 1 day mushroom | TODO | `selector_frequency` exact 1 |
 | Chinese chicken dry/gravy once in 2 weeks | BLOCKED | Gap 4 |
+
+### Tekion CHN
+"Its rules are the same as Tekion BLR" — so `tekion_chn.json` is Tekion's block
+re-keyed to the Chennai site, names prefixed so the two counters' diagnostics stay
+distinguishable. Five of Tekion's six shelf references are copied; the sixth,
+`indian_veg_dry_on_chinese_day`, is not, because Chennai's own ruleset already
+exempts `veg_dry` from theme filtering entirely and the rule would have nothing to
+narrow.
+
+**One thing needs the client's eye.** Tekion BLR's weekday rules are pinned to
+BLR's theme map (Mon mix, Tue chinese, Wed north, Thu mix, Fri biryani) while
+Tekion CHN's live map is different (Mon/Tue mix, Wed south, Thu biryani, Fri
+north). The *same rules* therefore need the *same theme map* — otherwise the
+Chinese Tuesday lands on a mix day and the Friday chicken biryani on a north one.
+Neither fails (a `slot_composition` count is capped to what the day can serve, so
+a component with nothing eligible relaxes rather than going INFEASIBLE), but the
+menu will not be the one the client pictured.
+
+**Recommended DB change: set Tekion CHN's `theme_map` to Tekion BLR's.**
+
+Pool notes for Chennai: 13 liquid rices (so the Thursday khichdi and the weekly
+cap both bite), 7 chinese fried rices, 6 paneer gravies — but exactly **one**
+chinese veg gravy, so that Tuesday component can be met once per cooldown window
+and relaxes on the others. Deepening Chennai's chinese gravy pool is the real fix.
 
 ### Telstra
 | Requirement | Status | Mechanism |

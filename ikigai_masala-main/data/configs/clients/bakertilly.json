@@ -1,0 +1,119 @@
+{
+  "Bakertilly": {
+    "_comment": "Bangalore site, one counter, TWO non-veg dishes a day (themes Mon/Thu = mix, Tue = south, Wed = biryani, Fri = north). 'Daily curd except on biryani day it is raita' is already `curd_raita_logic` in the city ruleset, so it is not restated here. NB the client's biryani-day list ('indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank') and its curd rule ('except of biryani day it is raita') disagree about the curd on a Wednesday: the second names the biryani day explicitly, and a biryani without a raita is not a menu this kitchen would print, so `curd_side` is KEPT on Wednesday. Worth the client's confirmation.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "paneer_once_a_week",
+        "as": "bakertilly_paneer_1x"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "'On biryani day we will only serve indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank.' Wednesday is this counter's biryani day. The veg dry, dal, sambar and dessert stations stand down; bread / rasam / veg_gravy / rice / white_rice / salad stay, `nonveg_main` stays (the chicken-dry rule below is explicitly a biryani-day addition) and `curd_side` stays per the header comment.",
+        "name": "bakertilly_no_veg_dry_on_biryani_day",
+        "type": "slot_day_restriction",
+        "base_slot": "veg_dry",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "name": "bakertilly_no_dal_on_biryani_day",
+        "type": "slot_day_restriction",
+        "base_slot": "dal",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "name": "bakertilly_no_sambar_on_biryani_day",
+        "type": "slot_day_restriction",
+        "base_slot": "sambar",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "name": "bakertilly_no_dessert_on_biryani_day",
+        "type": "slot_day_restriction",
+        "base_slot": "dessert",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "'Only on biryani day we will have chicken dry also' — the forbidding half. `allowed_day_types` bans a dry non-veg on every other theme (the client said 'only') and `max: 1` bounds it to the single biryani day; the PLACING half is the composition override below, which puts the dry in one of Wednesday's two cells. Split that way because the two halves are different mechanisms: a composition is a floor and cannot forbid, and a frequency rule with `allowed_day_types` forbids but does not choose which cell.",
+        "name": "bakertilly_nonveg_dry_only_on_biryani_day",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_nonveg_dry"
+            },
+            {
+              "flag": "is_tandoor_nonveg_dry"
+            }
+          ]
+        },
+        "allowed_day_types": [
+          "biryani"
+        ],
+        "max": 1
+      },
+      {
+        "_comment": "The city rule composes a 2-4 dish non-veg counter as one DRY plus one regional chicken gravy every day, which contradicts 'only on biryani day we will have chicken dry' head-on — the composition mandates the dry, this client's rule forbids it on four days, and the counter came back INFEASIBLE with nothing naming the pair. Overridden rather than disabled so the counter keeps the daily chicken gravy the city rule wanted: `components` drops the daily dry, and the biryani-day override serves the biryani plus the chicken dry the client asked for. `components_by_theme` is a whole-key override (the per-key merge is top level only), so the city rule's `chinese` entry is not inherited — this counter has no chinese day, so there is nothing to restate.",
+        "name": "nonveg_main_daily_pair",
+        "type": "slot_composition",
+        "components": [
+          {
+            "selector": {
+              "any_flag": [
+                "is_north_chicken_gravy",
+                "is_south_chicken_gravy"
+              ]
+            },
+            "count": 1
+          }
+        ],
+        "components_by_theme": {
+          "biryani": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            },
+            {
+              "selector": {
+                "any_of": [
+                  {
+                    "flag": "is_nonveg_dry"
+                  },
+                  {
+                    "flag": "is_tandoor_nonveg_dry"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {}
+  }
+}

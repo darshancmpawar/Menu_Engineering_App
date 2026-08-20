@@ -1,0 +1,167 @@
+{
+  "Tekion CHN": {
+    "_comment": "'Its rules are the same as Tekion BLR' — so this file is Tekion's block re-keyed to the Chennai site, with the names prefixed so the two counters' diagnostics stay distinguishable. ONE THING NEEDS THE CLIENT'S EYE: Tekion BLR's weekday rules are pinned to BLR's theme map (Mon = mix, Tue = chinese, Wed = north, Thu = mix, Fri = biryani) while Tekion CHN's is different (Mon/Tue = mix, Wed = south, Thu = biryani, Fri = north). Same rules therefore need the same theme map — otherwise the chinese Tuesday lands on a mix day and the Friday chicken biryani on a north day. Neither is a failure (a slot_composition count is capped to what the day can serve, so a component with nothing eligible relaxes instead of going INFEASIBLE), but the menu will not be the one the client pictured. Recommended DB change: set Tekion CHN's theme_map to Tekion BLR's. One of Tekion BLR's six references is deliberately NOT copied: `indian_veg_dry_on_chinese_day` makes the Chinese day's veg dry a regular Indian dish, and Chennai's own ruleset already exempts `veg_dry` from theme filtering entirely, so the rule would have nothing to narrow.",
+    "disable": [
+      "deep_fried_coupling"
+    ],
+    "use": [
+      {
+        "ref": "nonveg_on_weekdays",
+        "as": "tekion_chn_nonveg_mwf"
+      },
+      {
+        "ref": "bread_chapati_only",
+        "as": "tekion_chn_bread_chapati_only"
+      },
+      {
+        "ref": "protein_source_daily",
+        "as": "tekion_chn_protein_source_daily"
+      },
+      {
+        "ref": "protein_outside_dal_three_days",
+        "as": "tekion_chn_protein_outside_dal"
+      },
+      {
+        "ref": "protein_outside_dal_other_days",
+        "as": "tekion_chn_protein_outside_dal_all_days"
+      }
+    ],
+    "rules": [
+      {
+        "name": "tekion_chn_no_mushroom",
+        "type": "ingredient_ban",
+        "ingredients": [
+          "mushroom"
+        ]
+      },
+      {
+        "_comment": "Chennai carries 13 liquid rices, so this cap and the Thursday khichdi below both have something to act on.",
+        "name": "tekion_chn_liquid_rice_once",
+        "type": "item_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "flag": "is_liquid_rice"
+        },
+        "min_per_week": 1,
+        "max_per_week": 1
+      },
+      {
+        "_comment": "Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR. Tuesday and Thursday are blank via tekion_chn_nonveg_mwf. Mon/Wed exclude is_egg_dish because a few egg dishes are mis-flagged is_south_chicken_gravy in the ontology.",
+        "name": "tekion_chn_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Chinese rice on Tuesday. Chennai carries 7 chinese fried rices and 14 chinese carbs, so the component is not inert — but see the header note about Tekion CHN's Tuesday being a `mix` day rather than a chinese one.",
+        "name": "tekion_chn_chinese_rice_tuesday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_chinese_fried_rice",
+                  "is_chinese_carb"
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "The veg-gravy half of the same Tuesday rule. Chennai has exactly ONE chinese veg gravy, so under `unique_items` this can be met on one Tuesday per cooldown window and relaxes on the others — the shortfall is reported by diagnose() rather than failing the plan. Deepening Chennai's chinese gravy pool is the real fix.",
+        "name": "tekion_chn_chinese_gravy_tuesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_chinese_veg_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Paneer gravy every Wednesday. Chennai carries 6 paneer gravies.",
+        "name": "tekion_chn_paneer_gravy_wednesday",
+        "type": "slot_composition",
+        "base_slot": "veg_gravy",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_paneer_gravy"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Khichdi every Thursday. There is no is_khichdi flag; every khichdi carries is_liquid_rice, and tekion_chn_liquid_rice_once caps liquid rice at one a week, so pinning Thursday lands that one there.",
+        "name": "tekion_chn_khichdi_thursday",
+        "type": "slot_composition",
+        "base_slot": "rice",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "thu": [
+            {
+              "selector": {
+                "flag": "is_liquid_rice"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ],
+    "constant_items": {}
+  }
+}
