@@ -52,12 +52,19 @@
       }
     },
     {
-      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. Pune's bread slot is chapati/phulka only, so they are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left.",
+      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. They are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left. Named as the two DISHES rather than selected on `is_plain_phulka_chapathi`, because the flag is broader than the rulebook clause: `pav` carries it (its sub_category is `plain_chapatti/phulka` in Bangalore and NCR too, so the classification long predates Pune), and the Corning Chakan import brought a pav into this city's bread pool. A pav is a leavened roll the source menu serves once a week, not a daily staple, and an exemption is permission to repeat every day — so it has to name what R36 names. Whether `pav` should carry that flag at all is a question for the client; nothing here depends on the answer.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",
       "base_slot": "bread",
       "selector": {
-        "flag": "is_plain_phulka_chapathi"
+        "any_of": [
+          {
+            "item": "chapati"
+          },
+          {
+            "item": "phulka"
+          }
+        ]
       }
     },
     {

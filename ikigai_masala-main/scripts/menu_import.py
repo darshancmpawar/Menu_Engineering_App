@@ -88,6 +88,32 @@ SPELLING = [
     (_tok("dryfruit"), "dry_fruit"),
     (_tok("hydrabadi", "hyderabadi"), "hyderabadi"),
     (_tok("lashooni", "lassoni", "lasooni"), "lasooni"),
+    # Typed by Corning Chakan's Pune sheet. Ordinary misspellings rather than
+    # anything regional, so they belong in the shared list: each one otherwise
+    # becomes a second row for a dish the same workbook already names correctly
+    # somewhere else (`brista`/`birista`, `frymus`/`fryums`).
+    (_tok("brocoli", "brocolli", "broccolli"), "broccoli"),
+    (_tok("corriendar", "corriender"), "coriander"),
+    (_tok("swaeet", "sweeet"), "sweet"),
+    (_tok("amristsari", "amritsri"), "amritsari"),
+    (_tok("caspsicum", "capscicum"), "capsicum"),
+    (_tok("cabage", "cabbge"), "cabbage"),
+    (_tok("maharashtrain", "maharastrian", "maharastrain"), "maharashtrian"),
+    (_tok("frymus"), "fryums"),
+    (_tok("brista"), "birista"),
+    (_tok("chtney"), "chutney"),
+    # NOT laddoo/ladoo -> laddu: the ontology carries both (40 rows against 29),
+    # an unadjudicated split like `chapatti`/`chapati`, and the evidence-based
+    # fold already collapses this source's three spellings into one row.
+    (_tok("baluhshahi"), "balushahi"),
+    (_tok("tondli"), "tondali"),
+    (_tok("bheidi"), "bhendi"),
+    (_tok("purpal"), "purple"),
+    (_tok("caroot"), "carrot"),
+    (_tok("raddish"), "radish"),
+    (_tok("dhania"), "dhaniya"),
+    (_tok("khichadi"), "khichdi"),
+    (_tok("javas"), "jawas"),
     # --- second pass: typos found by diffing imported tokens against the
     # vocabulary the ontology already uses. Only clear misspellings and
     # run-together words are here. Words that are merely NEW (dabeli, tukpa,

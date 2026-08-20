@@ -29,6 +29,7 @@ attachments and would have been lost.
 | `bangalore_client_logics.xlsx` | Bangalore | **the Bangalore rulebook** — 158 logic statements across 32 clients, hard and soft mixed together, in one sheet named `Banglore`. This is the main regional ruleset; it is per-CLIENT logics rather than city-level rules | `docs/client_logics.md`, the Bangalore entries in `configs/client_rules.json` |
 | `NCR_menu_items.xlsx` | NCR | pre-mapped item list (already in master schema) for 8 NCR clients, with its own `Mapping_Log` / `Review_Required` / `Data_Quality_Log` sheets. **Its `ACCEPT_REVIEW` fuzzy matches are the provenance for `scripts/ncr_fuzzy_unmerge.py`** — the reversal cites the exact merges it undoes | `city_items/ncr.xlsx`, `docs/ncr_client_logic.md` |
 | `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `scripts/import_booking_menu.py` |
+| `corning_chakan_pune_menu.xlsx` | Pune | Corning Chakan's nine weekly sheets, one column per day, identical row layout on every sheet. **The first client menu for a city other than Bangalore or Chennai**, and the first Maharashtrian list. Lunch and dinner only; the salad block is a salad BAR whose components are ingredients, and one sheet carries an unlabelled Independence Day menu below the grid that is read by dish name rather than position | `scripts/import_corning_pune_menu.py`, `scripts/marathi_ingredient_names.py` |
 | `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `scripts/import_stripe_menu.py` |
 
 ## Adding a city
@@ -77,19 +78,24 @@ attachments and would have been lost.
 5. the per-city corrections (`seafood_taxonomy`, `course_type_corrections`,
    `remove_generic_rows`, `dessert_cuisine_corrections`, the `ncr_*` set)
 6. `scripts/expand_side_pools.py`
-7. the client menu imports (`import_booking_menu.py`, `import_stripe_menu.py`)
+7. the client menu imports (`import_booking_menu.py`, `import_stripe_menu.py`,
+   `import_stryker_menu.py`, `import_moengage_menu.py`, `import_citrix_menu.py`,
+   `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`)
 8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
    are what adds new non-veg rows with no form flag
 9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
-10. `scripts/complete_ontology.py` — **last of the writers**, because it learns
+10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
+    `complete_ontology.py`: the `key_ingredient` values it writes are what that
+    pass then implies a sub_category and flags from.
+11. `scripts/complete_ontology.py` — **last of the writers**, because it learns
     every rule it applies from the rows already classified, so it needs the
     imports, the re-files and the flag corrections to have happened first. It
     runs to a fixed point internally; a second invocation is a no-op.
-11. `scripts/fill_item_colours.py` — same argument, for `item_color`
-12. `scripts/drop_dead_columns.py` — schema only, so order does not matter
-13. `scripts/build_pool_token_map.py`
+12. `scripts/fill_item_colours.py` — same argument, for `item_color`
+13. `scripts/drop_dead_columns.py` — schema only, so order does not matter
+14. `scripts/build_pool_token_map.py`
 
-Steps 3, 7, 8 and 10 are order-sensitive for the reasons their docstrings give.
+Steps 3, 7, 8, 10 and 11 are order-sensitive for the reasons their docstrings give.
 
 The whole chain is **convergent**: run it twice and the second pass reports
 "already correct" everywhere. That is the check worth doing after any re-import,

@@ -96,13 +96,23 @@
         ]
       },
       {
-        "_comment": "Curd / Raita runs on Sunday only — the biryani day, which is the classic pairing and the only day the sample shows it. The Pune curd_side pool is two raitas (raita, boondi_raita) and the solver picks one, so this is a real ontology dish with a colour and a history entry rather than the stamped 'Raita' string it replaced. Widen allowed_weekdays if the client wants curd or raita on more days.",
+        "_comment": "Curd / Raita runs on Sunday only — the biryani day, which is the classic pairing and the only day the sample shows it. This is a real ontology dish with a colour and a history entry rather than the stamped 'Raita' string it replaced. Widen allowed_weekdays if the client wants curd or raita on more days.",
         "name": "amadeus_pune_curd_side_sunday_only",
         "type": "slot_day_restriction",
         "base_slot": "curd_side",
         "allowed_weekdays": [
           "sun"
         ]
+      },
+      {
+        "_comment": "And it is a RAITA, which the sample's Sunday column says and nothing until now enforced. Pune's curd_side pool was two raitas when the rule above was written, so the solver could not pick anything else; the pool is now 13 dishes including five plain curds, and the Corning Chakan import tipped the choice to `mint_curd`. A `min` of 1 over the one day the slot runs states the intent instead of relying on the pool's shape — and `selector_frequency` caps `min` to what is placeable, so it relaxes rather than going INFEASIBLE if the raitas are ever all cooled down.",
+        "name": "amadeus_pune_sunday_curd_side_is_a_raita",
+        "type": "selector_frequency",
+        "base_slot": "curd_side",
+        "selector": {
+          "flag": "is_raita"
+        },
+        "min": 1
       },
       {
         "_comment": "'chapati daily in indain bread' — a per-day MANDATE, not merely permission to repeat. On a one-slot family a slot_composition component with count 1 means 'this slot must be a matching dish', so bread is chapati on every day it is served. fixed_daily_item was the wrong tool: it only makes the matching dish CONSISTENT across days and leaves the solver free to serve phulka instead, which it did. The city ruleset's plain_chapati_may_repeat supplies the unique_items / cooldown exemption the repetition needs.",

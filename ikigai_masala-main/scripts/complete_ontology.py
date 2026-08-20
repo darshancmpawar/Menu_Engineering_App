@@ -281,6 +281,24 @@ def _classified(everything: pd.DataFrame) -> pd.DataFrame:
     return everything[_numeric_flags(everything).sum(axis=1) > 0]
 
 
+def learn_by_dish(everything, column: str) -> dict:
+    """{item: value} — the same dish, already filled in another city.
+
+    The strongest evidence available and the cheapest: the four workbooks share
+    most of their rows, so a dish filled in Bangalore settles the Pune copy
+    outright. `fill_item_colours.py` makes the same argument for `item_color`.
+    Only unanimous dishes are kept — where two cities disagree, neither is
+    evidence.
+    """
+    seen = defaultdict(set)
+    for _, r in everything.iterrows():
+        value = _norm(r.get(column))
+        if value:
+            seen[_norm(r["item"])].add(value)
+    return {item: next(iter(vals))
+            for item, vals in seen.items() if len(vals) == 1}
+
+
 def learn_text(classified, column: str) -> dict:
     """{(course, token): value} the classified rows agree about."""
     tally = defaultdict(Counter)
@@ -421,7 +439,8 @@ def _applies(column: str, course: str) -> bool:
 
 
 def apply(d: pd.DataFrame, learned_text: dict, attribute_rules: dict,
-          flag_tokens: dict, exclusive: set = frozenset()):
+          flag_tokens: dict, exclusive: set = frozenset(),
+          by_dish_text: dict | None = None):
     """Return (df, filled, unresolved). Safe to call twice."""
     d = d.copy()
     filled, unresolved = [], []
@@ -445,13 +464,21 @@ def apply(d: pd.DataFrame, learned_text: dict, attribute_rules: dict,
         filled.append((str(d.at[idx, "item"]), column, why))
         return True
 
-    # 1. text columns — a blank inside the column's own scope
+    # 1. text columns — a blank inside the column's own scope. The same dish in
+    #    another city settles it outright; otherwise the words vote.
     for column, learned in learned_text.items():
         if column not in d.columns:
             continue
+        by_dish = (by_dish_text or {}).get(column, {})
         for idx in d.index[d[column].isna()]:
             course = _norm(d.at[idx, "course_type"])
             if not _applies(column, course):
+                continue
+            twin = by_dish.get(_norm(d.at[idx, "item"]))
+            if twin:
+                d.at[idx, column] = twin
+                filled.append((str(d.at[idx, "item"]), column,
+                               f"{twin} (same dish in another city)"))
                 continue
             votes = Counter(learned[(course, t)]
                             for t in _tokens(d.at[idx, "item"])
@@ -561,10 +588,12 @@ def learn_all(frames):
     flags = [c for c in everything.columns
              if c.startswith("is_") and c not in DERIVED_FLAGS]
     learned_text = {c: learn_text(classified, c) for c in COLUMN_SCOPE}
+    by_dish_text = {c: learn_by_dish(everything, c) for c in COLUMN_SCOPE}
     return (learned_text,
             learn_attribute_rules(classified, flags),
             learn_flag_tokens(classified, flags),
             learn_exclusive_pairs(classified, flags),
+            by_dish_text,
             len(classified))
 
 
@@ -632,18 +661,20 @@ def main(dry_run: bool = False, mixed_veg: bool = False,
     # correction-script convention here is that re-running changes nothing.
     # Converging inside one run is what makes the second run a real no-op.
     for pass_no in range(1, MAX_PASSES + 1):
-        learned_text, attribute_rules, flag_tokens, exclusive, n_classified = \
-            learn_all(frames)
+        (learned_text, attribute_rules, flag_tokens, exclusive, by_dish_text,
+         n_classified) = learn_all(frames)
         print(f"pass {pass_no}: learned from {n_classified} classified rows — "
               f"{sum(len(v) for v in learned_text.values())} text rules, "
               f"{sum(len(v) for v in attribute_rules.values())} attribute "
               f"implications, {sum(len(v) for v in flag_tokens.values())} token "
-              f"implications, {len(exclusive)} exclusive pairs")
+              f"implications, {len(exclusive)} exclusive pairs, "
+              f"{sum(len(v) for v in by_dish_text.values())} cross-city dishes")
         moved = 0
         all_unresolved = []
         for city, d in frames.items():
             out, filled, unresolved = apply(d, learned_text, attribute_rules,
-                                            flag_tokens, exclusive)
+                                            flag_tokens, exclusive,
+                                            by_dish_text)
             frames[city] = out
             total[city] += filled
             moved += len(filled)
