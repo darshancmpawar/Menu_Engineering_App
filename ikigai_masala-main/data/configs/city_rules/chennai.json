@@ -35,8 +35,9 @@
         "curd_side",
         "curd_rice",
         "dessert",
-        "bread"
-      , "veg_dry"]
+        "bread",
+        "veg_dry"
+      ]
     },
     {
       "_comment": "Colour variety. Chennai's list is brown-heavy — 194 of 361 rows (54%) are brown, against 67 red and 34 yellow — so Pune's flat cap of 2 per colour is too tight here: a day drawing 6 colour slots from a 54%-brown pool needs somewhere to put the third brown dish. This uses Bangalore's asymmetric shape instead: every colour capped at 2, with ONE colour allowed to reach 3.",
@@ -50,12 +51,19 @@
       "max_colors_at_reach": 1
     },
     {
-      "_comment": "Plain chapati/phulka may run on consecutive days — the same reasoning as Pune's R36. Chennai has 5 plain-chapati rows against a 29-dish bread pool, so this is less load-bearing here than in Pune (where the bread pool WAS the two chapatis), but a counter serving chapati daily still needs the cooldown exemption or week 2 has no chapati.",
+      "_comment": "Plain chapati/phulka may run on consecutive days — the same reasoning as Pune's R36, selected by NAME for the same reason: the `is_plain_phulka_chapathi` flag covers the flavoured chapatis too (12 Chennai rows) and `sub_category: plain_chapatti/phulka` wrongly includes `garlic_chapati`, while permission to repeat every day belongs to the plain bread alone. Two dishes against a 107-dish bread pool, so this is far less load-bearing here than in Pune — but a counter serving chapati daily still needs the exemption or week 2 has no chapati.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",
       "base_slot": "bread",
       "selector": {
-        "flag": "is_plain_phulka_chapathi"
+        "any_of": [
+          {
+            "item": "chapati"
+          },
+          {
+            "item": "phulka"
+          }
+        ]
       }
     },
     {

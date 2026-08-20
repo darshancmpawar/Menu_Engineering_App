@@ -83,6 +83,11 @@ attachments and would have been lost.
    `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`)
 8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
    are what adds new non-veg rows with no form flag
+8b. `scripts/bread_form_flags.py` — same slot, same reason, for
+   `is_plain_phulka_chapathi`: an importer writes only what a dish name supports
+   and leaves the column blank, so every `chapati`-spelled row an import added
+   arrived unflagged. It derives the flag from the NAME in both directions, so it
+   must run **after** step 3 has settled on one spelling.
 9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
@@ -101,7 +106,8 @@ attachments and would have been lost.
 13. `scripts/drop_dead_columns.py` — schema only, so order does not matter
 14. `scripts/build_pool_token_map.py`
 
-Steps 3, 7, 8, 10 and 11 are order-sensitive for the reasons their docstrings give.
+Steps 3, 7, 8, 8b, 10 and 11 are order-sensitive for the reasons their docstrings
+give.
 
 The whole chain is **convergent**: run it twice and the second pass reports
 "already correct" everywhere. That is the check worth doing after any re-import,

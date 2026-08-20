@@ -101,12 +101,53 @@ def test_canonical_name_is_token_scoped():
     assert canonical_name("black_channa_masala") == "black_chana_masala"
 
 
-def test_the_split_left_alone_is_still_split(frames):
-    """`chapatti` / `chapati` is the client's call, and both are still there."""
-    assert ("chapatti", "chapati") in KNOWN_SPLITS
+def test_the_chapati_split_is_folded_now():
+    """`chapatti` / `chapati` was the one split left to the client's call, and the
+    split turned out to cost eight pairs of the identical dish — every `chapatti`
+    row the attributed master, every `chapati` row a bare import stub beside it.
+    `chapati` won (the client's own spelling, and the majority across cities)."""
+    assert CANONICAL.get("chapatti") == "chapati"
+    assert ("chapatti", "chapati") not in KNOWN_SPLITS
+
+
+def test_no_chapatti_spelling_survives(frames):
+    for city, frame in frames.items():
+        names = frame["item"].astype(str).str.strip().str.lower()
+        assert not [n for n in names if _rx("chapatti").search(n)], city
+        assert any(_rx("chapati").search(n) for n in names), city
+
+
+def test_the_chapati_twins_collapsed_to_one_row(frames):
+    """The eight adjudicated pairs. The survivor must carry the attributed row's
+    columns, not the stub's — that is the whole point of picking the winner by
+    hand."""
     names = frames["bangalore"]["item"].astype(str).str.strip().str.lower()
-    assert any(_rx("chapatti").search(n) for n in names)
-    assert any(_rx("chapati").search(n) for n in names)
+    counts = names.value_counts()
+    for dish in ("plain_chapati", "methi_chapati", "garlic_chapati",
+                 "jeera_chapati", "palak_chapati", "beetroot_chapati",
+                 "carrot_chapati", "ajwain_chapati"):
+        assert counts.get(dish, 0) == 1, (dish, counts.get(dish, 0))
+    row = frames["bangalore"][names == "plain_chapati"].iloc[0]
+    assert str(row["sub_category"]).strip().lower() == "plain_chapatti/phulka"
+    assert str(row["item_color"]).strip().lower() == "brown"
+
+
+def test_the_buttermilk_typos_are_folded(frames):
+    """Not transliterations — plain typos, and they matter because Citrix's
+    welcome drink is buttermilk every day, so the name is printed weekly."""
+    assert CANONICAL.get("malasa") == "masala"
+    assert CANONICAL.get("tempared") == "tempered"
+    names = set(frames["bangalore"]["item"].astype(str).str.strip().str.lower())
+    assert "malasa_buttermilk" not in names
+    assert "tempared_buttermilk" not in names
+    assert {"masala_buttermilk", "tempered_buttermilk"} <= names
+
+
+def test_the_recorded_splits_are_real_and_left_alone(frames):
+    """`KNOWN_SPLITS` exists so a judgement is visible rather than looking like
+    an oversight, so every entry must still be a pair nothing folds."""
+    for minority, house in KNOWN_SPLITS:
+        assert CANONICAL.get(minority) != house, (minority, house)
 
 
 # --------------------------------------------------------------------------
@@ -178,3 +219,18 @@ def test_a_name_selector_now_reaches_the_whole_kadhi_family(frames):
         hits = [n for n in names if "kadhi" in n]
         assert len(hits) >= 5, (city, sorted(hits))
         assert not [n for n in names if _rx("kadi").search(n)]
+
+
+def test_bare_chapati_is_left_alone(frames):
+    """It is a naming GRANULARITY question, not a spelling one, and it is
+    recorded in `KNOWN_SPLITS` rather than folded.
+
+    Merging bare `chapati` into `plain_chapati` looked right — same dish, same
+    sub_category — and broke import stability: Stripe's printed menu says
+    "Chapati", so a re-import added the row straight back. Teaching the importer
+    an alias would be wrong too, because Pune's and Chennai's row IS `chapati`.
+    """
+    assert ("chapati", "plain_chapati") in KNOWN_SPLITS
+    for city in ("bangalore", "pune", "chennai"):
+        names = set(frames[city]["item"].astype(str).str.strip().str.lower())
+        assert "chapati" in names, city

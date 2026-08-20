@@ -52,12 +52,19 @@
       }
     },
     {
-      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. They are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left. Selected on the flag, which is now trustworthy: `pav` used to carry it in all three cities that have the dish, and the Corning Chakan import brought one into this city's bread pool — an exemption is permission to repeat EVERY DAY, and a pav is a leavened roll served alongside a bhaji once a week. The client confirmed a pav is not a plain phulka or chapathi, so `course_type_corrections.py` fixes the row rather than this rule working around it.",
+      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. They are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left. Selected by NAME, on exactly the two dishes R36 names. Not `is_plain_phulka_chapathi`: that flag means the whole chapati family, plain OR flavoured — it is what a \"chapati only\" bread rule selects on — and `bread_form_flags.py` correctly took Pune from 2 flagged rows to 9 by adding the flavoured chapatis, which would have widened this exemption to beetroot and methi chapati as a side effect of a data fix. An exemption is permission to repeat EVERY DAY and that is not variety. Not `sub_category` either: `plain_chapatti/phulka` is unreliable, holding `garlic_chapati` here and 34 Bangalore rows of which several are plainly flavoured (makai, mango, mooli, hot_and_sour). Two dishes is thin, so `diagnose()` reporting a selector that matches nothing is the guard if either is ever renamed. `pav` used to carry the flag in all three cities that have the dish and the Corning Chakan import brought one into this city's bread pool; a pav is a leavened roll served alongside a bhaji once a week, so `course_type_corrections.py` fixes the row rather than this rule working around it.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",
       "base_slot": "bread",
       "selector": {
-        "flag": "is_plain_phulka_chapathi"
+        "any_of": [
+          {
+            "item": "chapati"
+          },
+          {
+            "item": "phulka"
+          }
+        ]
       }
     },
     {
