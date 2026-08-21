@@ -176,13 +176,18 @@ class TestAttAndT:
     once a week. Weekly 3 days pulav in flavour rice.'"""
 
     def test_bread_is_always_a_chapati_or_phulka(self, api, blr_df):
+        """Asserted on the FLAG, not the dish name. `bread_chapati_only` selects
+        on `is_plain_phulka_chapathi`, which `scripts/bread_form_flags.py` made
+        definitional in both directions — so a `tawa_roti` or `wheat_palak_roti`
+        is a chapati-class bread with no "chapati" in its name, while an
+        `appam_chapati` has the word and is not one."""
         sol = _plan(api, 'AT&T')
         breads = _by_day(sol, 'bread')
         assert all(breads.values()), breads
         for day, items in breads.items():
             for b in items:
-                assert any(k in b for k in ('chapati', 'chapatti', 'phulka')), \
-                    f'{day}: {b} is not a chapati or phulka'
+                assert _flag(blr_df, b, 'is_plain_phulka_chapathi'), \
+                    f'{day}: {b} is not a chapati, phulka or wheat roti'
 
     def test_paneer_exactly_one_day(self, api, blr_df):
         sol = _plan(api, 'AT&T')
@@ -300,14 +305,14 @@ class TestCitrix:
             assert all(_flag(blr_df, b, 'is_buttermilk') for b in items), \
                 f'{day}: {items} is not buttermilk'
 
-    def test_bread_is_always_a_chapati_or_phulka(self, api):
+    def test_bread_is_always_a_chapati_or_phulka(self, api, blr_df):
         sol = _plan(api, 'Citrix')
         breads = _by_day(sol, 'bread')
         assert all(breads.values()), breads
         for day, items in breads.items():
             for b in items:
-                assert any(k in b for k in ('chapati', 'chapatti', 'phulka')), \
-                    f'{day}: {b} is not a chapati or phulka'
+                assert _flag(blr_df, b, 'is_plain_phulka_chapathi'), \
+                    f'{day}: {b} is not a chapati, phulka or wheat roti'
 
     def test_nonveg_follows_the_stated_weekday_schedule(self, api, blr_df):
         sol = _plan(api, 'Citrix')
@@ -454,19 +459,55 @@ class TestTekionChn:
                    if any(_flag(chn_df, b, 'is_liquid_rice') for b in items))
         assert days == 1, f'liquid rice on {days} day(s), want 1: {rice}'
 
-    def test_bread_is_always_a_chapati_or_phulka(self, api):
+    def test_bread_is_always_a_chapati_or_phulka(self, api, chn_df):
         sol = _plan(api, 'Tekion CHN')
         breads = _by_day(sol, 'bread')
         assert all(breads.values()), breads
         for day, items in breads.items():
             for b in items:
-                assert any(k in b for k in ('chapati', 'chapatti', 'phulka')), \
-                    f'{day}: {b} is not a chapati or phulka'
+                assert _flag(chn_df, b, 'is_plain_phulka_chapathi'), \
+                    f'{day}: {b} is not a chapati, phulka or wheat roti'
 
 
 # --------------------------------------------------------- Corning Chakan
 
 FULL_WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+
+@pytest.fixture(scope='module')
+def sol():
+    """One seven-day Corning Chakan solve, shared by the whole class.
+
+    Seeded and restored by hand rather than through the function-scoped `api`
+    fixture: a module-scoped fixture cannot depend on a function-scoped one
+    (`api` uses monkeypatch), and thirteen seven-day solves at 40s each is not a
+    price worth paying for isolation these read-only assertions do not need. Same
+    pattern as `test_pune_client_logic.py`'s shared plan.
+    """
+    import src.db as db_mod
+    import api.app as api_app
+    from api.rate_limit import reset_for_tests
+
+    fake = FakeSupabase(seed={
+        'clients': [dict(c) for c in CLIENTS.values()],
+        'app_settings': [], 'menu_history': [], 'week_signatures': [],
+    })
+    old_sb = getattr(db_mod, '_sb_client', None)
+    db_mod._sb_client = fake
+    api_app._client_loader = None
+    api_app.reset_caches()
+    api_app.app.config['TESTING'] = True
+    try:
+        reset_for_tests()
+        resp = api_app.app.test_client().post('/api/v1/plan', json={
+            'client_name': 'Corning Chakan', 'start_date': MONDAY,
+            'num_days': 7, 'time_limit_sec': TIME_LIMIT})
+        assert resp.status_code == 200, resp.get_json()
+        yield resp.get_json()['solution']
+    finally:
+        db_mod._sb_client = old_sb
+        api_app._client_loader = None
+        api_app.reset_caches()
 
 
 @pytest.fixture(scope='module')
@@ -486,10 +527,6 @@ class TestCorningChakan:
     constraint, and 'kabuli chana max once a week' is Pune's own city rule.
     """
 
-    @pytest.fixture(scope='class')
-    def sol(self, request):
-        return _plan(request.getfixturevalue('api'), 'Corning Chakan',
-                     num_days=7)
 
     def test_soup_only_on_tue_thu_sat_sun(self, sol):
         soup = _by_day(sol, 'soup', FULL_WEEK)
