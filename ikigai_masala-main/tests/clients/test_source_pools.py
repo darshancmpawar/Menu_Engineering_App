@@ -157,28 +157,67 @@ class TestPoolPreview:
 
 
 class TestPlanFlowFilter:
+    """Pool narrowing, and the cities where it is switched off.
+
+    These two used to assert the narrowing on **Rippling**, a Bangalore client.
+    Bangalore was later added to `FULL_POOL_CITIES` (note 15) precisely so its
+    clients plan from the whole city list — only 893 of its 4,349 rows carry
+    `common`, and most clients have `source_pools = []`, so narrowing left them
+    a fifth of the list. The tests kept asserting the old behaviour. They now
+    check both halves: a narrowing city narrows, a full-pool city does not.
+    """
+
+    #: The seeded client has no city, which resolves to Bangalore's workbook and
+    #: therefore to the full-pool policy. Moving it to Chennai — a city that
+    #: still narrows, and the one whose list carries real per-site tokens since
+    #: the menu bank import — is what makes the narrowing observable at all.
+    NARROWING_CITY = 'Chennai'
+    NARROWING_POOL = 'tata communications'
+
+    def _narrowing(self, loader):
+        loader.set_client_city('Rippling', self.NARROWING_CITY)
+        return 'Rippling'
+
     def test_menu_data_filtered_to_active_pools(self, fake_supabase):
         import api.app as api_app
         from src.client.client_config import ClientConfigLoader
         from src.preprocessor.client_pool_filter import (
             parse_client_pools, get_active_pools,
         )
-        ClientConfigLoader().set_client_source_pools('Rippling', ['infineon'])
+        loader = ClientConfigLoader()
+        name = self._narrowing(loader)
+        loader.set_client_source_pools(name, [self.NARROWING_POOL])
         api_app.reset_caches()
-        df, pools = api_app._menu_data_for_client('Rippling')
-        active = get_active_pools(['infineon'])
-        # every row in the filtered df must be eligible for common ∪ infineon
+        df, _ = api_app._menu_data_for_client(name)
+        active = get_active_pools([self.NARROWING_POOL])
         for cell in df['client']:
             assert parse_client_pools(cell) & active, cell
-        # and it must be a strict subset of the full ontology
-        full_df, _ = api_app._get_menu_data()
+        full_df, _ = api_app._get_menu_data(self.NARROWING_CITY)
         assert len(df) < len(full_df)
 
-    def test_common_only_when_unset(self, fake_supabase):
+    def test_a_full_pool_city_ignores_source_pools(self, fake_supabase):
+        """Bangalore is in `FULL_POOL_CITIES`, so naming a pool changes nothing
+        — that is the point of the switch, and it is a city-level policy rather
+        than anything written on the client row."""
         import api.app as api_app
-        from src.preprocessor.client_pool_filter import parse_client_pools
+        from src.client.client_config import ClientConfigLoader
+        from src.constants import FULL_POOL_CITIES
+        assert 'bangalore' in FULL_POOL_CITIES
+        ClientConfigLoader().set_client_source_pools('Rippling', ['infineon'])
         api_app.reset_caches()
-        # Rippling unset -> [] -> common-only
-        df, pools = api_app._menu_data_for_client('Rippling')
+        df, _ = api_app._menu_data_for_client('Rippling')
+        full_df, _ = api_app._get_menu_data()
+        assert len(df) == len(full_df)
+
+    def test_common_only_when_unset(self, fake_supabase):
+        """With no pools set, a NARROWING city plans from `common` alone."""
+        import api.app as api_app
+        from src.client.client_config import ClientConfigLoader
+        from src.preprocessor.client_pool_filter import parse_client_pools
+        loader = ClientConfigLoader()
+        name = self._narrowing(loader)
+        loader.set_client_source_pools(name, [])
+        api_app.reset_caches()
+        df, _ = api_app._menu_data_for_client(name)
         for cell in df['client']:
             assert 'common' in parse_client_pools(cell), cell

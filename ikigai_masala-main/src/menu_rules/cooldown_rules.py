@@ -73,17 +73,24 @@ class ItemCooldownMenuRule(BaseMenuRule):
         return self.cooldown_days >= 0
 
     def _declared_repeatable(self) -> Dict[str, List[Any]]:
-        """``{base_slot: [(include, exclude), ...]}`` from every peer rule."""
+        """``{base_slot: [(include, exclude), ...]}`` from every peer rule.
+
+        BOTH declarations, because both exempt a dish from the ban: the staples
+        (``repeatable_item_flags``) and the cooldown-only set
+        (``cooldown_exempt_item_flags``, which keeps ``unique_items``). Reading
+        only the first would report bans the solver does not apply.
+        """
         out: Dict[str, List[Any]] = {}
         for rule in (self._peer_rules or ()):
-            fn = getattr(rule, 'repeatable_item_flags', None)
-            if not callable(fn):
-                continue
-            try:
-                for slot, matcher in (fn() or {}).items():
-                    out.setdefault(slot, []).append(matcher)
-            except Exception:  # noqa: BLE001 — a bad peer must not break diagnose
-                continue
+            for hook in ('repeatable_item_flags', 'cooldown_exempt_item_flags'):
+                fn = getattr(rule, hook, None)
+                if not callable(fn):
+                    continue
+                try:
+                    for slot, matcher in (fn() or {}).items():
+                        out.setdefault(slot, []).append(matcher)
+                except Exception:  # noqa: BLE001 — a bad peer must not break diagnose
+                    continue
         return out
 
     def _staple_mask(self, pool: pd.DataFrame, base_slot: str,
@@ -120,7 +127,14 @@ class ItemCooldownMenuRule(BaseMenuRule):
         # chapati). Skipping the declared set would leave a "may repeat"
         # exemption that unique_items honours and the cooldown quietly
         # doesn't — which starves the slot a week later instead of now.
-        declared = filter_context.get('extra_repeatable') or {}
+        # Two declarations, both exempting from the ban: the staples (also
+        # exempt from unique_items) and the cooldown-only set, which keeps
+        # unique_items so the slot still varies within a plan — the per-client
+        # form of COOLDOWN_EXEMPT_SLOTS above.
+        declared = {**(filter_context.get('extra_repeatable') or {})}
+        for slot, matchers in (filter_context.get('extra_cooldown_exempt')
+                               or {}).items():
+            declared[slot] = list(declared.get(slot, ())) + list(matchers)
         staple = self._staple_mask(pool, base_slot, declared)
         # No-repeat is HARD. A cooled-down dish is removed outright and the rule
         # never "borrows back" a recent dish to fill a gap: repetition is allowed

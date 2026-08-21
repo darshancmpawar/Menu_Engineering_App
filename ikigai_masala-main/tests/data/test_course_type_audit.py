@@ -216,7 +216,10 @@ class TestTheThreeCitySheetsAgree:
         ref = list(_read('bangalore').columns)
         for city in CITIES[1:]:
             assert list(_read(city).columns) == ref, city
-        assert len(ref) == 135
+        # 134 since `scripts/drop_dead_columns.py` removed `universe`, which was
+        # blank on all 8,787 rows and read by nothing.
+        assert len(ref) == 134
+        assert 'universe' not in ref
 
     def test_sub_categories_are_mostly_shared_with_the_master(self):
         """Not identical — a city with dishes the master lacks legitimately needs

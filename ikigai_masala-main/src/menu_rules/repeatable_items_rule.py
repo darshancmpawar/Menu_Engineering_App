@@ -19,6 +19,21 @@ from the item-cooldown history ban. It **permits** repetition — it never force
 it (use ``fixed_daily_item`` for "the same dish every day"), and it never
 mandates the dish appear at all.
 
+``scope`` chooses which of the two exemptions applies:
+
+* ``"both"`` (default) — exempt from ``unique_items`` AND the cooldown. The dish
+  may recur any day, which is what a staple means (Pune's plain chapati, the
+  daily steamed rice).
+* ``"cooldown"`` — exempt from the cooldown only; ``unique_items`` still holds,
+  so the slot serves distinct dishes within a plan and repeats only once every
+  distinct one is used. This is the ``COOLDOWN_EXEMPT_SLOTS`` treatment
+  (CLAUDE.md note 11) made available per client instead of globally, and it is
+  what a *family* daily needs rather than a single dish: Citrix's welcome drink
+  is buttermilk every day and Bangalore carries ten buttermilks — fewer than a
+  daily slot needs across a 20-day window, so the ban has to go, but with
+  ``"both"`` the solver was free to serve the same one on Monday and Thursday
+  while eight others went unused.
+
 Why a rule and not a constant: :data:`src.constants.REPEATABLE_ITEM_FLAGS_BY_SLOT`
 is the same declaration global to every city, which is right for the chicken
 kebab on a non-veg station and wrong for bread. A rule lives in the city (or
@@ -50,6 +65,8 @@ from .selector_frequency_rule import SelectorFrequencyRule
 
 logger = logging.getLogger(__name__)
 
+_SCOPES = frozenset({'both', 'cooldown'})
+
 
 class RepeatableItemsRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
@@ -58,6 +75,7 @@ class RepeatableItemsRule(BaseMenuRule):
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         self._inc = SelectorFrequencyRule._parse_matcher(rule_config.get('selector'))
         self._exc = SelectorFrequencyRule._parse_matcher(rule_config.get('exclude'))
+        self.scope: str = str(rule_config.get('scope', 'both')).strip().lower()
 
     def validate_config(self) -> bool:
         return not self.validation_errors()
@@ -68,6 +86,8 @@ class RepeatableItemsRule(BaseMenuRule):
             errs.append("base_slot is required")
         if self._inc is None:
             errs.append("a valid 'selector' is required")
+        if self.scope not in _SCOPES:
+            errs.append("scope must be one of " + ", ".join(sorted(_SCOPES)))
         return errs
 
     def _row_matches(self, row) -> bool:
@@ -75,13 +95,28 @@ class RepeatableItemsRule(BaseMenuRule):
                 and not SelectorFrequencyRule._matches(row, self._exc))
 
     def repeatable_item_flags(self) -> Dict[str, Any]:
-        """``{base_slot: matcher}`` — the whole behaviour of this rule.
+        """``{base_slot: matcher}`` — the exemption BOTH consumers honour.
 
         Collected by ``MenuSolver._declared_repeatable()`` into
         ``context['extra_repeatable']``, which ``unique_items`` folds into its
         repeatable set and ``item_cooldown`` reads before applying history bans.
+        Empty under ``scope: "cooldown"``, where only the cooldown stands down.
         """
-        if not self.base_slot or self._inc is None:
+        if not self.base_slot or self._inc is None or self.scope != 'both':
+            return {}
+        return {self.base_slot: (self._inc, self._exc)}
+
+    def cooldown_exempt_item_flags(self) -> Dict[str, Any]:
+        """``{base_slot: matcher}`` — the exemption ONLY the cooldown honours.
+
+        Read via ``context['extra_cooldown_exempt']`` (and via ``_peer_rules`` in
+        ``diagnose()``, which has no context). A separate hook rather than a flag
+        on the first one so a consumer that has not been taught about ``scope``
+        keeps the narrower behaviour: forgetting to check it leaves the cooldown
+        ban in place, which starves a slot visibly, rather than silently
+        permitting a repeat the client did not ask for.
+        """
+        if not self.base_slot or self._inc is None or self.scope != 'cooldown':
             return {}
         return {self.base_slot: (self._inc, self._exc)}
 

@@ -67,15 +67,22 @@
       "A one-slot `slot_composition` component IS 'this slot must be a matching",
       "dish' (CLAUDE.md note 20) — `fixed_daily_item` is the wrong tool, it only",
       "makes the dish CONSISTENT and leaves the solver free to serve something",
-      "else. Self-gates on a single-bread counter."
+      "else. Self-gates on a single-bread counter.",
+      "",
+      "Selects on the FLAG, not on the name. It used to match `name_contains:",
+      "[chapati, chapatti, phulka]`, which is what the flag being unreliable",
+      "forced — and the cost showed up the moment Citrix was wired: Tuesday's",
+      "'chapati' came back `appam_chapati`, a combination cell a menu import",
+      "split badly. `scripts/bread_form_flags.py` made the flag definitional in",
+      "both directions (a competing bread form in the name clears it), so the",
+      "column is now the trustworthy selector and the name is the blunt one."
     ],
     "type": "slot_composition",
     "base_slot": "bread",
     "min_slot_count": 1,
     "max_slot_count": 1,
     "components": [
-      {"selector": {"name_contains": ["chapati", "chapatti", "phulka"]},
-       "count": 1}
+      {"selector": {"flag": "is_plain_phulka_chapathi"}, "count": 1}
     ]
   },
 

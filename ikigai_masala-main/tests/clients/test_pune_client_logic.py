@@ -237,12 +237,21 @@ class TestWeeklyRhythm:
 
 class TestNoDiagnosticNoise:
     def test_diagnose_is_clean(self, amadeus_pune_row, monkeypatch):
-        """No errors AND no warnings.
+        """No errors and no warnings at all.
 
-        The warnings this used to emit were both wrong: bread and welcome_drink
+        The warnings this used to emit were all wrong. Bread and welcome_drink
         are declared staples (chapati daily, buttermilk daily), so "items will
-        repeat" is the configured intent, not a shortfall. Two bogus warnings on
-        every plan is how a real one gets missed.
+        repeat" is the configured intent rather than a shortfall. The third
+        arrived when `client_fixtures.py` was regenerated from the live table,
+        which themes Amadeus Pune's Tuesday `south` where the old hand-edited
+        snapshot said `north`: Pune's entire 24-dish bread pool is North Indian,
+        so the bread cuisine lock found nothing south, fell back to the full pool
+        and reported that Tuesday's roti would be a North Indian one. It was
+        tolerated by rule + slot + day_type for exactly as long as it took to ask
+        — the client's answer is that Pune serves **chapati only**, so `bread` is
+        now in Pune's `theme_cuisine_filter` `exempt_slots` (as it already is in
+        Chennai's) and the lock has nothing to say about the slot. Three bogus
+        warnings on every plan is how a real one gets missed.
         """
         import src.db as db_mod
         import api.app as api_app
@@ -261,11 +270,10 @@ class TestNoDiagnosticNoise:
         })
         body = resp.get_json()
         assert resp.status_code == 200
-        noisy = [
-            d for d in body['rule_diagnostics']
-            if d['severity'] in ('error', 'warning')
-        ]
+        noisy = [d for d in body['rule_diagnostics']
+                 if d['severity'] in ('error', 'warning')]
         assert not noisy, noisy
+        assert body['summary']['would_succeed'] is True
 
 
 class TestEngineFixesThisClientNeeded:

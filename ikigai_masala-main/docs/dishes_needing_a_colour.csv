@@ -7,7 +7,6 @@ bangalore,afghani_chicken,nonveg_main,Booking.com,no colour-bearing word in the 
 bangalore,afghani_paneer,veg_gravy,Booking.com,no colour-bearing word in the name
 bangalore,afghani_veg_biryani,rice,Booking.com,no colour-bearing word in the name
 bangalore,agalakayi_sambar,sambar,Citrix,no colour-bearing word in the name
-bangalore,ajwain_chapati,bread,"Booking.com,Stripe,Stryker",no colour-bearing word in the name
 bangalore,ajwain_chicken_masala,nonveg_main,Citrix,no colour-bearing word in the name
 bangalore,ajwain_paratha,bread,"MOengage,Citrix",no colour-bearing word in the name
 bangalore,ajwani_puri,bread,MOengage,no colour-bearing word in the name
@@ -597,7 +596,6 @@ bangalore,jackfruit_payasam,dessert,Citrix,no colour-bearing word in the name
 bangalore,jaipuri_dal,dal,Citrix,no colour-bearing word in the name
 bangalore,jal_jeera,welcome_drink,"Booking.com,MOengage",no colour-bearing word in the name
 bangalore,jalebi_with_rabdi,dessert,Citrix,no colour-bearing word in the name
-bangalore,jeera_chapati,bread,"Booking.com,Stripe,Stryker,MOengage",no colour-bearing word in the name
 bangalore,jeera_scented_rice,rice,MOengage,no colour-bearing word in the name
 bangalore,jeerasam,rasam,MOengage,no colour-bearing word in the name
 bangalore,jelabi,dessert,MOengage,no colour-bearing word in the name
@@ -1048,7 +1046,6 @@ bangalore,pineapple_mint_water,infused_water,Booking.com,no colour-bearing word 
 bangalore,pineapple_punch,welcome_drink,"Booking.com,Stripe",no colour-bearing word in the name
 bangalore,pista_lassi,welcome_drink,Booking.com,no colour-bearing word in the name
 bangalore,pista_roll,dessert,Citrix,no colour-bearing word in the name
-bangalore,plain_chapati,bread,"Booking.com,Stripe,Stryker,MOengage",no colour-bearing word in the name
 bangalore,pock_choy_and_tofu_in_black_bean_sauce,healthy_rice,Booking.com,no colour-bearing word in the name
 bangalore,pomegranate_mint_water,infused_water,Booking.com,no colour-bearing word in the name
 bangalore,poondu_kuzhambu,sambar,Citrix,no colour-bearing word in the name
@@ -1432,6 +1429,7 @@ chennai,avicha_kadalai,starter,Wells Fargo,no colour-bearing word in the name
 chennai,bread_biryani,rice,Wells Fargo,no colour-bearing word in the name
 chennai,chilli_idli,bread,"RNTBCI,Wells Fargo",no colour-bearing word in the name
 chennai,idiyappam_biryani,rice,TATA COMMUNICATIONS,no colour-bearing word in the name
+chennai,jeerasam,rasam,common,no colour-bearing word in the name
 chennai,karamani_sundal,salad,TATA COMMUNICATIONS,no colour-bearing word in the name
 chennai,lemon_poha,bread,"RNTBCI,Wells Fargo",no colour-bearing word in the name
 chennai,mor_kolambu_vada,starter,TATA COMMUNICATIONS,no colour-bearing word in the name
@@ -1439,6 +1437,7 @@ chennai,pazham_pori_baji,starter,Wells Fargo,no colour-bearing word in the name
 chennai,peanut_sundal,salad,TATA COMMUNICATIONS,no colour-bearing word in the name
 chennai,plain_samosa,starter,TATA COMMUNICATIONS,no colour-bearing word in the name
 chennai,prawns_biryani,nonveg_main,Accenture,no colour-bearing word in the name
+chennai,raitha,curd_side,common,no colour-bearing word in the name
 chennai,soyabean_biryani,rice,Accenture,no colour-bearing word in the name
 chennai,sweet_donuts,dessert,TATA COMMUNICATIONS,no colour-bearing word in the name
 chennai,sweet_poli,dessert,TATA COMMUNICATIONS,no colour-bearing word in the name
@@ -1840,6 +1839,7 @@ ncr,icecream,veg_gravy,Siemens,no colour-bearing word in the name
 ncr,idli_vada,bread,"SAEL,Stryker",no colour-bearing word in the name
 ncr,imarthi,dessert,SAEL,no colour-bearing word in the name
 ncr,imarti,dessert,SAEL,no colour-bearing word in the name
+ncr,inji_rasam,rasam,nan,no colour-bearing word in the name
 ncr,jai_poori_aloo_pyaaz,bread,Carelon,no colour-bearing word in the name
 ncr,jaipuri_bhindi_masala,veg_dry,Carelon,no colour-bearing word in the name
 ncr,jal_jeera,veg_gravy,Stryker,no colour-bearing word in the name
@@ -1853,6 +1853,7 @@ ncr,jeera_lauki,veg_dry,Carelon,no colour-bearing word in the name
 ncr,jeera_potato,veg_gravy,Junglee Games,no colour-bearing word in the name
 ncr,jeera_tadka_raita,curd_side,Airtel Noida,no colour-bearing word in the name
 ncr,jeera_wali_moong_dal,dal,Carelon,no colour-bearing word in the name
+ncr,jeerasam,rasam,nan,no colour-bearing word in the name
 ncr,jodhpuri_aloo,veg_dry,Junglee Games,no colour-bearing word in the name
 ncr,jodhpuri_dal_tadka,dal,Siemens,no colour-bearing word in the name
 ncr,jodhpuri_ladoo,dessert,"Carelon,Sinch",no colour-bearing word in the name
@@ -2397,3 +2398,79 @@ ncr,yellow_moong_dal_tadka,dal,Carelon,no colour-bearing word in the name
 ncr,yellow_rice,rice,Stryker,no colour-bearing word in the name
 ncr,zeera_aloo,veg_gravy,Airtel Noida,no colour-bearing word in the name
 ncr,zeera_raita,curd_side,Stryker,no colour-bearing word in the name
+pune,akha_masoor_masala,veg_gravy,common,no colour-bearing word in the name
+pune,aloo_muttar_rassa,veg_gravy,common,no colour-bearing word in the name
+pune,amti,dal,common,no colour-bearing word in the name
+pune,amul_sweet_lassi,welcome_drink,common,no colour-bearing word in the name
+pune,babycorn_mushroom,veg_gravy,common,no colour-bearing word in the name
+pune,baingan_bharta,veg_dry,common,no colour-bearing word in the name
+pune,bharali_wangi,veg_gravy,common,no colour-bearing word in the name
+pune,bhendi_kurkure,veg_dry,common,no colour-bearing word in the name
+pune,birista_rice,rice,common,no colour-bearing word in the name
+pune,bobby,papad,common,no colour-bearing word in the name
+pune,burnt_garlic_soup,soup,common,no colour-bearing word in the name
+pune,cabbage_pachdi_chutney,chutney,common,no colour-bearing word in the name
+pune,carrot_soup,soup,common,no colour-bearing word in the name
+pune,chavali_sheng_dry,veg_dry,common,no colour-bearing word in the name
+pune,dahi_raita_with_tadka,curd_side,common,no colour-bearing word in the name
+pune,dahi_wada,starter,common,no colour-bearing word in the name
+pune,dal_ajwain,dal,common,no colour-bearing word in the name
+pune,dal_amritsari,dal,common,no colour-bearing word in the name
+pune,dal_rasam,rasam,common,no colour-bearing word in the name
+pune,dal_sunheri,dal,common,no colour-bearing word in the name
+pune,dal_waran,dal,common,no colour-bearing word in the name
+pune,dates_chutney,chutney,common,no colour-bearing word in the name
+pune,dhokla_chaat,starter,common,no colour-bearing word in the name
+pune,dodka_masala,veg_dry,common,no colour-bearing word in the name
+pune,dodka_moongdal,veg_dry,common,no colour-bearing word in the name
+pune,dudhi_masala,veg_gravy,common,no colour-bearing word in the name
+pune,fodanich_waran,dal,common,no colour-bearing word in the name
+pune,french_beans_dry,veg_dry,common,no colour-bearing word in the name
+pune,gawar_masala,veg_dry,common,no colour-bearing word in the name
+pune,ghee_paratha,bread,common,no colour-bearing word in the name
+pune,jawas_chutney,chutney,common,no colour-bearing word in the name
+pune,jeerasam,rasam,common,no colour-bearing word in the name
+pune,kachori_chaat,starter,common,no colour-bearing word in the name
+pune,karala_chutney,chutney,common,no colour-bearing word in the name
+pune,kolhapuri_dal_tadka,dal,common,no colour-bearing word in the name
+pune,lasoon_chutney,chutney,common,no colour-bearing word in the name
+pune,maharashtrian_bhendi,veg_dry,common,no colour-bearing word in the name
+pune,maharashtrian_dahi_kadhi,dal,common,no colour-bearing word in the name
+pune,masala_milk,welcome_drink,common,no colour-bearing word in the name
+pune,matki_masala,veg_dry,common,no colour-bearing word in the name
+pune,methi_tomato,veg_dry,common,"its words disagree ({'green': 1, 'red': 1})"
+pune,mint_mayo_chutney,chutney,common,no colour-bearing word in the name
+pune,mirch_ka_salan,veg_gravy,common,no colour-bearing word in the name
+pune,mix_veg,veg_gravy,common,no colour-bearing word in the name
+pune,motichoor_ladoo,dessert,common,no colour-bearing word in the name
+pune,mutter_cauliflower_rassa,veg_gravy,common,no colour-bearing word in the name
+pune,nagpuri_vada_bhat,rice,common,no colour-bearing word in the name
+pune,ola_khobra_chutney,chutney,common,no colour-bearing word in the name
+pune,paneer_gulnaz_pasanda,veg_gravy,common,no colour-bearing word in the name
+pune,paneer_rajwadi,veg_gravy,common,no colour-bearing word in the name
+pune,papadi_chaat,starter,common,no colour-bearing word in the name
+pune,patodi,veg_gravy,common,no colour-bearing word in the name
+pune,pav,bread,common,no colour-bearing word in the name
+pune,pulihora_rice,rice,common,no colour-bearing word in the name
+pune,rajma_adraki,veg_gravy,common,no colour-bearing word in the name
+pune,saoji_paneer,veg_dry,common,no colour-bearing word in the name
+pune,sarso_ka_saag,veg_gravy,common,no colour-bearing word in the name
+pune,shengdana_chutney,chutney,common,no colour-bearing word in the name
+pune,shepu_moongdal,veg_dry,common,no colour-bearing word in the name
+pune,shravani_ghewada,veg_dry,common,no colour-bearing word in the name
+pune,soya_kadhai,veg_dry,common,no colour-bearing word in the name
+pune,soya_kheema,veg_dry,common,no colour-bearing word in the name
+pune,special_jeera_rice,rice,common,no colour-bearing word in the name
+pune,stuffed_capsicum,veg_gravy,common,no colour-bearing word in the name
+pune,stuffed_dum_aloo_banarasi,veg_gravy,common,no colour-bearing word in the name
+pune,suran_chettinad,veg_dry,common,no colour-bearing word in the name
+pune,tawa_aloo,veg_dry,common,no colour-bearing word in the name
+pune,tawa_mushroom,veg_dry,common,no colour-bearing word in the name
+pune,thecha_chutney,chutney,common,no colour-bearing word in the name
+pune,til_chutney,chutney,common,no colour-bearing word in the name
+pune,tiranga_burfi,dessert,common,no colour-bearing word in the name
+pune,tondali_masala,veg_dry,common,no colour-bearing word in the name
+pune,veg_bhuna,veg_gravy,common,no colour-bearing word in the name
+pune,veg_kheema,veg_dry,common,no colour-bearing word in the name
+pune,veg_maratha,veg_gravy,common,no colour-bearing word in the name
+pune,veg_poriyal,veg_dry,common,no colour-bearing word in the name

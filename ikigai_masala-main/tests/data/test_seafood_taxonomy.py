@@ -65,9 +65,22 @@ class TestTheColumnsExistEverywhere:
 
 
 class TestChennaiFishIsClassifiedAsFish:
-    def test_all_eight_fish_rows_are_flagged(self, chennai):
-        assert int(_to01(chennai['is_seafood']).sum()) == 8
-        assert int(_to01(chennai['is_fish_dish']).sum()) == 8
+    def test_every_seafood_protein_row_is_flagged(self, chennai):
+        """Was pinned at "exactly 8", which the Chennai menu bank import broke by
+        legitimately adding more — including the city's first prawn dishes. The
+        claim worth keeping is not the count but the correspondence: a row whose
+        protein is seafood carries `is_seafood`, and `is_fish_dish` is the fish
+        subset of it.
+        """
+        protein = chennai['primary_protein'].astype(str).str.strip().str.lower()
+        seafood = _to01(chennai['is_seafood']) == 1
+        fish = _to01(chennai['is_fish_dish']) == 1
+        assert seafood.sum() >= 8
+        assert set(chennai.loc[protein.isin(SEAFOOD_PROTEINS), 'item']) == \
+            set(chennai.loc[seafood, 'item'])
+        assert set(chennai.loc[fish, 'item']) <= set(chennai.loc[seafood, 'item'])
+        assert set(chennai.loc[protein.isin(FISH_PROTEINS), 'item']) == \
+            set(chennai.loc[fish, 'item'])
 
     def test_no_fish_row_is_still_in_a_chicken_sub_category(self, chennai):
         fish = chennai[_to01(chennai['is_seafood']) == 1]
@@ -89,7 +102,11 @@ class TestChennaiFishIsClassifiedAsFish:
         `key_ingredient` AND `primary_protein`, so while these rows read
         `key_ingredient: chicken` a client banning chicken also lost the fish."""
         fish = chennai[_to01(chennai['is_seafood']) == 1]
-        assert set(fish['key_ingredient'].str.strip().str.lower()) == {'fish'}
+        # `{'fish'}` exactly, until the menu bank import brought Chennai its
+        # first prawn dishes. Prawn is seafood and is not fish, so the check is
+        # that the ingredient names the seafood — never `chicken`.
+        assert set(fish['key_ingredient'].str.strip().str.lower()) \
+            <= set(SEAFOOD_PROTEINS)
 
     def test_no_chicken_flag_survives_on_a_fish(self, chennai):
         """`fish_kuzhambu` held `is_south_chicken_gravy`, which put a fish inside
@@ -209,4 +226,7 @@ class TestTheFlagsAreLoadBearing:
         df = _read('chennai')
         n = sum(1 for _i, row in df.iterrows()
                 if SelectorFrequencyRule._matches(row, rule._inc))
-        assert n == 8
+        # The point is that the cap is not vacuous — it selects the real
+        # seafood rows. Pinning the count made it fail whenever Chennai's list
+        # legitimately grew, which says nothing about the rule.
+        assert n == int(_to01(df['is_seafood']).sum()) >= 8

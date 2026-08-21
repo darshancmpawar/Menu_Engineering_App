@@ -124,13 +124,22 @@ def main(dry_run=False):
     after = (out["course_type"].map(_norm) == "bread").sum()
 
     names = df["item"].map(_norm)
+    courses = df["course_type"].map(_norm)
     print(f"NCR bread rows: {before} -> {after}")
+    # Report what actually MOVES, not merely what is listed. Testing presence
+    # alone announced a re-file on every run for rows this script had already
+    # re-filed, so the chain looked non-idempotent and rewrote the workbook
+    # each time — with `expand_side_pools` topping the pools back up behind it,
+    # that reads as two scripts fighting when nothing is wrong.
     for item, target in REFILE.items():
-        if (names == item).any():
+        if (names.eq(item) & courses.eq("bread")).any():
             print(f"  re-filed  {item:<24} bread -> {target}")
     for item, why in REMOVE.items():
         if (names == item).any():
             print(f"  removed   {item:<24} {why}")
+    if out.equals(df):
+        print("already correct — nothing written")
+        return out
     if not dry_run:
         _atomic_to_excel(out, NCR, index=False)
         print(f"wrote {NCR.name}")

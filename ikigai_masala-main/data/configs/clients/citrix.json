@@ -1,0 +1,214 @@
+{
+  "Citrix": {
+    "_comment": "Bangalore site, one counter, one dish per slot (themes Mon-Thu = mix, Fri = biryani). The client stated the non-veg schedule for Mon, Tue, Wed and Fri and said nothing about THURSDAY, so Thursday's non-veg dish is left to the solver — except that `citrix_biryani_only_on_biryani_day` stops it taking the week's one chicken biryani, which would then be unavailable on Friday where the client asked for it. `buttermilk_twice_weekly` is disabled because it says the opposite of what this client asked: the city rule puts buttermilk on EXACTLY two non-consecutive welcome-drink days, and Citrix's welcome drink is buttermilk every day — the two together are unsatisfiable and the counter came back INFEASIBLE with the pre-flight reporting a clean bill of health, since neither rule is wrong on its own.",
+    "disable": [
+      "buttermilk_twice_weekly"
+    ],
+    "use": [
+      {
+        "ref": "bread_chapati_only",
+        "as": "citrix_bread_chapati_only"
+      },
+      {
+        "ref": "plain_chapati_is_a_staple",
+        "as": "citrix_plain_chapati_is_a_staple"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "'Welcome drink will be buttermilk only.' A one-slot composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20). Bangalore carries 10 buttermilks, which is fewer than the ~20 distinct dishes a daily slot needs inside the 20-day cooldown window — hence the staple declaration below, without which the slot has nothing legal from week three.",
+        "name": "citrix_welcome_drink_is_buttermilk",
+        "type": "slot_composition",
+        "base_slot": "welcome_drink",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "flag": "is_buttermilk"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "10 distinct buttermilks cannot fill a daily slot across a 20-day no-repeat window, so the history ban has to stand down — but `scope: cooldown` keeps `unique_items`, so the week still serves five different buttermilks and a repeat only comes once every distinct one has been used (CLAUDE.md note 11's treatment, per client). Under the default `both` scope the solver was free to pour the same tempered buttermilk on Monday and Thursday while eight others went unused.",
+        "name": "citrix_buttermilk_may_recur_across_weeks",
+        "type": "repeatable_items",
+        "base_slot": "welcome_drink",
+        "scope": "cooldown",
+        "selector": {
+          "flag": "is_buttermilk"
+        }
+      },
+      {
+        "_comment": "'If veg gravy is north then veg dry should be north.' SOFT: the client's own instruction was 'if I give south I can use north fallback', so a day whose veg dry can only be South pulls the gravy South rather than failing.",
+        "name": "citrix_veg_gravy_and_veg_dry_same_region",
+        "type": "soft_preference",
+        "mode": "match_attribute",
+        "priority": "medium",
+        "group_by": "cuisine_family",
+        "values": [
+          "north_indian",
+          "south_indian"
+        ],
+        "base_slot_a": "veg_gravy",
+        "base_slot_b": "veg_dry"
+      },
+      {
+        "_comment": "'Flavour rice and veg gravy should be of the same region.' Same mechanism, same reason. On a Chinese or continental day neither slot carries a listed value, so the rule says nothing and the theme rules own the day.",
+        "name": "citrix_rice_and_veg_gravy_same_region",
+        "type": "soft_preference",
+        "mode": "match_attribute",
+        "priority": "medium",
+        "group_by": "cuisine_family",
+        "values": [
+          "north_indian",
+          "south_indian"
+        ],
+        "base_slot_a": "rice",
+        "base_slot_b": "veg_gravy"
+      },
+      {
+        "_comment": "'Nonveg main: Mon & Wed Chicken gravy, Tue - Egg curry, Friday Biryani.' One cell a day, so a `count: 1` component leaves it no choice — which is what 'only' means. Mon/Wed exclude is_egg_dish because a handful of egg dishes carry a chicken-gravy flag in the ontology (the same correction Tekion's config makes).",
+        "name": "citrix_nonveg_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "any_flag": [
+                  "is_north_chicken_gravy",
+                  "is_south_chicken_gravy"
+                ]
+              },
+              "exclude": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "flag": "is_egg_dish"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_nonveg_biryani"
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'Nonveg main: Mon & Wed chicken gravy, Tue egg curry, Friday biryani' names four days out of five, and the client confirmed the fifth is deliberate: THURSDAY IS BLANK. The station stands down rather than serving an unscheduled dish, which also settles what would otherwise be the loosest cell on the counter.",
+        "name": "citrix_nonveg_mon_tue_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case).",
+        "name": "citrix_biryani_only_on_biryani_day",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_nonveg_biryani"
+        },
+        "allowed_day_types": [
+          "biryani"
+        ],
+        "max": 1
+      },
+      {
+        "_comment": "'The region should alternate from south and north, should not be the same on 2 continuous days for flavour rice, veg gravy and veg dry.' Six rules — one per (slot, region) — because `avoid_consecutive` penalises ONE selector repeating on adjacent days, and a base_slot list would instead read a north rice on Monday beside a north gravy on Tuesday as the repeat. Written out rather than shelved: the rule library is for bodies a SECOND client needs.",
+        "name": "citrix_rice_north_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "rice",
+        "selector": {
+          "cuisine_family": "north_indian"
+        }
+      },
+      {
+        "name": "citrix_rice_south_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "rice",
+        "selector": {
+          "cuisine_family": "south_indian"
+        }
+      },
+      {
+        "name": "citrix_veg_gravy_north_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "cuisine_family": "north_indian"
+        }
+      },
+      {
+        "name": "citrix_veg_gravy_south_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "cuisine_family": "south_indian"
+        }
+      },
+      {
+        "name": "citrix_veg_dry_north_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "veg_dry",
+        "selector": {
+          "cuisine_family": "north_indian"
+        }
+      },
+      {
+        "name": "citrix_veg_dry_south_not_two_days_running",
+        "type": "soft_preference",
+        "mode": "avoid_consecutive",
+        "priority": "medium",
+        "base_slot": "veg_dry",
+        "selector": {
+          "cuisine_family": "south_indian"
+        }
+      }
+    ],
+    "constant_items": {}
+  }
+}

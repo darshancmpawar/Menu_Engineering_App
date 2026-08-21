@@ -20,11 +20,18 @@ carrying near-duplicate names — `channa_chaat_salad` beside 153 `chana_*` rows
   row for a dish that is already there. Booking's import went from 0 new dishes
   to 9 for exactly this reason.
 
-Deliberately NOT folded: **`chapatti` (34) vs `chapati` (14)**. Both are
-ordinary transliterations with real weight behind them, and these names get
-printed on a menu — picking a winner there is the client's call, not a
-migration's. It is listed in `KNOWN_SPLITS` so the next person can see it was
-considered rather than missed.
+`chapatti` / `chapati` was left split for exactly that "the client picks"
+reason, and the split then produced the second cost above at scale: EIGHT pairs
+of the identical dish, `plain_chapatti` beside `plain_chapati`, `garlic_chapatti`
+beside `garlic_chapati`. Every `chapatti` row is the fully-attributed master and
+every `chapati` row a bare stub an importer wrote beside it — so a rule about
+chapatis saw one spelling and not the other, and a bread slot could serve "Plain
+Chapati" on Monday and "Plain Chapatti" on Tuesday with `unique_items` none the
+wiser. `chapati` wins because it is what the client writes and the majority
+across the four cities (41 rows to 36); the attributed row survives each merge,
+so nothing is reclassified.
+
+`KNOWN_SPLITS` still records the splits looked at and left alone.
 
 A rename that would collide with an existing name is reported and skipped, never
 applied: two dishes must not be merged by a spelling migration (that is the
@@ -74,8 +81,18 @@ CANONICAL = dict(CANONICAL_SPELLINGS)
 #: Splits looked at and left alone, with the count that decided it. Kept so the
 #: judgement is visible rather than looking like an oversight.
 KNOWN_SPLITS = {
-    ("chapatti", "chapati"): "34 vs 14 — both ordinary transliterations, and "
-                             "the name is printed on the menu; the client picks",
+    ("chapathi", "chapati"): "the `chapathi` spelling is how the CLIENT writes "
+                             "it in its rule sheets, but no ontology row uses "
+                             "it — nothing to fold",
+    ("chapati", "plain_chapati"): "not a spelling at all — a naming GRANULARITY "
+                                  "question. Bangalore carries both, Pune and "
+                                  "Chennai only the short one. Merging the "
+                                  "short one broke import stability (Stripe's "
+                                  "menu prints 'Chapati', and an alias to "
+                                  "`plain_chapati` would be wrong for the two "
+                                  "cities whose row IS `chapati`), so the "
+                                  "granularity is the client's call, not a "
+                                  "migration's",
 }
 
 #: city -> {row to drop: the row it duplicates}. A rename that would collide is
@@ -132,7 +149,21 @@ DUPLICATES = {
                   "soppu_saaru": "soppu_saru",
                   "soppu_huli": "soppu_sambar",
                   "uppusaaru": "uppu_saaru",
-                  "upsaaru": "uppu_saaru"},
+                  "upsaaru": "uppu_saaru",
+                  # The chapati family, once `chapatti` -> `chapati` is folded.
+                  # Each `*_chapati` row is a bare import stub — no
+                  # sub_category, no item_color, is_plain_phulka_chapathi = 0 —
+                  # standing beside the fully attributed `*_chapatti` master of
+                  # the same dish. The master wins and takes the stub's client
+                  # tokens; the surviving row is then renamed to `*_chapati`.
+                  "ajwain_chapati": "ajwain_chapatti",
+                  "beetroot_chapati": "beetroot_chapatti",
+                  "carrot_chapati": "carrot_chapatti",
+                  "garlic_chapati": "garlic_chapatti",
+                  "jeera_chapati": "jeera_chapatti",
+                  "methi_chapati": "methi_chapatti",
+                  "palak_chapati": "palak_chapatti",
+                  "plain_chapati": "plain_chapatti"},
     "ncr": {"palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda"},
 }

@@ -90,10 +90,20 @@ def test_all_additions_are_veg(dfs):
 
 
 def test_pool_token_matches_city_convention(dfs):
-    # common-cities: every row (incl. additions) is common. NCR: no common.
-    for slug in ('pune', 'chennai'):
-        cl = dfs[slug]['client'].map(_norm)
-        assert (cl == 'common').all(), f'{slug} has a non-common row'
+    """Each city's additions carry that city's own pool convention.
+
+    Chennai used to be `common`-only like Pune; the menu bank import arrived as
+    nine per-site sheets and tags each row with the sites that serve it, so the
+    claim there is that `common` is still present and every row carries SOME
+    token — not that every row is `common`.
+    """
+    cl = dfs['pune']['client'].map(_norm)
+    assert (cl == 'common').all(), 'pune has a non-common row'
+
+    chennai = dfs['chennai']['client'].map(_norm)
+    assert (chennai.str.strip() != '').all(), 'chennai has an untagged row'
+    assert (chennai == 'common').any(), 'chennai lost its common pool'
+
     ncr_cl = dfs['ncr']['client'].map(_norm)
     assert not ncr_cl.str.contains('common').any()
 

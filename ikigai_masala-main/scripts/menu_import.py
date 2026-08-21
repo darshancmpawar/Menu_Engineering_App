@@ -88,6 +88,32 @@ SPELLING = [
     (_tok("dryfruit"), "dry_fruit"),
     (_tok("hydrabadi", "hyderabadi"), "hyderabadi"),
     (_tok("lashooni", "lassoni", "lasooni"), "lasooni"),
+    # Typed by Corning Chakan's Pune sheet. Ordinary misspellings rather than
+    # anything regional, so they belong in the shared list: each one otherwise
+    # becomes a second row for a dish the same workbook already names correctly
+    # somewhere else (`brista`/`birista`, `frymus`/`fryums`).
+    (_tok("brocoli", "brocolli", "broccolli"), "broccoli"),
+    (_tok("corriendar", "corriender"), "coriander"),
+    (_tok("swaeet", "sweeet"), "sweet"),
+    (_tok("amristsari", "amritsri"), "amritsari"),
+    (_tok("caspsicum", "capscicum"), "capsicum"),
+    (_tok("cabage", "cabbge"), "cabbage"),
+    (_tok("maharashtrain", "maharastrian", "maharastrain"), "maharashtrian"),
+    (_tok("frymus"), "fryums"),
+    (_tok("brista"), "birista"),
+    (_tok("chtney"), "chutney"),
+    # NOT laddoo/ladoo -> laddu: the ontology carries both (40 rows against 29),
+    # an unadjudicated split like `chapatti`/`chapati`, and the evidence-based
+    # fold already collapses this source's three spellings into one row.
+    (_tok("baluhshahi"), "balushahi"),
+    (_tok("tondli"), "tondali"),
+    (_tok("bheidi"), "bhendi"),
+    (_tok("purpal"), "purple"),
+    (_tok("caroot"), "carrot"),
+    (_tok("raddish"), "radish"),
+    (_tok("dhania"), "dhaniya"),
+    (_tok("khichadi"), "khichdi"),
+    (_tok("javas"), "jawas"),
     # --- second pass: typos found by diffing imported tokens against the
     # vocabulary the ontology already uses. Only clear misspellings and
     # run-together words are here. Words that are merely NEW (dabeli, tukpa,
@@ -264,6 +290,25 @@ SPELLING = [
 CANONICAL_SPELLINGS = {
     "channa": "chana",
     "kadi": "kadhi",
+    # `chapatti` -> `chapati`. Left split on purpose for a while (both are
+    # ordinary transliterations and the name is printed on a menu), and the
+    # split then produced exactly the failure the rest of this dict exists to
+    # prevent: EIGHT pairs of the identical dish, one spelling per row. Every
+    # `chapatti` row is the fully-attributed master (sub_category, colour,
+    # is_plain_phulka_chapathi) and every `chapati` row is a bare stub an
+    # importer added beside it, so `plain_chapati` sat in the pool with no
+    # flags while `plain_chapatti` carried them all — a "chapati only" rule saw
+    # one and not the other, and a bread slot could serve "Plain Chapati" on
+    # Monday and "Plain Chapatti" on Tuesday with `unique_items` none the
+    # wiser. `chapati` is the direction because it is what the client writes
+    # (and the majority across the four cities, 41 rows to 36); the attributed
+    # row wins each merge, so no classification is lost.
+    "chapatti": "chapati",
+    # Typos, not transliterations: `malasa_buttermilk` and `tempared_buttermilk`
+    # are the only rows carrying either token, and Citrix's welcome drink is
+    # buttermilk EVERY day, so these two names go on a printed menu weekly.
+    "malasa": "masala",
+    "tempared": "tempered",
     "subzi": "sabzi",
     "sabji": "sabzi",
     "payasa": "payasam",
@@ -423,14 +468,12 @@ SAME_DISH = {
     ("phulka", "fulka"),
     ("paratha", "parantha"),
     ("ajwain", "ajwaini"),
-    # Bangalore is split between `chapatti` (34 rows) and `chapati` (14), and
-    # `canonical_dish_spellings.py` deliberately leaves that alone — both are
-    # ordinary transliterations and the name is printed on a menu, so which one
-    # wins is the client's call. Listing the pair here does not rename anything;
-    # it stops each new client import ADDING the other spelling beside a dish
-    # the ontology already carries, which is how a split of 48 rows becomes a
-    # split of 80.
-    ("chapatti", "chapati"),
+    # `chapati` is now the house spelling (see CANONICAL_SPELLINGS above), so
+    # the rewrite handles an incoming `chapatti` before the fold ever sees it.
+    # The pair stays listed because SAME_DISH is what stops the fold treating
+    # two REAL words as two dishes, and a workbook that has not yet been through
+    # `canonical_dish_spellings.py` still holds both.
+    ("chapati", "chapatti"),
     # Same treatment, same reason — the ontology is split and an import must
     # not deepen it: lauki 30 / louki 14, tendly 4 / tendli 2, and the
     # three-way pattani 7 / battani 6 / patani 2.

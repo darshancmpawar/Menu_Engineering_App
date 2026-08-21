@@ -194,6 +194,32 @@ KEY_INGREDIENT_CORRECTIONS = {
     for city in ('bangalore', 'chennai', 'pune', 'ncr')
 }
 
+#: The seven Chennai `veg_gravy` rows no evidence could settle, adjudicated one
+#: at a time. `test_chennai_rules.py` requires the column to be complete for the
+#: slots an `attribute_grouping` rule groups by — a blank there is not a neutral
+#: value, it is a dish the rule cannot place in any group — and these are the
+#: rows `complete_ontology.py` correctly refused: their words (`kootu`,
+#: `kuzhambu`, `kurma`) name a PREPARATION, and the ontology's own rows for each
+#: are spread across whatever vegetable went in, so no token vote can converge.
+#:
+#: Each takes the value its own family already uses: `pasta` (the 5 vegetarian
+#: pasta rows), `mixed_vegetables` (36 of the kurma rows, and all three of these
+#: name "veg" rather than a vegetable), `raw_banana` (valakai IS raw banana; 7
+#: rows use the value). `turkey_berry` is a new value — sundakkai is a real
+#: ingredient the vocabulary simply lacked, and the kuzhambu convention is to
+#: name the vegetable, so borrowing `mixed_vegetables` would have been wrong
+#: about a single-ingredient dish.
+_CHENNAI_VEG_GRAVY_KEYS = {
+    'indian_style_pasta': 'pasta',
+    'veg_pasta': 'pasta',
+    'kadai_veg_gravy': 'mixed_vegetables',
+    'veg_chettinad_kurma': 'mixed_vegetables',
+    'poriyal_kootu': 'mixed_vegetables',
+    'valakai_kara_curry': 'raw_banana',
+    'sunda_vatha_kuzhambu': 'turkey_berry',
+}
+KEY_INGREDIENT_CORRECTIONS['chennai'].update(_CHENNAI_VEG_GRAVY_KEYS)
+
 #: A SAMBAR filed as a rasam in all four workbooks, and the row said so itself:
 #: its `key_ingredient` was the literal string "sambar" (a category, not an
 #: ingredient) and its colour is `yellow`, matching `soppu_sambar` rather than
@@ -205,10 +231,46 @@ KEY_INGREDIENT_CORRECTIONS = {
 #: attributes (spice-based rasam, garlic, brown) and looks like a different
 #: dish, and merging two real dishes is the mistake ncr_fuzzy_unmerge.py had to
 #: reverse.
-_SAARU_REFILE = {'soppu_saru': ('sambar', 'leafy_sambar', None)}
+_SAARU_REFILE = {
+    'soppu_saru': ('sambar', 'leafy_sambar', None),
+    # Client-confirmed, and Citrix's printed Bangalore menu agrees: it files
+    # `uppusaaru` / `upsaaru` under its SAMBAR row. The row's own coconut/brown
+    # attributes read rasam-like, which is why this one was held back for the
+    # client's word rather than moved with `soppu_saru`.
+    'uppu_saru': ('sambar', 'vegetable_sambar', None),
+}
 
 for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
     CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)
+
+#: A pav is not a plain phulka or chapathi — client-confirmed. All three cities
+#: that carry it filed it as `sub_category: plain_chapatti/phulka` with
+#: `key_ingredient: pav` (the name's own first word, the mapping pipeline's
+#: fingerprint), and Pune and NCR carried `is_plain_phulka_chapathi` from it.
+#:
+#: That flag is what Pune's R36 staple exemption selects on, and an exemption is
+#: permission to repeat EVERY DAY: a pav is a leavened roll served alongside a
+#: bhaji once a week, not the daily atta flatbread the rulebook means. It is also
+#: refined flour, so it belongs in `is_maida_bread` — the family
+#: `maida_bread_weekly` caps at one day a week, which is exactly the cap a pav
+#: should count against. `maida` is the value 33 other bread rows already use.
+#:
+#: `pav_/_bun` is a new sub_category, written to every city that has the dish so
+#: `test_course_type_audit.py`'s "Pune's values are a subset of Bangalore's"
+#: still holds. Nothing implies a flag from it (3 rows is under `MIN_SUPPORT`),
+#: which is the point — the old value is what kept re-deriving the wrong flag.
+_PAV = {
+    'pav': {
+        'sub_category': 'pav_/_bun',
+        'key_ingredient': 'maida',
+        'flags': {'is_plain_phulka_chapathi': 0, 'is_maida_bread': 1},
+    },
+}
+
+#: {city: {item: {'sub_category'/'key_ingredient'/'flags': …}}} — a row whose
+#: FORM was recorded wrongly, as opposed to its course.
+ATTRIBUTE_CORRECTIONS = {city: dict(_PAV)
+                         for city in ('bangalore', 'chennai', 'pune', 'ncr')}
 
 PROTEIN_CORRECTIONS = {
     'chennai': {
@@ -240,6 +302,32 @@ def apply_corrections(df: pd.DataFrame, city: str):
             df.at[idx, 'primary_protein'] = want
             changes.append((item, f'protein={before}',
                             f'protein={want or "(veg)"}', ''))
+
+    for item, spec in ATTRIBUTE_CORRECTIONS.get(city, {}).items():
+        hits = df.index[df['item'].astype(str).str.strip() == item]
+        if len(hits) == 0:
+            continue                      # not every city carries every dish
+        for idx in hits:
+            for column in ('sub_category', 'key_ingredient'):
+                want = spec.get(column)
+                if want is None:
+                    continue
+                before = str(df.at[idx, column]).strip()
+                if before == want:
+                    continue
+                df.at[idx, column] = want
+                changes.append((item, f'{column}={before}',
+                                f'{column}={want}', ''))
+            for flag, want in spec.get('flags', {}).items():
+                if flag not in df.columns:
+                    continue
+                before = pd.to_numeric(pd.Series([df.at[idx, flag]]),
+                                       errors='coerce').fillna(0).iloc[0]
+                if int(before) == want:
+                    continue
+                df.at[idx, flag] = want
+                changes.append((item, f'{flag}={int(before)}',
+                                f'{flag}={want}', ''))
 
     for item, want in KEY_INGREDIENT_CORRECTIONS.get(city, {}).items():
         hits = df.index[df['item'].astype(str).str.strip() == item]

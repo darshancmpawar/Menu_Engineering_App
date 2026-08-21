@@ -1,0 +1,40 @@
+{
+  "AT&T": {
+    "_comment": "Bangalore site, one counter (themes Mon/Tue/Fri = mix, Wed = biryani, Thu = north). Deliberately NOT configured as a rule: 'daily curd except on biryani day it is raita' is already what `curd_raita_logic` (the city ruleset's curd_side rule) does — biryani/pulao days get a raita, every other day a plain curd — so restating it here would be a second copy of the same logic that can drift.",
+    "disable": [],
+    "use": [
+      {
+        "ref": "bread_chapati_only",
+        "as": "att_bread_chapati_only"
+      },
+      {
+        "ref": "paneer_once_a_week",
+        "as": "att_paneer_1x"
+      },
+      {
+        "ref": "pulao_three_days_a_week",
+        "as": "att_pulao_3x"
+      }
+    ],
+    "rules": [
+      {
+        "_comment": "'soya or kofta once a week' — one rule, not two, because the client offered them as alternatives. Soya is selected on key_ingredient (98 Bangalore rows across rice/salad/starter/veg_dry/veg_gravy) and kofta on its own flag (32 veg gravies); scoping to a slot would narrow the choice the client left open.",
+        "name": "att_soya_or_kofta_1x",
+        "type": "selector_frequency",
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "flag": "is_veg_kofta_gravy"
+            }
+          ]
+        },
+        "min": 1,
+        "max": 1
+      }
+    ],
+    "constant_items": {}
+  }
+}

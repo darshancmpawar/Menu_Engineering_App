@@ -48,7 +48,11 @@ class TestLookupBehaviour:
     @pytest.mark.parametrize('city,expected_nonempty', [
         ('Bangalore', True),   # 8 real client pools
         ('NCR', True),         # 8 real client pools of its own
-        ('Chennai', False),    # every row is tagged `common`
+        # Chennai was `common`-only until the menu bank import, which arrived
+        # as nine per-site sheets and tagged each row with the sites that serve
+        # it (`tata communications`, `rntbci,wells fargo`, …). Pune is still
+        # the whole-city list with no per-client split.
+        ('Chennai', True),
         ('Pune', False),
     ])
     def test_tokens_for_city(self, city, expected_nonempty):

@@ -1,6 +1,6 @@
 {
   "Moengage": {
-    "_comment": "Bangalore site (its clients.city is NULL — see scripts/backfill_client_city.sql). Mutton once a month is NOT configured: Bangalore carries zero mutton dishes.",
+    "_comment": "Bangalore site (its clients.city is NULL — see scripts/backfill_client_city.sql). Mutton once a month is wired as a CAP now that a client menu import brought `dhaba_style_mutton_curry` into Bangalore; it was inert while the city carried no mutton at all. Cap rather than target for the same reason as Stripe's: with one eligible dish, a positive cadence would force that dish monthly regardless of the rest of the plate.",
     "disable": [],
     "use": [
       {
@@ -26,6 +26,26 @@
           "yam",
           "elephant_yam"
         ]
+      },
+      {
+        "_comment": "Mutton at most once a MONTH, enforced across plans from saved history (30-day window, the same shape as Pune's monthly oil-based bread). Selects on primary_protein — there is no is_mutton flag, and `dhaba_style_mutton_curry` is the Bangalore list's only mutton dish. Pairs with moengage_mutton_max_1 for the within-plan half.",
+        "name": "moengage_mutton_30d_window",
+        "type": "selector_history_window",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "primary_protein": "mutton"
+        },
+        "window_days": 30
+      },
+      {
+        "_comment": "The within-plan half: the history window only reads saved plans, so a single long horizon could otherwise place mutton on two of its own days.",
+        "name": "moengage_mutton_max_1",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "primary_protein": "mutton"
+        },
+        "max": 1
       },
       {
         "_comment": "Bisi bele bath by name — it is a dish, not an ingredient.",

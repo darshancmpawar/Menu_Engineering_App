@@ -100,6 +100,10 @@ LEGITIMATE_PAIRS = {
     # would be served as the day's sambar.
     ('starter', 'sambar'), ('bread', 'sambar'),
     ('accompaniment', 'bread'),     # akki papad, dosa chutney
+    # A rice papad is a papad made of rice flour, and rice papads and rice
+    # fryums are a whole family — the grain names the papad, it is not a rice
+    # dish. Corning Chakan's Pune menu is the first to print one.
+    ('papad', 'rice'),
     ('welcome_drink', 'rice'),      # rice sherbat, kokum sharbath
     ('welcome_drink', 'curd_side'), ('welcome_drink', 'sambar'),  # sambaram
     ('welcome_drink', 'rasam'),     # kokum rasam is served as a drink

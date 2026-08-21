@@ -138,7 +138,13 @@ def apply_seafood_taxonomy(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         return df, changes
 
     df.loc[is_seafood, 'is_seafood'] = 1
-    df.loc[protein.isin(FISH_PROTEINS), 'is_fish_dish'] = 1
+    is_fish = protein.isin(FISH_PROTEINS)
+    df.loc[is_fish, 'is_fish_dish'] = 1
+    # Definitional in BOTH directions, or the flag drifts. Chennai's menu bank
+    # import cloned a fish template for `prawn_thokku` and `prawns_biryani`,
+    # which carried `is_fish_dish` onto two dishes that are seafood and are not
+    # fish — enough to put a prawn inside a rule about fish.
+    df.loc[~is_fish, 'is_fish_dish'] = 0
     changes['flags_set'] = int(is_seafood.sum())
 
     chicken_flag_cols = [c for c in df.columns

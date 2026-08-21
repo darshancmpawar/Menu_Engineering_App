@@ -85,3 +85,33 @@ def test_removal_does_not_starve_an_affected_slot():
             df, required_slots=city_required_slots(city))
         for slot in slots:
             assert len(pools[slot]) >= 7, (city, slot, len(pools[slot]))
+
+
+def test_curd_base_is_gone_from_every_city_that_had_it():
+    """A recipe base, not a dish — the client confirmed it.
+
+    It sat in `curd_side` in three cities with `sub_category: curd` and
+    `key_ingredient: yogurt`, so it looked servable to every diagnostic while a
+    menu printing "Curd Base" as the day's yogurt side says nothing. Same
+    argument as the category-named rows, arriving by a different route: the name
+    describes a component of a dish rather than the dish.
+    """
+    for city in ('bangalore', 'chennai', 'pune'):
+        names = set(_read(city)['item'].astype(str).str.strip().str.lower())
+        assert 'curd_base' not in names, city
+        assert 'curd_base' in GENERIC_ROWS[city], city
+
+
+def test_removing_it_left_the_curd_side_pools_usable():
+    """The one risk of removing a row from a small pool. `curd_side` is
+    cooldown-exempt but keeps `unique_items`, so it still needs a distinct dish
+    per working day before it repeats."""
+    from api.config import city_excel_path, city_required_slots
+    from src.preprocessor.data_cleanser import DataCleanser
+    from src.preprocessor.excel_reader import ExcelReader
+    from src.preprocessor.pool_builder import PoolBuilder
+    for city in ('bangalore', 'chennai', 'pune'):
+        df = DataCleanser(ExcelReader(city_excel_path(city)).read()).clean()
+        pools = PoolBuilder().build_pools(
+            df, required_slots=city_required_slots(city))
+        assert len(pools['curd_side']) >= 7, (city, len(pools['curd_side']))

@@ -18,6 +18,15 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     (hard) and on the Chinese and biryani days as well when nothing else has to
     give (soft) — a hard every-day floor there would trade a whole plan for one
     dish.
+  * ``match_attribute`` — penalise a day where two *different* slots carry
+    different values of one attribute (Citrix: "a South flavoured rice wants a
+    South veg gravy", "a North veg gravy wants a North veg dry"). SOFT because
+    the client's own instruction was "if I give south I can use north fallback"
+    — so a south rice pulls a south gravy when one is free and falls back to a
+    north one rather than failing. ``values`` is required and bounds the
+    comparison to the values the rule is actually about: without it a Chinese
+    day would read chinese-rice-beside-north-dal as a violation, which is the
+    theme rules' business, not this one's.
 
 Config::
 
@@ -52,8 +61,22 @@ logger = logging.getLogger(__name__)
 
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
-    'prefer_day_types', 'prefer_daily',
+    'prefer_day_types', 'prefer_daily', 'match_attribute',
 })
+
+
+def _norm_slots(bs):
+    """Normalise a ``base_slot``-ish config value to a set of names, or None.
+
+    A LIST used to fall through to the single-name branch of ``_day_slot_lits``,
+    where ``c.base_slot != ['veg_dry', 'veg_gravy']`` is always true — so the
+    rule matched nothing and went silently inert. Same silent-ignore class as
+    the bread lock and ``_filter_chinese``.
+    """
+    if isinstance(bs, (list, tuple, set, frozenset)):
+        out = {str(x) for x in bs if str(x).strip()}
+        return out or None
+    return {str(bs)} if bs else None
 
 
 class SoftPreferenceRule(BaseMenuRule):
@@ -72,20 +95,24 @@ class SoftPreferenceRule(BaseMenuRule):
         # LIST, matching selector_frequency: "a protein somewhere on the plate"
         # spans slots, and scoping it to one would be a different preference.
         bs = rule_config.get('base_slot')
-        if isinstance(bs, (list, tuple, set)):
-            self.base_slots: Optional[Set[str]] = {str(x) for x in bs if str(x).strip()}
-            self.base_slot: Optional[str] = None
-        else:
-            self.base_slots = {str(bs)} if bs else None
-            self.base_slot = bs
+        self.base_slots: Optional[Set[str]] = _norm_slots(bs)
+        self.base_slot: Optional[str] = None if isinstance(
+            bs, (list, tuple, set, frozenset)) else bs
         self._sel = SelectorFrequencyRule._parse_matcher(rule_config.get('selector'))
-        # different_day
-        self.base_slot_a: Optional[str] = rule_config.get('base_slot_a')
-        self.base_slot_b: Optional[str] = rule_config.get('base_slot_b')
+        # different_day / match_attribute
+        self.base_slot_a = _norm_slots(rule_config.get('base_slot_a'))
+        self.base_slot_b = _norm_slots(rule_config.get('base_slot_b'))
         self._sel_a = SelectorFrequencyRule._parse_matcher(rule_config.get('selector_a'))
         self._sel_b = SelectorFrequencyRule._parse_matcher(rule_config.get('selector_b'))
-        # avoid_attribute_repeat
+        # avoid_attribute_repeat / match_attribute
         self.group_by: Optional[str] = rule_config.get('group_by')
+        # match_attribute — the attribute values this rule is about. Required:
+        # comparing every value present would read a themed day's own cuisine as
+        # a violation (see the module docstring).
+        vals = rule_config.get('values')
+        self.values: List[str] = [
+            _norm_str(str(v)) for v in (vals or []) if str(v).strip()
+        ]
         # prefer_day_types — the themes this selector BELONGS on. Every other day
         # is penalised, so the others become the fallback rather than being
         # forbidden (which is what `selector_frequency.allowed_day_types` does).
@@ -122,6 +149,20 @@ class SoftPreferenceRule(BaseMenuRule):
                 errs.append("prefer_day_types requires a non-empty day_types")
         if self.mode == 'prefer_daily' and not self._sel:
             errs.append("prefer_daily requires selector")
+        if self.mode == 'match_attribute':
+            if not self.group_by:
+                errs.append("match_attribute requires group_by")
+            if not (self.base_slot_a and self.base_slot_b):
+                errs.append("match_attribute requires base_slot_a and base_slot_b")
+            elif self.base_slot_a == self.base_slot_b:
+                # Two slots is the whole point; one slot matching itself is
+                # avoid_attribute_repeat inverted, and would penalise nothing.
+                errs.append(
+                    "match_attribute needs two different slots "
+                    f"(both are {sorted(self.base_slot_a)})")
+            if len(self.values) < 2:
+                errs.append(
+                    "match_attribute requires at least 2 `values` to compare")
         return errs
 
     # ----- helpers -----
@@ -146,6 +187,42 @@ class SoftPreferenceRule(BaseMenuRule):
             for v, r in zip(c.x_vars, c.cand_rows):
                 if SelectorFrequencyRule._matches(r, matcher):
                     out.append(v)
+        return out
+
+    def _day_slot_attr_lits(self, cells, di, base_slot, matcher, value):
+        """Item vars in (day di, base_slot) whose `group_by` column == *value*.
+
+        *matcher* is an optional extra narrowing (``selector_a``/``selector_b``);
+        None means every candidate in the slot participates. That is why this
+        cannot reuse ``_day_slot_lits`` — ``_matches(row, None)`` is False, and
+        ``group_by`` may name a column the selector grammar has no key for.
+        """
+        allowed = base_slot if isinstance(base_slot, (set, frozenset)) else (
+            {base_slot} if base_slot else None)
+        out = []
+        for c in cells:
+            if c.d_idx != di:
+                continue
+            if allowed is not None and c.base_slot not in allowed:
+                continue
+            for v, r in zip(c.x_vars, c.cand_rows):
+                if _norm_str(str(r.get(self.group_by, ''))) != value:
+                    continue
+                if matcher is not None and not SelectorFrequencyRule._matches(r, matcher):
+                    continue
+                out.append(v)
+        return out
+
+    def _link_values(self, model, link_any, cells, di, base_slot, matcher, tag):
+        """{value: bool} for the listed values this (day, slot) can actually serve."""
+        out = {}
+        for val in self.values:
+            lits = self._day_slot_attr_lits(cells, di, base_slot, matcher, val)
+            if not lits:
+                continue
+            h = model.NewBoolVar(f'{self.name}_{tag}_{di}_{val}')
+            link_any(model, lits, h)
+            out[val] = h
         return out
 
     def get_objective_terms(self, model: cp_model.CpModel,
@@ -175,6 +252,52 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(both <= b)
                 both_bools.append(both)
             return [sum(both_bools) * (-abs(w))] if both_bools else []
+
+        if self.mode == 'match_attribute':
+            # "slot A serves value v, and slot B serves nothing of value v" —
+            # one penalty per (day, value, direction). Deliberately NOT "the two
+            # values differ": a slot may run several cells, and a 2-dish veg_dry
+            # mandated one North + one South by `veg_dry_north_south_pair` DOES
+            # match a North gravy. Penalising every crossing pair would fight
+            # that composition for no gain; "is v present on the other side"
+            # is also the client's own phrasing ("if veg gravy is north then veg
+            # dry should be north").
+            #
+            # Symmetric, because "same region" names no driver — so a single
+            # mismatch scores twice (once per direction) and a match scores
+            # zero. Uniform, so it does not distort the ordering.
+            mismatch = []
+            for di in range(n):
+                sides = [
+                    self._link_values(model, link_any, cells, di,
+                                      self.base_slot_a, self._sel_a, 'a'),
+                    self._link_values(model, link_any, cells, di,
+                                      self.base_slot_b, self._sel_b, 'b'),
+                ]
+                # Nothing comparable is nothing to say. A day whose rice is
+                # Chinese carries none of the listed values, so one side is
+                # empty — without this guard every listed value on the OTHER
+                # side would be penalised, pushing the gravy off North and
+                # South entirely on a Chinese day. The theme rules own that
+                # day, not this one.
+                if not sides[0] or not sides[1]:
+                    continue
+                for src, (mine, theirs) in enumerate((sides, sides[::-1])):
+                    for val, ha in mine.items():
+                        hb = theirs.get(val)
+                        if hb is None:
+                            # The other slot cannot serve `val` at all today, so
+                            # choosing it here IS the mismatch — which is what
+                            # makes the fallback work: a day whose veg dry can
+                            # only be South pulls the gravy South too.
+                            mismatch.append(ha)
+                            continue
+                        m = model.NewBoolVar(f'{self.name}_x{src}_{di}_{val}')
+                        model.Add(m >= ha - hb)
+                        model.Add(m <= ha)
+                        model.Add(m <= 1 - hb)
+                        mismatch.append(m)
+            return [sum(mismatch) * (-abs(w))] if mismatch else []
 
         if self.mode == 'prefer_day_types':
             # One penalty per off-theme day the selector lands on. Soft on
