@@ -28,6 +28,15 @@
     ],
     "rules": [
       {
+        "_comment": "'No Chinese in Chennai Tekion.' Dropping BLR's two Chinese-Tuesday MANDATES was not enough and the solve proved it: Tuesday is a `mix` day here, the theme filter does not narrow a mix day at all, and Chennai's ruleset additionally exempts `salad`, `veg_dry` and most other slots from cuisine filtering — so a Chinese dish was simply eligible everywhere and Friday's salad came back `american_coleslaw`, a row the Chennai import had mislabelled `chinese` (since corrected to continental). Not scoped to a slot, because the client's sentence is not: no Chinese anywhere on the counter. Safe as a hard `max: 0` because no day at this site is themed chinese, so the theme filter can never force one (CLAUDE.md note 9e).",
+        "name": "tekion_chn_no_chinese",
+        "type": "selector_frequency",
+        "selector": {
+          "cuisine_family": "chinese"
+        },
+        "max": 0
+      },
+      {
         "name": "tekion_chn_no_mushroom",
         "type": "ingredient_ban",
         "ingredients": [

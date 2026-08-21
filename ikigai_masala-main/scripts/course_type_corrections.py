@@ -272,6 +272,16 @@ _PAV = {
 ATTRIBUTE_CORRECTIONS = {city: dict(_PAV)
                          for city in ('bangalore', 'chennai', 'pune', 'ncr')}
 
+#: An American coleslaw is not a Chinese dish. Chennai's import labelled its one
+#: and only "chinese" salad `american_coleslaw`, which matters because a client
+#: asking for NO Chinese on its counter got a coleslaw refused — and because
+#: Bangalore's ten chinese salads are all genuinely Asian (`asian_salad`,
+#: `chinese_cabbage_kimchi_salad`), so the label means something everywhere else.
+#: Continental, like every other salad on the Chennai list.
+ATTRIBUTE_CORRECTIONS['chennai']['american_coleslaw'] = {
+    'cuisine_family': 'continental',
+}
+
 PROTEIN_CORRECTIONS = {
     'chennai': {
         'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
@@ -308,7 +318,8 @@ def apply_corrections(df: pd.DataFrame, city: str):
         if len(hits) == 0:
             continue                      # not every city carries every dish
         for idx in hits:
-            for column in ('sub_category', 'key_ingredient'):
+            for column in ('sub_category', 'key_ingredient',
+                           'cuisine_family'):
                 want = spec.get(column)
                 if want is None:
                     continue

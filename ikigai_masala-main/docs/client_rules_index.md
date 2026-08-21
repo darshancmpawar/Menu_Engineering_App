@@ -466,6 +466,7 @@ Chennai site. "Its rules are the same as Tekion BLR" — so this is Tekion's blo
 | `tekion_chn_protein_source_daily` | shelf component `protein_source_daily` |  |
 | `tekion_chn_protein_outside_dal` | shelf component `protein_outside_dal_three_days` |  |
 | `tekion_chn_protein_outside_dal_all_days` | shelf component `protein_outside_dal_other_days` |  |
+| `tekion_chn_no_chinese` | cuisine_family chinese: ≤ 0 day(s) | No Chinese in Chennai Tekion. |
 | `tekion_chn_no_mushroom` | never serve: mushroom |  |
 | `tekion_chn_liquid_rice_once` | is_liquid_rice @ rice: ≥ 1/week, ≤ 1/week | Chennai carries 13 liquid rices, so this cap and the Thursday khichdi below both have something to act on. |
 | `tekion_chn_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on fri: is_nonveg_biryani | Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR |

@@ -201,10 +201,17 @@ class TestBreadIsExemptFromTheCuisineLock:
         )
         assert n >= 15, f'only {n} wheat flatbreads eligible on a south day'
 
-    @pytest.mark.parametrize('city', ['Bangalore', 'Pune'])
+    @pytest.mark.parametrize('city', ['Bangalore', 'NCR'])
     def test_cities_not_listing_bread_still_get_the_lock(self, city, chennai_df):
         """The fix must not switch the lock off anywhere else. Bangalore's bread
-        pool genuinely narrows by cuisine and should keep doing so."""
+        pool genuinely narrows by cuisine and should keep doing so.
+
+        Pune moved out of this list: the client confirmed its sites serve chapati
+        only, so `bread` is now in Pune's `exempt_slots` alongside Chennai's and
+        the lock has nothing to say about the slot. NCR takes its place as the
+        second city that does NOT list bread, so the parameterisation still
+        proves the exemption is opt-in rather than global.
+        """
         from api.config import city_excel_path, city_required_slots
         from src.preprocessor.data_cleanser import DataCleanser
         from src.preprocessor.excel_reader import ExcelReader
@@ -218,12 +225,11 @@ class TestBreadIsExemptFromTheCuisineLock:
         pool = pools['bread']
         south = rule.pre_filter_pool(
             pool.copy(), dt.date(2026, 8, 3), 'bread', 'south', {})
-        # The lock can only narrow if the city HAS south breads. Pune has none by
-        # design — expand_side_pools.py keeps the South breakfast breads
-        # (idli/dosa/adai/uttapam) out of a Maharashtrian city — so the filter's
-        # availability guard leaves its pool whole rather than emptying it. The
-        # old guard keyed on pool size, which silently stopped applying once
-        # Pune's bread pool grew past 10.
+        # The lock can only narrow if the city HAS south breads, so the branch
+        # below covers both cases: NCR has 17 (ncr_south_bread.py imported them)
+        # and narrows, while a city with none must have its pool left WHOLE
+        # rather than emptied — the availability guard. The old guard keyed on
+        # pool size, which silently stopped applying once a pool grew past 10.
         n_south = (pool['cuisine_family'].astype(str).str.strip().str.lower()
                    == 'south_indian').sum()
         if n_south:

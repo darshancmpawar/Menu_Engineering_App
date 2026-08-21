@@ -694,8 +694,13 @@ class TestMoengage:
             for b in _all_bases(day):
                 assert 'bisibele' not in b and 'bisi_bele' not in b, b
 
-    def test_aloo_on_exactly_one_day(self, api, blr_df):
+    def test_aloo_on_at_most_one_day(self, api, blr_df):
+        """'Aloo (Potato): Once a week' is a LIMIT, not a requirement — it sits
+        in a list beside "Mutton: Once a month" and a banned-ingredient set, all
+        of which cap rather than mandate. So the rule is `max: 1` and a week with
+        no potato at all is compliant; asserting exactly one was reading the
+        client's sentence as a floor it does not carry."""
         sol = _plan(api, 'Moengage')
         days = _days_matching(
             blr_df, sol, lambda d, b: _attr(d, b, 'key_ingredient') == 'potato')
-        assert days == 1, f'potato on {days} day(s), want 1'
+        assert days <= 1, f'potato on {days} day(s), want at most 1'
