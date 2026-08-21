@@ -1,0 +1,147 @@
+{
+  "Corning Chakan": {
+    "_comment": "Pune site, one counter, seven days a week (`serve_weekends` is true, which the soup/sweet schedule below depends on). Slots: soup, bread, rice, veg_dry, veg_gravy, dal, dessert, white_rice — one dish each. Five of the client's fourteen rules need no per-client entry because Pune's own ruleset already enforces them at least as tightly: 'kabuli chana gravy max once a week' is `kabuli_chana_gravy_weekly`, 'legume-based gravies max once a week' is `legume_gravy_weekly`, and 'mixed-veg, veg kurma and veg kofta max twice a week' is covered by `mixed_veg_gravy_weekly` + `veg_kurma_gravy_weekly` + `veg_kofta_gravy_weekly` (one day each) — the union cap below is added anyway because the client stated the combined number, and a city rule can be relaxed later without the client's requirement quietly going with it. 'Sweet and soup on alternate days' is not a rule: it is what the two day-restrictions below already produce (sweet Mon/Wed/Fri, soup Tue/Thu/Sat/Sun). 'Soya can be served as one of the vegetable options' is permission, not a constraint, so nothing enforces it — Pune carries soya veg dries and gravies and they are already eligible.",
+    "disable": [
+      "leafy_veg_dry_15d_window"
+    ],
+    "use": [],
+    "rules": [
+      {
+        "_comment": "'Soup should be served on Tuesday, Thursday, Saturday and Sunday.' The station stands down on the other three days, which is the half of the alternation that puts soup opposite the sweet.",
+        "name": "corning_chakan_soup_tue_thu_sat_sun",
+        "type": "slot_day_restriction",
+        "base_slot": "soup",
+        "allowed_weekdays": [
+          "tue",
+          "thu",
+          "sat",
+          "sun"
+        ]
+      },
+      {
+        "_comment": "'Sweets should be served on Monday, Wednesday and Friday.' The other half. Together with the soup restriction this IS 'sweet and soup on alternate days' — every day carries exactly one of the two, so no third rule is needed and none is added.",
+        "name": "corning_chakan_dessert_mon_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "dessert",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "'Liquid sweets should not be considered.' A ban, written as `max: 0` over the 14 liquid desserts (the kheer / phirni / payasam / custard family) — 43 of Pune's 57 desserts remain, comfortably more than the three sweet days a week need across the 20-day cooldown.",
+        "name": "corning_chakan_no_liquid_sweets",
+        "type": "selector_frequency",
+        "base_slot": "dessert",
+        "selector": {
+          "flag": "is_liquid_dessert"
+        },
+        "max": 0
+      },
+      {
+        "_comment": "'All black dal preparations combined should be served maximum once a week.' Pune's three black dals (dal makhani, dhaba dal, maa ki dal) are one family for this purpose, which is what 'combined' means — a single rule over the flag, not one per dish.",
+        "name": "corning_chakan_black_dal_weekly",
+        "type": "selector_frequency",
+        "base_slot": "dal",
+        "selector": {
+          "flag": "is_black_dal"
+        },
+        "max": 1
+      },
+      {
+        "_comment": "'Sprouts gravy should be served maximum twice a week.' Matched on the NAME rather than a column: Pune has no sprouts flag, and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule.",
+        "name": "corning_chakan_sprouts_gravy_twice_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "name_contains": [
+            "sprout",
+            "matki"
+          ]
+        },
+        "max": 2
+      },
+      {
+        "_comment": "'Paneer gravy should be included once a week across all meal sessions.' Exactly one day, so it is a floor as well as a cap — the client asked for the dish, not merely for a limit. Pune carries 18 paneer gravies.",
+        "name": "corning_chakan_paneer_gravy_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "flag": "is_paneer_gravy"
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "'Paneer/kofta preparations should be served once a week across lunch and dinner.' Read together with the rule above: the paneer gravy IS that once-a-week premium dish, and this caps the union so a kofta does not add a second such day. Stated as a cap only, because the floor is already carried by the paneer rule — two exact-1 rules over overlapping families would be a contradiction the moment the solver satisfied both with one dish.",
+        "name": "corning_chakan_paneer_or_kofta_weekly",
+        "type": "selector_frequency",
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "paneer"
+            },
+            {
+              "flag": "is_veg_kofta_gravy"
+            }
+          ]
+        },
+        "max": 1
+      },
+      {
+        "_comment": "'Mixed-veg, veg kurma and veg kofta gravies should be served maximum twice a week.' The client stated a COMBINED number, so it gets its own rule over the union; Pune's ruleset separately caps each of the three at one day, which is stricter and stays in force. Written out because a future relaxation of a city rule must not silently relax the client's requirement too.",
+        "name": "corning_chakan_mixedveg_kurma_kofta_twice_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "any_flag": [
+            "is_mixedveg_gravy",
+            "is_kurma_gravy",
+            "is_veg_kofta_gravy"
+          ]
+        },
+        "max": 2
+      },
+      {
+        "_comment": "'Leafy-vegetable dry preparations should be served twice a week.' This is the one rule that contradicts Pune's rulebook head-on: R31 caps leafy dry at one day a week (`leafy_veg_dry_weekly`) and R14's cadence allows it only once per 15 days (`leafy_veg_dry_15d_window`, disabled above for this client). Overriding the weekly rule by name rather than adding a second one, so the two cannot disagree. NB Pune carries only FIVE leafy veg dries, and two days a week across the 20-day cooldown needs about eight distinct dishes — `min` caps itself to what the pool can supply and `diagnose()` reports the shortfall, so this under-enforces rather than failing, but the real fix is three or four more leafy dry dishes in the Pune list.",
+        "name": "leafy_veg_dry_weekly",
+        "type": "selector_frequency",
+        "base_slot": "veg_dry",
+        "selector": {
+          "flag": "is_leafy_based_dish"
+        },
+        "min": 2,
+        "max": 2
+      },
+      {
+        "_comment": "'On Thursday only we will give a starter.' NEEDS A DB CHANGE FIRST: this counter has no `starter` category today, so until one is added the rule is inert and `diagnose()` says so. The restriction stands the station down on the other six days.",
+        "name": "corning_chakan_starter_thursday_only",
+        "type": "slot_day_restriction",
+        "base_slot": "starter",
+        "allowed_weekdays": [
+          "thu"
+        ]
+      },
+      {
+        "_comment": "'Starter should be chat item.' A one-slot composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20). Pune's starter pool holds four chaats (dhokla, kachori, papadi, samosa) against roughly four Thursdays inside the 20-day cooldown — it fits, with nothing spare, so a fifth chaat in the Pune list would give this rule some slack.",
+        "name": "corning_chakan_starter_is_a_chaat",
+        "type": "slot_composition",
+        "base_slot": "starter",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "name_contains": [
+                "chaat",
+                "chat"
+              ]
+            },
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "constant_items": {}
+  }
+}

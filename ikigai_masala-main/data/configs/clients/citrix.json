@@ -123,7 +123,19 @@
         }
       },
       {
-        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. Thursday is unscheduled, and a `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on Thursday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case).",
+        "_comment": "'Nonveg main: Mon & Wed chicken gravy, Tue egg curry, Friday biryani' names four days out of five, and the client confirmed the fifth is deliberate: THURSDAY IS BLANK. The station stands down rather than serving an unscheduled dish, which also settles what would otherwise be the loosest cell on the counter.",
+        "name": "citrix_nonveg_mon_tue_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "wed",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case).",
         "name": "citrix_biryani_only_on_biryani_day",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",

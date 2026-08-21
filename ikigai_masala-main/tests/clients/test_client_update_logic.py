@@ -23,9 +23,11 @@ TIME_LIMIT = 40
 WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri']
 
 
-def _client(name, city, categories, slot_counts, theme_map):
+def _client(name, city, categories, slot_counts, theme_map,
+            serve_weekends=False):
     return {
-        'name': name, 'version': 1, 'city': city, 'serve_weekends': False,
+        'name': name, 'version': 1, 'city': city,
+        'serve_weekends': serve_weekends,
         'item_cooldown_days': 20, 'source_pools': [],
         'counters': [{
             'name': 'Counter 1', 'theme_map': theme_map,
@@ -63,6 +65,19 @@ CLIENTS = {
          'welcome_drink': 1},
         {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'mix',
          'thursday': 'mix', 'friday': 'biryani'}),
+    # Pune site, seven days a week, and the only counter with a `soup` station
+    # opposite a `dessert` one. `starter` is added here because the Thursday
+    # chaat rule needs it and the live row has no such category yet — the config
+    # file and docs/operator_setup.md both record that as a DB change.
+    'Corning Chakan': _client(
+        'Corning Chakan', 'Pune',
+        ['soup', 'bread', 'rice', 'veg_dry', 'veg_gravy', 'dal', 'dessert',
+         'white_rice', 'starter'],
+        {'dal': 1, 'rice': 1, 'soup': 1, 'bread': 1, 'dessert': 1,
+         'veg_dry': 1, 'veg_gravy': 1, 'starter': 1},
+        {'monday': 'north', 'tuesday': 'north', 'wednesday': 'south',
+         'thursday': 'north', 'friday': 'mix'},
+        serve_weekends=True),
     'Tekion CHN': _client(
         'Tekion CHN', 'Chennai',
         ['salad', 'bread', 'rice', 'veg_dry', 'veg_gravy', 'dal', 'sambar',
@@ -104,11 +119,11 @@ def api(monkeypatch):
     return api_app
 
 
-def _plan(api, name, start=MONDAY):
+def _plan(api, name, start=MONDAY, num_days=5):
     from api.rate_limit import reset_for_tests
     reset_for_tests()
     resp = api.app.test_client().post('/api/v1/plan', json={
-        'client_name': name, 'start_date': start, 'num_days': 5,
+        'client_name': name, 'start_date': start, 'num_days': num_days,
         'time_limit_sec': TIME_LIMIT})
     assert resp.status_code == 200, resp.get_json()
     return resp.get_json()['solution']
@@ -131,13 +146,14 @@ def _attr(df, base, col):
     return '' if r is None else str(r.get(col, '')).strip().lower()
 
 
-def _by_day(solution, prefix):
+def _by_day(solution, prefix, week=None):
     """weekday -> list of item_bases in slots whose id starts with *prefix*."""
+    week = week or WEEKDAYS
     out = {}
     for i, day in enumerate(solution.values()):
         items = day.get('items') or {}
-        out[WEEKDAYS[i]] = [c['item_base'] for s, c in items.items()
-                            if s.startswith(prefix)]
+        out[week[i]] = [c['item_base'] for s, c in items.items()
+                        if s.startswith(prefix)]
     return out
 
 
@@ -308,12 +324,22 @@ class TestCitrix:
         assert any(_flag(blr_df, b, 'is_nonveg_biryani') for b in nv['fri']), \
             nv['fri']
 
-    def test_the_weeks_biryani_is_not_spent_on_the_unscheduled_thursday(
+    def test_thursday_serves_no_nonveg_at_all(self, api):
+        """The client named four of five days and confirmed the fifth is
+        deliberate: Thursday's non-veg station stands down rather than serving an
+        unscheduled dish."""
+        sol = _plan(api, 'Citrix')
+        nv = _by_day(sol, 'nonveg_main')
+        assert not nv['thu'], nv
+        for day in ('mon', 'tue', 'wed', 'fri'):
+            assert nv[day], (day, nv)
+
+    def test_the_biryani_is_not_spent_before_the_biryani_day(
             self, api, blr_df):
-        """Thursday is the one day the client did not schedule, and a `mix` day
-        is not narrowed by the theme filter at all — so without
+        """A `mix` day is not narrowed by the theme filter at all, so without
         `citrix_biryani_only_on_biryani_day` the solver could serve the week's
-        one chicken biryani there and leave Friday's mandate unsatisfiable."""
+        one chicken biryani on a Monday and leave Friday's mandate
+        unsatisfiable."""
         sol = _plan(api, 'Citrix')
         nv = _by_day(sol, 'nonveg_main')
         for day in ('mon', 'tue', 'wed', 'thu'):
@@ -436,3 +462,131 @@ class TestTekionChn:
             for b in items:
                 assert any(k in b for k in ('chapati', 'chapatti', 'phulka')), \
                     f'{day}: {b} is not a chapati or phulka'
+
+
+# --------------------------------------------------------- Corning Chakan
+
+FULL_WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+
+@pytest.fixture(scope='module')
+def pune_df():
+    from src.ontology.paths import city_excel_path
+    return pd.read_excel(city_excel_path('Pune'))
+
+
+@pytest.mark.slow
+class TestCorningChakan:
+    """The fourteen rules the client stated for its Pune site, over a seven-day
+    plan (`serve_weekends` is true, and the soup schedule needs Sat and Sun).
+
+    Three of the fourteen are asserted as *absences of a rule*: 'sweet and soup
+    on alternate days' is what the two day-restrictions already produce, 'soya
+    can be served as one of the vegetable options' is permission rather than a
+    constraint, and 'kabuli chana max once a week' is Pune's own city rule.
+    """
+
+    @pytest.fixture(scope='class')
+    def sol(self, request):
+        return _plan(request.getfixturevalue('api'), 'Corning Chakan',
+                     num_days=7)
+
+    def test_soup_only_on_tue_thu_sat_sun(self, sol):
+        soup = _by_day(sol, 'soup', FULL_WEEK)
+        for day in ('tue', 'thu', 'sat', 'sun'):
+            assert soup[day], f'{day} should carry a soup: {soup}'
+        for day in ('mon', 'wed', 'fri'):
+            assert not soup[day], f'{day} should have no soup: {soup}'
+
+    def test_sweets_only_on_mon_wed_fri(self, sol):
+        sweet = _by_day(sol, 'dessert', FULL_WEEK)
+        for day in ('mon', 'wed', 'fri'):
+            assert sweet[day], f'{day} should carry a sweet: {sweet}'
+        for day in ('tue', 'thu', 'sat', 'sun'):
+            assert not sweet[day], f'{day} should have no sweet: {sweet}'
+
+    def test_sweet_and_soup_alternate(self, sol):
+        """The client's third rule, which needs no rule of its own: with the two
+        restrictions above, every day carries exactly one of the pair."""
+        soup = _by_day(sol, 'soup', FULL_WEEK)
+        sweet = _by_day(sol, 'dessert', FULL_WEEK)
+        for day in FULL_WEEK:
+            assert bool(soup[day]) != bool(sweet[day]), \
+                f'{day}: soup={soup[day]} sweet={sweet[day]}'
+
+    def test_no_liquid_sweet_is_ever_served(self, sol, pune_df):
+        for day in sol.values():
+            for b in _all_bases(day):
+                assert not _flag(pune_df, b, 'is_liquid_dessert'), b
+
+    def test_black_dal_at_most_once(self, sol, pune_df):
+        dal = _by_day(sol, 'dal', FULL_WEEK)
+        days = sum(1 for items in dal.values()
+                   if any(_flag(pune_df, b, 'is_black_dal') for b in items))
+        assert days <= 1, f'black dal on {days} days: {dal}'
+
+    def test_legume_and_kabuli_gravies_at_most_once_each(self, sol, pune_df):
+        """Pune's own ruleset, asserted here because it is the client's rule."""
+        gravy = _by_day(sol, 'veg_gravy', FULL_WEEK)
+        for flag in ('is_whole_legume_based', 'is_kabuli_chana_gravy'):
+            days = sum(1 for items in gravy.values()
+                       if any(_flag(pune_df, b, flag) for b in items))
+            assert days <= 1, f'{flag} on {days} days: {gravy}'
+
+    def test_sprouts_gravy_at_most_twice(self, sol):
+        gravy = _by_day(sol, 'veg_gravy', FULL_WEEK)
+        days = sum(1 for items in gravy.values()
+                   if any('sprout' in b or 'matki' in b for b in items))
+        assert days <= 2, f'sprouts gravy on {days} days: {gravy}'
+
+    def test_exactly_one_paneer_gravy_day(self, sol, pune_df):
+        gravy = _by_day(sol, 'veg_gravy', FULL_WEEK)
+        days = sum(1 for items in gravy.values()
+                   if any(_flag(pune_df, b, 'is_paneer_gravy') for b in items))
+        assert days == 1, f'paneer gravy on {days} days: {gravy}'
+
+    def test_paneer_or_kofta_on_at_most_one_day(self, sol, pune_df):
+        """The two premium rules read together: the paneer gravy IS the week's
+        one paneer-or-kofta dish, so a kofta must not add a second day."""
+        days = _days_matching(
+            pune_df, sol,
+            lambda d, b: (_attr(d, b, 'key_ingredient') == 'paneer'
+                          or _flag(d, b, 'is_veg_kofta_gravy')))
+        assert days <= 1, f'paneer/kofta on {days} days'
+
+    def test_mixedveg_kurma_kofta_at_most_twice(self, sol, pune_df):
+        gravy = _by_day(sol, 'veg_gravy', FULL_WEEK)
+        days = sum(
+            1 for items in gravy.values()
+            if any(_flag(pune_df, b, f) for b in items
+                   for f in ('is_mixedveg_gravy', 'is_kurma_gravy',
+                             'is_veg_kofta_gravy')))
+        assert days <= 2, f'mixedveg/kurma/kofta on {days} days: {gravy}'
+
+    def test_leafy_veg_dry_twice_a_week(self, sol, pune_df):
+        """The one rule that overrides Pune's rulebook: R31 caps leafy dry at
+        one day and the 15-day cadence allows one per three weeks, both of which
+        this client's config lifts."""
+        dry = _by_day(sol, 'veg_dry', FULL_WEEK)
+        days = sum(1 for items in dry.values()
+                   if any(_flag(pune_df, b, 'is_leafy_based_dish')
+                          for b in items))
+        assert days == 2, f'leafy veg dry on {days} days: {dry}'
+
+    def test_a_chaat_starter_on_thursday_and_no_other_day(self, sol):
+        starter = _by_day(sol, 'starter', FULL_WEEK)
+        assert starter['thu'], f'Thursday should carry a starter: {starter}'
+        for b in starter['thu']:
+            assert 'chaat' in b or 'chat' in b, f'{b} is not a chaat'
+        for day in FULL_WEEK:
+            if day != 'thu':
+                assert not starter[day], f'{day} should have no starter'
+
+    def test_every_dish_comes_from_the_pune_list(self, sol, pune_df):
+        from src.constants import CONST_SLOTS
+        names = set(pune_df['item'].astype(str).str.strip())
+        for day in sol.values():
+            for slot, cand in (day.get('items') or {}).items():
+                if slot.split('__')[0] in CONST_SLOTS:
+                    continue
+                assert cand['item_base'] in names, cand['item_base']
