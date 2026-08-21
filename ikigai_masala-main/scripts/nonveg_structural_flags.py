@@ -102,6 +102,91 @@ STYLE_OVERRIDES = {
     # Stripe, "Non-Veg Curry or Main Course"
     "laal_murgh": "gravy",
     "rara_murgh": "gravy",
+
+    # ---------------------------------------------------------------------
+    # Adjudicated by the client (2026-08). Every row below names a dish whose
+    # own name says nothing about its form, so the heuristic left it alone and
+    # reported it — and an unflagged row is a dish the daily composition can
+    # never place, sitting in the pool passing every diagnostic. The client
+    # asked for a verdict on all of them rather than leaving them unservable,
+    # so each is decided on what the dish IS, and the reason is recorded.
+    # ---------------------------------------------------------------------
+
+    # --- Bangalore: the four that are genuinely NOT sauced -------------
+    # Afghani chicken is a malai-marinated GRILL, not a curry — the cream is a
+    # marinade, so there is no gravy on the plate.
+    "afghani_chicken": "dry",
+    # Telugu `vepudu` means fry. (`pulusu` below is its sauced opposite, which
+    # is why the pair is worth reading together.)
+    "egg_vepudu": "dry",
+    # A keema is minced and cooked down; with gobi and peas it is a semi-dry
+    # sabzi-style dish, not a gravy. (Its `key_ingredient` is cauliflower and
+    # its protein is chicken — a chicken keema with vegetables.)
+    "gobi_keema_mutter": "dry",
+    # The green marinade is a tandoor/tikka treatment. Bangalore separately
+    # carries `hariyali_chicken_masala`, which IS the gravy version — so this
+    # row is the grill, or the two are the same dish twice.
+    "hariyali_chicken": "dry",
+
+    # --- Bangalore: rich or thin, all of these arrive with sauce -------
+    "achari_chicken": "gravy",          # pickling spices in a thick gravy
+    "anda_kalimirch": "gravy",          # egg in a black-pepper sauce
+    "anda_lazeeza": "gravy",            # "lazeeza" names a rich gravy
+    "andhra_kodi_koora": "gravy",       # Telugu `koora` = curry
+    "bengali_chicken": "gravy",         # Bengali chicken curry
+    "chicken_adraki": "gravy",          # ginger gravy
+    "chicken_angara": "gravy",          # smoky/charred masala, served sauced
+    "chicken_jalfrezi": "gravy",        # thick sauce with peppers; eaten with roti
+    "chicken_kali_mirch": "gravy",      # murgh kali mirch is a creamy gravy
+    "chicken_kosha": "gravy",           # Bengali `kosha` = slow-cooked thick gravy
+    "chicken_paprikash": "gravy",       # paprika + sour cream sauce
+    "chicken_patiyala": "gravy",        # Patiala-style rich gravy
+    "chicken_rezalla": "gravy",         # Bengali rezala, a white gravy
+    "chicken_saag": "gravy",            # spinach gravy
+    "chicken_saagwala": "gravy",        # the same, spelled the other way
+    "dhaba_murgh": "gravy",             # dhaba chicken curry
+    "dhaba_style_chicken": "gravy",     # the same
+    "dum_ka_murgh": "gravy",            # Hyderabadi dum ka murgh, thick gravy
+    "egg_kadhai": "gravy",              # kadai masala is a thick gravy
+    "egg_pulusu": "gravy",              # Andhra `pulusu` = tangy stew
+    "kadhai_chicken": "gravy",          # as above, with chicken
+    "kothimeera_kodiguddu": "gravy",    # Telugu coriander-egg curry
+    "kundapura_chicken": "gravy",       # Kundapura koli saaru, a coastal gravy
+    "madras_chicken": "gravy",          # Madras chicken curry
+    "methi_chicken": "gravy",           # fenugreek gravy
+    "murgh_kolhapuri": "gravy",         # Kolhapuri, a fiery gravy
+    "murgh_lalmaas": "gravy",           # laal maas, a Rajasthani gravy
+    "murgh_lazzez": "gravy",            # rich gravy
+    "murgh_nizami": "gravy",            # Nizami, a rich Hyderabadi gravy
+    "murgh_pasanda": "gravy",           # pasanda, a creamy gravy
+    "murgh_patiala": "gravy",           # Patiala, as above
+    "murgh_shahjahani": "gravy",        # shahjahani, a rich white gravy
+    "nati_style_kozhi_saru": "gravy",   # `saru` is a thin gravy by definition
+    "nizami_murgh": "gravy",            # `murgh_nizami` written the other way
+    "palak_chicken": "gravy",           # spinach gravy
+
+    # --- Chennai: every one of these is a snack, roast or stir-fry -----
+    # Not one is a curry, which is what makes the city's list read differently
+    # from Bangalore's: these are Chennai street and tiffin forms.
+    "chicken_chukka": "dry",            # Chettinad `chukka` = dry roast
+    "chicken_kothu_parotta": "dry",     # shredded parotta stir-fried on a griddle
+    "chicken_lolipop": "dry",           # deep-fried, served with a dip
+    "chicken_schezwan_momo_s": "dry",   # dumplings
+    "egg_kothu_parotta": "dry",         # as the chicken one
+    "hakka_noodles_chicken": "dry",     # noodles
+    "hakka_noodles_egg": "dry",         # noodles
+    "momos_chicken": "dry",             # dumplings
+    "prawn_thokku": "dry",              # `thokku` is a thick semi-dry masala
+    # `egg_dosa` and `kal_egg_dosa` are dosas — a BREAD form filed under
+    # nonveg_main. Marked dry so they are at least placeable, but the course
+    # filing is what actually wants review: a dosa is not a main course, and no
+    # rule about breads can see them where they sit.
+    "egg_dosa": "dry",
+    "kal_egg_dosa": "dry",
+
+    # --- NCR ------------------------------------------------------------
+    # Same dish as Bangalore's `murgh_kolhapuri`, so the same verdict.
+    "kolhapuri_chicken": "gravy",
 }
 
 
