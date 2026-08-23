@@ -1,7 +1,9 @@
 {
   "Bakertilly": {
-    "_comment": "Bangalore site, one counter, TWO non-veg dishes a day (themes Mon/Thu = mix, Tue = south, Wed = biryani, Fri = north). 'Daily curd except on biryani day it is raita' is already `curd_raita_logic` in the city ruleset, so it is not restated here. NB the client's biryani-day list ('indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank') and its curd rule ('except of biryani day it is raita') disagree about the curd on a Wednesday: the second names the biryani day explicitly, and a biryani without a raita is not a menu this kitchen would print, so `curd_side` is KEPT on Wednesday. Worth the client's confirmation.",
-    "disable": [],
+    "_comment": "Bangalore site, one counter, TWO non-veg dishes (themes Mon/Thu = mix, Tue = south, Wed = biryani, Fri = north). The non-veg station runs on the BIRYANI DAY ONLY and serves chicken dry there — the client's clarification, which replaces the earlier reading that it ran daily with a dry added on Wednesday. Its biryani-day list ('indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank') and its curd rule ('daily curd except of biryani day it is raita') disagree about the curd on a Wednesday; the client called that an outlier, so `curd_side` is KEPT there as a raita and nothing else is inferred from the conflict. 'Daily curd except on the biryani day it is raita' is the city ruleset's `curd_raita_logic` and is not restated here.",
+    "disable": [
+      "nonveg_main_daily_pair"
+    ],
     "use": [
       {
         "ref": "paneer_once_a_week",
@@ -10,7 +12,7 @@
     ],
     "rules": [
       {
-        "_comment": "'On biryani day we will only serve indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank.' Wednesday is this counter's biryani day. The veg dry, dal, sambar and dessert stations stand down; bread / rasam / veg_gravy / rice / white_rice / salad stay, `nonveg_main` stays (the chicken-dry rule below is explicitly a biryani-day addition) and `curd_side` stays per the header comment.",
+        "_comment": "'On biryani day we will only serve indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank.' Wednesday is this counter's biryani day, so the veg dry, dal, sambar and dessert stations stand down there. `nonveg_main` is the mirror image — it runs ONLY on Wednesday (see below) — and `curd_side` is kept per the header comment.",
         "name": "bakertilly_no_veg_dry_on_biryani_day",
         "type": "slot_day_restriction",
         "base_slot": "veg_dry",
@@ -55,60 +57,30 @@
         ]
       },
       {
-        "_comment": "'Only on biryani day we will have chicken dry also' — the forbidding half. `allowed_day_types` bans a dry non-veg on every other theme (the client said 'only') and `max: 1` bounds it to the single biryani day; the PLACING half is the composition override below, which puts the dry in one of Wednesday's two cells. Split that way because the two halves are different mechanisms: a composition is a floor and cannot forbid, and a frequency rule with `allowed_day_types` forbids but does not choose which cell.",
-        "name": "bakertilly_nonveg_dry_only_on_biryani_day",
-        "type": "selector_frequency",
+        "_comment": "'Non veg main 2 is given only on biryani day and it will be chicken dry. Other days blank.' The station stands down Mon/Tue/Thu/Fri entirely, so there is no non-veg dish to constrain on those days and the `allowed_day_types` guard the earlier version needed is redundant.",
+        "name": "bakertilly_nonveg_biryani_day_only",
+        "type": "slot_day_restriction",
         "base_slot": "nonveg_main",
-        "selector": {
-          "any_of": [
-            {
-              "flag": "is_nonveg_dry"
-            },
-            {
-              "flag": "is_tandoor_nonveg_dry"
-            }
-          ]
-        },
-        "allowed_day_types": [
-          "biryani"
-        ],
-        "max": 1
+        "allowed_weekdays": [
+          "wed"
+        ]
       },
       {
-        "_comment": "The city rule composes a 2-4 dish non-veg counter as one DRY plus one regional chicken gravy every day, which contradicts 'only on biryani day we will have chicken dry' head-on — the composition mandates the dry, this client's rule forbids it on four days, and the counter came back INFEASIBLE with nothing naming the pair. Overridden rather than disabled so the counter keeps the daily chicken gravy the city rule wanted: `components` drops the daily dry, and the biryani-day override serves the biryani plus the chicken dry the client asked for. `components_by_theme` is a whole-key override (the per-key merge is top level only), so the city rule's `chinese` entry is not inherited — this counter has no chinese day, so there is nothing to restate.",
-        "name": "nonveg_main_daily_pair",
+        "_comment": "…'and it will be chicken dry'. Both Wednesday cells are dry, so `count: 2` over the two dry flags. The city rule `nonveg_main_daily_pair` is DISABLED for this client rather than overridden: it composes a 2-4 dish counter as one dry plus one regional chicken gravy, and on a biryani day as biryani plus gravy — both of which put a gravy on the plate the client says is dry. `count` caps itself to what the day can serve, so if the biryani-day pool offers only one dry the component relaxes to one and diagnose() reports it (the theme filter keeps the dry families available at 2+ slots — CLAUDE.md note 16).",
+        "name": "bakertilly_two_chicken_dry_on_the_biryani_day",
         "type": "slot_composition",
-        "components": [
-          {
-            "selector": {
-              "any_flag": [
-                "is_north_chicken_gravy",
-                "is_south_chicken_gravy"
-              ]
-            },
-            "count": 1
-          }
-        ],
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
         "components_by_theme": {
           "biryani": [
             {
               "selector": {
-                "flag": "is_nonveg_biryani"
-              },
-              "count": 1
-            },
-            {
-              "selector": {
-                "any_of": [
-                  {
-                    "flag": "is_nonveg_dry"
-                  },
-                  {
-                    "flag": "is_tandoor_nonveg_dry"
-                  }
+                "any_flag": [
+                  "is_nonveg_dry",
+                  "is_tandoor_nonveg_dry"
                 ]
               },
-              "count": 1
+              "count": 2
             }
           ]
         }

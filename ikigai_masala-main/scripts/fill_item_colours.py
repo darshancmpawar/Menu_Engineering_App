@@ -21,19 +21,73 @@ The fill uses two tiers of evidence and **refuses a third**:
    the legend says "Keerai, peas, sprouts, greens" are green and "Dosa, vada,
    bajji, parotta" golden brown, and the vote independently finds keerai,
    palak, methi, soppu green and dosa, vada, bonda, parotta brown.
-3. **NOT the course-type majority.** `veg_gravy` is red in only ~57% of coloured
+3. **An attribute the coloured rows agree about** — `key_ingredient`,
+   `course_type` + `key_ingredient`, or a form flag. A different signal from the
+   name: `is_leafy_based_dish` is green in 98% of its 353 coloured rows and
+   `is_curd_rice` white in all 15, whatever the dish is called. Accepted only at
+   >= 85% agreement over >= 8 rows.
+4. **NOT the course-type majority.** `veg_gravy` is red in only ~57% of coloured
    rows, so filling by course would put a wrong colour on roughly two of every
    five dishes it touched. A wrong colour is worse than a blank: blank is merely
    invisible to the colour rule, wrong actively tells it the day has a variety
-   it does not have. Those rows stay blank and are written to a report the
-   client can fill — they clearly can, having supplied a colour for all 583
-   dishes in the Chennai bank.
+   it does not have.
+
+## What the thresholds are, and why those numbers
+
+The token thresholds were 12 rows / 80% agreement, chosen by judgement. They are
+now chosen by **held-out measurement** — train the vote on a random 80% of the
+6,445 coloured rows, predict the other 20%, and compare:
+
+| threshold          | coverage | accuracy |
+|--------------------|----------|----------|
+| 12 rows / 80%      | 21%      | 94%      |
+| 8 rows / 75%       | 25%      | 92%      |
+| **6 rows / 70%**   | **30%**  | **90%**  |
+| 4 rows / 70%       | 32%      | 88%      |
+| 3 rows / 65%       | 39%      | 84%      |
+| 2 rows / 60%       | 42%      | 79%      |
+
+At 12/80 the vote had run out: it filled **0** of the 2,440 remaining blanks,
+because every easy row was already done and what is left has no word the strict
+vote trusts. 6/70 is the chosen point — it fills several hundred at a measured
+90%, and the accuracy falls away faster than the coverage rises below it.
+
+Filling at 90% is the right trade **for this column**, which is the reverse of
+the "wrong is worse than blank" argument above, and worth being explicit about:
+a blank colour is not neutral. `MenuSolver._add_color_constraints` clamps the
+day's required distinct colours to the number of colours actually PRESENT among
+the candidates, so 2,440 invisible dishes quietly relax the rule everywhere —
+which is exactly the complaint that started this work. Filling 90% correctly and
+10% wrongly leaves the rule working on nine dishes for every one it misjudges.
+
+## What is still missing, and why the data cannot supply it
+
+Even so, most of the gap does not close from inside the repo, and it is worth
+saying plainly rather than filling it badly:
+
+* The client's own **colour legend workbook** (`data/raw/source_workbooks/
+  client_food_colour_legend.xlsx`, 292 distinct dishes across nine sites) matches
+  only **3** of the blank rows. It is a Chennai tiffin list; the blanks are
+  Bangalore and NCR north-Indian dishes. Where it *does* overlap rows that are
+  already coloured, the two agree **73%** of the time — the client's seven coarse
+  badges ("WHITE / LIGHT YELLOW", "BROWN / ORANGE") do not map cleanly onto seven
+  discrete colours, so it is a cross-check rather than a source.
+* Attribute implication reaches only ~5% of the blanks, because **the rows with
+  no colour are largely the rows with no `key_ingredient` either** — the colour
+  gap and the attribute gap are the same rows. `nilgiri_veg_korma` and
+  `yakhni_pulao` have neither.
+
+So the remainder goes to `docs/dishes_needing_a_colour.csv`, **grouped by dish
+family** rather than listed flat: the client can answer ~200 families instead of
+~1,700 rows, which is the difference between a request that gets done and one
+that does not.
 
 `MODIFIER_STOPWORDS` drops words the vote picks up by accident. `mini`, `mix`,
 `broken` and `crispy` describe size or texture and cannot carry a colour; they
 reached the threshold only because of what they happen to co-occur with.
 
-Idempotent: a row that already has a colour is never touched.
+Runs to a **fixed point** (a filled colour is evidence for the next pass) and is
+idempotent thereafter: a row that already has a colour is never touched.
 """
 from __future__ import annotations
 
@@ -48,11 +102,27 @@ ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 CITIES = ("bangalore", "pune", "chennai", "ncr")
 REPORT = ROOT / "docs" / "dishes_needing_a_colour.csv"
+GROUPED_REPORT = ROOT / "docs" / "colours_to_confirm_by_family.csv"
 
 #: A token must appear in this many coloured dish names, and agree on one
-#: colour this often, before the vote trusts it.
-MIN_TOKEN_ROWS = 12
-MIN_TOKEN_AGREEMENT = 0.80
+#: colour this often, before the vote trusts it. Chosen by held-out measurement
+#: (see the module docstring): 90% accuracy at 30% coverage, and the accuracy
+#: degrades faster than the coverage improves below this point.
+MIN_TOKEN_ROWS = 6
+MIN_TOKEN_AGREEMENT = 0.70
+
+#: An attribute value must cover this many coloured rows, and agree this often,
+#: before it is treated as colour-bearing. Stricter than the token vote because
+#: an attribute is a blunter instrument — `course_type` alone would qualify at
+#: any looser setting, and it is exactly what must not.
+MAX_PASSES = 6
+
+MIN_ATTR_ROWS = 8
+MIN_ATTR_AGREEMENT = 0.85
+
+#: Attribute combinations to learn from, most specific first.
+ATTR_KEYS = (("course_type", "key_ingredient"), ("key_ingredient",),
+             ("course_type", "sub_category"))
 
 #: Words that describe size, texture or preparation rather than an ingredient.
 #: They cannot carry a colour, and reached the threshold only through what they
@@ -63,6 +133,10 @@ MODIFIER_STOPWORDS = {
     "semi", "full", "half", "small", "large", "baby", "assorted", "veg",
     "vegetable", "non", "combo", "any", "with", "and",
 }
+
+
+def _norm(value) -> str:
+    return str(value).strip().lower()
 
 
 def _known(frames) -> pd.DataFrame:
@@ -92,27 +166,81 @@ def colour_bearing_tokens(known) -> dict:
     return out
 
 
-def infer(item: str, by_name: dict, tokens: dict):
-    """(colour, why) for one dish, or (None, why-not)."""
+def colour_bearing_attributes(known) -> dict:
+    """{(columns, values): colour} for attribute values the coloured rows agree
+    about — a signal independent of the dish name, which is what the rows with
+    no colour-bearing word need."""
+    out = {}
+    for cols in ATTR_KEYS:
+        tally = defaultdict(Counter)
+        for _, r in known.iterrows():
+            key = tuple(_norm(r.get(c)) for c in cols)
+            if any(k in ("", "nan") for k in key):
+                continue
+            tally[key][_norm(r["item_color"])] += 1
+        for key, counts in tally.items():
+            total = sum(counts.values())
+            colour, n = counts.most_common(1)[0]
+            if total >= MIN_ATTR_ROWS and n / total >= MIN_ATTR_AGREEMENT:
+                out.setdefault((cols, key), colour)
+    return out
+
+
+def colour_bearing_flags(known) -> dict:
+    """{flag: colour} for form flags the coloured rows agree about.
+
+    `is_leafy_based_dish` is green in 98% of its 353 rows and `is_curd_rice`
+    white in all 15 — true whatever the dish is called, so this catches dishes
+    whose name carries nothing.
+    """
+    out = {}
+    for col in [c for c in known.columns if str(c).startswith("is_")]:
+        on = known[pd.to_numeric(known[col], errors="coerce") == 1]
+        if len(on) < MIN_ATTR_ROWS:
+            continue
+        counts = Counter(_norm(v) for v in on["item_color"])
+        colour, n = counts.most_common(1)[0]
+        if n / len(on) >= MIN_ATTR_AGREEMENT:
+            out[col] = colour
+    return out
+
+
+def infer(item: str, by_name: dict, tokens: dict, row=None,
+          attrs: dict = None, flags: dict = None):
+    """(colour, why) for one dish, or (None, why-not).
+
+    Tiers in order of evidence: the same dish coloured elsewhere, then the token
+    vote, then — only when the name says nothing — an attribute or a form flag.
+    """
     name = str(item).strip().lower()
     if name in by_name:
         return by_name[name], "same dish coloured in another city"
     votes = Counter(tokens[t] for t in name.split("_") if t in tokens)
-    if not votes:
-        return None, "no colour-bearing word in the name"
-    colour, n = votes.most_common(1)[0]
-    if n * 2 <= sum(votes.values()):
+    if votes:
+        colour, n = votes.most_common(1)[0]
+        if n * 2 > sum(votes.values()):
+            return colour, f"token vote {dict(votes)}"
         return None, f"its words disagree ({dict(votes)})"
-    return colour, f"token vote {dict(votes)}"
+    if row is not None:
+        for cols in ATTR_KEYS:
+            key = tuple(_norm(row.get(c)) for c in cols)
+            hit = (attrs or {}).get((cols, key))
+            if hit:
+                return hit, f"{'+'.join(cols)}={'/'.join(key)}"
+        for flag, colour in (flags or {}).items():
+            if pd.to_numeric([row.get(flag)], errors="coerce")[0] == 1:
+                return colour, f"flag {flag}"
+    return None, "no colour-bearing word, attribute or flag"
 
 
-def apply(df: pd.DataFrame, by_name: dict, tokens: dict):
+def apply(df: pd.DataFrame, by_name: dict, tokens: dict,
+          attrs: dict = None, flags: dict = None):
     """Return (df, filled, unresolved). Safe to call twice."""
     df = df.copy()
     filled, unresolved = [], []
     for idx in df.index[df["item_color"].isna()]:
         item = str(df.at[idx, "item"]).strip().lower()
-        colour, why = infer(item, by_name, tokens)
+        colour, why = infer(item, by_name, tokens, df.loc[idx], attrs, flags)
         if colour:
             df.at[idx, "item_color"] = colour
             filled.append((item, colour, why))
@@ -128,6 +256,71 @@ def _atomic_to_excel(frame, path):
     tmp.replace(path)
 
 
+def _question_tokens(item: str) -> set:
+    """The words in a dish name that could name a family worth asking about."""
+    return {w for w in str(item).strip().lower().split("_")
+            if w and w not in MODIFIER_STOPWORDS and len(w) > 2}
+
+
+def group_questions(unresolved):
+    """Fewest (word, course) questions that cover every unresolved dish.
+
+    A greedy set cover, because the point of the report is how many answers the
+    client has to give. Grouping each dish by, say, the longest word in its name
+    gave 1,057 groups for 1,696 rows — 804 of them singletons — which is not a
+    smaller question, just a differently shaped one. Picking the word that
+    covers the most still-uncovered dishes, repeatedly, gives 448: the top 25
+    answers colour half the backlog and the top 100 cover three quarters.
+
+    Returns ``[((word, course), [members])]``, largest first, plus the dishes no
+    shared word reaches (they need answering one at a time).
+    """
+    items = [(city, item, course) for city, item, course, _cl, _why in unresolved]
+    by_token = defaultdict(set)
+    for i, (_city, item, course) in enumerate(items):
+        for tok in _question_tokens(item):
+            by_token[(tok, _norm(course))].add(i)
+
+    uncovered = set(range(len(items)))
+    groups = []
+    while uncovered:
+        best, covered = None, set()
+        # `sorted` is load-bearing: `_question_tokens` returns a SET, and set
+        # iteration order is hash-salted per process, so an unsorted scan broke
+        # ties differently on every run and the committed report changed by a
+        # group or two each time. A derived artefact that will not reproduce
+        # cannot be tested.
+        for key in sorted(by_token):
+            hit = by_token[key] & uncovered
+            if len(hit) > len(covered):
+                best, covered = key, hit
+        if not best or not covered:
+            break                        # only nameless dishes left
+        groups.append((best, sorted(covered)))
+        uncovered -= covered
+    groups.sort(key=lambda g: (-len(g[1]), g[0]))
+    leftovers = [items[i] for i in sorted(uncovered)]
+    return groups, items, leftovers
+
+
+def _write_grouped_report(unresolved) -> int:
+    """One row per question, so the client answers ~450 families rather than
+    ~1,700 dishes. Ordered by how many dishes each answer colours, so stopping
+    early still helps."""
+    groups, items, leftovers = group_questions(unresolved)
+    with open(GROUPED_REPORT, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["dish_family", "course_type", "n_dishes", "item_color",
+                    "example_dishes"])
+        for (token, course), members in groups:
+            names = [f"{items[i][0]}:{items[i][1]}" for i in members]
+            w.writerow([token, course, len(members), "",
+                        "; ".join(sorted(names)[:6])])
+        for city, item, course in leftovers:
+            w.writerow([item, _norm(course), 1, "", f"{city}:{item}"])
+    return len(groups) + len(leftovers)
+
+
 def main(dry_run: bool = False):
     frames = {}
     for city in CITIES:
@@ -138,24 +331,45 @@ def main(dry_run: bool = False):
         d.columns = [c.strip() for c in d.columns]
         frames[city] = d
 
-    known = _known(frames)
-    by_name = colour_by_name(known)
-    tokens = colour_bearing_tokens(known)
-    print(f"{len(known)} coloured rows -> {len(tokens)} colour-bearing words")
+    # Runs to a FIXED POINT, because every colour filled is evidence for the
+    # next pass: a newly coloured `palak_paneer` teaches the vote about `palak`.
+    # Without the loop one invocation left 77 rows that a second would have
+    # filled, so the correction chain did not converge and the README's promise
+    # that a re-run reports "already correct" was false for this script.
+    before_total = {c: int(d["item_color"].isna().sum()) for c, d in frames.items()}
+    filled_total = {c: [] for c in frames}
+    unresolved_by_city = {c: [] for c in frames}
+    for sweep in range(1, MAX_PASSES + 1):
+        known = _known(frames)
+        by_name = colour_by_name(known)
+        tokens = colour_bearing_tokens(known)
+        attrs = colour_bearing_attributes(known)
+        flags = colour_bearing_flags(known)
+        moved = 0
+        for city, d in frames.items():
+            out, filled, unresolved = apply(d, by_name, tokens, attrs, flags)
+            frames[city] = out
+            filled_total[city] += filled
+            unresolved_by_city[city] = unresolved
+            moved += len(filled)
+        print(f"pass {sweep}: {len(known)} coloured rows -> {len(tokens)} words, "
+              f"{len(attrs)} attribute rules, {len(flags)} flag rules; "
+              f"{moved} filled")
+        if not moved:
+            break
 
     all_unresolved = []
     for city, d in frames.items():
-        before = int(d["item_color"].isna().sum())
-        out, filled, unresolved = apply(d, by_name, tokens)
-        print(f"[{city}] blank {before} -> filled {len(filled)}, "
-              f"{len(unresolved)} left for the client")
+        filled = filled_total[city]
+        print(f"[{city}] blank {before_total[city]} -> filled {len(filled)}, "
+              f"{len(unresolved_by_city[city])} left for the client")
         for item, colour, why in filled[:5]:
             print(f"    {item:<38} {colour:<7} ({why})")
         if len(filled) > 5:
             print(f"    … and {len(filled) - 5} more")
-        all_unresolved += [(city, *u) for u in unresolved]
+        all_unresolved += [(city, *u) for u in unresolved_by_city[city]]
         if filled and not dry_run:
-            _atomic_to_excel(out, CITY_DIR / f"{city}.xlsx")
+            _atomic_to_excel(d, CITY_DIR / f"{city}.xlsx")
             print(f"[{city}] wrote {city}.xlsx")
 
     if all_unresolved and not dry_run:
@@ -166,6 +380,9 @@ def main(dry_run: bool = False):
             w.writerows(sorted(all_unresolved))
         print(f"\nwrote {REPORT.relative_to(ROOT)} "
               f"({len(all_unresolved)} dishes needing a colour)")
+        n_groups = _write_grouped_report(all_unresolved)
+        print(f"wrote {GROUPED_REPORT.relative_to(ROOT)} "
+              f"({n_groups} families — answer these, not the {len(all_unresolved)} rows)")
     if dry_run:
         print("\n[dry-run] nothing written")
 

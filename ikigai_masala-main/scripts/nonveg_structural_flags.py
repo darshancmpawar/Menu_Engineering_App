@@ -35,10 +35,12 @@ menu row does — Stripe prints "Non-Veg Semi Dry or Dry" and "Non-Veg Curry or
 Main Course" as separate rows, so the source is explicit even where the name is
 silent. Each entry cites its row.
 
-A row the name cannot classify is **left alone and reported**, not guessed:
-`afghani_chicken` and `kolhapuri_chicken` name a place and a protein and nothing
-else, and inventing a form for them would put a dish on a plate in the wrong
-role. Those need the client's menu to say.
+A row the name cannot classify is **left alone and reported**, not guessed — a
+place plus a protein (`afghani_chicken`, `kolhapuri_chicken`) says nothing about
+form, and inventing one would put a dish on a plate in the wrong role. That left
+51 rows reported across the four cities, and the **client has now adjudicated
+every one of them**; they are in `STYLE_OVERRIDES` with the reason each was
+decided on. The refusal-to-guess stays, for the next dish nobody has ruled on.
 
 Note `mutton_curry` (NCR's only mutton) gets `is_nonveg_gravy` but no chicken
 gravy flag, because it is not chicken — so it still cannot satisfy the pair
@@ -177,10 +179,10 @@ STYLE_OVERRIDES = {
     "hakka_noodles_egg": "dry",         # noodles
     "momos_chicken": "dry",             # dumplings
     "prawn_thokku": "dry",              # `thokku` is a thick semi-dry masala
-    # `egg_dosa` and `kal_egg_dosa` are dosas — a BREAD form filed under
-    # nonveg_main. Marked dry so they are at least placeable, but the course
-    # filing is what actually wants review: a dosa is not a main course, and no
-    # rule about breads can see them where they sit.
+    # `egg_dosa` and `kal_egg_dosa` ARE non-veg mains — client-confirmed. Read
+    # as breads they looked mis-filed, but an egg dosa is how this site serves
+    # its egg: the dish is the meal, not an accompaniment to one. Dry, because
+    # a dosa arrives with no sauce on it.
     "egg_dosa": "dry",
     "kal_egg_dosa": "dry",
 

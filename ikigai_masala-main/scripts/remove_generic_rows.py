@@ -80,6 +80,33 @@ GENERIC_ROWS = {
     'ncr': [
         'chutney', 'dal', 'dessert', 'gravy', 'raita', 'rasam', 'rice',
         'salad', 'sambar', 'veg_dry',
+        # ------------------------------------------------------------------
+        # Not dishes at all: the NCR mapping pipeline imported the SPREADSHEET
+        # SCAFFOLDING as menu items. Every one of these is filed `veg_gravy`
+        # with `key_ingredient` copied from the first word of its own name (the
+        # pipeline's fingerprint — see ncr_bread_misfiles.py), so all of them
+        # were servable, and a menu could print "Fri 19th June" as the day's
+        # vegetable gravy. None has a colour, which is how they surfaced.
+        # ------------------------------------------------------------------
+        # 26 weekday-date column headers.
+        'mon_1st_june', 'tue_2nd_june', 'wed_3rd_june', 'thu_4th_june',
+        'fri_5th_june', 'mon_8th_june', 'tue_9th_june', 'wed_10th_june',
+        'thu_11th_june', 'fri_12th_june', 'mon_15th_june', 'tue_16th_june',
+        'wed_17th_june', 'thu_18th_june', 'fri_19th_june', 'mon_22nd_june',
+        'tue_23rd_june', 'wed_24th_june', 'thu_25th_june', 'fri_26th_june',
+        'mon_29th_june', 'tue_30th_june', 'wed_1st_july', 'thu_2nd_july',
+        'fri_3rd_july',
+        # Three sheet titles.
+        'stryker_lunch_18_may_to_23_may', 'stryker_lunch_27_july_to_01_aug',
+        'stryker_lunch_29th_june_to_4th_july',
+        # A note to the operator, imported verbatim as a dish.
+        'from_1st_aug_2026_new_vendor_at_bhondsi_is_gourmer_foods',
+        # Single-word header fragments: weekday and month abbreviations, a
+        # head-count column, and the veg / non-veg section labels. NB `pav` and
+        # `pao` are three letters too and are REAL dishes — this list is exact
+        # names, never a length rule.
+        'apr', 'day', 'eid', 'may', 'mon', 'pax', 'tue', 'wed',
+        'veg', 'non_veg',
     ],
 }
 
