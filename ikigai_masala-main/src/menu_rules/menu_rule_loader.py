@@ -483,6 +483,38 @@ class MenuRuleLoader:
             return {}
         return self._parse_client_block(block, counter_name)['constant_items']
 
+    def get_counter_scoped_constant_keys(
+        self, client_name: str, counter_name: Optional[str] = None,
+    ) -> set:
+        """Slots pinned inside *counter_name*'s OWN block, not client-wide.
+
+        `constant_items` is normally client-scoped, so a pin for a slot the
+        counter does not serve has to be dropped — it probably belongs to a
+        sibling station. A pin written inside one counter's block carries no such
+        ambiguity: the config already said which station it is for. That makes it
+        a FIXED ITEM for that counter, printable without the slot being
+        configured as a rotating category, exactly as a single-counter client's
+        pin is.
+
+        Returns bare slot ids; the caller compares them against the pins it
+        resolved.
+        """
+        if not counter_name:
+            return set()
+        block = self._read_client_blob().get(client_name)
+        if not isinstance(block, dict):
+            return set()
+        counters = block.get('counters')
+        if not isinstance(counters, dict):
+            return set()
+        own = counters.get(counter_name)
+        if not isinstance(own, dict):
+            return set()
+        pins = own.get('constant_items')
+        if not isinstance(pins, dict):
+            return set()
+        return {k for k in pins if not str(k).startswith('_')}
+
     def load_for_client(
         self, client_name: str, generic_rules: List[BaseMenuRule],
         counter_name: Optional[str] = None,

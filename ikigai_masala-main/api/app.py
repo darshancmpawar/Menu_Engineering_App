@@ -341,6 +341,11 @@ def _rules_and_skip_for_client(
         client_name,
         loader.get_client_constant_items(client_name, counter_name),
         client_cfg,
+        # Pins written inside THIS counter's block are unambiguous even on a
+        # multi-counter client, so they print as fixed items without the slot
+        # being configured as a rotating category.
+        counter_scoped_keys=loader.get_counter_scoped_constant_keys(
+            client_name, counter_name),
     )
     skip_cells = set()
     for rule in rules:
@@ -369,6 +374,17 @@ def _rules_and_skip_for_client(
     # to show for it. Amadeus Pune's Sunday raita is exactly that shape: `raita`
     # is a real Pune dish, filed under `curd_side`, pinned into `salad`.
     forced_items: Dict[Any, str] = {}
+    # Only a slot this counter actually SOLVES can be narrowed. `pools` holds
+    # every slot the ontology can fill, not the ones this counter serves, so a
+    # pin for an unserved slot used to resolve to a real dish, land in
+    # `forced_items`, and then be dropped by BOTH paths: the solver has no cell
+    # to narrow, and the post-solve stamp skips anything in `forced_items` on
+    # the grounds that the solver already placed it. The row vanished from the
+    # menu with nothing logged. Booking.com's daily curd was exactly this — the
+    # pin resolves (its `curd_side` sibling is served, so it is kept) and
+    # Bangalore has a real `curd` dish for it to match, which is what put it on
+    # the forcing path. Anything outside this set is stamped instead.
+    solved_slots = set(getattr(client_cfg, 'active_slots', None) or [])
     for slot_id, spec in constant_items.items():
         base = _base_slot(slot_id)
         slot_items = _slot_item_names(pools, base) if pools is not None \
@@ -390,7 +406,9 @@ def _rules_and_skip_for_client(
             # — and solving one anyway would be INFEASIBLE under unique_items,
             # which is why the slot is dropped in the first place: the same dish
             # cannot occupy five days unless it is a staple.
-            if canonical is not None and base not in whole_slot_bases:
+            solvable = (not solved_slots) or slot_id in solved_slots
+            if (canonical is not None and base not in whole_slot_bases
+                    and solvable):
                 forced_items[(d, slot_id)] = canonical
             else:
                 skip_cells.add((d, slot_id))

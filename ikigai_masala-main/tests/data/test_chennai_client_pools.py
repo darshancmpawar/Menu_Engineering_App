@@ -10,15 +10,21 @@ the fix (a daily slot needs enough distinct dishes to outlast the cooldown).
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pandas as pd
 import pytest
 
 from scripts.chennai_client_pools import (
+    KUZHAMBU_TO_SALAD,
     KOOTU_FROM_BANGALORE, KOOTU_TO_DAL, LIQUID_SWEETS, NEW_DISHES,
     VEG_BIRYANIS, WELCOME_DRINKS, main,
 )
+from src.menu_rules.menu_rule_loader import CITY_RULES_DIR as _CITY_RULES_DIR
 from src.ontology.paths import CITY_ITEMS_DIR
+
+CITY_RULES_DIR = pathlib.Path(_CITY_RULES_DIR)
+CLIENT_DIR = CITY_ITEMS_DIR.parent.parent / "configs" / "clients"
 
 
 @pytest.fixture(scope="module")
@@ -81,7 +87,139 @@ class TestKootuIsTheDal:
         assert len(ingredients) >= 6, sorted(ingredients)
 
     def test_the_veg_gravy_pool_survived_losing_them(self, chn):
-        assert len(_course(chn, "veg_gravy")) >= 45
+        """It has now lost dishes TWICE — eight kootus to `dal` and twelve
+        kuzhambus to `salad` — so the floor is stated as what a daily gravy
+        actually needs rather than as a snapshot of the day it was written.
+
+        World Bank and ICON both serve one every day. Under the 20-day item
+        cooldown a strict count-1 slot needs roughly one distinct dish per
+        working day in the window (~15) plus the week being planned (~5), so ~20
+        is the real threshold; 25 leaves headroom for the theme filter narrowing
+        a day. Anything at or below 20 would starve the slot in week two, which
+        is the failure this guards.
+        """
+        assert len(_course(chn, "veg_gravy")) >= 25
+
+
+class TestKuzhambuIsTheSalad:
+    """The client's own categorisation: "kuzhambus are the dish which category
+    should be in salad not veg gravy".
+
+    TCL states it as a rule ("in salad need to give only KUZHAMBU item") and its
+    sample week proves the two are DIFFERENT rows rather than one mislabelled —
+    Sunday's stated menu lists "veg gravy" and "salad" separately, and the grid
+    serves VEG KURMA beside KARA KUZHAMBU. Filed as gravies, the salad pool held
+    none and the rule was unsatisfiable.
+    """
+
+    def test_every_named_kuzhambu_is_a_salad(self, chn):
+        by_item = chn.set_index(chn["item"].astype(str).str.strip().str.lower())
+        for dish in KUZHAMBU_TO_SALAD:
+            assert by_item.at[dish, "course_type"] == "salad", dish
+
+    def test_the_course_mirror_flag_followed(self, chn):
+        """`course_type` picks the slot pool, but a flag-driven rule reads the
+        `is_*` columns — leaving those behind is how a re-filed dish stays a
+        gravy to half the engine (the same trap `align_kootu_flags` fixes).
+
+        Only `is_salad` is asserted because the 134-column schema carries no
+        `is_veg_gravy` at all: both this re-file and the kootu one clear it
+        defensively, and in both the clear is a no-op today. Asserting its
+        absence here would pin a column that does not exist.
+        """
+        moved = chn[chn["item"].astype(str).str.strip().str.lower()
+                    .isin(KUZHAMBU_TO_SALAD)]
+        assert _flag(moved, "is_salad").all()
+        assert "is_veg_gravy" not in chn.columns
+
+    def test_the_salad_pool_can_carry_a_daily_kuzhambu(self, chn):
+        """TCL serves one every weekday and Sunday. Twelve distinct against a
+        20-day cooldown is tight but sufficient; fewer would repeat inside a
+        plan, which `unique_items` forbids outright."""
+        salads = _course(chn, "salad")
+        names = salads["item"].astype(str).str.strip().str.lower()
+        assert int(names.isin(KUZHAMBU_TO_SALAD).sum()) >= 12
+
+    def test_the_non_veg_and_rice_kuzhambus_did_not_move(self, chn):
+        """The word names the gravy they are built from, not the dish's own
+        course — a chicken kuzhambu is a non-veg main and a kolambu sadam is a
+        rice. Moving those would put meat in the salad row."""
+        by_item = chn.set_index(chn["item"].astype(str).str.strip().str.lower())
+        for dish, course in (("chicken_kuzhambu", "nonveg_main"),
+                             ("fish_kuzhambu", "nonveg_main"),
+                             ("kozhi_kuzhambu", "nonveg_main"),
+                             ("kolambu_sadam", "rice"),
+                             ("vatha_kuzhambu_rice", "rice"),
+                             ("mor_kolambu_vada", "starter")):
+            assert by_item.at[dish, "course_type"] == course, dish
+
+    def test_other_cities_are_untouched(self):
+        """Chennai only — Bangalore's clients serve theirs as gravies, and no
+        Bangalore client has asked for a kuzhambu salad."""
+        import pandas as pd
+        blr = pd.read_excel(CITY_ITEMS_DIR / "bangalore.xlsx")
+        blr.columns = [c.strip() for c in blr.columns]
+        names = blr["item"].astype(str).str.strip().str.lower()
+        course = blr["course_type"].astype(str).str.strip().str.lower()
+        kuzhambu = names.str.contains("kuzhambu", regex=False)
+        assert int((kuzhambu & course.eq("salad")).sum()) == 0
+
+
+class TestOnlyTheClientWhoAskedGetsIt:
+    """The re-file makes kuzhambus available to EVERY Chennai salad slot, and
+    only TCL asked for them.
+
+    Left unscoped, five other counters served a sour gravy in their salad row on
+    1-3 days of 5 apiece. So the city ruleset carries the default and the one
+    client that stated the rule disables it — the pair is what makes "only in
+    the mentioned clients" true, and neither half works alone.
+    """
+
+    @staticmethod
+    def _city_rules():
+        import json
+        return json.loads(
+            (CITY_RULES_DIR / "chennai.json").read_text(encoding="utf-8"))
+
+    def test_the_city_default_keeps_kuzhambu_out_of_the_salad(self):
+        rule = next(r for r in self._city_rules()["rules"]
+                    if r.get("name") == "salad_is_not_a_kuzhambu")
+        assert rule["base_slot"] == "salad"
+        assert rule["max"] == 0
+
+    def test_the_ban_can_never_empty_the_salad_slot(self, chn):
+        """A hard `max: 0` is only safe while the slot has other options. It
+        degrades rather than fails if it ever does not, but a starved salad
+        would be a real bug, so the margin is asserted."""
+        salads = _course(chn, "salad")
+        names = salads["item"].astype(str).str.strip().str.lower()
+        assert int((~names.isin(KUZHAMBU_TO_SALAD)).sum()) >= 25
+
+    def test_tcl_is_the_only_client_that_disables_it(self):
+        import json
+        offenders = []
+        for path in sorted(CLIENT_DIR.glob("*.json")):
+            for client, blk in json.loads(
+                    path.read_text(encoding="utf-8")).items():
+                if client.startswith("_") or not isinstance(blk, dict):
+                    continue
+                blocks = [blk] + [b for b in (blk.get("counters") or {}).values()
+                                  if isinstance(b, dict)]
+                for b in blocks:
+                    if "salad_is_not_a_kuzhambu" in (b.get("disable") or []):
+                        offenders.append(client)
+        assert offenders == ["TCL"], offenders
+
+    def test_tcl_still_mandates_one(self):
+        """The other half: with the city rule disabled, something must still put
+        a kuzhambu in the slot."""
+        import json
+        tcl = json.loads(
+            (CLIENT_DIR / "tcl.json").read_text(encoding="utf-8"))["TCL"]
+        rule = next(r for r in tcl["rules"]
+                    if r.get("name") == "tcl_salad_is_a_kuzhambu")
+        assert rule["base_slot"] == "salad"
+        assert rule["components"][0]["count"] == 1
 
 
 class TestWelcomeDrinks:
