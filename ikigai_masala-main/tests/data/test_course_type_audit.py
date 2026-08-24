@@ -191,7 +191,12 @@ class TestUnservableRowsAreCaughtStructurally:
         d = _read('chennai').set_index('item')
         prot = str(d.at['urandai_kuzhambu', 'primary_protein']).strip().lower()
         assert prot in ('', 'nan', 'none'), prot
-        assert d.at['urandai_kuzhambu', 'course_type'] == 'veg_gravy'
+        # NOT pinned to `veg_gravy` any more: the client later categorised every
+        # kuzhambu as a `salad` (scripts/chennai_client_pools.py), and which veg
+        # course it sits in is their call. What this test guards is that the row
+        # was never made NON-VEG to silence the structural checker, so the
+        # invariant is the one that cannot be re-decided.
+        assert d.at['urandai_kuzhambu', 'course_type'] != 'nonveg_main'
 
 
 class TestDrinksAreNotGravies:

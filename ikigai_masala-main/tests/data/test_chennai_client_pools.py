@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from scripts.chennai_client_pools import (
+    KUZHAMBU_TO_SALAD,
     KOOTU_FROM_BANGALORE, KOOTU_TO_DAL, LIQUID_SWEETS, NEW_DISHES,
     VEG_BIRYANIS, WELCOME_DRINKS, main,
 )
@@ -81,7 +82,82 @@ class TestKootuIsTheDal:
         assert len(ingredients) >= 6, sorted(ingredients)
 
     def test_the_veg_gravy_pool_survived_losing_them(self, chn):
-        assert len(_course(chn, "veg_gravy")) >= 45
+        """It has now lost dishes TWICE — eight kootus to `dal` and twelve
+        kuzhambus to `salad` — so the floor is stated as what a daily gravy
+        actually needs rather than as a snapshot of the day it was written.
+
+        World Bank and ICON both serve one every day. Under the 20-day item
+        cooldown a strict count-1 slot needs roughly one distinct dish per
+        working day in the window (~15) plus the week being planned (~5), so ~20
+        is the real threshold; 25 leaves headroom for the theme filter narrowing
+        a day. Anything at or below 20 would starve the slot in week two, which
+        is the failure this guards.
+        """
+        assert len(_course(chn, "veg_gravy")) >= 25
+
+
+class TestKuzhambuIsTheSalad:
+    """The client's own categorisation: "kuzhambus are the dish which category
+    should be in salad not veg gravy".
+
+    TCL states it as a rule ("in salad need to give only KUZHAMBU item") and its
+    sample week proves the two are DIFFERENT rows rather than one mislabelled —
+    Sunday's stated menu lists "veg gravy" and "salad" separately, and the grid
+    serves VEG KURMA beside KARA KUZHAMBU. Filed as gravies, the salad pool held
+    none and the rule was unsatisfiable.
+    """
+
+    def test_every_named_kuzhambu_is_a_salad(self, chn):
+        by_item = chn.set_index(chn["item"].astype(str).str.strip().str.lower())
+        for dish in KUZHAMBU_TO_SALAD:
+            assert by_item.at[dish, "course_type"] == "salad", dish
+
+    def test_the_course_mirror_flag_followed(self, chn):
+        """`course_type` picks the slot pool, but a flag-driven rule reads the
+        `is_*` columns — leaving those behind is how a re-filed dish stays a
+        gravy to half the engine (the same trap `align_kootu_flags` fixes).
+
+        Only `is_salad` is asserted because the 134-column schema carries no
+        `is_veg_gravy` at all: both this re-file and the kootu one clear it
+        defensively, and in both the clear is a no-op today. Asserting its
+        absence here would pin a column that does not exist.
+        """
+        moved = chn[chn["item"].astype(str).str.strip().str.lower()
+                    .isin(KUZHAMBU_TO_SALAD)]
+        assert _flag(moved, "is_salad").all()
+        assert "is_veg_gravy" not in chn.columns
+
+    def test_the_salad_pool_can_carry_a_daily_kuzhambu(self, chn):
+        """TCL serves one every weekday and Sunday. Twelve distinct against a
+        20-day cooldown is tight but sufficient; fewer would repeat inside a
+        plan, which `unique_items` forbids outright."""
+        salads = _course(chn, "salad")
+        names = salads["item"].astype(str).str.strip().str.lower()
+        assert int(names.isin(KUZHAMBU_TO_SALAD).sum()) >= 12
+
+    def test_the_non_veg_and_rice_kuzhambus_did_not_move(self, chn):
+        """The word names the gravy they are built from, not the dish's own
+        course — a chicken kuzhambu is a non-veg main and a kolambu sadam is a
+        rice. Moving those would put meat in the salad row."""
+        by_item = chn.set_index(chn["item"].astype(str).str.strip().str.lower())
+        for dish, course in (("chicken_kuzhambu", "nonveg_main"),
+                             ("fish_kuzhambu", "nonveg_main"),
+                             ("kozhi_kuzhambu", "nonveg_main"),
+                             ("kolambu_sadam", "rice"),
+                             ("vatha_kuzhambu_rice", "rice"),
+                             ("mor_kolambu_vada", "starter")):
+            assert by_item.at[dish, "course_type"] == course, dish
+
+    def test_other_cities_are_untouched(self):
+        """Chennai only — Bangalore's clients serve theirs as gravies, and no
+        Bangalore client has asked for a kuzhambu salad."""
+        import pandas as pd
+        blr = pd.read_excel(CITY_ITEMS_DIR / "bangalore.xlsx")
+        blr.columns = [c.strip() for c in blr.columns]
+        names = blr["item"].astype(str).str.strip().str.lower()
+        course = blr["course_type"].astype(str).str.strip().str.lower()
+        kuzhambu = names.str.contains("kuzhambu", regex=False)
+        assert int((kuzhambu & course.eq("salad")).sum()) == 0
 
 
 class TestWelcomeDrinks:
