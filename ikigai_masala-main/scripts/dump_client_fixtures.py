@@ -13,7 +13,10 @@ the refresh is a command:
     python scripts/dump_client_fixtures.py --clients clients_rows.csv \\
         [--app-settings app_settings_rows.csv]
 
-Both CSVs are the Supabase table exports. `counters`, `source_pools`,
+Either Supabase export format works and the file says which it is: a CSV, or the
+`INSERT INTO ... VALUES` SQL the UI also offers (which is what the exports now
+arrive as — and which cannot be split on commas, since every JSONB column is a
+string literal full of them). `counters`, `source_pools`,
 `working_days` and `shared_categories` are JSON columns; a blank cell means the
 column is unset, which is not the same as `[]` and is preserved as such.
 
@@ -24,7 +27,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -80,29 +85,90 @@ from typing import Any, Dict, List
 '''
 
 
+def _sql_rows(text: str) -> List[Dict[str, str]]:
+    """Rows out of a Supabase ``INSERT INTO ... VALUES (...), (...)`` export.
+
+    Supabase's UI offers SQL as well as CSV and the SQL is what the exports
+    arrive as. It cannot be split on commas: every JSONB column is a SQL string
+    literal full of them, and an apostrophe inside a dish name is doubled. So
+    this walks the text tracking whether it is inside a quoted literal — the
+    same shape a CSV reader has, one level down.
+    """
+    m = re.search(r'INSERT\s+INTO\s+\S+\s*\(([^)]*)\)\s*VALUES\s*', text,
+                  re.IGNORECASE | re.S)
+    if not m:
+        raise SystemExit("no INSERT ... VALUES header found in the SQL export")
+    cols = [c.strip().strip('"') for c in m.group(1).split(",")]
+    body, i, n, rows = text[m.end():], 0, len(text) - m.end(), []
+    while i < n:
+        while i < n and body[i] in " \t\r\n,;":
+            i += 1
+        if i >= n or body[i] != "(":
+            break
+        i += 1
+        vals, cur, in_str = [], [], False
+        while i < n:
+            ch = body[i]
+            if in_str:
+                if ch != "'":
+                    cur.append(ch)
+                    i += 1
+                    continue
+                if i + 1 < n and body[i + 1] == "'":       # escaped apostrophe
+                    cur.append("'")
+                    i += 2
+                    continue
+                in_str = False
+                i += 1
+                continue
+            if ch == "'":
+                in_str = True
+                i += 1
+                continue
+            if ch in ",)":
+                vals.append("".join(cur).strip())
+                cur = []
+                i += 1
+                if ch == ")":
+                    break
+                continue
+            cur.append(ch)
+            i += 1
+        rows.append({c: ("" if v.lower() == "null" else v)
+                     for c, v in zip(cols, vals)})
+    return rows
+
+
+def _rows_from(path: Path) -> List[Dict[str, str]]:
+    """CSV or SQL, decided by the file's own first non-blank line."""
+    text = path.read_text()
+    if re.match(r'\s*INSERT\s+INTO', text, re.IGNORECASE):
+        return _sql_rows(text)
+    return list(csv.DictReader(io.StringIO(text)))
+
+
 def _load_clients(path: Path) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    with path.open(newline="") as fh:
-        for raw in csv.DictReader(fh):
-            row: Dict[str, Any] = {
-                "name": raw["name"].strip(),
-                "version": int(raw.get("version") or 1),
-            }
-            city = (raw.get("city") or "").strip()
-            row["city"] = city
-            for col in _BOOL_COLS:
-                val = (raw.get(col) or "").strip().lower()
-                row[col] = val in ("true", "t", "1", "yes")
-            cooldown = (raw.get("item_cooldown_days") or "").strip()
-            row["item_cooldown_days"] = int(cooldown) if cooldown else None
-            for col in _JSON_COLS:
-                blob = (raw.get(col) or "").strip()
-                # A blank cell is an UNSET column, which the loader treats
-                # differently from an empty list (source_pools=None means "the
-                # whole city list"), so the distinction is preserved.
-                row[col] = json.loads(blob) if blob else None
-            row.update(OVERRIDES.get(row["name"], {}))
-            out.append(row)
+    for raw in _rows_from(path):
+        row: Dict[str, Any] = {
+            "name": raw["name"].strip(),
+            "version": int(raw.get("version") or 1),
+        }
+        city = (raw.get("city") or "").strip()
+        row["city"] = city
+        for col in _BOOL_COLS:
+            val = (raw.get(col) or "").strip().lower()
+            row[col] = val in ("true", "t", "1", "yes")
+        cooldown = (raw.get("item_cooldown_days") or "").strip()
+        row["item_cooldown_days"] = int(cooldown) if cooldown else None
+        for col in _JSON_COLS:
+            blob = (raw.get(col) or "").strip()
+            # A blank cell is an UNSET column, which the loader treats
+            # differently from an empty list (source_pools=None means "the
+            # whole city list"), so the distinction is preserved.
+            row[col] = json.loads(blob) if blob else None
+        row.update(OVERRIDES.get(row["name"], {}))
+        out.append(row)
     out.sort(key=lambda r: r["name"].lower())
     return out
 
@@ -167,7 +233,7 @@ def render(clients: List[Dict[str, Any]],
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clients", required=True, type=Path,
-                    help="clients table CSV export")
+                    help="clients table export — CSV or INSERT-INTO SQL")
     ap.add_argument("--app-settings", type=Path, default=None,
                     help="app_settings table CSV export")
     ap.add_argument("--dry-run", action="store_true")

@@ -197,7 +197,7 @@ class TestUnservableRowsAreCaughtStructurally:
 class TestDrinksAreNotGravies:
     def test_plain_buttermilks_are_welcome_drinks(self):
         d = _read('bangalore').set_index('item')
-        for item in ('butter_milk', 'masala_butter_milk', 'boondi_butter_milk'):
+        for item in ('buttermilk', 'masala_buttermilk', 'boondi_buttermilk'):
             assert d.at[item, 'course_type'] == 'welcome_drink', item
 
     def test_majjige_huli_is_still_a_gravy(self):
@@ -231,11 +231,16 @@ class TestTheThreeCitySheetsAgree:
         master = subs('bangalore')
         assert subs('pune') <= master, sorted(subs('pune') - master)
         chennai_only = subs('chennai') - master
-        # Only the seafood + sweet-pongal buckets this work introduced, which
-        # Bangalore cannot share because it has zero fish and no sweet pongal.
+        # The seafood + sweet-pongal buckets this work introduced, which
+        # Bangalore cannot share because it has zero fish and no sweet pongal,
+        # plus `egg_boiled` — `boiled_egg` is a dish World Bank and ICON Chn
+        # name daily and no city list carried, and none of the master's four egg
+        # buckets fits (they are all curries, roasts or omelettes). One row, so
+        # well under the support any flag derivation needs, which is the point:
+        # a new value that implies nothing is the safe kind.
         assert chennai_only == {
             'fish_chinese_dry', 'fish_south_coastal', 'fish_spicy_fry',
-            'sweet_pongal',
+            'sweet_pongal', 'egg_boiled',
         }, sorted(chennai_only)
 
 

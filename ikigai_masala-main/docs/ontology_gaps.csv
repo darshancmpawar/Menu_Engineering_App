@@ -408,8 +408,6 @@ bangalore,bombay_chicken_biryani,nonveg_main,gravy_region,no word its siblings a
 bangalore,boneless_chicken_in_hot_garlic_sauce,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,boneless_chicken_in_hot_garlic_sauce,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,boneless_chicken_in_hot_garlic_sauce,nonveg_main,sub_category,no word its siblings agree about
-bangalore,boondi_butter_milk,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,boondi_butter_milk,welcome_drink,drink_type,no word its siblings agree about
 bangalore,boondi_raitha,curd_side,key_ingredient,no word its siblings agree about
 bangalore,bottle_gourd_sambar,sambar,key_ingredient,no word its siblings agree about
 bangalore,bottlegourd_sambar,sambar,key_ingredient,no word its siblings agree about
@@ -456,12 +454,12 @@ bangalore,butter_dal_masala,dal,sub_category,no word its siblings agree about
 bangalore,butter_garlic_vegetables,healthy_rice,flavoured_rice_region,no word its siblings agree about
 bangalore,butter_garlic_vegetables,healthy_rice,key_ingredient,no word its siblings agree about
 bangalore,butter_garlic_vegetables,healthy_rice,sub_category,no word its siblings agree about
-bangalore,butter_milk_rasam,rasam,key_ingredient,no word its siblings agree about
-bangalore,butter_milk_rasam,rasam,sub_category,no word its siblings agree about
 bangalore,butter_peri_peri_baby_potato,veg_dry,sub_category,no word its siblings agree about
 bangalore,butter_scotch_ice_cream,dessert,key_ingredient,no word its siblings agree about
 bangalore,butter_scotch_ice_cream,dessert,sub_category,no word its siblings agree about
 bangalore,butter_wheat_paratha,bread,sub_category,no word its siblings agree about
+bangalore,buttermilk_rasam,rasam,key_ingredient,no word its siblings agree about
+bangalore,buttermilk_rasam,rasam,sub_category,no word its siblings agree about
 bangalore,c,bread,key_ingredient,no word its siblings agree about
 bangalore,c,bread,sub_category,no word its siblings agree about
 bangalore,cabbage_battani_masala,veg_dry,key_ingredient,no word its siblings agree about
@@ -1932,8 +1930,6 @@ bangalore,kerala_vegetable_stew,veg_gravy,gravy_region,no word its siblings agre
 bangalore,kerala_vegetable_stew,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,kerala_vegetable_stew,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,kerala_vegetable_stew,veg_gravy,sub_category,no word its siblings agree about
-bangalore,kesar_badam_milk,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,kesar_badam_milk,welcome_drink,drink_type,no word its siblings agree about
 bangalore,kesar_badam_milk,welcome_drink,key_ingredient,no word its siblings agree about
 bangalore,kesar_doodh_peda,dessert,key_ingredient,no word its siblings agree about
 bangalore,kiwi_mojito,welcome_drink,drink_rule_group,no word its siblings agree about
@@ -2257,8 +2253,8 @@ bangalore,mango_shikanji,welcome_drink,key_ingredient,no word its siblings agree
 bangalore,mango_shikanji,welcome_drink,sub_category,no word its siblings agree about
 bangalore,masala_adai_dosa_with_ginger_chutney,bread,sub_category,no word its siblings agree about
 bangalore,masala_akki_roti_with_red_chutney,bread,sub_category,no word its siblings agree about
-bangalore,masala_butter_milk,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,masala_butter_milk,welcome_drink,drink_type,no word its siblings agree about
+bangalore,masala_chaas,welcome_drink,drink_rule_group,no word its siblings agree about
+bangalore,masala_chaas,welcome_drink,drink_type,no word its siblings agree about
 bangalore,masala_dal_khichdi,rice,key_ingredient,no word its siblings agree about
 bangalore,masala_dal_khichdi,rice,sub_category,no word its siblings agree about
 bangalore,masala_lemon_soda,welcome_drink,drink_rule_group,no word its siblings agree about
@@ -2854,8 +2850,6 @@ bangalore,panner_kofta_curry,veg_gravy,is_* flags,no attribute or word its sibli
 bangalore,panner_kofta_curry,veg_gravy,key_ingredient,no word its siblings agree about
 bangalore,panner_kofta_curry,veg_gravy,sub_category,no word its siblings agree about
 bangalore,panner_manchurian,veg_dry,key_ingredient,no word its siblings agree about
-bangalore,papaya_milk_shak,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,papaya_milk_shak,welcome_drink,drink_type,no word its siblings agree about
 bangalore,papaya_milk_shak,welcome_drink,key_ingredient,no word its siblings agree about
 bangalore,parsley_potato,healthy_rice,flavoured_rice_region,no word its siblings agree about
 bangalore,parsley_potato,healthy_rice,key_ingredient,no word its siblings agree about
@@ -3224,10 +3218,7 @@ bangalore,roasted_tomato_soup,soup,sub_category,no word its siblings agree about
 bangalore,rogan_e_murgh,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,rogan_e_murgh,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,rogan_e_murgh,nonveg_main,sub_category,no word its siblings agree about
-bangalore,rooh_afza_milk,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,rooh_afza_milk,welcome_drink,drink_type,no word its siblings agree about
 bangalore,rooh_afza_milk,welcome_drink,key_ingredient,no word its siblings agree about
-bangalore,rose_phirni,dessert,dessert_form,no word its siblings agree about
 bangalore,rose_phirni,dessert,key_ingredient,no word its siblings agree about
 bangalore,royal_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,rumali_roti,bread,key_ingredient,no word its siblings agree about
@@ -3483,9 +3474,7 @@ bangalore,sweet_potato_kheer,dessert,key_ingredient,no word its siblings agree a
 bangalore,swiss_roll,dessert,dessert_form,no word its siblings agree about
 bangalore,swiss_roll,dessert,key_ingredient,no word its siblings agree about
 bangalore,swiss_roll,dessert,sub_category,no word its siblings agree about
-bangalore,tadka_butter_milk,welcome_drink,drink_rule_group,no word its siblings agree about
-bangalore,tadka_butter_milk,welcome_drink,drink_type,no word its siblings agree about
-bangalore,tadka_butter_milk,welcome_drink,key_ingredient,no word its siblings agree about
+bangalore,tadka_buttermilk,welcome_drink,key_ingredient,no word its siblings agree about
 bangalore,tadka_lassi,welcome_drink,key_ingredient,no word its siblings agree about
 bangalore,tamarind_millet_rice,healthy_rice,key_ingredient,no word its siblings agree about
 bangalore,tamarind_millet_rice,healthy_rice,sub_category,no word its siblings agree about
@@ -3969,14 +3958,20 @@ chennai,bbq_chicken,nonveg_main,gravy_region,no word its siblings agree about
 chennai,bbq_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 chennai,beetroot_brown_rice,healthy_rice,key_ingredient,no word its siblings agree about
 chennai,beetroot_brown_rice,healthy_rice,sub_category,no word its siblings agree about
+chennai,beetroot_kootu,dal,dal_region,no word its siblings agree about
 chennai,beetroot_tikki,starter,key_ingredient,no word its siblings agree about
 chennai,beetroot_tikki,starter,sub_category,no word its siblings agree about
+chennai,bhindi_kootu,dal,dal_region,no word its siblings agree about
 chennai,black_sundal,salad,key_ingredient,no word its siblings agree about
+chennai,boiled_egg,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+chennai,bone_salna,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+chennai,bottle_gourd_kootu,dal,dal_region,no word its siblings agree about
 chennai,bread_biryani,rice,key_ingredient,no word its siblings agree about
 chennai,bread_biryani,rice,sub_category,no word its siblings agree about
 chennai,butter_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 chennai,butter_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 chennai,butter_garlic_dosa,bread,sub_category,no word its siblings agree about
+chennai,cabbage_kootu,dal,dal_region,no word its siblings agree about
 chennai,carrot_dosa,bread,key_ingredient,no word its siblings agree about
 chennai,carrot_dosa,bread,sub_category,no word its siblings agree about
 chennai,carrot_kheer,dessert,key_ingredient,no word its siblings agree about
@@ -4048,6 +4043,8 @@ chennai,chilli_idli,bread,key_ingredient,no word its siblings agree about
 chennai,chola_poori,bread,key_ingredient,no word its siblings agree about
 chennai,chola_poori,bread,sub_category,no word its siblings agree about
 chennai,chole_rice,rice,sub_category,no word its siblings agree about
+chennai,chow_chow_kootu,dal,dal_region,no word its siblings agree about
+chennai,chow_peas_kootu,dal,dal_region,no word its siblings agree about
 chennai,coconut_rava_ladoo,dessert,sub_category,no word its siblings agree about
 chennai,coriander_chapati,bread,sub_category,no word its siblings agree about
 chennai,coriander_millet_rice,healthy_rice,key_ingredient,no word its siblings agree about
@@ -4065,6 +4062,7 @@ chennai,dahi_kachori,starter,sub_category,no word its siblings agree about
 chennai,dahi_samosa,starter,key_ingredient,no word its siblings agree about
 chennai,dahi_sev_puri,starter,key_ingredient,no word its siblings agree about
 chennai,dahi_sev_puri,starter,sub_category,no word its siblings agree about
+chennai,dal_payasam,dessert,key_ingredient,no word its siblings agree about
 chennai,dal_rice,rice,key_ingredient,no word its siblings agree about
 chennai,dal_rice,rice,sub_category,no word its siblings agree about
 chennai,dal_tadka_with_butter,dal,key_ingredient,no word its siblings agree about
@@ -4161,9 +4159,11 @@ chennai,kal_egg_dosa,nonveg_main,sub_category,no word its siblings agree about
 chennai,kambu_koozh,bread,key_ingredient,no word its siblings agree about
 chennai,kambu_koozh,bread,sub_category,no word its siblings agree about
 chennai,karaikudi_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+chennai,karamani_brinjal_kootu,dal,dal_region,no word its siblings agree about
 chennai,karamani_sundal,salad,key_ingredient,no word its siblings agree about
 chennai,karuvepillai_dosa,bread,key_ingredient,no word its siblings agree about
 chennai,karuvepillai_dosa,bread,sub_category,no word its siblings agree about
+chennai,keerai_kootu,dal,dal_region,no word its siblings agree about
 chennai,kelavargu_koozh,bread,key_ingredient,no word its siblings agree about
 chennai,kelavargu_koozh,bread,sub_category,no word its siblings agree about
 chennai,kerala_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -4232,6 +4232,7 @@ chennai,pani_puri,starter,sub_category,no word its siblings agree about
 chennai,pazham_pori_baji,starter,key_ingredient,no word its siblings agree about
 chennai,pazham_pori_baji,starter,sub_category,no word its siblings agree about
 chennai,peanut_sundal,salad,key_ingredient,no word its siblings agree about
+chennai,peerkangai_kootu,dal,dal_region,no word its siblings agree about
 chennai,penne_alfredo,rice,flavoured_rice_region,no word its siblings agree about
 chennai,pepper_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 chennai,pepper_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -4251,6 +4252,8 @@ chennai,podi_rice,rice,key_ingredient,no word its siblings agree about
 chennai,podi_rice,rice,sub_category,no word its siblings agree about
 chennai,podi_uthappam,bread,key_ingredient,no word its siblings agree about
 chennai,podi_uthappam,bread,sub_category,no word its siblings agree about
+chennai,poosanikai_kootu,dal,dal_region,no word its siblings agree about
+chennai,poriyal_kootu,dal,dal_region,no word its siblings agree about
 chennai,prawn_thokku,nonveg_main,gravy_region,no word its siblings agree about
 chennai,prawn_thokku,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 chennai,prawn_thokku,nonveg_main,sub_category,no word its siblings agree about
@@ -4277,6 +4280,7 @@ chennai,sev_potato_puri,starter,key_ingredient,no word its siblings agree about
 chennai,sev_potato_puri,starter,sub_category,no word its siblings agree about
 chennai,small_onion_podi_uthappam,bread,key_ingredient,no word its siblings agree about
 chennai,small_onion_podi_uthappam,bread,sub_category,no word its siblings agree about
+chennai,snake_gourd_kootu,dal,dal_region,no word its siblings agree about
 chennai,soyabean_biryani,rice,key_ingredient,no word its siblings agree about
 chennai,soyabean_biryani,rice,sub_category,no word its siblings agree about
 chennai,spinach_brown_rice,healthy_rice,key_ingredient,no word its siblings agree about
@@ -4308,6 +4312,8 @@ chennai,tri_colour_uttappam,bread,sub_category,no word its siblings agree about
 chennai,valaippoo_vada,starter,key_ingredient,no word its siblings agree about
 chennai,vatha_kuzhambu_rice,rice,key_ingredient,no word its siblings agree about
 chennai,vatha_kuzhambu_rice,rice,sub_category,no word its siblings agree about
+chennai,vazhathandu_kootu,dal,dal_region,no word its siblings agree about
+chennai,veg_kootu,dal,dal_region,no word its siblings agree about
 chennai,veg_manchurian_dry,starter,key_ingredient,no word its siblings agree about
 chennai,veg_manchurian_dry,starter,sub_category,no word its siblings agree about
 chennai,veg_pasta,veg_gravy,gravy_region,no word its siblings agree about
@@ -4688,7 +4694,6 @@ ncr,kerala_chicken_stew,nonveg_main,nonveg_biryani_region,no word its siblings a
 ncr,kerla_chicken,nonveg_main,gravy_region,no word its siblings agree about
 ncr,kerla_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,kesri_petha,dessert,dessert_form,no word its siblings agree about
-ncr,kesri_phirni,dessert,dessert_form,no word its siblings agree about
 ncr,khatta_meetha_petha,dessert,dessert_form,no word its siblings agree about
 ncr,kheer,dessert,dessert_form,no word its siblings agree about
 ncr,khoya_barfi,dessert,dessert_form,no word its siblings agree about
@@ -4745,6 +4750,8 @@ ncr,marble_cake_slice,dessert,dessert_form,no word its siblings agree about
 ncr,march,veg_gravy,gravy_region,no word its siblings agree about
 ncr,march_26_april,veg_gravy,gravy_region,no word its siblings agree about
 ncr,masala_chaap_dhabha_style,rice,flavoured_rice_region,no word its siblings agree about
+ncr,masala_chaas,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,masala_chaas,welcome_drink,drink_type,no word its siblings agree about
 ncr,matar_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,mattar_paneer,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mawa_kachori,veg_gravy,gravy_region,no word its siblings agree about
@@ -4828,7 +4835,6 @@ ncr,peshawari_chole,dal,dal_region,no word its siblings agree about
 ncr,petha,dessert,dessert_form,no word its siblings agree about
 ncr,petha_khatta_meetha,dessert,dessert_form,no word its siblings agree about
 ncr,petha_masala,dessert,dessert_form,no word its siblings agree about
-ncr,phirni_cold,dessert,dessert_form,no word its siblings agree about
 ncr,pickel_sachet,veg_gravy,gravy_region,no word its siblings agree about
 ncr,pickle_mouth_freshner,veg_gravy,gravy_region,no word its siblings agree about
 ncr,pineapple,veg_gravy,gravy_region,no word its siblings agree about
@@ -4928,7 +4934,6 @@ ncr,tawa_mushroom,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tawa_vegetables,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tejpatta_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,thandai,veg_gravy,gravy_region,no word its siblings agree about
-ncr,thandi_phirni,dessert,dessert_form,no word its siblings agree about
 ncr,thursday_6th,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tiranga_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,tomato_chapati,bread,sub_category,no word its siblings agree about

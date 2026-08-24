@@ -116,6 +116,13 @@ LEGITIMATE_PAIRS = {
 
 #: ``(city, item)`` -> why this specific row is correct despite the mismatch.
 ADJUDICATED = {
+    # A rasam soured with buttermilk instead of tamarind — a rasam, and the
+    # Kannada/Tamil sibling of `mor_rasam`, which the token list already misses
+    # because `mor` is not a drink word. Only visible once
+    # `canonical_dish_spellings.py` folded `butter_milk` to `buttermilk`, which
+    # is itself a drink token.
+    ('bangalore', 'buttermilk_rasam'):
+        'a rasam soured with buttermilk, not a drink',
     ('bangalore', 'sambar_rice'):
         'a rice dish named for its sambar, not a sambar',
     ('chennai', 'sambar_rice'): 'same',

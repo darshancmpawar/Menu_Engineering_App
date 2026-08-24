@@ -30,6 +30,7 @@ attachments and would have been lost.
 | `NCR_menu_items.xlsx` | NCR | pre-mapped item list (already in master schema) for 8 NCR clients, with its own `Mapping_Log` / `Review_Required` / `Data_Quality_Log` sheets. **Its `ACCEPT_REVIEW` fuzzy matches are the provenance for `scripts/ncr_fuzzy_unmerge.py`** — the reversal cites the exact merges it undoes | `city_items/ncr.xlsx`, `docs/ncr_client_logic.md` |
 | `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `scripts/import_booking_menu.py` |
 | `corning_chakan_pune_menu.xlsx` | Pune | Corning Chakan's nine weekly sheets, one column per day, identical row layout on every sheet. **The first client menu for a city other than Bangalore or Chennai**, and the first Maharashtrian list. Lunch and dinner only; the salad block is a salad BAR whose components are ingredients, and one sheet carries an unlabelled Independence Day menu below the grid that is read by dish name rather than position | `scripts/import_corning_pune_menu.py`, `scripts/marathi_ingredient_names.py` |
+| `chennai_client_structure.xlsx` | Chennai | **four clients' rules in their own words**, on `Sheet1`, plus a sample week per client on its own sheet — a different kind of source from Toast Tab's service history, since these are stated rather than inferred. TCL, Gartner, World Bank and ICON Chn. RNTBCI is listed with nothing beside it and an empty sheet: on hold | `docs/chennai_client_logic.md`, `configs/clients/{tcl,gartner,world_bank,icon_chn}.json`, `scripts/chennai_client_pools.py` |
 | `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `scripts/import_stripe_menu.py` |
 
 ## Adding a city
@@ -103,11 +104,22 @@ attachments and would have been lost.
     imports, the re-files, the flag corrections, the ingredient dictionary and
     the colours to have happened first. It runs to a fixed point internally; a
     second invocation is a no-op.
-13. `scripts/drop_dead_columns.py` — schema only, so order does not matter
-14. `scripts/build_pool_token_map.py`
+13. `scripts/definitional_flags.py` — **after** `complete_ontology.py`, and the
+    only thing in the chain that CLEARS a flag rather than filling one. That
+    pass's token vote is what put `is_liquid_dessert` on 55 NCR pethas, laddus
+    and cakes; both flags it owns are in that script's `OWNED_ELSEWHERE`, so the
+    chain converges whichever order the two actually run in — the ordering here
+    is for readability, not correctness.
+14. `scripts/drop_dead_columns.py` — schema only, so order does not matter
+15. `scripts/build_pool_token_map.py`
 
-Steps 3, 7, 8, 8b, 10 and 11 are order-sensitive for the reasons their docstrings
-give.
+`scripts/chennai_client_pools.py` and `scripts/chennai_cuisine_corrections.py`
+sit with the per-city corrections (step 5).
+It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
+sweets four clients' stated rules asked more of than the list held.
+
+Steps 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
+docstrings give.
 
 The whole chain is **convergent**: run it twice and the second pass reports
 "already correct" everywhere. That is the check worth doing after any re-import,

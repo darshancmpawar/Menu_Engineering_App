@@ -198,15 +198,22 @@ class TestPerCityCaches:
 
     def test_filtered_cache_key_includes_the_city(self, fake_supabase):
         """The F5 pool cache used to be keyed by pool tokens alone, which would
-        hand a Pune client Bangalore's `common` pool."""
+        hand a Pune client Bangalore's `common` pool.
+
+        Asserted on the KEY rather than by populating two entries, because
+        Pune is now the only city that narrows at all — Bangalore, Chennai and
+        NCR are in `FULL_POOL_CITIES` and never reach this cache, and Hyderabad
+        resolves to Bangalore's workbook. A count-based test would quietly stop
+        asserting anything the next time a city joins that set.
+        """
         import api.app as api_app
+        from src.ontology.paths import city_excel_path
         api_app.reset_caches()
-        # Two cities that BOTH narrow: Bangalore is in FULL_POOL_CITIES now, so
-        # it returns the whole list without ever populating the filtered cache,
-        # which would make this assert nothing about the key.
         api_app._get_client_loader().set_client_city('Rippling', 'Pune')
         pune_df, _ = api_app._menu_data_for_client('Rippling')
-        api_app._get_client_loader().set_client_city('Rippling', 'Chennai')
-        chn_df, _ = api_app._menu_data_for_client('Rippling')
-        assert len(pune_df) != len(chn_df)
-        assert api_app._ontology.cache_sizes()['filtered'] == 2
+        assert len(pune_df)
+        keys = list(api_app._ontology._filtered_by_path_and_pools)
+        assert len(keys) == 1
+        path, tokens = keys[0]
+        assert path == city_excel_path('Pune')
+        assert 'common' in tokens

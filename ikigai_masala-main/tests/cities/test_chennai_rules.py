@@ -60,15 +60,29 @@ class TestOntology:
         for cat in declared:
             assert len(chennai_pools.get(cat, [])) > 0, f'{cat} is empty'
 
-    def test_chennai_has_no_welcome_drinks(self, chennai_df):
-        """The reason chennai.json is standalone rather than extending Bangalore:
-        every drink rule Bangalore ships would be inert here."""
-        assert 'welcome_drink' not in set(chennai_df['course_type'])
-        assert int(pd.to_numeric(
-            chennai_df['is_welcome_drink'], errors='coerce').fillna(0).sum()) == 0
+    def test_chennai_now_has_welcome_drinks(self, chennai_df):
+        """It used to have NONE — not one row, `is_welcome_drink` zero across the
+        whole list — which is why chennai.json is standalone rather than
+        extending Bangalore: every drink rule Bangalore ships was inert here.
+
+        Four of the new clients declare the slot and three state a buttermilk
+        rule, and an empty pool is not a quiet degradation: TCL went straight to
+        INFEASIBLE with `welcome_drink (0 distinct item(s) for 5 day-slot(s))`.
+        `scripts/chennai_client_pools.py` imports 28, ten of them buttermilks,
+        and the category is declared so an empty pool now fails at build time
+        with the slot named instead of at solve time without.
+        """
+        drinks = chennai_df[chennai_df['course_type'] == 'welcome_drink']
+        assert len(drinks) >= 20, len(drinks)
+        flagged = pd.to_numeric(
+            chennai_df['is_welcome_drink'], errors='coerce').fillna(0)
+        assert int(flagged.sum()) == len(drinks)
+        buttermilk = pd.to_numeric(
+            drinks['is_buttermilk'], errors='coerce').fillna(0)
+        assert int(buttermilk.sum()) >= 8, 'a daily buttermilk needs a family'
         declared = json.load(
             open('data/raw/city_items/ontology_categories.json'))['chennai']
-        assert 'welcome_drink' not in declared
+        assert 'welcome_drink' in declared
 
     def test_chennai_carries_nonveg(self, chennai_df):
         """Unlike Pune (all-veg), so dishes render red and nonveg rules apply."""

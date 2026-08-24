@@ -187,6 +187,18 @@ OWNED_ELSEWHERE = {
     ("is_north_chicken_gravy", "nonveg_main"),
     ("is_south_chicken_gravy", "nonveg_main"),
     ("is_seafood", "nonveg_main"), ("is_fish_dish", "nonveg_main"),
+    # `definitional_flags.py` derives these two from the dish name in both
+    # directions. The token vote here is what put `is_liquid_dessert` on 55 NCR
+    # pethas, laddus and cakes: learned from a dessert list that is mostly
+    # payasams, "sweet" came to imply "liquid". Voting on them again would undo
+    # that clearing on the next chain run, in whichever order the two scripts go.
+    ("is_liquid_dessert", "dessert"), ("is_buttermilk", "welcome_drink"),
+    # Same script, ingredient-in-a-course half. The vote must not touch these
+    # either, and here it is `key_ingredient` rather than the tokens that misleads:
+    # `paneer` is the de-facto default for a Chinese dish, so an attribute
+    # implication would re-flag `thai_green_curry` and `bok_choy` as paneer on the
+    # next chain run — the same value `definitional_flags.py` just cleared.
+    ("is_paneer_gravy", "veg_gravy"), ("is_paneer_fry", "veg_dry"),
 }
 
 #: Derived at the end from what the row actually holds, never learned.

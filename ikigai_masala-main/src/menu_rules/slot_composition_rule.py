@@ -124,40 +124,65 @@ def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
     caller's selector on a day when every item the component could satisfy also
     satisfies the caller. That is exact for the identical-selector case and stays
     correct for a narrower component (e.g. "chicken biryani" forcing "biryani").
+
+    ``base_slot`` may be ``None``, which is how a frequency cap with no slot
+    scope asks the question — and those are the caps most easily contradicted,
+    because they count a match anywhere on the plate. Chennai's
+    ``kootu_twice_weekly`` is slot-less, TCL's ``tcl_dal_is_a_kootu`` mandates a
+    kootu in the dal slot every day, and this returned 0 for the pair (a
+    composition always has a base slot, so ``r.base_slot == None`` matched
+    nothing) — so ``/diagnose`` answered "would_succeed: true" while the solve
+    came back INFEASIBLE with no rule named. With ``None`` the question becomes
+    "does a composition on ANY slot mandate a match on this day", which is what
+    a slot-less cap actually needs to know.
     """
     comps_by_rule = [
         r for r in (peer_rules or [])
-        if isinstance(r, SlotCompositionRule) and r.base_slot == base_slot
+        if isinstance(r, SlotCompositionRule)
+        and (base_slot is None or r.base_slot == base_slot)
     ]
     if not comps_by_rule:
+        return 0
+    slots = ([base_slot] if base_slot is not None
+             else sorted({r.base_slot for r in comps_by_rule if r.base_slot}))
+    # A composition on a slot this counter does not serve mandates nothing. The
+    # single-slot caller checks this before asking; the slot-less form has to
+    # check here, and it matters — ICON Chn declares "the dal is a kootu" at
+    # client level, and its Rice and Roti combo counters have no dal at all.
+    active = ctx.active_base_slots
+    if active is not None:
+        slots = [s for s in slots if s in active]
+    if not slots:
         return 0
 
     forced = 0
     for d in ctx.dates:
-        if (d, base_slot) in (ctx.skip_cells or set()):
-            continue
-        pool = ctx.pools.get(base_slot)
-        if pool is None or not len(pool):
-            continue
         day_type = ctx.day_types.get(d, '')
-        filter_ctx = {
-            'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
-            'pools': ctx.pools, 'slot_num': None,
-        }
-        for rule in (peer_rules or []):
-            pool = rule.pre_filter_pool(pool, d, base_slot, day_type, filter_ctx)
-        if not len(pool):
-            continue
-        rows = [r for _i, r in pool.iterrows()]
         hit = False
-        for rule in comps_by_rule:
-            for matcher, _count in rule.mandated_components(ctx, day_type, d):
-                candidates = [
-                    r for r in rows
-                    if _component_matches(r, matcher)
-                ]
-                if candidates and all(row_matches(r) for r in candidates):
-                    hit = True
+        for slot in slots:
+            if (d, slot) in (ctx.skip_cells or set()):
+                continue
+            pool = ctx.pools.get(slot)
+            if pool is None or not len(pool):
+                continue
+            filter_ctx = {
+                'cfg': ctx.cfg, 'banned_by_date': {}, 'ricebread_ban_day': {},
+                'pools': ctx.pools, 'slot_num': None,
+            }
+            for rule in (peer_rules or []):
+                pool = rule.pre_filter_pool(pool, d, slot, day_type, filter_ctx)
+            if not len(pool):
+                continue
+            rows = [r for _i, r in pool.iterrows()]
+            for rule in comps_by_rule:
+                if rule.base_slot != slot:
+                    continue
+                for matcher, _count in rule.mandated_components(ctx, day_type, d):
+                    candidates = [r for r in rows if _component_matches(r, matcher)]
+                    if candidates and all(row_matches(r) for r in candidates):
+                        hit = True
+                        break
+                if hit:
                     break
             if hit:
                 break

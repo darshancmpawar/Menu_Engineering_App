@@ -60,6 +60,13 @@ def _tok(*variants: str) -> str:
 #: workbook should apply to the next one.
 SPELLING = [
     (_tok("chciken", "chcken", "chiceken", "chikcen", "chickem"), "chicken"),
+    # Booking prints "Masala Buytter Milk". It used to fold onto the ontology's
+    # `masala_butter_milk` by similarity alone; once that row became
+    # `masala_buttermilk` the similarity dropped below the threshold and a
+    # re-import added the typo as a new dish. Correcting the typo here is the
+    # fix, and it runs before the `butter_milk` -> `buttermilk` fold appended
+    # from CANONICAL_SPELLINGS below, so the two chain in the right order.
+    (_tok("buytter"), "butter"),
     (_tok("parataha", "paratah", "paranthaa"), "paratha"),
     (_tok("pomogranate", "pomogranete"), "pomegranate"),
     (_tok("biriyani", "briyani"), "biryani"),
@@ -304,6 +311,18 @@ CANONICAL_SPELLINGS = {
     # (and the majority across the four cities, 41 rows to 36); the attributed
     # row wins each merge, so no classification is lost.
     "chapatti": "chapati",
+    # One word or two. The ontology writes the compound family as one
+    # (`spiced_buttermilk`, `ginger_buttermilk`, 13 rows) and the standalone
+    # drink as two (`butter_milk`, 8 rows), and the split had produced the
+    # duplicate this dict exists to prevent in two cities: Bangalore carries
+    # `masala_buttermilk` AND `masala_butter_milk`, Pune `buttermilk` AND
+    # `butter_milk`. In each pair the one-word row is the attributed master
+    # (`cuisine_family: drink`, `drink_rule_group: buttermilk`) and the two-word
+    # row the mapping pipeline's stub (`north_indian`, red, `fruit_drink`), so
+    # the fold direction is also the direction that keeps the attributes — and
+    # it matches the flag, `is_buttermilk`. Load-bearing: Citrix serves
+    # buttermilk every day, World Bank and ICON Chn daily, TCL twice a week.
+    "butter_milk": "buttermilk",
     # Typos, not transliterations: `malasa_buttermilk` and `tempared_buttermilk`
     # are the only rows carrying either token, and Citrix's welcome drink is
     # buttermilk EVERY day, so these two names go on a printed menu weekly.

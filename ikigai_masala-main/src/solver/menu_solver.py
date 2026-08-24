@@ -660,7 +660,7 @@ class MenuSolver:
             'banned_by_date': self.banned_by_date,
             'ricebread_ban_day': self.ricebread_ban_day,
             'pools': self.pools,
-            'extra_repeatable': self._declared_repeatable(),
+            'extra_repeatable': self._repeatable_declarations(),
             'extra_cooldown_exempt': self._declared_repeatable(
                 'cooldown_exempt_item_flags'),
         }
@@ -831,6 +831,46 @@ class MenuSolver:
             model.Add(sum(picked) <= len(picked) - 1)
         return out
 
+    def _repeatable_declarations(self):
+        """Rule-declared staples, plus the ones the CONFIG declared by pinning.
+
+        A `constant_items` pin that names a real dish narrows that cell's
+        candidates rather than being stamped, so the dish stays visible to every
+        other rule — including ``unique_items``, which forbids a repeat. Pin the
+        same dish into the same slot on every day of the horizon and those two
+        facts contradict each other: World Bank's non-veg station pins a chicken
+        biryani, a boiled egg and a bone salna daily, and each one alone made the
+        counter INFEASIBLE with nothing in the message naming a rule.
+
+        `api.app` already applies this reasoning to a *single-expansion* slot — a
+        daily string there drops the slot from the model and stamps the text,
+        "because the same dish cannot occupy five days unless it is a staple". A
+        multi-expansion slot took the other branch and got the contradiction. The
+        better answer for both is the one the sentence implies: pinning a dish
+        every day IS declaring it a staple, so declare it, and keep it solved so
+        its colour and cuisine still count toward the day's variety.
+
+        Only a dish forced into the same base slot on TWO OR MORE dates counts —
+        a one-day pin (a weekday map, a festival) repeats nothing and must stay
+        under ``unique_items``.
+        """
+        declared = self._declared_repeatable()
+        forced = self.cfg.forced_items or {}
+        seen: Dict[tuple, set] = {}
+        for (d, slot_id), item in forced.items():
+            name = _norm_str(item)
+            if not name:
+                continue
+            seen.setdefault((_base_slot(slot_id), name), set()).add(d)
+        for (base, name), dates in seen.items():
+            if len(dates) < 2:
+                continue
+            # Same shape `repeatable_item_flags()` returns: a PARSED matcher
+            # tuple, not a raw selector dict — `SelectorFrequencyRule._matches`
+            # unpacks `(kind, value)`.
+            declared.setdefault(base, []).append((('item', name), None))
+        return declared
+
     def _declared_repeatable(self, hook: str = 'repeatable_item_flags'):
         """Collect *hook* from every rule that declares one.
 
@@ -891,7 +931,7 @@ class MenuSolver:
             # deliberately repeat a dish (see FixedDailyItemRule). unique_items
             # folds these into its repeatable set, so the rule that creates a
             # repetition and the rule that forbids one cannot disagree.
-            'extra_repeatable': self._declared_repeatable(),
+            'extra_repeatable': self._repeatable_declarations(),
             'recent_sigs': self.recent_sigs,
             'find_cells_fn': _make_find_cells(cells),
             'link_any_fn': _link_any,

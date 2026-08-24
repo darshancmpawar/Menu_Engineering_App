@@ -264,10 +264,20 @@ THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 # also means a client who *does* set `source_pools` keeps the whole list instead
 # of dropping to one site's dishes.
 #
+# Chennai joined for the same reason once its four new clients were wired: 191
+# of its 673 rows sit in eight per-site pools (tata communications · rntbci ·
+# wells fargo · ltm · world bank · icon · accenture · toast tab) while three of
+# those four clients have `source_pools = []`. The effects were concrete and
+# silent — World Bank could not see the 21 rows tagged "World Bank", and TCL,
+# which serves a veg biryani in its first rice slot every day, could reach 4 of
+# Chennai's 14 veg biryanis because the other 10 are tagged to sites. Same
+# argument as Bangalore: these are dishes the same operation cooks in the same
+# city, and ICON's own `source_pools` already names all eight tokens.
+#
 # Deliberately a city-level switch, not a per-client edit: it is reversible in
 # one line and leaves every client row untouched. Remove a city from this set to
 # restore per-client pools.
-FULL_POOL_CITIES: Set[str] = {'bangalore', 'ncr'}
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'ncr'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.

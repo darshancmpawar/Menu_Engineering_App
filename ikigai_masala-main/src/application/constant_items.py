@@ -211,6 +211,25 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
         else:
             target = expansions[-1]
             if key != base:
+                # Clamping an out-of-range index onto the last expansion is a
+                # kindness for ONE pin (Booking.com's `starter__2` on a counter
+                # temporarily configured with one starter still lands). It stops
+                # being a kindness the moment a second pin clamps onto the same
+                # cell: World Bank pins __2, __3 and __4 of a four-dish non-veg
+                # station, and on the two-slot row live today all three collapsed
+                # onto `nonveg_main__2` — three different dishes forced into one
+                # cell, which is INFEASIBLE with nothing in the message pointing
+                # at the cause. A collision is a slot-count mismatch, so drop and
+                # say so rather than build a contradiction.
+                if target in resolved and resolved[target] != spec:
+                    logger.warning(
+                        "Dropping constant_items[%r] for %s: this counter has "
+                        "%d expansion(s) of %r and %r is already pinned. Raise "
+                        "slot_counts[%r] to %s for this pin to apply.",
+                        key, client_name, len(expansions), base, target, base,
+                        key.rsplit('__', 1)[-1],
+                    )
+                    continue
                 logger.warning(
                     "constant_items[%r] for %s: this counter has %d "
                     "expansion(s) of %r, pinning %r instead.",

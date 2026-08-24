@@ -17,7 +17,9 @@ Config::
         "exact": null,       # horizon day-level: exactly N days
         "non_consecutive": false,   # matched days may not be adjacent
         "daily_max": null,   # per-day: at most N matching items in one day
-        "daily_min": null    # per-day: at least N matching items EVERY day
+        "daily_min": null,   # per-day: at least N matching items EVERY day
+        "allowed_day_types": null,     # themes the selector may appear on
+        "forbidden_weekdays": null     # weekdays it may NOT appear on
     }
 
 At least one of ``max``/``min``/``exact``/``daily_max``/``daily_min``/
@@ -26,6 +28,9 @@ cannot appear on consecutive days" — no count, just an adjacency ban).
 
 Selector keys: ``flag`` (column name), ``sub_category``, ``item``,
 ``key_ingredient``, ``primary_protein``, ``course_type``, ``cuisine_family``.
+Combinators: ``any_flag`` (any of these flag columns), ``any_of`` / ``all_of``
+(a list of sub-selectors, OR / AND), ``name_contains`` (substrings of the dish
+NAME).
 
 Counting is day-level for max/min/exact (how many days carry >= 1 match), which
 equals occurrence count for single-per-day slots. ``daily_max`` is an
@@ -62,6 +67,14 @@ _TEXT_COLS = {
     'sub_category': 'sub_category', 'item': 'item',
     'key_ingredient': 'key_ingredient', 'primary_protein': 'primary_protein',
     'course_type': 'course_type', 'cuisine_family': 'cuisine_family',
+}
+#: Both spellings, matching `slot_day_restriction_rule`'s own table — a config
+#: writing "sat" for one rule and "saturday" for the other should not surprise
+#: anyone.
+_WEEKDAY_TOKENS = {
+    'mon': 0, 'monday': 0, 'tue': 1, 'tuesday': 1, 'wed': 2, 'wednesday': 2,
+    'thu': 3, 'thursday': 3, 'fri': 4, 'friday': 4, 'sat': 5, 'saturday': 5,
+    'sun': 6, 'sunday': 6,
 }
 
 
@@ -103,6 +116,22 @@ class SelectorFrequencyRule(BaseMenuRule):
         self.allowed_day_types: Optional[Set[str]] = (
             {str(t).strip().lower() for t in adt} if adt else None
         )
+        # Forbid the selector on named WEEKDAYS. `allowed_day_types` is the
+        # theme-shaped twin and cannot express this: TCL's "no baby corn, paneer
+        # or mushroom on Saturday and Sunday" is about the weekend service, not
+        # about a cuisine, and its weekend days carry no theme of their own.
+        # `slot_day_restriction` is the wrong tool too — that stands a whole slot
+        # down, and the client still wants a gravy on Saturday, just not a paneer
+        # one. Same ban-and-degrade path as `allowed_day_types`.
+        self.forbidden_weekdays: Optional[Set[int]] = None
+        fwd = rule_config.get('forbidden_weekdays')
+        if fwd:
+            days = {
+                _WEEKDAY_TOKENS[str(t).strip().lower()]
+                for t in fwd
+                if str(t).strip().lower() in _WEEKDAY_TOKENS
+            }
+            self.forbidden_weekdays = days or None
 
     @staticmethod
     def _int_or_none(cfg, key):
@@ -138,6 +167,18 @@ class SelectorFrequencyRule(BaseMenuRule):
             parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
             parts = [p for p in parts if p is not None]
             return ('any_of', parts) if parts else None
+        # `all_of` is the conjunction `any_flag` and `any_of` cannot express.
+        # "An egg GRAVY" is two flags — `is_egg_dish` AND `is_nonveg_gravy` —
+        # and neither column alone says it: ICON Chn's Monday egg gravy came
+        # back as a boiled egg under `is_egg_dish`, and `is_nonveg_gravy` alone
+        # is every chicken curry on the list. Sub-selectors nest, so a
+        # conjunction of disjunctions works.
+        if 'all_of' in sel:
+            raw = sel['all_of']
+            raw = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
+            parts = [p for p in parts if p is not None]
+            return ('all_of', parts) if parts else None
         if 'any_flag' in sel:
             flags = sel['any_flag']
             flags = list(flags) if isinstance(flags, (list, tuple)) else [flags]
@@ -160,6 +201,8 @@ class SelectorFrequencyRule(BaseMenuRule):
             return any(int(row.get(f, 0) or 0) == 1 for f in val)
         if kind == 'any_of':
             return any(SelectorFrequencyRule._matches(row, m) for m in val)
+        if kind == 'all_of':
+            return all(SelectorFrequencyRule._matches(row, m) for m in val)
         if kind == 'name_contains':
             name = _norm_str(str(row.get('item', '')))
             return bool(name) and any(nd in name for nd in val)
@@ -175,8 +218,10 @@ class SelectorFrequencyRule(BaseMenuRule):
             errs.append("selector must contain exactly one of " + ", ".join(sorted(_SELECTOR_KEYS)))
         if all(v is None for v in (self.max, self.min, self.exact, self.daily_max,
                                    self.daily_min)) \
-                and not self.non_consecutive:
-            errs.append("at least one of max / min / exact / daily_max / non_consecutive is required")
+                and not self.non_consecutive \
+                and not self.forbidden_weekdays:
+            errs.append("at least one of max / min / exact / daily_max / "
+                        "non_consecutive / forbidden_weekdays is required")
         if self.exact is not None and (self.max is not None or self.min is not None):
             errs.append("exact cannot be combined with max/min")
         for k in ('max', 'min', 'exact', 'daily_max', 'daily_min'):
@@ -240,6 +285,21 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d (%s) is outside allowed_day_types but the "
                         "slot has nothing else to offer; ban skipped",
                         self.name, di, day_type,
+                    )
+            # Weekday ban, same degrade-rather-than-fail rule as the theme ban
+            # above: a slot whose whole pool matches the selector must still be
+            # fillable on a forbidden weekday.
+            if self.forbidden_weekdays and di < len(dates):
+                wd = getattr(dates[di], 'weekday', None)
+                if callable(wd) and wd() in self.forbidden_weekdays:
+                    if self._ban_leaves_every_cell_fillable(day_cells):
+                        for lit in lits:
+                            model.Add(lit == 0)
+                        continue
+                    logger.info(
+                        "%s: day %d falls on a forbidden weekday but the slot "
+                        "has nothing else to offer; ban skipped",
+                        self.name, di,
                     )
             # Per-day occurrence cap.
             if self.daily_max is not None:
@@ -396,7 +456,15 @@ class SelectorFrequencyRule(BaseMenuRule):
         Counted per *day*, matching how ``apply()`` counts ``max``.
         """
         if not self.base_slot or self.base_slot not in ctx.pools:
-            return 0
+            # No slot scope, so the pool-exhaustion half cannot be asked — but a
+            # composition can still force the selector, and a slot-less cap is
+            # the easiest kind to contradict because it counts a match anywhere
+            # on the plate. Chennai's slot-less `kootu_twice_weekly` against
+            # TCL's "the dal is a kootu, daily" was invisible until this.
+            from .slot_composition_rule import days_forced_by_composition
+            return days_forced_by_composition(
+                self._peer_rules, ctx, None, self._row_matches,
+            )
         active = ctx.active_base_slots
         if active is not None and self.base_slot not in active:
             return 0
@@ -462,15 +530,17 @@ class SelectorFrequencyRule(BaseMenuRule):
             forced = self._forced_days(ctx)
             if forced > cap:
                 sel_desc = f"{self.sel_kind}={self.sel_value!r}"
+                where = (f"for '{self.base_slot}'" if self.base_slot
+                         else "somewhere on this counter")
                 diags.append(Diagnostic(
                     rule=self.name, rule_type=self.rule_type.value,
                     severity=DiagnosticSeverity.ERROR,
                     phase=DiagnosticPhase.APPLY,
                     message=(
-                        f"This counter's themes leave {sel_desc} as the only "
-                        f"option for '{self.base_slot}' on {forced} day(s), but "
-                        f"this rule allows {cap}. Those rules contradict each "
-                        f"other, so no menu can satisfy both."
+                        f"This counter's rules leave {sel_desc} unavoidable "
+                        f"{where} on {forced} day(s), but this rule allows "
+                        f"{cap}. Those rules contradict each other, so no menu "
+                        f"can satisfy both."
                     ),
                     suggestion=(
                         f"Raise this rule's limit to {forced}, add "

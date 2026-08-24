@@ -1,0 +1,60 @@
+{
+  "Gartner": {
+    "_comment": "Chennai, one counter. Four stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 13-16) verified against the 10-15 Aug sample week on the 'Gartner' sheet. Three of the four are about which rice the day serves and are encoded as three complementary day restrictions rather than as frequency caps — the sample settles the weekdays 5/5, and a restriction says the same thing without leaving the solver a choice it would then have to be steered out of. Friday is the counter's chinese day, which is what 'chinese day' means in the client's rules.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'on chinese day we will not serve indian bread we will serve white rice and flavoured rice'. Friday's sampled bread cell holds WHITE RICE and its rice cell VEG SEZ NOODLES — the bread slot is not used at all that day, and the two rices below cover the rest of the sentence.",
+        "name": "gartner_no_bread_on_the_chinese_day",
+        "type": "slot_day_restriction",
+        "base_slot": "bread",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "wed",
+          "thu"
+        ]
+      },
+      {
+        "_comment": "'white rice will be served weekly twice excluding chinese day' — Wednesday and Thursday in the sample — plus Friday, which the rule above puts it on and this one excludes from the count. Three days total, two of them the stated pair.",
+        "name": "gartner_white_rice_wed_thu_and_the_chinese_day",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "wed",
+          "thu",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "'when there is white rice no flavour rice (except chinese day)'. The exact complement of the rule above outside Friday, where both run: flavoured rice on Monday and Tuesday (VEG BIRYANI, THALASSERY VEG BIRYANI — Monday is the counter's biryani day) and on Friday (VEG SEZ NOODLES). Encoded as the complement rather than as a mutual exclusion so the pair can never both drop and leave the day with no rice at all.",
+        "name": "gartner_flavoured_rice_mon_tue_and_the_chinese_day",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "fri"
+        ]
+      },
+      {
+        "_comment": "'fish dish to be served on wednesaday'. Wednesday is a `mix` day here, so the theme filter does not narrow `nonveg_main` and all nine of Chennai's fish dishes are reachable. Consistent with chennai.json's `seafood_weekly` (max 1 day), which this makes exact rather than optional.",
+        "name": "gartner_fish_on_wednesday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components_by_weekday": {
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_fish_dish"
+              },
+              "count": 1
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

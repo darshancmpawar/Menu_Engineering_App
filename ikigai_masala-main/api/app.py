@@ -958,11 +958,54 @@ def plan_menu():
                 nonveg_items=nonveg_items,
             ).to_dict()
 
-        if n_alt > 0:
-            plans, plan_dates = solver.solve(n_alternates=n_alt)
-        else:
-            week_plan, plan_dates = solver.solve()
-            plans = [week_plan]
+        try:
+            if n_alt > 0:
+                plans, plan_dates = solver.solve(n_alternates=n_alt)
+            else:
+                week_plan, plan_dates = solver.solve()
+                plans = [week_plan]
+        except RuntimeError:
+            # The cross-counter sync is best-effort and must never be what
+            # makes a counter unsolvable (note 22). Individually eligible pins
+            # can still over-constrain a day together: ICON Chn's Roti Combo
+            # runs four colour cells and the primary pins three of them, so a
+            # day whose pinned bread, gravy and dessert carry two colours
+            # between them cannot reach the three distinct the city asks for.
+            # Nothing catches that in advance — each pin is fine on its own —
+            # so the fallback is to drop the sync and solve the counter as an
+            # unsynced one, which is what it would have been without the
+            # feature. A client's OWN constant pins are not touched.
+            if not data.get('shared_items'):
+                raise
+            logger.warning(
+                "%s counter %r: no plan with the shared-category pins; "
+                "retrying without them so the counter still gets a menu.",
+                inputs.client_name, counter_name,
+            )
+            metrics.incr('plan_shared_items_dropped_total')
+            unsynced = dict(data)
+            unsynced.pop('shared_items', None)
+            inputs = _prepare_solver_inputs(unsynced, client_cfg=client_cfg)
+            solver = MenuSolver(
+                pools=inputs.pools,
+                solver_config=inputs.cfg,
+                menu_rules=inputs.rules,
+                banned_by_date=inputs.banned,
+                ricebread_ban_day=inputs.rb_ban,
+                recent_sigs=inputs.recent_sigs,
+                skip_cells=inputs.skip_cells,
+                recency_by_item=inputs.recency_by_item,
+            )
+            if n_alt > 0:
+                plans, plan_dates = solver.solve(n_alternates=n_alt)
+            else:
+                week_plan, plan_dates = solver.solve()
+                plans = [week_plan]
+            pool_warnings = list(pool_warnings or []) + [
+                "Cross-counter sync skipped for this counter: the shared "
+                "dishes could not all be served here, so it was planned "
+                "independently."
+            ]
 
         response = {
             'success': True,
@@ -1437,6 +1480,11 @@ def get_client_config(client_name):
                 row.get('shared_categories')
                 or MenuRuleLoader().get_shared_categories(client_name)
             ),
+            # Counters that opt OUT of that sync. File-only (no DB column, no
+            # editor control): ICON Chn's Rice Combo is stated to have its own
+            # menu, and the shared list is otherwise all-or-nothing per client.
+            'shared_categories_excluded_counters':
+                MenuRuleLoader().get_shared_category_exclusions(client_name),
         })
         response.headers['ETag'] = f'"{version}"'
         return response

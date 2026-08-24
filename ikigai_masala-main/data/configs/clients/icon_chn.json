@@ -1,0 +1,365 @@
+{
+  "ICON Chn": {
+    "_comment": "Chennai, four counters — 'Premium Lunch' (primary), 'Economy Lunch', 'Rice Combo', 'Roti Combo'. Eight stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 24-31) against the 10-14 Aug sample on the 'icon chn' sheet. The client's `source_pools` already names all eight Chennai site tokens, which is what `chennai` joining FULL_POOL_CITIES makes uniform for every client in the city.",
+    "_not_expressible": {
+      "same nonveg main is served in Economy Lunch counter and Roti Combo Counter. shared non veg between only these 2 counters": "The cross-counter sync (note 22) pins from the PRIMARY counter only, and Premium Lunch's non-veg is a different lineup entirely (chicken biryani + boiled egg + bone salna). Naming a SOURCE counter per shared slot is a planner change, not a config one. What is configured instead is the same weekday structure on both counters — egg gravy Monday and Wednesday, chicken gravy otherwise — so they serve the same KIND of dish on the same day, but not guaranteed the identical dish. See docs/pending_config_changes.md."
+    },
+    "disable": [
+      "nonveg_biryani_weekly"
+    ],
+    "_disable_why": {
+      "nonveg_biryani_weekly": "chennai.json allows one non-veg biryani DAY a week; Premium Lunch pins a chicken biryani on three (Monday, Wednesday, Friday), which is the note-9e forced-past-a-cap conflict."
+    },
+    "shared_categories_excluded_counters": [
+      "Rice Combo"
+    ],
+    "_shared_categories_excluded_why": "'rice combo counter is not linked to the shared items list it has seprate menu'. `clients.shared_categories` is client-wide, so without this the primary counter's veg dry, veg gravy and dessert would be pinned into Rice Combo too — which is the one counter the client says must be independent.",
+    "rules": [
+      {
+        "_comment": "Overrides chennai.json's rule of the same name (merged by name, so this REPLACES its `exempt_slots`) by adding `nonveg_main`. The pins below name `chicken_biryani`, which is `north_chicken_biryani`, and Premium Lunch themes Wednesday `south` — so the theme filter dropped the pinned dish from Wednesday's pool and the cell solved to something else. None of this client's four counters serves a themed non-veg in the sample (the Economy and Roti counters print the same chicken or egg gravy regardless of the day's theme), so exempting the slot is the accurate model. Everything else in the list is chennai.json's own.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "exempt_slots": [
+          "dal",
+          "salad",
+          "soup",
+          "healthy_rice",
+          "rice",
+          "sambar",
+          "rasam",
+          "curd",
+          "curd_side",
+          "curd_rice",
+          "dessert",
+          "bread",
+          "veg_dry",
+          "nonveg_main"
+        ]
+      },
+      {
+        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (scripts/chennai_client_pools.py). Client-level because both counters that run a dal want it. NB chennai.json's `kootu_twice_weekly` is NOT disabled here, unlike TCL and World Bank: this client's kootu runs on two days a week (see the alternation below), which is exactly what the city cap allows.",
+        "name": "icon_chn_dal_is_a_kootu",
+        "type": "slot_composition",
+        "base_slot": "dal",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "sub_category": "kootu"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "'Indian Bread will be chapathi only daily'. Client-level: the two counters that run a bread slot (Premium Lunch and Roti Combo) both serve Chapathi on all five sampled days.",
+        "name": "icon_chn_bread_is_chapati_daily",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "flag": "is_plain_phulka_chapathi"
+            },
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "counters": {
+      "Premium Lunch": {
+        "_comment": "'in Premium Lunch and Economy Lunch counter we have give dal and veg dry alternative days not both on same day'. The counter runs BOTH as mandatory daily slots, so 'alternate' can only be expressed by standing each down on the other's days. The sample settles which is which 5/5: its single 'Kootu or Poriyal' row is a poriyal on Monday, Wednesday and Friday and a kootu on Tuesday and Thursday.",
+        "constant_items": {
+          "_comment": "'in Premium Lunch counter we have 3 non veg main which will only serve \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" on Monday, Wednesday and Friday' — three fixed dishes, so three pins. All three are real Chennai rows (`boiled_egg` and `bone_salna` as of scripts/chennai_client_pools.py), so the pins narrow their cells and the dishes stay visible to every other rule. The day restriction below is what confines them to Monday, Wednesday and Friday.",
+          "nonveg_main__1": "Chicken Biryani",
+          "nonveg_main__2": "Boiled Egg",
+          "nonveg_main__3": "Bone Salna"
+        },
+        "rules": [
+          {
+            "name": "icon_chn_premium_nonveg_mon_wed_fri",
+            "type": "slot_day_restriction",
+            "base_slot": "nonveg_main",
+            "allowed_weekdays": [
+              "mon",
+              "wed",
+              "fri"
+            ]
+          },
+          {
+            "name": "icon_chn_premium_dal_tue_thu",
+            "type": "slot_day_restriction",
+            "base_slot": "dal",
+            "allowed_weekdays": [
+              "tue",
+              "thu"
+            ]
+          },
+          {
+            "name": "icon_chn_premium_veg_dry_mon_wed_fri",
+            "type": "slot_day_restriction",
+            "base_slot": "veg_dry",
+            "allowed_weekdays": [
+              "mon",
+              "wed",
+              "fri"
+            ]
+          }
+        ]
+      },
+      "Economy Lunch": {
+        "_comment": "Same dal/veg-dry alternation as Premium, and one non-veg cell: 'we serve nonveg gravy 2 egg gravy on Monday and Wednesday and rest is chicken gravy'. With a single cell a per-weekday component decides the day outright.",
+        "rules": [
+          {
+            "name": "icon_chn_economy_dal_tue_thu",
+            "type": "slot_day_restriction",
+            "base_slot": "dal",
+            "allowed_weekdays": [
+              "tue",
+              "thu"
+            ]
+          },
+          {
+            "name": "icon_chn_economy_veg_dry_mon_wed_fri",
+            "type": "slot_day_restriction",
+            "base_slot": "veg_dry",
+            "allowed_weekdays": [
+              "mon",
+              "wed",
+              "fri"
+            ]
+          },
+          {
+            "_comment": "The '2 egg' in the client's sentence is a portion count, not a dish count — the sample prints 'Egg Curry (2Egg)' in one cell — so this asks for an egg GRAVY, not two eggs. `is_egg_dish` plus `is_nonveg_gravy` is what separates the curry from the dry egg dishes and the egg biryani.",
+            "name": "icon_chn_economy_nonveg_egg_mon_wed_else_chicken",
+            "type": "slot_composition",
+            "base_slot": "nonveg_main",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components_by_weekday": {
+              "mon": [
+                {
+                  "selector": {
+                    "all_of": [
+                      {
+                        "flag": "is_egg_dish"
+                      },
+                      {
+                        "flag": "is_nonveg_gravy"
+                      }
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "wed": [
+                {
+                  "selector": {
+                    "all_of": [
+                      {
+                        "flag": "is_egg_dish"
+                      },
+                      {
+                        "flag": "is_nonveg_gravy"
+                      }
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "tue": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "thu": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "fri": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Roti Combo": {
+        "_comment": "'same nonveg main is served in Economy Lunch counter and Roti Combo Counter' — the identical-dish half of that needs a planner change (see `_not_expressible` above), so what is configured is the same weekday structure, which the sample confirms cell for cell: Egg Curry (2Egg), Madars Chicken Gravy, Egg Curry (2Egg), Hyd Chicken Gravy, Pepper Chicken Gravy on both counters.",
+        "rules": [
+          {
+            "name": "icon_chn_roti_nonveg_egg_mon_wed_else_chicken",
+            "type": "slot_composition",
+            "base_slot": "nonveg_main",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components_by_weekday": {
+              "mon": [
+                {
+                  "selector": {
+                    "all_of": [
+                      {
+                        "flag": "is_egg_dish"
+                      },
+                      {
+                        "flag": "is_nonveg_gravy"
+                      }
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "wed": [
+                {
+                  "selector": {
+                    "all_of": [
+                      {
+                        "flag": "is_egg_dish"
+                      },
+                      {
+                        "flag": "is_nonveg_gravy"
+                      }
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "tue": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "thu": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ],
+              "fri": [
+                {
+                  "selector": {
+                    "any_flag": [
+                      "is_north_chicken_gravy",
+                      "is_south_chicken_gravy"
+                    ]
+                  },
+                  "count": 1
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Rice Combo": {
+        "_comment": "'rice combo counter will have veg gravy 3 times a week and veg dry twice a week on wed and Friday' and 'it has seprate menu usually south items and flavour rice is biryani (can be north) on Wednesday and on Friday can be a north flavour rice'. The counter is themed south every day, and `rice` is exempt from the theme filter in chennai.json — which is what leaves a north biryani and a north flavoured rice reachable on the two days the client names. Its non-veg pattern is NOT stated and comes from the sample, which serves Egg Masala on Monday, Wednesday and Friday and nothing on Tuesday or Thursday.",
+        "rules": [
+          {
+            "name": "icon_chn_rice_combo_veg_dry_wed_fri",
+            "type": "slot_day_restriction",
+            "base_slot": "veg_dry",
+            "allowed_weekdays": [
+              "wed",
+              "fri"
+            ]
+          },
+          {
+            "_comment": "'veg gravy 3 times a week' — the three days the veg dry does not run, so the counter always carries exactly one of the two.",
+            "name": "icon_chn_rice_combo_veg_gravy_mon_tue_thu",
+            "type": "slot_day_restriction",
+            "base_slot": "veg_gravy",
+            "allowed_weekdays": [
+              "mon",
+              "tue",
+              "thu"
+            ]
+          },
+          {
+            "_comment": "Wednesday's flavoured rice is a biryani. Every Chennai veg biryani carries `is_biryani_item`, north and south alike, so 'can be north' needs no further wiring — the theme exemption on `rice` already leaves both reachable.",
+            "name": "icon_chn_rice_combo_biryani_on_wednesday",
+            "type": "slot_composition",
+            "base_slot": "rice",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components_by_weekday": {
+              "wed": [
+                {
+                  "selector": {
+                    "flag": "is_biryani_item"
+                  },
+                  "count": 1
+                }
+              ]
+            }
+          },
+          {
+            "_comment": "Sample-derived, not stated: the counter's egg gravy runs on Monday, Wednesday and Friday and the cell is blank on Tuesday and Thursday.",
+            "name": "icon_chn_rice_combo_nonveg_mon_wed_fri",
+            "type": "slot_day_restriction",
+            "base_slot": "nonveg_main",
+            "allowed_weekdays": [
+              "mon",
+              "wed",
+              "fri"
+            ]
+          },
+          {
+            "name": "icon_chn_rice_combo_nonveg_is_an_egg_gravy",
+            "type": "slot_composition",
+            "base_slot": "nonveg_main",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components": [
+              {
+                "selector": {
+                  "all_of": [
+                    {
+                      "flag": "is_egg_dish"
+                    },
+                    {
+                      "flag": "is_nonveg_gravy"
+                    }
+                  ]
+                },
+                "count": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
