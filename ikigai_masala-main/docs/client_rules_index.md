@@ -551,7 +551,7 @@ Chennai. From the client's own 13 stated rules plus a seven-day sample week (dat
 | `tcl_dessert_on_weekdays_only` | dessert runs only on mon, tue, wed, thu, fri (blank otherwise) | Dessert and non-veg appear in neither weekend list. |
 | `tcl_nonveg_on_weekdays_only` | nonveg_main runs only on mon, tue, wed, thu, fri (blank otherwise) |  |
 
-**City rules switched off:** `mixedveg_pulao_biryani_weekly`, `kootu_twice_weekly`
+**City rules switched off:** `mixedveg_pulao_biryani_weekly`, `kootu_twice_weekly`, `salad_is_not_a_kuzhambu`
 
 ## Tekion
 

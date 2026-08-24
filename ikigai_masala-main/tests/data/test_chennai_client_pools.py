@@ -10,6 +10,7 @@ the fix (a daily slot needs enough distinct dishes to outlast the cooldown).
 from __future__ import annotations
 
 import json
+import pathlib
 
 import pandas as pd
 import pytest
@@ -19,7 +20,11 @@ from scripts.chennai_client_pools import (
     KOOTU_FROM_BANGALORE, KOOTU_TO_DAL, LIQUID_SWEETS, NEW_DISHES,
     VEG_BIRYANIS, WELCOME_DRINKS, main,
 )
+from src.menu_rules.menu_rule_loader import CITY_RULES_DIR as _CITY_RULES_DIR
 from src.ontology.paths import CITY_ITEMS_DIR
+
+CITY_RULES_DIR = pathlib.Path(_CITY_RULES_DIR)
+CLIENT_DIR = CITY_ITEMS_DIR.parent.parent / "configs" / "clients"
 
 
 @pytest.fixture(scope="module")
@@ -158,6 +163,63 @@ class TestKuzhambuIsTheSalad:
         course = blr["course_type"].astype(str).str.strip().str.lower()
         kuzhambu = names.str.contains("kuzhambu", regex=False)
         assert int((kuzhambu & course.eq("salad")).sum()) == 0
+
+
+class TestOnlyTheClientWhoAskedGetsIt:
+    """The re-file makes kuzhambus available to EVERY Chennai salad slot, and
+    only TCL asked for them.
+
+    Left unscoped, five other counters served a sour gravy in their salad row on
+    1-3 days of 5 apiece. So the city ruleset carries the default and the one
+    client that stated the rule disables it — the pair is what makes "only in
+    the mentioned clients" true, and neither half works alone.
+    """
+
+    @staticmethod
+    def _city_rules():
+        import json
+        return json.loads(
+            (CITY_RULES_DIR / "chennai.json").read_text(encoding="utf-8"))
+
+    def test_the_city_default_keeps_kuzhambu_out_of_the_salad(self):
+        rule = next(r for r in self._city_rules()["rules"]
+                    if r.get("name") == "salad_is_not_a_kuzhambu")
+        assert rule["base_slot"] == "salad"
+        assert rule["max"] == 0
+
+    def test_the_ban_can_never_empty_the_salad_slot(self, chn):
+        """A hard `max: 0` is only safe while the slot has other options. It
+        degrades rather than fails if it ever does not, but a starved salad
+        would be a real bug, so the margin is asserted."""
+        salads = _course(chn, "salad")
+        names = salads["item"].astype(str).str.strip().str.lower()
+        assert int((~names.isin(KUZHAMBU_TO_SALAD)).sum()) >= 25
+
+    def test_tcl_is_the_only_client_that_disables_it(self):
+        import json
+        offenders = []
+        for path in sorted(CLIENT_DIR.glob("*.json")):
+            for client, blk in json.loads(
+                    path.read_text(encoding="utf-8")).items():
+                if client.startswith("_") or not isinstance(blk, dict):
+                    continue
+                blocks = [blk] + [b for b in (blk.get("counters") or {}).values()
+                                  if isinstance(b, dict)]
+                for b in blocks:
+                    if "salad_is_not_a_kuzhambu" in (b.get("disable") or []):
+                        offenders.append(client)
+        assert offenders == ["TCL"], offenders
+
+    def test_tcl_still_mandates_one(self):
+        """The other half: with the city rule disabled, something must still put
+        a kuzhambu in the slot."""
+        import json
+        tcl = json.loads(
+            (CLIENT_DIR / "tcl.json").read_text(encoding="utf-8"))["TCL"]
+        rule = next(r for r in tcl["rules"]
+                    if r.get("name") == "tcl_salad_is_a_kuzhambu")
+        assert rule["base_slot"] == "salad"
+        assert rule["components"][0]["count"] == 1
 
 
 class TestWelcomeDrinks:

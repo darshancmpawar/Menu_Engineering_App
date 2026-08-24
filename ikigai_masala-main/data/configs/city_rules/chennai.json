@@ -334,6 +334,22 @@
           }
         ]
       }
+    },
+    {
+      "_comment": "A kuzhambu is filed `course_type = salad` in Chennai — the client's own categorisation, applied by scripts/chennai_client_pools.py so TCL's stated rule ('in salad need to give only KUZHAMBU item') has a pool to draw on. But the pool is CITY-WIDE and only TCL asked for it: without this, the five other Chennai counters with a salad slot served a kuzhambu on 1-3 days of 5 apiece (Gartner, ToastTab CHN, Tekion CHN and two RNTBCI counters), turning a salad row into a sour gravy nobody requested. So the city default is 'a salad is a salad' and TCL disables this rule. Selected by NAME because `sub_category` is `mixed_veg_curry`, which also holds the kurmas. Safe as a hard `max: 0`: 35 of Chennai's 47 salads are not kuzhambus, so the ban can never empty the slot, and `_ban_leaves_every_cell_fillable` would stand it down if it could.",
+      "name": "salad_is_not_a_kuzhambu",
+      "type": "selector_frequency",
+      "base_slot": "salad",
+      "selector": {
+        "name_contains": [
+          "kuzhambu",
+          "kolumbu",
+          "kulambu",
+          "kuzhumbu",
+          "kolambu"
+        ]
+      },
+      "max": 0
     }
   ]
 }

@@ -7,7 +7,8 @@
     ],
     "disable": [
       "mixedveg_pulao_biryani_weekly",
-      "kootu_twice_weekly"
+      "kootu_twice_weekly",
+      "salad_is_not_a_kuzhambu"
     ],
     "use": [
       {
@@ -352,7 +353,8 @@
     ],
     "_disable_why": {
       "mixedveg_pulao_biryani_weekly": "chennai.json caps mixed-veg pulao/biryani at one DAY a week in the rice slot, and every one of Chennai's 22 veg biryanis carries `is_mixedveg_biryani`. TCL serves a biryani in its first rice slot every day, so the cap and the client contradict each other outright.",
-      "kootu_twice_weekly": "chennai.json caps kootu at two days a horizon, on the reading that a kootu is an everyday Tamil dish rather than a treat. TCL's dal IS the kootu, every day. This is the note-9e conflict shape and it went undetected: the city rule is slot-less, so `days_forced_by_composition` was asked about `base_slot=None`, matched no composition, and /diagnose answered would_succeed while the solve came back INFEASIBLE. Fixed in slot_composition_rule.py; the disable is still the right call for this client."
+      "kootu_twice_weekly": "chennai.json caps kootu at two days a horizon, on the reading that a kootu is an everyday Tamil dish rather than a treat. TCL's dal IS the kootu, every day. This is the note-9e conflict shape and it went undetected: the city rule is slot-less, so `days_forced_by_composition` was asked about `base_slot=None`, matched no composition, and /diagnose answered would_succeed while the solve came back INFEASIBLE. Fixed in slot_composition_rule.py; the disable is still the right call for this client.",
+      "salad_is_not_a_kuzhambu": "TCL is the ONLY client that asked for a kuzhambu in its salad slot, so the city ruleset keeps kuzhambus out of the salad by default and TCL switches that off. Without the city default the re-file leaked into five other Chennai counters' salads; without this disable, TCL's own stated rule is unsatisfiable. The pair is what makes 'only in the mentioned clients' true."
     }
   }
 }
