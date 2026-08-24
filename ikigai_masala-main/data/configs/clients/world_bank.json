@@ -1,0 +1,140 @@
+{
+  "World Bank": {
+    "_comment": "Chennai, two counters — 'Full Lunch Menu' (primary) and 'Roti and Rice Combos'. Seven stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 17-23) against the 17-21 Aug sample on the 'World Bank' sheet. One of the seven needs no config: 'in counter rice/roti combo now veg will be gravy daily' is already what that counter does — `veg_gravy` is one slot, served every day. The two counters' shared veg dry and veg gravy come from `clients.shared_categories`, which the sample confirms: both counters print the identical poriyal and the identical channa/kurma every day.",
+    "_needs_db_change": [
+      "Full Lunch Menu slot_counts.nonveg_main = 4 (it is 2). The client lists FOUR non-veg items daily — a chicken gravy, chicken biryani, boiled egg and bone salna — and the sample prints all four Monday to Thursday. With 2 slots the menu is a SUBSET rather than a different menu: the biryani pin takes one cell and the chicken-gravy composition the other, while the boiled-egg and bone-salna pins name slots the counter does not have and are dropped with a warning naming the count to raise."
+    ],
+    "disable": [
+      "kootu_twice_weekly",
+      "nonveg_biryani_weekly"
+    ],
+    "_disable_why": {
+      "kootu_twice_weekly": "chennai.json caps kootu at two days a horizon; this client's dal IS the kootu, every day.",
+      "nonveg_biryani_weekly": "chennai.json allows one non-veg biryani day a week; this client pins a chicken biryani daily, which is the note-9e conflict — the cap would be forced past on every day of the plan."
+    },
+    "rules": [
+      {
+        "_comment": "Overrides chennai.json's rule of the same name (merged by name, so this REPLACES its `exempt_slots`) by adding `nonveg_main` to the exempt list. Needed for the pins above to hold: `chicken_biryani` is `north_chicken_biryani`, and the theme filter narrows `nonveg_main` to south cuisine on this counter's Thursday, so the pin fell out of the pool and Thursday came back with an egg roast instead of the biryani. The client's non-veg station is not themed at all — the same four items on every sampled day — so exempting it is the accurate model rather than a workaround, and it is what makes 'chicken biryani daily' mean what it says. Everything else in the list is chennai.json's own.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "exempt_slots": [
+          "dal",
+          "salad",
+          "soup",
+          "healthy_rice",
+          "rice",
+          "sambar",
+          "rasam",
+          "curd",
+          "curd_side",
+          "curd_rice",
+          "dessert",
+          "bread",
+          "veg_dry",
+          "nonveg_main"
+        ]
+      },
+      {
+        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (scripts/chennai_client_pools.py), which is where the client's own grid puts them — its 'Kootu' row sits below the gravies and the poriyal, not among them. Only the Full Lunch counter runs a dal, so this is harmless at client level, but it is scoped anyway so a future counter with a dal does not inherit it silently.",
+        "name": "world_bank_dal_is_a_kootu",
+        "type": "slot_composition",
+        "base_slot": "dal",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "sub_category": "kootu"
+            },
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "counters": {
+      "Full Lunch Menu": {
+        "_comment": "The full meals counter: chapati, steamed rice, a gravy, a sambar, a kuzhambu, rasam, poriyal, kootu, buttermilk, appalam and four non-veg items.",
+        "constant_items": {
+          "_comment": "'non veg main will have chicken gravys, \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" daily' — three of the four are the SAME dish every day, so they are pins; the fourth (the chicken gravy) rotates and is handled by the composition below. `boiled_egg` and `bone_salna` are real Chennai rows as of scripts/chennai_client_pools.py, so these pins narrow their cells rather than stamping text, and every other rule still sees the dishes. 'dessert will be \"Sweet/Fruit\" daliy' is the client's own menu wording and no such dish exists, so that one IS stamped verbatim and the dessert cell is skipped — deliberate, but it means the slot serves no rotating sweet. Drop the pin if they would rather it rotated.",
+          "nonveg_main__2": "Chicken Biryani",
+          "nonveg_main__3": "Boiled Egg",
+          "nonveg_main__4": "Bone Salna",
+          "dessert": "Sweet/Fruit"
+        },
+        "use": [
+          {
+            "ref": "bread_chapati_only",
+            "as": "world_bank_bread_is_chapati_daily"
+          }
+        ],
+        "rules": [
+          {
+            "_comment": "One of the non-veg cells is the day's chicken gravy. Gated at `min_slot_count: 1`, NOT at the four the client's lineup needs: with the live two-slot row the biryani pin takes one cell and the other was unconstrained, so it came back `chicken_lolipop`, `egg_dosa`, `fish_tawa_fry` — none of them on the client's list. At 1 the free cell is a chicken gravy whichever slot count the row carries, so the degraded pre-DB-change menu is a subset of the intended one rather than a different menu. `bone_salna` deliberately carries `is_nonveg_gravy` but NO regional chicken-gravy flag (see scripts/chennai_client_pools.py), so it cannot satisfy this component itself and steal the cell.",
+            "name": "world_bank_nonveg_gravy_alongside_the_three_pins",
+            "type": "slot_composition",
+            "base_slot": "nonveg_main",
+            "min_slot_count": 1,
+            "components": [
+              {
+                "selector": {
+                  "any_flag": [
+                    "is_north_chicken_gravy",
+                    "is_south_chicken_gravy"
+                  ]
+                },
+                "count": 1
+              }
+            ]
+          },
+          {
+            "_comment": "'welcome drink will be \"buttermilk\" daliy'. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20).",
+            "name": "world_bank_welcome_drink_is_buttermilk",
+            "type": "slot_composition",
+            "base_slot": "welcome_drink",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components": [
+              {
+                "selector": {
+                  "flag": "is_buttermilk"
+                },
+                "count": 1
+              }
+            ]
+          },
+          {
+            "_comment": "Chennai carries ten buttermilks, fewer than a daily slot needs across a 20-day cooldown window, so the history ban has to stand down or week three has no drink. `scope: cooldown` drops the BAN and keeps `unique_items`, so the counter still serves ten distinct buttermilks before any of them comes round again — the same call Citrix's daily buttermilk needed, and the reason that scope exists (note on `repeatable_items`).",
+            "name": "world_bank_buttermilk_may_recur_across_weeks",
+            "type": "repeatable_items",
+            "base_slot": "welcome_drink",
+            "scope": "cooldown",
+            "selector": {
+              "flag": "is_buttermilk"
+            }
+          }
+        ]
+      },
+      "Roti and Rice Combos": {
+        "_comment": "The combo counter: two breads (paratha and chapati in the sample, so NOT chapati-only), a flavoured rice, the shared poriyal and gravy, and one chicken gravy.",
+        "rules": [
+          {
+            "_comment": "'in counter rice/roti combo flavour rice will be south rice daliy'. `rice` is in chennai.json's `exempt_slots`, so the counter's north-themed Wednesday and Friday do not narrow the pool away from south — which is what makes a south rice available every day despite the theme map.",
+            "name": "world_bank_combo_rice_is_south_daily",
+            "type": "slot_composition",
+            "base_slot": "rice",
+            "min_slot_count": 1,
+            "max_slot_count": 1,
+            "components": [
+              {
+                "selector": {
+                  "cuisine_family": "south_indian"
+                },
+                "count": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

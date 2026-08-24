@@ -9,7 +9,7 @@ sambar,sambar,40,,bangalore:agalakayi_sambar; bangalore:avarekallu_sambar; banga
 biryani,rice,38,,bangalore:afghani_veg_biryani; bangalore:andhra_style_mushroom_dum_biryani; bangalore:andhra_style_veg_biryani; bangalore:dindigul_biryani; bangalore:donne_vegetable_dum_biryani; bangalore:hederabad_dum_biryani
 pulao,rice,34,,bangalore:barista_pulao; bangalore:bhuna_pyaz_pulao; bangalore:bhune_pyaaz_ka_pulao; bangalore:bombay_tawa_pulao; bangalore:brinji_pulao; bangalore:burani_veg_pulao
 aloo,veg_dry,30,,bangalore:aloo_amarnath_leaves_sabzi; bangalore:aloo_bhaji; bangalore:aloo_bhindi; bangalore:aloo_bhindi_fry; bangalore:aloo_capsicum; bangalore:aloo_gobhi_mutter_dry
-rasam,rasam,29,,bangalore:basil_rasam; bangalore:black_pepper_rasam; bangalore:butter_milk_rasam; bangalore:cumin_rasam; bangalore:curry_leaves_rasam; bangalore:ginger_garlic_rasam
+rasam,rasam,29,,bangalore:basil_rasam; bangalore:black_pepper_rasam; bangalore:buttermilk_rasam; bangalore:cumin_rasam; bangalore:curry_leaves_rasam; bangalore:ginger_garlic_rasam
 masala,veg_dry,28,,bangalore:balck_chana_masala_dry; bangalore:bhindi_masala_dry; bangalore:bhindi_masala_fry; bangalore:cabbage_battani_masala; bangalore:gobi_capsicum_pepper_masala; bangalore:parwal_masala
 masala,veg_gravy,26,,bangalore:capsicum_corn_masala; bangalore:chickpea_masala; bangalore:gobi_aloo_matar_masala; bangalore:lobia_masala; bangalore:lobiya_capsicum_masala; bangalore:louki_lobia_masala
 water,infused_water,26,,bangalore:apple_and_celery_infused_water; bangalore:apple_and_pomegranate_infused_water; bangalore:apple_cinnamon_water; bangalore:carrot_and_celery_detox_water; bangalore:celery_and_watermelon_infused_water; bangalore:cinnamon_and_celery_detox_water
@@ -99,7 +99,6 @@ laccha,salad,3,,ncr:laccha_mooli; ncr:laccha_payaz; ncr:onion_laccha
 lauki,veg_dry,3,,ncr:jeera_lauki; ncr:lauki_jeera; ncr:lauki_tamatri_dry
 lauki,veg_gravy,3,,ncr:lauki_ki_subz; ncr:tamatari_lauki; ncr:tamatri_lauki
 matar,veg_gravy,3,,ncr:cabage_matar; ncr:cabbage_matar_peas; ncr:matar_mashroom
-milk,welcome_drink,3,,bangalore:kesar_badam_milk; bangalore:rooh_afza_milk; pune:masala_milk
 millet,healthy_rice,3,,bangalore:herbed_millet_and_bell_pepper; bangalore:masala_millet; bangalore:millet_upma
 miloni,veg_dry,3,,bangalore:miloni_subz_dry; bangalore:subz_miloni_dry; bangalore:sukhi_miloni_subz
 mushroom,veg_dry,3,,bangalore:mushroom_capsicum_ghee_roast; ncr:mushroom_jalfrezi; pune:tawa_mushroom
@@ -132,6 +131,7 @@ chutney,veg_gravy,2,,ncr:coconut_tomato_chutney; ncr:shegdana_chutney
 crush,welcome_drink,2,,bangalore:mixed_crush; bangalore:mixed_fruit_crush
 curry,starter,2,,bangalore:baked_veg_momos_in_red_thai_curry_sauce; bangalore:singaporean_curry_noodles
 dahi,curd_side,2,,ncr:dahi_arbi_gravy; ncr:tadka_dahi
+dal,dessert,2,,bangalore:dal_payasam; chennai:dal_payasam
 dil,veg_gravy,2,,ncr:dil_khusal; ncr:dil_khushal
 ennegayi,veg_gravy,2,,bangalore:ennegayi; bangalore:heerekai_ennegayi
 fry,veg_gravy,2,,ncr:kathal_fry; ncr:stir_fry_kung_pao_veg
@@ -157,6 +157,7 @@ lemon,welcome_drink,2,,bangalore:lemon_iced_tea; bangalore:masala_lemon_soda
 march,veg_gravy,2,,ncr:march; ncr:march_26_april
 meetha,veg_dry,2,,ncr:katha_meetha_pertha; ncr:sitaphal_khata_meetha
 menu,veg_gravy,2,,ncr:sael_caf_menu; ncr:sael_menu
+milk,welcome_drink,2,,bangalore:kesar_badam_milk; pune:masala_milk
 moongdal,veg_dry,2,,pune:dodka_moongdal; pune:shepu_moongdal
 onion,salad,2,,ncr:lachha_onion; ncr:onion_ring_masala
 onion,veg_gravy,2,,ncr:caramelised_onion_potato; ncr:laccha_onion
@@ -279,7 +280,6 @@ custard,dessert,1,,ncr:strawberry_flavoured_custard
 custerd,veg_gravy,1,,ncr:custerd
 cut,salad,1,,bangalore:cut_fruits
 dabeli,starter,1,,bangalore:dabeli
-dal,dessert,1,,bangalore:dal_payasam
 dalma,dal,1,,bangalore:dalma
 dalmakhani,veg_gravy,1,,ncr:dalmakhani
 dar,veg_dry,1,,ncr:gheeya_latpata_masale_dar
@@ -325,7 +325,6 @@ huli,curd_side,1,,bangalore:kumblekai_majjige_huli
 imarthi,dessert,1,,ncr:imarthi
 jal,welcome_drink,1,,bangalore:jal_jeera
 jalfrezi,veg_dry,1,,bangalore:mix_veg_jalfrezi
-jaljeera,welcome_drink,1,,ncr:jaljeera_treat
 jelabi,dessert,1,,bangalore:jelabi
 jhal,starter,1,,bangalore:jhal_muri
 jilebi,dessert,1,,bangalore:jilebi

@@ -432,10 +432,32 @@ class MenuRuleLoader:
         counter coordination is client-orchestrated, so this is a hint the
         planner reads, not a solver rule.
         """
+        return self._client_string_list(client_name, 'shared_categories')
+
+    def get_shared_category_exclusions(self, client_name: str) -> List[str]:
+        """Counters that must NOT receive the shared-category pins.
+
+        ``clients.shared_categories`` is client-wide: every counter after the
+        primary gets the primary's dish for each shared slot. ICON Chn needs one
+        counter left out of that — "rice combo counter is not linked to the
+        shared items list it has seprate menu" — and without an exclusion the
+        primary's veg dry, veg gravy and dessert would be pinned into the one
+        counter the client says is independent.
+
+        Declared in the client's rules file rather than in the DB because it is a
+        statement about the menu's structure, like the rules beside it, and the
+        editor has no control for it. The planner reads it through
+        ``GET /client-config``; a counter named here is simply not sent
+        ``shared_items``, so it solves exactly as a single-counter client would.
+        """
+        return self._client_string_list(
+            client_name, 'shared_categories_excluded_counters')
+
+    def _client_string_list(self, client_name: str, key: str) -> List[str]:
         block = self._read_client_blob().get(client_name)
         if not isinstance(block, dict):
             return []
-        raw = block.get('shared_categories') or []
+        raw = block.get(key) or []
         if not isinstance(raw, list):
             return []
         # De-dupe, drop blanks, preserve order.

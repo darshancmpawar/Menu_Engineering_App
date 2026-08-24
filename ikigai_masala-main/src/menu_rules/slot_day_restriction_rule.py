@@ -7,13 +7,16 @@ before constructing the solver.  The returned ``(date, base_slot)`` pairs
 are forwarded to ``MenuSolver(skip_cells=…)`` which prevents cell
 creation for those combinations.
 
-All expansions of the base slot are skipped together (e.g. if a client
-has ``nonveg_main`` count=2, both ``nonveg_main__1`` and ``nonveg_main__2``
-are removed on restricted days).
+By default all expansions of the base slot are skipped together (e.g. if a
+client has ``nonveg_main`` count=2, both ``nonveg_main__1`` and
+``nonveg_main__2`` are removed on restricted days). An optional
+``slot_indices`` narrows that to the named expansions, which is how a counter
+serves *fewer* of a slot on some days rather than none: TCL runs two flavoured
+rices Monday to Friday and one on Saturday, so only ``rice__2`` stands down.
 """
 
 import datetime as dt
-from typing import Dict, Any, List, Set, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 
 from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType
@@ -40,6 +43,17 @@ class SlotDayRestrictionRule(BaseMenuRule):
             "base_slot": "nonveg_main",
             "allowed_weekdays": ["mon", "wed", "fri"]
         }
+
+    Add ``slot_indices`` to stand down only some expansions, leaving the rest
+    of the family solved normally::
+
+        {
+            "type": "slot_day_restriction",
+            "name": "tcl_one_rice_on_saturday",
+            "base_slot": "rice",
+            "slot_indices": [2],
+            "allowed_weekdays": ["mon", "tue", "wed", "thu", "fri", "sun"]
+        }
     """
 
     def __init__(self, rule_config: Dict[str, Any]):
@@ -53,6 +67,18 @@ class SlotDayRestrictionRule(BaseMenuRule):
                 idx = _WEEKDAY_TOKENS.get(tok.strip().lower())
                 if idx is not None:
                     self.allowed_weekdays.add(idx)
+        self.slot_indices: Optional[List[int]] = None
+        raw_idx = rule_config.get('slot_indices')
+        if isinstance(raw_idx, (list, tuple)):
+            kept = []
+            for tok in raw_idx:
+                try:
+                    n = int(tok)
+                except (TypeError, ValueError):
+                    continue
+                if n >= 1 and n not in kept:
+                    kept.append(n)
+            self.slot_indices = kept or None
 
     def validate_config(self) -> bool:
         return bool(self.base_slot) and len(self.allowed_weekdays) > 0
@@ -60,11 +86,21 @@ class SlotDayRestrictionRule(BaseMenuRule):
     def compute_skip_cells(
         self, dates: List[dt.date],
     ) -> Set[Tuple[dt.date, str]]:
-        """Return (date, base_slot) pairs that should be skipped."""
+        """Cells to skip: ``(date, base_slot)``, or one entry per named
+        expansion when ``slot_indices`` is set.
+
+        The two entry shapes are both understood by
+        ``src.solver._helpers.cell_is_skipped``, so a per-expansion skip needs
+        no solver change — it is the same mechanism a client constant uses to
+        pin ``nonveg_main__2`` while ``__1`` is still solved.
+        """
+        targets = ([f'{self.base_slot}__{i}' for i in self.slot_indices]
+                   if self.slot_indices else [self.base_slot])
         return {
-            (d, self.base_slot)
+            (d, slot)
             for d in dates
             if d.weekday() not in self.allowed_weekdays
+            for slot in targets
         }
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],

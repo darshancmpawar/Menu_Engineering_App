@@ -65,6 +65,8 @@ def _sel(sel: Any) -> str:
         return str(sel)
     if "any_of" in sel:
         return " or ".join(_sel(s) for s in sel["any_of"])
+    if "all_of" in sel:
+        return " and ".join(_sel(s) for s in sel["all_of"])
     if "any_flag" in sel:
         flags = sel["any_flag"]
         return " or ".join(str(f) for f in flags)
@@ -106,6 +108,12 @@ def _counts(rule: Dict[str, Any]) -> List[str]:
         out.append(f"≤ {rule['max_per_week']}/week")
     if rule.get("non_consecutive"):
         out.append("not on adjacent days")
+    if rule.get("forbidden_weekdays"):
+        days = ", ".join(str(d) for d in rule["forbidden_weekdays"])
+        out.append(f"never on {days}")
+    if rule.get("allowed_day_types"):
+        themes = ", ".join(str(t) for t in rule["allowed_day_types"])
+        out.append(f"only on {themes} days")
     return out
 
 
@@ -282,46 +290,79 @@ def render() -> str:
         if note:
             lines.append(f"{note}\n\n")
 
-        rows = []
-        for ref in entry.get("use") or []:
-            if isinstance(ref, str):
-                name, base = ref, ref
-                extra = {}
-            else:
-                base = ref.get("ref", "")
-                name = ref.get("as", base)
-                extra = ref.get("with") or {}
-            detail = f"shelf component `{base}`"
-            if extra:
-                keys = ", ".join(f"`{k}`" for k in extra)
-                detail += f", with {keys} overridden"
-            rows.append((name, detail, ""))
+        body = _render_block(entry)
+        lines.extend(body)
 
-        for rule in entry.get("rules") or []:
-            if not isinstance(rule, dict):
+        # Per-counter blocks. These were missing entirely, which made the index
+        # wrong rather than merely thin: World Bank and ICON Chn keep most of
+        # their logic here, and L&T and Siemens Technology already did.
+        counters = entry.get("counters") or {}
+        counter_body: List[str] = []
+        for cname in sorted(counters, key=str.lower):
+            cblock = counters[cname]
+            if not isinstance(cblock, dict):
                 continue
-            rows.append((rule.get("name", "(unnamed)"),
-                         summarise(rule), _quote(rule)))
+            inner = _render_block(cblock)
+            if not inner:
+                continue
+            counter_body.append(f"### {client} → {cname}\n\n")
+            cnote = str(cblock.get("_comment") or "").strip()
+            if cnote:
+                counter_body.append(f"{cnote}\n\n")
+            counter_body.extend(inner)
+        lines.extend(counter_body)
 
-        if rows:
-            lines.append("| Rule | What it does | Client's words |\n")
-            lines.append("|---|---|---|\n")
-            for name, what, quote in rows:
-                lines.append(f"| `{name}` | {what} | {quote} |\n")
-            lines.append("\n")
-
-        if entry.get("disable"):
-            names = ", ".join(f"`{n}`" for n in entry["disable"])
-            lines.append(f"**City rules switched off:** {names}\n\n")
-
-        consts = _constants(entry.get("constant_items") or {})
-        if consts:
-            lines.append("**Pinned items:** " + "; ".join(consts) + "\n\n")
-
-        if not rows and not entry.get("disable") and not consts:
+        if not body and not counter_body:
             lines.append("_No rules — the city ruleset covers this client._\n\n")
 
     return "".join(lines)
+
+
+def _render_block(entry: Dict[str, Any]) -> List[str]:
+    """The rules / disables / pins table for one client or counter block."""
+    rows = []
+    for ref in entry.get("use") or []:
+        if isinstance(ref, str):
+            name, base = ref, ref
+            extra = {}
+        else:
+            base = ref.get("ref", "")
+            name = ref.get("as", base)
+            extra = ref.get("with") or {}
+        detail = f"shelf component `{base}`"
+        if extra:
+            keys = ", ".join(f"`{k}`" for k in extra)
+            detail += f", with {keys} overridden"
+        rows.append((name, detail, ""))
+
+    for rule in entry.get("rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        rows.append((rule.get("name", "(unnamed)"),
+                     summarise(rule), _quote(rule)))
+
+    out: List[str] = []
+    if rows:
+        out.append("| Rule | What it does | Client's words |\n")
+        out.append("|---|---|---|\n")
+        for name, what, quote in rows:
+            out.append(f"| `{name}` | {what} | {quote} |\n")
+        out.append("\n")
+
+    if entry.get("disable"):
+        names = ", ".join(f"`{n}`" for n in entry["disable"])
+        out.append(f"**City rules switched off:** {names}\n\n")
+
+    consts = _constants(entry.get("constant_items") or {})
+    if consts:
+        out.append("**Pinned items:** " + "; ".join(consts) + "\n\n")
+
+    excluded = entry.get("shared_categories_excluded_counters") or []
+    if excluded:
+        names = ", ".join(f"`{n}`" for n in excluded)
+        out.append(f"**Not synced with the shared categories:** {names}\n\n")
+
+    return out
 
 
 def main() -> int:

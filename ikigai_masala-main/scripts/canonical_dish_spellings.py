@@ -163,7 +163,14 @@ DUPLICATES = {
                   "jeera_chapati": "jeera_chapatti",
                   "methi_chapati": "methi_chapatti",
                   "palak_chapati": "palak_chapatti",
-                  "plain_chapati": "plain_chapatti"},
+                  "plain_chapati": "plain_chapatti",
+                  # `masala_butter_milk` folds onto `masala_buttermilk`. The
+                  # survivor is the attributed one — `cuisine_family: drink`,
+                  # `drink_rule_group: buttermilk`, `key_ingredient: kokum` —
+                  # against a stub filed `north_indian` / red / `fruit_drink`.
+                  "masala_butter_milk": "masala_buttermilk"},
+    "pune": {  # same pair, same direction: the `drink`-filed row wins.
+               "butter_milk": "buttermilk"},
     "ncr": {"palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda"},
 }

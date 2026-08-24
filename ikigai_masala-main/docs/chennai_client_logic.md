@@ -163,6 +163,122 @@ Findings that are not bugs in this client's config but are worth knowing.
 
 ---
 
+## The four clients that arrived with a stated rule set
+
+`data/raw/source_workbooks/chennai_client_structure.xlsx` is a different kind of
+source from ToastTab's history: **`Sheet1` states the rules in the client's own
+words**, and each client's own sheet holds a sample week that verifies them. So
+these four are transcribed rather than inferred, and where a stated rule and its
+sample disagree the config follows the sentence and the disagreement is recorded.
+
+A fifth client, **RNTBCI**, is listed on `Sheet1` with nothing beside it and its
+own sheet is empty. It is on hold at the client's request; its six counters plan
+from the city ruleset alone.
+
+Full rule-by-rule tables are in [`client_rules_index.md`](client_rules_index.md).
+What follows is what each client taught the tool.
+
+### TCL — one counter, seven days
+
+Thirteen stated rules, and the only Chennai site that serves Saturday and Sunday.
+Both weekend days run a **reduced menu** — Saturday has no dal, sambar, rasam,
+dessert, salad or non-veg and serves one rice instead of two; Sunday drops the
+veg dry, dessert, curd rice and non-veg and serves white rice instead of a
+flavoured one. Ten day restrictions carry that, and one of them needed a new
+capability: `slot_day_restriction` could only stand down a whole slot family, so
+"two rices on a weekday and one on Saturday" was inexpressible until
+`slot_indices` was added.
+
+Two of the thirteen are about which SLOT holds what rather than about the menu:
+"in dal need to give only Kootu item" (see below) and "in salad need to give only
+KUZHAMBU item". All 13 Chennai kuzhambus are `veg_gravy` — a tamarind gravy is
+not a salad — so the client's kuzhambu row is a second gravy, and the DB change
+is recorded rather than the ontology bent.
+
+One stated rule contradicts its own sample: "welcome drink will be buttermilk
+twice a week", against a week whose five drinks are all buttermilks (BUTTERMILK /
+SAMBARAM / INJI MOORU / BUTTERMILK / NEER MOORU — `sambaram` and `tadka_neer_mor`
+both carry `is_buttermilk`). Configured as stated.
+
+### Gartner — one counter, four rules, all about rice
+
+"On chinese day we will not serve indian bread we will serve white rice and
+flavoured rice", "when there is white rice no flavour rice (except chinese day)",
+"white rice will be served weekly twice excluding chinese day". Three sentences
+describing one weekly shape, and the sample settles it 5/5 — so they are encoded
+as three complementary day restrictions (bread Mon-Thu, white rice Wed-Fri,
+flavoured rice Mon/Tue/Fri) rather than as frequency caps the solver would then
+have to be steered inside. The fourth, "fish dish to be served on wednesaday",
+makes `chennai.json`'s one-seafood-day-a-week cap land on a named day.
+
+### World Bank — two counters
+
+Its non-veg station serves **four dishes every day** — a chicken gravy, chicken
+biryani, boiled egg and bone salna. Three are the same dish daily, so they are
+`constant_items` pins and the fourth is a composition. Two of the four dishes did
+not exist in any city list and are now real rows; pinning a real dish narrows its
+cell rather than stamping text, so `boiled_egg` and `bone_salna` are visible to
+the colour and variety rules like anything else.
+
+That is also what surfaced the pin/uniqueness contradiction: a pin narrows a cell
+to one dish, and `unique_items` then saw that dish on all five days. Each pin
+alone made the counter INFEASIBLE with no rule named. A dish the config pins into
+the same slot every day is a staple by declaration, which is now what the solver
+reads it as.
+
+Its dessert is pinned to the client's own wording, **"Sweet/Fruit"** — no such
+dish exists, so it is stamped verbatim and the slot serves no rotating sweet.
+Deliberate, and flagged in `pending_config_changes.md` in case they want the
+rotation instead.
+
+### ICON Chn — four counters
+
+The most structurally demanding of the four. "In Premium Lunch and Economy Lunch
+counter we have give dal and veg dry alternative days not both on same day": both
+run as mandatory daily slots, so alternation can only be said by standing each
+down on the other's days — kootu Tuesday and Thursday, poriyal Monday, Wednesday
+and Friday, which is exactly what the sample's single "Kootu or Poriyal" row does.
+
+Two of its rules are about cross-counter sharing and only one could be
+implemented. "Rice combo counter is not linked to the shared items list" is now
+expressible: `shared_categories_excluded_counters` in the client's rules file
+takes a counter out of the sync. "Same nonveg main is served in Economy Lunch
+counter and Roti Combo Counter" is not: the sync pins from the **primary**
+counter, and ICON's primary serves a different lineup entirely. Both counters are
+given the same weekday structure instead — an egg gravy Monday and Wednesday, a
+chicken gravy otherwise — so they serve the same kind of dish on the same day
+without being guaranteed the identical one.
+
+"2 egg gravy on Monday and Wednesday" is where `all_of` came from: "an egg
+GRAVY" is `is_egg_dish` AND `is_nonveg_gravy`, and the flag alone returned a
+boiled egg.
+
+### What all three of them agreed about: the kootu is the dal
+
+TCL, World Bank and ICON Chn state **"in dal need to give only Kootu item"** in
+the same words. Every Chennai kootu was `course_type = veg_gravy`, so the dal
+pool held none of them and the rule was unsatisfiable as written.
+
+The four sample weeks settle it: the kootu is always its own row, next to the
+gravies and never one of them. World Bank prints "Veg Gravy", "Kara kuzhambhu"
+and "Kootu" as three separate rows; ICON's is labelled "Kootu or Poriyal",
+pairing it with the dry rather than the gravy. A kootu is a vegetable simmered
+with moong or toor dal, so `dal` is the position it occupies on a Tamil plate.
+
+`scripts/chennai_client_pools.py` re-files the eight and imports eight more, and
+`sub_category = kootu` is preserved so the city's `kootu_twice_weekly` cap still
+selects them. This is a **deliberate per-city divergence**: Bangalore files 43
+kootus as `veg_gravy` and two as `dal`, and stays as it is.
+
+The consequence is that "kootu daily" and "kootu at most twice a week" are a
+direct contradiction, which TCL and World Bank resolve by disabling the city
+rule. That conflict was also invisible — `kootu_twice_weekly` has no `base_slot`,
+and the composition cross-check only looked at compositions on the rule's own
+slot, so `/diagnose` reported a clean bill of health for a counter that could not
+solve.
+
+---
+
 ## Seafood: a missing branch of the taxonomy
 
 Chennai is the first city list with fish, and the master ontology had only

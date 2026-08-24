@@ -81,9 +81,11 @@ CORRECTIONS = {
         # workbook are `welcome_drink / indian_regional_drink`, so the file
         # disagrees with itself. NOT touched: majjige_huli and its two variants,
         # which really are buttermilk CURRIES and correctly `veg_gravy / kadhi`.
-        'butter_milk':        ('welcome_drink', 'indian_regional_drink', None),
-        'masala_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
-        'boondi_butter_milk': ('welcome_drink', 'indian_regional_drink', None),
+        # Named in the post-fold spelling: `canonical_dish_spellings.py` folds
+        # `butter_milk` to `buttermilk` and runs before this.
+        'buttermilk':         ('welcome_drink', 'indian_regional_drink', None),
+        'masala_buttermilk':  ('welcome_drink', 'indian_regional_drink', None),
+        'boondi_buttermilk':  ('welcome_drink', 'indian_regional_drink', None),
         # Filed `accompaniment / non-herb_chutney`, so it could never be selected
         # for `veg_gravy` — yet ToastTab's Friday sample serves tomato thokku in
         # the veg-gravy position (D2 in docs/data_fixes_for_client.md). The client

@@ -665,11 +665,13 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """Return (mode, [counter names], city, shared_categories); degrade to single.
+    """Return (mode, [counter names], city, shared_categories, excluded).
 
     ``shared_categories`` are the base slots this client serves identically
     across its counters — the planner pins the primary counter's dish for each
-    into the others.
+    into the others. ``excluded`` names the counters that opt out of that sync
+    (ICON Chn's Rice Combo, which the client states has its own menu). Degrades
+    to a single unsynced counter if the config cannot be read.
     """
     try:
         cfg = api.get_client_config(name)
@@ -677,9 +679,10 @@ def _client_counter_names(api, name: str):
         names = [(c.get("name") or f"Counter {i + 1}")
                  for i, c in enumerate(counters)] or ["Counter 1"]
         return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
-                cfg.get("shared_categories") or [])
+                cfg.get("shared_categories") or [],
+                set(cfg.get("shared_categories_excluded_counters") or []))
     except Exception:
-        return "single", ["Counter 1"], None, []
+        return "single", ["Counter 1"], None, [], set()
 
 
 # ---------------------------------------------------------------------------
@@ -689,8 +692,8 @@ if generate_clicked:
     if not selected_client or selected_client == "(no clients)":
         st.warning("Select a valid client first.")
     else:
-        mode, counter_names, city, shared_categories = _client_counter_names(
-            client, selected_client)
+        (mode, counter_names, city, shared_categories,
+         shared_excluded) = _client_counter_names(client, selected_client)
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -782,11 +785,18 @@ if generate_clicked:
             ):
                 for i, cname in enumerate(counter_names):
                     try:
+                        # A counter named in `shared_categories_excluded_counters`
+                        # is sent nothing, so it solves independently — the
+                        # shared list is otherwise all-or-nothing per client.
+                        send_shared = (
+                            shared_items
+                            if i > 0 and cname not in shared_excluded
+                            else None)
                         result = client.plan(
                             client_name=selected_client,
                             start_date=start_date.isoformat(), num_days=num_days,
                             time_limit_seconds=per_limit, counter_index=i,
-                            shared_items=shared_items if i > 0 else None)
+                            shared_items=send_shared)
                         if i == 0 and shared_categories:
                             shared_items = shared_items_from_solution(
                                 result.get("solution", {}), shared_categories)

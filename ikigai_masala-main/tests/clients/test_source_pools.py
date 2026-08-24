@@ -159,41 +159,57 @@ class TestPoolPreview:
 class TestPlanFlowFilter:
     """Pool narrowing, and the cities where it is switched off.
 
-    These two used to assert the narrowing on **Rippling**, a Bangalore client.
-    Bangalore was later added to `FULL_POOL_CITIES` (note 15) precisely so its
-    clients plan from the whole city list — only 893 of its 4,349 rows carry
-    `common`, and most clients have `source_pools = []`, so narrowing left them
-    a fifth of the list. The tests kept asserting the old behaviour. They now
-    check both halves: a narrowing city narrows, a full-pool city does not.
+    These used to assert the narrowing through the plan flow — first on
+    Bangalore, then on Chennai. Both cities have since joined
+    `FULL_POOL_CITIES` for the same measured reason (note 15): a list whose
+    rows are mostly tagged to per-site pools, against clients that mostly have
+    `source_pools = []`, leaves each of them a fraction of the city's dishes.
+
+    That leaves **no city where the plan flow narrows observably** — Pune is
+    the only one outside the set and every Pune row is `common`, so its subset
+    IS its full list. So the narrowing is asserted on the mechanism directly,
+    which is where a regression would actually show, and the policy is asserted
+    as the policy it is.
     """
 
-    #: The seeded client has no city, which resolves to Bangalore's workbook and
-    #: therefore to the full-pool policy. Moving it to Chennai — a city that
-    #: still narrows, and the one whose list carries real per-site tokens since
-    #: the menu bank import — is what makes the narrowing observable at all.
-    NARROWING_CITY = 'Chennai'
-    NARROWING_POOL = 'tata communications'
-
-    def _narrowing(self, loader):
-        loader.set_client_city('Rippling', self.NARROWING_CITY)
-        return 'Rippling'
-
-    def test_menu_data_filtered_to_active_pools(self, fake_supabase):
-        import api.app as api_app
-        from src.client.client_config import ClientConfigLoader
+    def test_the_narrowing_mechanism_still_selects_on_the_pool_column(self):
+        """`filter_eligible` is what the plan flow calls once a city is outside
+        `FULL_POOL_CITIES`. Asserted on a constructed frame because no shipped
+        city narrows today — and a mechanism nothing exercises is exactly the
+        kind that rots."""
+        import pandas as pd
         from src.preprocessor.client_pool_filter import (
-            parse_client_pools, get_active_pools,
+            filter_eligible, get_active_pools, parse_client_pools,
         )
-        loader = ClientConfigLoader()
-        name = self._narrowing(loader)
-        loader.set_client_source_pools(name, [self.NARROWING_POOL])
-        api_app.reset_caches()
-        df, _ = api_app._menu_data_for_client(name)
-        active = get_active_pools([self.NARROWING_POOL])
-        for cell in df['client']:
+        df = pd.DataFrame([
+            {'item_id': 1, 'item': 'a', 'client': 'common'},
+            {'item_id': 2, 'item': 'b', 'client': 'acme'},
+            {'item_id': 3, 'item': 'c', 'client': 'acme,other'},
+            {'item_id': 4, 'item': 'd', 'client': 'other'},
+        ])
+        active = get_active_pools(['acme'])
+        out = filter_eligible(df, active)
+        assert set(out['item']) == {'a', 'b', 'c'}
+        for cell in out['client']:
             assert parse_client_pools(cell) & active, cell
-        full_df, _ = api_app._get_menu_data(self.NARROWING_CITY)
-        assert len(df) < len(full_df)
+
+    def test_every_city_with_per_site_pools_is_now_full_pool(self):
+        """The policy, stated as an assertion. A city whose list is carved into
+        per-site pools and whose clients do not name them plans from a fraction
+        of its own dishes — which is what put Bangalore, NCR and now Chennai in
+        this set. Pune is outside it and needs to be: every Pune row is
+        `common`, so narrowing is a no-op there rather than a loss."""
+        import pandas as pd
+        from src.constants import FULL_POOL_CITIES
+        from src.ontology.paths import CITY_ITEMS_DIR
+        for city in ('bangalore', 'chennai', 'ncr'):
+            assert city in FULL_POOL_CITIES, city
+        assert 'pune' not in FULL_POOL_CITIES
+        pune = pd.read_excel(CITY_ITEMS_DIR / 'pune.xlsx')
+        tokens = {t.strip().lower()
+                  for cell in pune['client'].astype(str)
+                  for t in cell.split(',') if t.strip()}
+        assert tokens == {'common'}, sorted(tokens)
 
     def test_a_full_pool_city_ignores_source_pools(self, fake_supabase):
         """Bangalore is in `FULL_POOL_CITIES`, so naming a pool changes nothing
@@ -209,15 +225,17 @@ class TestPlanFlowFilter:
         full_df, _ = api_app._get_menu_data()
         assert len(df) == len(full_df)
 
-    def test_common_only_when_unset(self, fake_supabase):
-        """With no pools set, a NARROWING city plans from `common` alone."""
-        import api.app as api_app
-        from src.client.client_config import ClientConfigLoader
-        from src.preprocessor.client_pool_filter import parse_client_pools
-        loader = ClientConfigLoader()
-        name = self._narrowing(loader)
-        loader.set_client_source_pools(name, [])
-        api_app.reset_caches()
-        df, _ = api_app._menu_data_for_client(name)
-        for cell in df['client']:
+    def test_common_only_when_unset(self):
+        """With no pools set, a narrowing city plans from `common` alone."""
+        import pandas as pd
+        from src.preprocessor.client_pool_filter import (
+            filter_eligible, get_active_pools, parse_client_pools,
+        )
+        df = pd.DataFrame([
+            {'item_id': 1, 'item': 'a', 'client': 'common'},
+            {'item_id': 2, 'item': 'b', 'client': 'acme'},
+        ])
+        out = filter_eligible(df, get_active_pools([]))
+        assert set(out['item']) == {'a'}
+        for cell in out['client']:
             assert 'common' in parse_client_pools(cell), cell

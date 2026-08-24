@@ -192,6 +192,42 @@ STYLE_OVERRIDES = {
 }
 
 
+#: A regional CHICKEN flag on a dish that is not chicken. Structural, not
+#: cosmetic: `nonveg_main_daily_pair` and several client rules compose a day as
+#: "one dry plus one north/south chicken gravy", so a mis-flagged dish satisfies
+#: the chicken half and the plate loses the chicken. ICON Chn asks for a chicken
+#: gravy on Tuesday and got `egg_kurma`, which carries `is_south_chicken_gravy`
+#: while its `primary_protein` is egg. Cleared in every city.
+#:
+#: NB this only clears the CHICKEN flags. `is_nonveg_gravy` stays — an egg kurma
+#: really is a non-veg gravy — and the twelve NCR rows named `soya_keema` /
+#: `veg_keema` / `nutri_keema` that carry `primary_protein: mutton` keep that
+#: protein here: whether a vegetarian keema belongs in `nonveg_main` at all is a
+#: question for the client, not something to decide by clearing a column.
+CHICKEN_ONLY_FLAGS = (
+    "is_north_chicken_gravy", "is_south_chicken_gravy",
+    "is_chinese_chicken_gravy", "is_continental_chicken_gravy",
+    "is_continental_chicken_dry", "is_south_chicken_dry",
+    "is_chinese_chicken_dry", "is_tandoor_chicken_dry",
+)
+
+
+def clear_non_chicken(df: pd.DataFrame):
+    """Clear the chicken-only flags from rows whose protein is not chicken."""
+    prot = df["primary_protein"].astype(str).str.strip().str.lower()
+    cleared = []
+    for col in CHICKEN_ONLY_FLAGS:
+        if col not in df.columns:
+            continue
+        wrong = pd.to_numeric(df[col], errors="coerce").fillna(0).eq(1) & ~prot.eq("chicken")
+        if not wrong.any():
+            continue
+        for _i, row in df[wrong].iterrows():
+            cleared.append((str(row["item"]), col))
+        df.loc[wrong, col] = 0
+    return cleared
+
+
 def _has_a_flag(row, cols) -> bool:
     for c in cols:
         try:
@@ -241,10 +277,14 @@ def main(dry_run: bool = False):
         df = pd.read_excel(path)
         df.columns = [c.strip() for c in df.columns]
         out, filled, unresolved = apply(df)
+        cleared = clear_non_chicken(out)
         total_filled += len(filled)
         total_left += len(unresolved)
         print(f"[{city}] filled {len(filled)}, "
               f"{len(unresolved)} left for the client to say")
+        if cleared:
+            print(f"    cleared {len(cleared)} chicken flag(s) off non-chicken "
+                  f"dishes: {', '.join(sorted({i for i, _c in cleared}))[:160]}")
         for item, flags in filled[:6]:
             print(f"    {item:<42} {', '.join(flags)}")
         if len(filled) > 6:
@@ -252,7 +292,7 @@ def main(dry_run: bool = False):
         if unresolved:
             print(f"    ! no form in the name: {sorted(unresolved)[:8]}"
                   f"{' …' if len(unresolved) > 8 else ''}")
-        if filled and not dry_run:
+        if (filled or cleared) and not dry_run:
             _atomic_to_excel(out, path, index=False)
             print(f"[{city}] wrote {path.name}")
     print(f"\n{total_filled} dish(es) made placeable; "

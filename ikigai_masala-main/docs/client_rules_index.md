@@ -25,7 +25,7 @@ that city inherits. See `docs/client_logics.md` (Bangalore),
 `docs/ncr_client_logic.md` for the per-city reasoning, and `docs/pune_rulebook.md`
 for the 70-rule Pune source.
 
-**43 clients have per-client rules.**
+**47 clients have per-client rules.**
 
 ## Airtel Noida
 
@@ -40,6 +40,12 @@ NCR site 'Airtel Plot 5'. Lunch-relevant logics encoded below. Deferred (need mo
 ## Amadeus
 
 **Pinned items:** `salad` — green salad; `bread` — plain chapati
+
+### Amadeus → Chinese
+
+This is a dedicated Chinese/Continental station: every weekday is themed chinese_continental, so on an odd ISO week the theme filter narrows rice to continental rice on all five days. The city-wide 'continental rice at most once a week' cap is meant for a mixed counter that sees continental once, and contradicts a station whose whole purpose is continental — it made this counter INFEASIBLE on every odd week. Scoped off here only; Amadeus's South and North counters still obey it.
+
+**City rules switched off:** `continental_rice_weekly`
 
 ## Amadeus Pune
 
@@ -151,7 +157,7 @@ Bangalore site, one counter, one dish per slot (themes Mon-Thu = mix, Fri = biry
 | `citrix_rice_and_veg_gravy_same_region` | prefer (medium): rice and veg_gravy should agree on cuisine_family (north_indian/south_indian) | Flavour rice and veg gravy should be of the same region. |
 | `citrix_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on tue: is_egg_dish; on fri: is_nonveg_biryani | Nonveg main: Mon & Wed Chicken gravy, Tue - Egg curry, Friday Biryani. |
 | `citrix_nonveg_mon_tue_wed_fri` | nonveg_main runs only on mon, tue, wed, fri (blank otherwise) | Nonveg main: Mon & Wed chicken gravy, Tue egg curry, Friday biryani' names four days out of five, and the client confirmed the fifth is deliberate: THURSDAY IS BLANK |
-| `citrix_biryani_only_on_biryani_day` | is_nonveg_biryani @ nonveg_main: ≤ 1 day(s); only on biryani days | Friday is this counter's biryani day and the client asked for the biryani there |
+| `citrix_biryani_only_on_biryani_day` | is_nonveg_biryani @ nonveg_main: ≤ 1 day(s), only on biryani days; only on biryani days | Friday is this counter's biryani day and the client asked for the biryani there |
 | `citrix_rice_north_not_two_days_running` | prefer (medium): avoid cuisine_family north_indian @ rice on adjacent days | The region should alternate from south and north, should not be the same on 2 continuous days for flavour rice, veg gravy and veg dry. |
 | `citrix_rice_south_not_two_days_running` | prefer (medium): avoid cuisine_family south_indian @ rice on adjacent days |  |
 | `citrix_veg_gravy_north_not_two_days_running` | prefer (medium): avoid cuisine_family north_indian @ veg_gravy on adjacent days |  |
@@ -244,6 +250,17 @@ Bangalore launch site (created via the launch view). Uses the Bangalore regional
 
 **Pinned items:** `nonveg_main` — wednesday=boiled egg
 
+## Gartner
+
+Chennai, one counter. Four stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 13-16) verified against the 10-15 Aug sample week on the 'Gartner' sheet. Three of the four are about which rice the day serves and are encoded as three complementary day restrictions rather than as frequency caps — the sample settles the weekdays 5/5, and a restriction says the same thing without leaving the solver a choice it would then have to be steered out of. Friday is the counter's chinese day, which is what 'chinese day' means in the client's rules.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `gartner_no_bread_on_the_chinese_day` | bread runs only on mon, tue, wed, thu (blank otherwise) | on chinese day we will not serve indian bread we will serve white rice and flavoured rice |
+| `gartner_white_rice_wed_thu_and_the_chinese_day` | white_rice runs only on wed, thu, fri (blank otherwise) | white rice will be served weekly twice excluding chinese day' — Wednesday and Thursday in the sample — plus Friday, which the rule above puts it on and this one excludes from the count |
+| `gartner_flavoured_rice_mon_tue_and_the_chinese_day` | rice runs only on mon, tue, fri (blank otherwise) | when there is white rice no flavour rice (except chinese day) |
+| `gartner_fish_on_wednesday` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): on wed: is_fish_dish | fish dish to be served on wednesaday |
+
 ## H&M
 
 | Rule | What it does | Client's words |
@@ -253,6 +270,62 @@ Bangalore launch site (created via the launch view). Uses the Bangalore regional
 **City rules switched off:** `buttermilk_twice_weekly`, `welcome_drink_no_repeat_color`
 
 **Pinned items:** `welcome_drink` — buttermilk; `salad` — green salad; `bread` — plain chapati
+
+## ICON Chn
+
+Chennai, four counters — 'Premium Lunch' (primary), 'Economy Lunch', 'Rice Combo', 'Roti Combo'. Eight stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 24-31) against the 10-14 Aug sample on the 'icon chn' sheet. The client's `source_pools` already names all eight Chennai site tokens, which is what `chennai` joining FULL_POOL_CITIES makes uniform for every client in the city.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `theme_cuisine_filter` | theme filter does not narrow: dal, salad, soup, healthy_rice, rice, sambar, rasam, curd, curd_side, curd_rice, dessert, bread, veg_dry, nonveg_main | Overrides chennai.json's rule of the same name (merged by name, so this REPLACES its `exempt_slots`) by adding `nonveg_main` |
+| `icon_chn_dal_is_a_kootu` | dal must include (when the counter serves ≥1 and ≤1 of it): sub_category kootu | in dal need to give only Kootu item |
+| `icon_chn_bread_is_chapati_daily` | bread must include (when the counter serves ≥1 and ≤1 of it): is_plain_phulka_chapathi | Indian Bread will be chapathi only daily |
+
+**City rules switched off:** `nonveg_biryani_weekly`
+
+**Not synced with the shared categories:** `Rice Combo`
+
+### ICON Chn → Economy Lunch
+
+Same dal/veg-dry alternation as Premium, and one non-veg cell: 'we serve nonveg gravy 2 egg gravy on Monday and Wednesday and rest is chicken gravy'. With a single cell a per-weekday component decides the day outright.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `icon_chn_economy_dal_tue_thu` | dal runs only on tue, thu (blank otherwise) |  |
+| `icon_chn_economy_veg_dry_mon_wed_fri` | veg_dry runs only on mon, wed, fri (blank otherwise) |  |
+| `icon_chn_economy_nonveg_egg_mon_wed_else_chicken` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): on mon: is_egg_dish and is_nonveg_gravy; on wed: is_egg_dish and is_nonveg_gravy; on tue: is_north_chicken_gravy or is_south_chicken_gravy; on thu: is_north_chicken_gravy or is_south_chicken_gravy; on fri: is_north_chicken_gravy or is_south_chicken_gravy | The '2 egg' in the client's sentence is a portion count, not a dish count — the sample prints 'Egg Curry (2Egg)' in one cell — so this asks for an egg GRAVY, not two eggs |
+
+### ICON Chn → Premium Lunch
+
+'in Premium Lunch and Economy Lunch counter we have give dal and veg dry alternative days not both on same day'. The counter runs BOTH as mandatory daily slots, so 'alternate' can only be expressed by standing each down on the other's days. The sample settles which is which 5/5: its single 'Kootu or Poriyal' row is a poriyal on Monday, Wednesday and Friday and a kootu on Tuesday and Thursday.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `icon_chn_premium_nonveg_mon_wed_fri` | nonveg_main runs only on mon, wed, fri (blank otherwise) |  |
+| `icon_chn_premium_dal_tue_thu` | dal runs only on tue, thu (blank otherwise) |  |
+| `icon_chn_premium_veg_dry_mon_wed_fri` | veg_dry runs only on mon, wed, fri (blank otherwise) |  |
+
+**Pinned items:** `nonveg_main__1` — Chicken Biryani; `nonveg_main__2` — Boiled Egg; `nonveg_main__3` — Bone Salna
+
+### ICON Chn → Rice Combo
+
+'rice combo counter will have veg gravy 3 times a week and veg dry twice a week on wed and Friday' and 'it has seprate menu usually south items and flavour rice is biryani (can be north) on Wednesday and on Friday can be a north flavour rice'. The counter is themed south every day, and `rice` is exempt from the theme filter in chennai.json — which is what leaves a north biryani and a north flavoured rice reachable on the two days the client names. Its non-veg pattern is NOT stated and comes from the sample, which serves Egg Masala on Monday, Wednesday and Friday and nothing on Tuesday or Thursday.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `icon_chn_rice_combo_veg_dry_wed_fri` | veg_dry runs only on wed, fri (blank otherwise) |  |
+| `icon_chn_rice_combo_veg_gravy_mon_tue_thu` | veg_gravy runs only on mon, tue, thu (blank otherwise) | veg gravy 3 times a week' — the three days the veg dry does not run, so the counter always carries exactly one of the two. |
+| `icon_chn_rice_combo_biryani_on_wednesday` | rice must include (when the counter serves ≥1 and ≤1 of it): on wed: is_biryani_item | Wednesday's flavoured rice is a biryani |
+| `icon_chn_rice_combo_nonveg_mon_wed_fri` | nonveg_main runs only on mon, wed, fri (blank otherwise) | Sample-derived, not stated: the counter's egg gravy runs on Monday, Wednesday and Friday and the cell is blank on Tuesday and Thursday. |
+| `icon_chn_rice_combo_nonveg_is_an_egg_gravy` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): is_egg_dish and is_nonveg_gravy |  |
+
+### ICON Chn → Roti Combo
+
+'same nonveg main is served in Economy Lunch counter and Roti Combo Counter' — the identical-dish half of that needs a planner change (see `_not_expressible` above), so what is configured is the same weekday structure, which the sample confirms cell for cell: Egg Curry (2Egg), Madars Chicken Gravy, Egg Curry (2Egg), Hyd Chicken Gravy, Pepper Chicken Gravy on both counters.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `icon_chn_roti_nonveg_egg_mon_wed_else_chicken` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): on mon: is_egg_dish and is_nonveg_gravy; on wed: is_egg_dish and is_nonveg_gravy; on tue: is_north_chicken_gravy or is_south_chicken_gravy; on thu: is_north_chicken_gravy or is_south_chicken_gravy; on fri: is_north_chicken_gravy or is_south_chicken_gravy |  |
 
 ## Ikea
 
@@ -295,7 +368,15 @@ NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main
 
 ## L&T
 
-_No rules — the city ruleset covers this client._
+### L&T → Non Veg Lunch
+
+This counter is themed biryani on all five days, so the theme filter leaves nonveg biryani as the only option every day. The city rule 'nonveg_biryani_once_per_week' is a weekly-variety cap written for a mixed counter and contradicts that by construction. Confirmed with the client that biryani daily is intended, so the cap is dropped here — scoped to this counter, so L&T's South and North Lunch counters keep it if they ever gain a nonveg_main slot. This is also the 5-dish station: with nonveg_main set to 5, 'nonveg_main_five_dish' composes biryani + gravy + dry + kebab + egg each day.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `lt_egg_same_every_day` | is_egg_dish @ nonveg_main: the SAME dish every day | The printed menu serves the same EGG CURRY on all five days, alongside the same CHICKEN KABAB - both are fixtures on this station, not variety slots |
+
+**City rules switched off:** `nonveg_biryani_once_per_week`
 
 ## Moengage
 
@@ -362,7 +443,13 @@ NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet
 
 ## Siemens Technology
 
-_No rules — the city ruleset covers this client._
+### Siemens Technology → Non Veg Lunch
+
+Themed biryani on two weekdays (Wed + Fri) against the city cap of one biryani day per week. Before the composition rule applied to 3-slot counters this contradiction was hidden — the solver satisfied the cap by putting its one biryani day on a mix day and leaving both biryani days without one. Client confirmed two biryani days are intended, so the weekly cap is dropped for this counter only.
+
+**City rules switched off:** `nonveg_biryani_once_per_week`
+
+**Pinned items:** `nonveg_main__1` — wed=['Hyd Mutton Biryani', 'Fish Tikka Masala']
 
 ## Sinch
 
@@ -437,6 +524,35 @@ NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-d
 
 **Pinned items:** `salad__1` — green salad; `bread__1` — tawa roti
 
+## TCL
+
+Chennai. From the client's own 13 stated rules plus a seven-day sample week (data/raw/source_workbooks/chennai_client_structure.xlsx, sheets 'Sheet1' and 'TCL'). The site serves Saturday AND Sunday on reduced menus, which is what most of the rules below are about. TWO of the thirteen are NOT rules at all and need no config: 'in healthy rice we will serve only Curd Rice daily' is already what the `curd_rice` slot does (its pool is the `is_curd_rice` flag, and chennai.json's `curd_rice_is_a_staple` lets the same dish recur), and the client's kuzhambu and kootu requirements are about which SLOT holds what — see the two `_needs_db_change` notes. ONE STATED RULE CONTRADICTS THE SAMPLE: the client says 'welcome drink will be buttermilk twice a week', but all five sampled drinks are buttermilks (BUTTERMILK / SAMBARAM / INJI MOORU / BUTTERMILK / NEER MOORU — sambaram and neer mor both carry `is_buttermilk`). The stated rule is what is configured, since that is what the client wrote down; if they meant 'plain buttermilk twice and a variant otherwise' the fix is to narrow the selector to the one dish.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `tcl_bread_is_chapati_daily` | shelf component `bread_chapati_only` |  |
+| `tcl_dal_is_a_kootu` | dal must include (when the counter serves ≥1 and ≤1 of it): sub_category kootu | in dal need to give only Kootu item |
+| `tcl_rice_is_a_biryani_and_a_south_rice` | rice must include (when the counter serves ≥2 of it): is_biryani_item + sub_category south_one_pot_rice or sub_category south_rice_bath or sub_category south_veg_pulao | 2 flavoured rice one will be biryani daily and other will be south flavoured rice |
+| `tcl_one_rice_on_saturday` | rice runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday serves ONE rice ('only one south flavoured rice'), so the second rice cell stands down for that day alone — `slot_indices` skips one expansion instead of the whole family, which is what a … |
+| `tcl_no_flavoured_rice_on_sunday` | rice runs only on mon, tue, wed, thu, fri, sat (blank otherwise) | Sunday serves white rice and no flavoured rice at all ('on sun chapathi, white rice, samabar, rasam, dal, veg gravy, welcome drink, salad and papad only'). |
+| `tcl_second_gravy_is_a_kuzhambu` | veg_gravy must include (when the counter serves ≥2 of it): named kuzhambu/kolumbu/kulambu/kuzhumbu/kolambu | The second veg gravy is the kuzhambu, every day it runs |
+| `tcl_one_veg_gravy_on_saturday` | veg_gravy runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday serves one veg gravy, not two ('veg gravy' singular in the Saturday list, and the sample's Saturday column has VEG KURMA and no kuzhambu) |
+| `tcl_liquid_sweet_three_days` | is_liquid_dessert @ dessert: exactly 3 day(s) | liquid based sweet 3 a week |
+| `tcl_buttermilk_twice_a_week` | is_buttermilk @ welcome_drink: exactly 2 day(s) | welcome drink will be buttermilk twice a week |
+| `tcl_nonveg_egg_mwf_chicken_tue_thu` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): on mon: is_egg_dish; on wed: is_egg_dish; on fri: is_egg_dish; on tue: primary_protein chicken; on thu: primary_protein chicken | in non veg main egg based to be served on mon, Wednesday and Friday |
+| `tcl_no_nonveg_biryani` | is_nonveg_biryani @ nonveg_main: ≤ 0 day(s) | no biryani in non veg main to be served |
+| `tcl_no_premium_veg_on_the_weekend` | key_ingredient paneer or primary_protein paneer or key_ingredient mushroom or named baby_corn/babycorn/mushroom/paneer: never on sat, sun | no item like baby corn, panner and mushroom will given on sat and sun |
+| `tcl_no_dal_on_saturday` | dal runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday's menu is 'chapathi, only one south flavoured rice, healthy rice, veg gravy, welcome drink, veg dry and papad only' — so salad, dal, sambar, rasam, dessert and non-veg all stand down |
+| `tcl_sambar_not_on_saturday` | sambar runs only on mon, tue, wed, thu, fri, sun (blank otherwise) |  |
+| `tcl_rasam_not_on_saturday` | rasam runs only on mon, tue, wed, thu, fri, sun (blank otherwise) |  |
+| `tcl_salad_not_on_saturday` | salad runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Salad appears in Sunday's list and not Saturday's |
+| `tcl_veg_dry_not_on_sunday` | veg_dry runs only on mon, tue, wed, thu, fri, sat (blank otherwise) |  |
+| `tcl_curd_rice_not_on_sunday` | curd_rice runs only on mon, tue, wed, thu, fri, sat (blank otherwise) | Curd rice is in Saturday's list ('healthy rice') and not Sunday's. |
+| `tcl_dessert_on_weekdays_only` | dessert runs only on mon, tue, wed, thu, fri (blank otherwise) | Dessert and non-veg appear in neither weekend list. |
+| `tcl_nonveg_on_weekdays_only` | nonveg_main runs only on mon, tue, wed, thu, fri (blank otherwise) |  |
+
+**City rules switched off:** `mixedveg_pulao_biryani_weekly`, `kootu_twice_weekly`
+
 ## Tekion
 
 | Rule | What it does | Client's words |
@@ -459,7 +575,7 @@ NCR site 'Stryker Sector 59' (city NCR). Logics from the client sheet + the 10-d
 
 ## Tekion CHN
 
-Chennai site. "Its rules are the same as Tekion BLR" — so this is Tekion's block re-keyed to this site, with the names prefixed so the two counters' diagnostics stay distinguishable. TWO CLIENT DECISIONS shape what is here. (1) The theme map stays Chennai's OWN (Mon/Tue mix, Wed south, Thu biryani, Fri north) rather than copying BLR's — so the weekday rules below land on different themes than they do in Bangalore, and each was checked against what Chennai can actually serve on that day: Friday is north and Chennai has 6 north non-veg biryanis, Wednesday is south and has 10 south chicken gravies, and the Thursday khichdi is unaffected because Chennai's ruleset exempts `rice` from theme filtering altogether. (2) NO CHINESE at this site, so BLR's two Chinese-Tuesday rules are deliberately absent — Tuesday is a `mix` day here and takes whatever the other rules allow. BLR's `indian_veg_dry_on_chinese_day` is absent for the same reason, and would have been anyway: Chennai's ruleset exempts `veg_dry` from theme filtering, so there is nothing for it to narrow. ONE THIN POOL to know about: Chennai has only ONE south paneer gravy (`paneer_kurma`), and Wednesday is a south day, so `tekion_chn_paneer_gravy_wednesday` can be met on one Wednesday per 20-day cooldown window and relaxes on the others. `diagnose()` reports it; the fix is more south paneer gravies in the Chennai list, not a config change.
+Chennai site. "Its rules are the same as Tekion BLR" — so this is Tekion's block re-keyed to this site, with the names prefixed so the two counters' diagnostics stay distinguishable. TWO CLIENT DECISIONS shape what is here. (1) The theme map stays Chennai's OWN (Mon/Tue mix, Wed south, Thu biryani, Fri north) rather than copying BLR's — so the weekday rules below land on different themes than they do in Bangalore, and each was checked against what Chennai can actually serve on that day: Friday is north and Chennai has 6 north non-veg biryanis, Wednesday is south and has 10 south chicken gravies, and the Thursday khichdi is unaffected because Chennai's ruleset exempts `rice` from theme filtering altogether. (2) NO CHINESE at this site, so BLR's two Chinese-Tuesday rules are deliberately absent — Tuesday is a `mix` day here and takes whatever the other rules allow. BLR's `indian_veg_dry_on_chinese_day` is absent for the same reason, and would have been anyway: Chennai's ruleset exempts `veg_dry` from theme filtering, so there is nothing for it to narrow. ONE THIN POOL to know about: Chennai has only ONE south paneer gravy (`paneer_kurma`), and Wednesday is a south day, so `tekion_chn_paneer_gravy_wednesday` can be met on one Wednesday per 20-day cooldown window and relaxes on the others. `diagnose()` reports it; the fix is more south paneer gravies in the Chennai list, not a config change. NO `disable` BLOCK, unlike Tekion BLR: that block switches off `deep_fried_coupling`, and the rule is Bangalore's. Chennai's ruleset is standalone rather than an `extends`, and carries no coupling rule at all, so the entry came across with the copy and named nothing. It was inert in the harmless direction — there was no coupling chain to leave running — but it read as a rule being switched off, which is the same silent-mismatch shape as a client name that does not match `clients.name`. `tests/rules/test_client_disable_targets.py` now fails on a `disable` that names no rule in the client's own city.
 
 | Rule | What it does | Client's words |
 |---|---|---|
@@ -474,8 +590,6 @@ Chennai site. "Its rules are the same as Tekion BLR" — so this is Tekion's blo
 | `tekion_chn_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on fri: is_nonveg_biryani | Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR |
 | `tekion_chn_paneer_gravy_wednesday` | veg_gravy must include (when the counter serves ≥1 of it): on wed: is_paneer_gravy | Paneer gravy every Wednesday |
 | `tekion_chn_khichdi_thursday` | rice must include (when the counter serves ≥1 of it): on thu: is_liquid_rice | Khichdi every Thursday |
-
-**City rules switched off:** `deep_fried_coupling`
 
 ## Telstra
 
@@ -537,6 +651,38 @@ Chennai. Derived from a 7-day SERVICE HISTORY (Wed 01 Jul – Thu 09 Jul 2026, w
 **City rules switched off:** `liquid_desserts_twice_nonconsecutive`, `buttermilk_twice_weekly`, `welcome_drink_no_repeat_color`
 
 **Pinned items:** `welcome_drink` — buttermilk
+
+## World Bank
+
+Chennai, two counters — 'Full Lunch Menu' (primary) and 'Roti and Rice Combos'. Seven stated rules (data/raw/source_workbooks/chennai_client_structure.xlsx, 'Sheet1' rows 17-23) against the 17-21 Aug sample on the 'World Bank' sheet. One of the seven needs no config: 'in counter rice/roti combo now veg will be gravy daily' is already what that counter does — `veg_gravy` is one slot, served every day. The two counters' shared veg dry and veg gravy come from `clients.shared_categories`, which the sample confirms: both counters print the identical poriyal and the identical channa/kurma every day.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `theme_cuisine_filter` | theme filter does not narrow: dal, salad, soup, healthy_rice, rice, sambar, rasam, curd, curd_side, curd_rice, dessert, bread, veg_dry, nonveg_main | Overrides chennai.json's rule of the same name (merged by name, so this REPLACES its `exempt_slots`) by adding `nonveg_main` to the exempt list |
+| `world_bank_dal_is_a_kootu` | dal must include (when the counter serves ≥1 and ≤1 of it): sub_category kootu | in dal need to give only Kootu item |
+
+**City rules switched off:** `kootu_twice_weekly`, `nonveg_biryani_weekly`
+
+### World Bank → Full Lunch Menu
+
+The full meals counter: chapati, steamed rice, a gravy, a sambar, a kuzhambu, rasam, poriyal, kootu, buttermilk, appalam and four non-veg items.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `world_bank_bread_is_chapati_daily` | shelf component `bread_chapati_only` |  |
+| `world_bank_nonveg_gravy_alongside_the_three_pins` | nonveg_main must include (when the counter serves ≥1 of it): is_north_chicken_gravy or is_south_chicken_gravy | One of the non-veg cells is the day's chicken gravy |
+| `world_bank_welcome_drink_is_buttermilk` | welcome_drink must include (when the counter serves ≥1 and ≤1 of it): is_buttermilk | welcome drink will be "buttermilk" daliy |
+| `world_bank_buttermilk_may_recur_across_weeks` | is_buttermilk @ welcome_drink: may recur across plans, but stays distinct within one | Chennai carries ten buttermilks, fewer than a daily slot needs across a 20-day cooldown window, so the history ban has to stand down or week three has no drink |
+
+**Pinned items:** `nonveg_main__2` — Chicken Biryani; `nonveg_main__3` — Boiled Egg; `nonveg_main__4` — Bone Salna; `dessert` — Sweet/Fruit
+
+### World Bank → Roti and Rice Combos
+
+The combo counter: two breads (paratha and chapati in the sample, so NOT chapati-only), a flavoured rice, the shared poriyal and gravy, and one chicken gravy.
+
+| Rule | What it does | Client's words |
+|---|---|---|
+| `world_bank_combo_rice_is_south_daily` | rice must include (when the counter serves ≥1 and ≤1 of it): cuisine_family south_indian | in counter rice/roti combo flavour rice will be south rice daliy |
 
 ## Zscaler
 
