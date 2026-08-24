@@ -159,6 +159,17 @@ class TestEnforceItself:
         for _flag_name, course, tokens, _names in DEFINITIONS:
             assert course and tokens
 
+    def test_every_ingredient_definition_is_complete(self, frames):
+        """A course with no protein values, or a flag column no city has, would
+        make `enforce_ingredient` clear the flag everywhere and set it nowhere —
+        a silent wipe rather than a definition."""
+        courses = frames["bangalore"]["course_type"].astype(str).str.strip().str.lower()
+        for flag, course, proteins, name_phrases in COURSE_INGREDIENT_FLAGS:
+            assert proteins, flag
+            assert name_phrases, flag
+            assert flag in frames["bangalore"].columns, flag
+            assert (courses == course).any(), (flag, course)
+
 
 class TestThePaneerFlags:
     """`is_paneer_fry` was empty in all four cities while a shipped rule
