@@ -153,9 +153,62 @@ def test_rerunning_is_a_no_op(frames, city):
     assert filled == []
 
 
-def test_the_unclassifiable_ones_are_reported_not_guessed(frames):
-    """They are a real gap in the client's menu data, and stay visible as one."""
-    df = frames["bangalore"]
+@pytest.mark.parametrize("city", CITIES)
+def test_every_composed_row_now_carries_a_form(frames, city):
+    """The client adjudicated all 51 rows the name could not classify.
+
+    This test used to assert the opposite — that some stayed unresolved and were
+    reported rather than guessed, which was right while the verdicts were the
+    client's to give. They have been given (`STYLE_OVERRIDES`), so the assertion
+    flips: an unflagged `nonveg_main` row is a dish the daily composition can
+    never place, sitting in the pool passing every diagnostic, and there should
+    no longer be one.
+    """
+    _out, _filled, unresolved = apply(frames[city])
+    assert unresolved == [], unresolved
+
+
+def test_the_mechanism_still_refuses_to_guess(frames):
+    """The verdicts are data, not a change of policy: a dish whose name says
+    nothing and that nobody has adjudicated is still reported, not invented."""
+    df = frames["bangalore"].copy()
+    idx = df.index[df["course_type"].astype(str).str.strip().str.lower()
+                   == "nonveg_main"][0]
+    df.at[idx, "item"] = "hyderabadi_chicken_speciality"
+    for col in [c for c in df.columns if str(c).startswith("is_")]:
+        df.at[idx, col] = 0
     _out, _filled, unresolved = apply(df)
-    assert unresolved, "expected some dishes the name cannot classify"
-    assert "afghani_chicken" in unresolved
+    assert "hyderabadi_chicken_speciality" in unresolved
+
+
+@pytest.mark.parametrize("dish,flag", [
+    # The four Bangalore rows that are genuinely not sauced.
+    ("afghani_chicken", "is_nonveg_dry"),        # a malai-marinated grill
+    ("egg_vepudu", "is_nonveg_dry"),             # Telugu `vepudu` = fry
+    ("gobi_keema_mutter", "is_nonveg_dry"),      # a minced semi-dry sabzi
+    ("hariyali_chicken", "is_nonveg_dry"),       # the tandoor/tikka treatment
+    # …against its sauced opposite, which shares three of its four letters.
+    ("egg_pulusu", "is_nonveg_gravy"),           # Andhra `pulusu` = tangy stew
+    ("nati_style_kozhi_saru", "is_nonveg_gravy"),  # `saru` IS a thin gravy
+    ("murgh_kolhapuri", "is_nonveg_gravy"),
+])
+def test_the_adjudicated_verdicts_are_applied(frames, dish, flag):
+    df = frames["bangalore"]
+    row = df[df["item"].astype(str).str.strip() == dish]
+    assert not row.empty, f"{dish} is no longer in the Bangalore list"
+    assert pd.to_numeric(row.iloc[0][flag], errors="coerce") == 1
+
+
+def test_chennai_reads_as_snacks_not_curries(frames):
+    """Every one of Chennai's eleven is a roast, a stir-fry or a dumpling —
+    which is why the city's verdicts came out unanimously dry while Bangalore's
+    came out almost entirely gravy. A mixed result there would have meant the
+    reading was arbitrary."""
+    df = frames["chennai"]
+    for dish in ("chicken_chukka", "chicken_lolipop", "hakka_noodles_chicken",
+                 "momos_chicken", "prawn_thokku", "chicken_kothu_parotta"):
+        row = df[df["item"].astype(str).str.strip() == dish]
+        assert not row.empty, dish
+        assert pd.to_numeric(row.iloc[0]["is_nonveg_dry"], errors="coerce") == 1
+        assert pd.to_numeric(
+            row.iloc[0]["is_nonveg_gravy"], errors="coerce") != 1

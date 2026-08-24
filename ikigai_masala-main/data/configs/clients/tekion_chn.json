@@ -1,6 +1,6 @@
 {
   "Tekion CHN": {
-    "_comment": "'Its rules are the same as Tekion BLR' — so this file is Tekion's block re-keyed to the Chennai site, with the names prefixed so the two counters' diagnostics stay distinguishable. ONE THING NEEDS THE CLIENT'S EYE: Tekion BLR's weekday rules are pinned to BLR's theme map (Mon = mix, Tue = chinese, Wed = north, Thu = mix, Fri = biryani) while Tekion CHN's is different (Mon/Tue = mix, Wed = south, Thu = biryani, Fri = north). Same rules therefore need the same theme map — otherwise the chinese Tuesday lands on a mix day and the Friday chicken biryani on a north day. Neither is a failure (a slot_composition count is capped to what the day can serve, so a component with nothing eligible relaxes instead of going INFEASIBLE), but the menu will not be the one the client pictured. Recommended DB change: set Tekion CHN's theme_map to Tekion BLR's. One of Tekion BLR's six references is deliberately NOT copied: `indian_veg_dry_on_chinese_day` makes the Chinese day's veg dry a regular Indian dish, and Chennai's own ruleset already exempts `veg_dry` from theme filtering entirely, so the rule would have nothing to narrow.",
+    "_comment": "Chennai site. \"Its rules are the same as Tekion BLR\" — so this is Tekion's block re-keyed to this site, with the names prefixed so the two counters' diagnostics stay distinguishable. TWO CLIENT DECISIONS shape what is here. (1) The theme map stays Chennai's OWN (Mon/Tue mix, Wed south, Thu biryani, Fri north) rather than copying BLR's — so the weekday rules below land on different themes than they do in Bangalore, and each was checked against what Chennai can actually serve on that day: Friday is north and Chennai has 6 north non-veg biryanis, Wednesday is south and has 10 south chicken gravies, and the Thursday khichdi is unaffected because Chennai's ruleset exempts `rice` from theme filtering altogether. (2) NO CHINESE at this site, so BLR's two Chinese-Tuesday rules are deliberately absent — Tuesday is a `mix` day here and takes whatever the other rules allow. BLR's `indian_veg_dry_on_chinese_day` is absent for the same reason, and would have been anyway: Chennai's ruleset exempts `veg_dry` from theme filtering, so there is nothing for it to narrow. ONE THIN POOL to know about: Chennai has only ONE south paneer gravy (`paneer_kurma`), and Wednesday is a south day, so `tekion_chn_paneer_gravy_wednesday` can be met on one Wednesday per 20-day cooldown window and relaxes on the others. `diagnose()` reports it; the fix is more south paneer gravies in the Chennai list, not a config change.",
     "disable": [
       "deep_fried_coupling"
     ],
@@ -28,6 +28,15 @@
     ],
     "rules": [
       {
+        "_comment": "'No Chinese in Chennai Tekion.' Dropping BLR's two Chinese-Tuesday MANDATES was not enough and the solve proved it: Tuesday is a `mix` day here, the theme filter does not narrow a mix day at all, and Chennai's ruleset additionally exempts `salad`, `veg_dry` and most other slots from cuisine filtering — so a Chinese dish was simply eligible everywhere and Friday's salad came back `american_coleslaw`, a row the Chennai import had mislabelled `chinese` (since corrected to continental). Not scoped to a slot, because the client's sentence is not: no Chinese anywhere on the counter. Safe as a hard `max: 0` because no day at this site is themed chinese, so the theme filter can never force one (CLAUDE.md note 9e).",
+        "name": "tekion_chn_no_chinese",
+        "type": "selector_frequency",
+        "selector": {
+          "cuisine_family": "chinese"
+        },
+        "max": 0
+      },
+      {
         "name": "tekion_chn_no_mushroom",
         "type": "ingredient_ban",
         "ingredients": [
@@ -46,7 +55,7 @@
         "max_per_week": 1
       },
       {
-        "_comment": "Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR. Tuesday and Thursday are blank via tekion_chn_nonveg_mwf. Mon/Wed exclude is_egg_dish because a few egg dishes are mis-flagged is_south_chicken_gravy in the ontology.",
+        "_comment": "Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR. Tuesday and Thursday are blank via tekion_chn_nonveg_mwf. Under this site's own theme map Monday is `mix` (not narrowed at all) and Wednesday is `south` (10 south chicken gravies), while Friday is `north` and Chennai carries 6 north non-veg biryanis — so every component has something to place. Mon/Wed exclude is_egg_dish because a few egg dishes are mis-flagged is_south_chicken_gravy in the ontology.",
         "name": "tekion_chn_nonveg_by_weekday",
         "type": "slot_composition",
         "base_slot": "nonveg_main",
@@ -91,44 +100,7 @@
         }
       },
       {
-        "_comment": "Chinese rice on Tuesday. Chennai carries 7 chinese fried rices and 14 chinese carbs, so the component is not inert — but see the header note about Tekion CHN's Tuesday being a `mix` day rather than a chinese one.",
-        "name": "tekion_chn_chinese_rice_tuesday",
-        "type": "slot_composition",
-        "base_slot": "rice",
-        "min_slot_count": 1,
-        "components_by_weekday": {
-          "tue": [
-            {
-              "selector": {
-                "any_flag": [
-                  "is_chinese_fried_rice",
-                  "is_chinese_carb"
-                ]
-              },
-              "count": 1
-            }
-          ]
-        }
-      },
-      {
-        "_comment": "The veg-gravy half of the same Tuesday rule. Chennai has exactly ONE chinese veg gravy, so under `unique_items` this can be met on one Tuesday per cooldown window and relaxes on the others — the shortfall is reported by diagnose() rather than failing the plan. Deepening Chennai's chinese gravy pool is the real fix.",
-        "name": "tekion_chn_chinese_gravy_tuesday",
-        "type": "slot_composition",
-        "base_slot": "veg_gravy",
-        "min_slot_count": 1,
-        "components_by_weekday": {
-          "tue": [
-            {
-              "selector": {
-                "flag": "is_chinese_veg_gravy"
-              },
-              "count": 1
-            }
-          ]
-        }
-      },
-      {
-        "_comment": "Paneer gravy every Wednesday. Chennai carries 6 paneer gravies.",
+        "_comment": "Paneer gravy every Wednesday. Wednesday is a SOUTH day at this site and Chennai has exactly one south paneer gravy, so this is met once per cooldown window and relaxes otherwise — see the note in the client header. Kept rather than dropped because the requirement is real and the shortfall is a data gap the diagnostics report.",
         "name": "tekion_chn_paneer_gravy_wednesday",
         "type": "slot_composition",
         "base_slot": "veg_gravy",
@@ -145,7 +117,7 @@
         }
       },
       {
-        "_comment": "Khichdi every Thursday. There is no is_khichdi flag; every khichdi carries is_liquid_rice, and tekion_chn_liquid_rice_once caps liquid rice at one a week, so pinning Thursday lands that one there.",
+        "_comment": "Khichdi every Thursday. There is no is_khichdi flag; every khichdi carries is_liquid_rice, and tekion_chn_liquid_rice_once caps liquid rice at one a week, so pinning Thursday lands that one there. Thursday is this site's biryani day, which would normally narrow the rice pool to biryanis — but Chennai's ruleset exempts `rice` from the theme filter, so the 13 liquid rices stay eligible.",
         "name": "tekion_chn_khichdi_thursday",
         "type": "slot_composition",
         "base_slot": "rice",

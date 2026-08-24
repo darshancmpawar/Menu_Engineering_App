@@ -453,6 +453,18 @@ class ThemeSlotFilterRule(BaseMenuRule):
         return pool
 
     def _filter_biryani(self, pool: pd.DataFrame, base_slot: str, cfg) -> pd.DataFrame:
+        # `exempt_slots` wins, the same way it does for the south/north cuisine
+        # filter and the bread lock. This branch used to ignore it entirely —
+        # the third instance of that bug in this class, after the bread lock and
+        # `_filter_chinese`. Chennai and Pune both declare `rice` exempt and
+        # were silently overruled on their biryani day: Tekion CHN's "khichdi
+        # every Thursday" found a rice pool narrowed to mixed-veg biryanis, so
+        # the component dropped and the week's one liquid rice drifted to
+        # Monday. Only `rice` and `nonveg_main` are biryani-filtered at all, and
+        # neither is in the canonical EXEMPT_FROM_CUISINE set, so this changes
+        # nothing for a city that has not asked for it.
+        if base_slot in self.exempt_slots:
+            return pool
         if self._stays_indian(base_slot, 'biryani'):
             return self._indian_veg_dry(pool, cfg)
         flag_col = _BIRYANI_FLAG_MAP.get(base_slot)
@@ -668,6 +680,12 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return None
 
         if day_type == 'biryani':
+            # Must agree with `_filter_biryani`, which now honours the
+            # exemption — otherwise diagnose() reports a narrowing the solve
+            # does not apply, which is how the bread lock's version of this bug
+            # produced a phantom "0 items match" for a slot nobody filters.
+            if base_slot in self.exempt_slots:
+                return None
             flag_col = _BIRYANI_FLAG_MAP.get(base_slot)
             if flag_col and flag_col in pool.columns:
                 return int((pool[flag_col].map(_to_bool01) == 1).sum())

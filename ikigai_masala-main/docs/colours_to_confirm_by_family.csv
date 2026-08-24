@@ -1,0 +1,456 @@
+dish_family,course_type,n_dishes,item_color,example_dishes
+chicken,nonveg_main,161,,bangalore:afghani_chicken; bangalore:ajwain_chicken_masala; bangalore:aloo_chicken_curry; bangalore:aloo_dum_chicken_biryani; bangalore:andhra_style_chicken_dum_biryani; bangalore:awadhi_chicken_curry
+salad,salad,78,,bangalore:asian_crispy_salad; bangalore:boiled_peanut_and_cucumber_salad; bangalore:carrot_kosambari_salad; bangalore:chana_chaat_salad; bangalore:chickpeas_and_corn_salad; bangalore:chinese_bhel_salad
+paneer,veg_gravy,55,,bangalore:afghani_paneer; bangalore:awadhi_paneer_pasnda; bangalore:chana_paneer; bangalore:chettinad_paneer; bangalore:chettinad_paneer_peas_curry; bangalore:hot_and_sour_sesame_paneer
+rice,rice,51,,bangalore:andhra_bagara_rice; bangalore:bell_pepper_fried_rice; bangalore:brinji_rice; bangalore:capsicum_masala_rice; bangalore:capsicum_rice_bath; bangalore:corn_capsicum_fried_rice
+curry,veg_gravy,44,,bangalore:aloo_black_chana_curry; bangalore:aloo_mutter_curry; bangalore:aloo_soya_curry; bangalore:andhra_veg_curry; bangalore:black_eyed_peas_curry; bangalore:chettinad_mushroom_curry
+egg,nonveg_main,42,,bangalore:andhra_egg_masala; bangalore:bengali_egg_curry; bangalore:chettinad_style_egg_curry; bangalore:chilli_egg_masala; bangalore:egg_2_pyaza; bangalore:egg_65
+sambar,sambar,40,,bangalore:agalakayi_sambar; bangalore:avarekallu_sambar; bangalore:avarekalu_sambar; bangalore:bendekayi_sambar; bangalore:bhindi_sambar; bangalore:black_chana_sambar
+biryani,rice,38,,bangalore:afghani_veg_biryani; bangalore:andhra_style_mushroom_dum_biryani; bangalore:andhra_style_veg_biryani; bangalore:dindigul_biryani; bangalore:donne_vegetable_dum_biryani; bangalore:hederabad_dum_biryani
+pulao,rice,34,,bangalore:barista_pulao; bangalore:bhuna_pyaz_pulao; bangalore:bhune_pyaaz_ka_pulao; bangalore:bombay_tawa_pulao; bangalore:brinji_pulao; bangalore:burani_veg_pulao
+aloo,veg_dry,30,,bangalore:aloo_amarnath_leaves_sabzi; bangalore:aloo_bhaji; bangalore:aloo_bhindi; bangalore:aloo_bhindi_fry; bangalore:aloo_capsicum; bangalore:aloo_gobhi_mutter_dry
+rasam,rasam,29,,bangalore:basil_rasam; bangalore:black_pepper_rasam; bangalore:butter_milk_rasam; bangalore:cumin_rasam; bangalore:curry_leaves_rasam; bangalore:ginger_garlic_rasam
+masala,veg_dry,28,,bangalore:balck_chana_masala_dry; bangalore:bhindi_masala_dry; bangalore:bhindi_masala_fry; bangalore:cabbage_battani_masala; bangalore:gobi_capsicum_pepper_masala; bangalore:parwal_masala
+masala,veg_gravy,26,,bangalore:capsicum_corn_masala; bangalore:chickpea_masala; bangalore:gobi_aloo_matar_masala; bangalore:lobia_masala; bangalore:lobiya_capsicum_masala; bangalore:louki_lobia_masala
+water,infused_water,26,,bangalore:apple_and_celery_infused_water; bangalore:apple_and_pomegranate_infused_water; bangalore:apple_cinnamon_water; bangalore:carrot_and_celery_detox_water; bangalore:celery_and_watermelon_infused_water; bangalore:cinnamon_and_celery_detox_water
+chicken,nonveg_soup,25,,bangalore:chicken_barley_broth; bangalore:chicken_bean_soup; bangalore:chicken_broth_soup; bangalore:chicken_chowder; bangalore:chicken_clear_soup; bangalore:chicken_hot_and_sour
+murgh,nonveg_main,25,,bangalore:banjara_murgh_dry; bangalore:bhuna_murgh_masala; bangalore:dhaba_murgh; bangalore:dhaniawala_murgh_masala; bangalore:dum_ka_murgh; bangalore:handi_murgh
+sabzi,veg_dry,24,,bangalore:broad_beans_sabzi; bangalore:cabbage_matar_sabzi; bangalore:cabbage_mutter_sabzi; bangalore:cabbage_sabzi; bangalore:chichinde_ki_sabzi; bangalore:cluster_beans_sabzi
+soup,soup,24,,bangalore:carrot_soup_with_chermoula; bangalore:clear_soup; bangalore:clear_veg_soup; bangalore:cream_of_veg_soup; bangalore:cream_of_vegetable_soup; bangalore:hot_and_sour_veg_soup
+aloo,veg_gravy,22,,bangalore:aloo_baigan_bharta; bangalore:aloo_chilli_c; bangalore:aloo_gobhi; ncr:aloo_dum_bhojpuri; ncr:aloo_kolahpuri; ncr:baingan_aloo
+burfi,dessert,14,,bangalore:dates_malai_burfi; bangalore:horlicks_burfi; bangalore:paan_burfi; bangalore:thandai_burfi; ncr:chana_almond_burfi; ncr:chana_flaxseeds_burfi
+chaat,starter,14,,bangalore:bengali_mutter_ghooni_chaat; bangalore:dahi_samosa_chaat; bangalore:gugni_chaat; bangalore:jhal_muri_chaat; bangalore:kachori_chaat; bangalore:mix_sprout_chaat
+poriyal,veg_dry,14,,bangalore:banana_stem_poriyal; bangalore:beans_carrot_poriyal; bangalore:beans_poriyal; bangalore:chow_chow_pasi_parapu_poriyal; bangalore:chow_chow_with_chana_poriyal; bangalore:karamani_poriyal
+kheer,dessert,13,,bangalore:kaddu_ki_kheer; bangalore:sweet_potato_kheer; bangalore:zafrani_kheer; ncr:kheer; ncr:pasyam_kheer; ncr:paysam_kheer
+ladoo,dessert,13,,bangalore:boondi_ladoo; bangalore:dry_fruits_ladoo; bangalore:motichoor_ladoo; bangalore:motichur_ladoo; bangalore:rava_ladoo; ncr:atta_ladoo
+anda,nonveg_main,12,,bangalore:anda_bhuna_masala; bangalore:anda_curry_dry; bangalore:anda_fried_masala; bangalore:anda_kalimirch; bangalore:anda_lazeeza; bangalore:anda_malai_curry
+halwa,dessert,9,,bangalore:atta_halwa; bangalore:atta_ke_halwa; bangalore:karchi_bombay_halwa; ncr:badami_halwa; ncr:halwa; ncr:keasar_halwa
+laddu,dessert,9,,bangalore:mothichur_laddu; bangalore:motichur_laddu; bangalore:rava_laddu; ncr:cholayi_ke_laddu; ncr:gur_k_laddu; ncr:mooti_choor_laddu
+mushroom,veg_gravy,9,,bangalore:corn_mushroom_handi; bangalore:kadhai_mushroom; bangalore:mushroom_chilli; bangalore:mushroom_kali_mirch; bangalore:mushroom_vegetable_chilli; ncr:matar_mushroom
+petha,dessert,9,,ncr:aachari_petha; ncr:agar_ka_petha; ncr:chatpata_petha; ncr:katha_meetha_petha; ncr:kesri_petha; ncr:khatta_meetha_petha
+chaat,salad,8,,bangalore:corn_chaat; bangalore:kabuli_chana_chaat; ncr:corn_chaat; ncr:kabuli_chana_chaat; ncr:matri_chaat; ncr:papdi_chaat
+chana,veg_gravy,8,,bangalore:black_chana_kadhi; bangalore:black_chana_tariwala; bangalore:kala_chana_kadhi; ncr:black_chana; ncr:chana; ncr:ghiya_chana
+chutney,chutney,8,,pune:cabbage_pachdi_chutney; pune:dates_chutney; pune:jawas_chutney; pune:karala_chutney; pune:ola_khobra_chutney; pune:shengdana_chutney
+curry,nonveg_main,8,,bangalore:andhra_kodi_curry; bangalore:dhaba_style_mutton_curry; bangalore:kerala_nadan_kozhi_curry; bangalore:kozi_varutharacha_curry; bangalore:kukkad_curry; bangalore:nadan_kozhi_curry
+juice,welcome_drink,8,,bangalore:amla_juice; bangalore:carrot_and_ginger_juice; bangalore:carrot_juice; bangalore:fresh_lime_juice; bangalore:gooseberry_juice; bangalore:jolly_cranberry_juice_sangria
+kuzhambu,sambar,8,,bangalore:drumstick_khara_kuzhambu; bangalore:manathakkali_vathal_kuzhambu; bangalore:poondu_kuzhambu; bangalore:poondu_pui_kuzhambu; bangalore:poonmdu_kuzhambu; bangalore:sundakkai_kara_kuzhambu
+dal,dal,7,,bangalore:amritsari_chana_dal; bangalore:amritsari_dal; bangalore:dal_amritsari; ncr:amritsari_dal; ncr:amritsari_moong_dal_vadi; ncr:kadhi_pakoda_dal_makhani
+handi,veg_gravy,7,,bangalore:diwani_handi; bangalore:sabzi_nizami_handi; bangalore:subz_miloni_handi; bangalore:veg_diwani_handi; ncr:handi_subz; ncr:mix_veg_handi
+pepper,veg_dry,7,,bangalore:batate_mushroom_pepper_dry_south_style; bangalore:garlic_pepper_baby_corn; bangalore:mushroom_capsicum_pepper_fry; bangalore:soya_pepper_dry; bangalore:vazakkai_pepper_podimas; bangalore:veg_ball_pepper_dry
+pyaza,veg_dry,7,,bangalore:lauki_do_pyaza; bangalore:mix_veg_do_pyaza; bangalore:parwal_do_pyaza; bangalore:stuffed_parwal_do_pyaza; ncr:arbi_do_pyaza; ncr:fried_arbi_do_pyaza
+rajma,dal,7,,bangalore:rajma_razeela; ncr:adraki_rajma; ncr:kamshmiri_rajma_masala; ncr:pahadi_style_rajma_masala; ncr:rajma; ncr:rajma_adraki
+bath,rice,6,,bangalore:bisibele_bath; bangalore:bisibele_bath_with_khara_boondi; bangalore:capsicum_bath; bangalore:gujarat_masala_bath; bangalore:menthya_bath_udupi_style; bangalore:vangi_bath
+cabbage,veg_dry,6,,bangalore:cabbage_beans_thoran; bangalore:cabbage_carrot_chanadal_thoran; bangalore:cabbage_chana_kootu; bangalore:cabbage_foogath; bangalore:cabbage_mutter_bhaji; bangalore:cabbage_tamater_chaat_pata
+corn,starter,6,,bangalore:baby_corn_chilli_dry; bangalore:cheese_corn_ball; bangalore:corn_ambode; bangalore:corn_bhel; bangalore:corn_cheese_tikki; bangalore:mushroom_and_corn_croquetes
+gobi,veg_dry,6,,bangalore:gobi_burji; bangalore:gobi_chili; bangalore:gobi_chilli_dry; ncr:fried_gobi_matar; ncr:gobi_matar; ncr:gobi_matar_adraki
+kadhi,veg_gravy,6,,bangalore:aamras_kadhi; bangalore:gujarati_pakodi_kadhi; bangalore:kadhi_pakoda; bangalore:lauki_kadhi_pakodi; bangalore:lauki_pakodi_kadhi; bangalore:punjabi_pakodi_kadhi
+kofta,veg_gravy,6,,bangalore:mix_veg_kofta; ncr:angoori_kofta; ncr:ghiya_kofta; ncr:marwari_kofta; ncr:veg_korn_kofta; ncr:vegetable_kofta
+pastry,dessert,6,,bangalore:blueberry_pastry; bangalore:kiwi_pastry; bangalore:rainbow_pastry; bangalore:red_velvet_pastry_egg_less; ncr:a_pastry; ncr:rainbow_pastry
+soya,veg_dry,6,,bangalore:louki_soya_chatpata; bangalore:soya_burji; bangalore:soya_chatpata; bangalore:soya_ghee_roast; pune:soya_kadhai; pune:soya_kheema
+water,veg_gravy,6,,ncr:cucumber_detox_water; ncr:lemon_water; ncr:lemonade_water; ncr:roohafza_water; ncr:sweetlime_water; ncr:water_melon
+barfi,dessert,5,,ncr:barfi; ncr:bikaneri_barfi; ncr:bikanri_barfi; ncr:chana_flaxseed_barfi; ncr:khoya_barfi
+chana,dal,5,,bangalore:chana_lauki; bangalore:kala_chana_pindi; ncr:awadhi_style_chana_masala; ncr:kala_chana_raseedar; ncr:kala_chana_tariwale
+chana,veg_dry,5,,bangalore:beetroot_black_chana_palya; bangalore:lauki_kabuli_chana_subji; bangalore:louki_chana; bangalore:padvalkayi_chana_kootu; ncr:ghiya_chana_coot
+fruit,dessert,5,,bangalore:atta_ki_dry_fruit_pinni; bangalore:dry_fruit_ladhu; bangalore:shrikhand_dry_fruit; ncr:dry_fruit_pulao; ncr:fruit_muffin
+kadhi,dal,5,,ncr:kadhi_pakoda; ncr:punjabi_kadhi_pakoda; ncr:rajasthani_kadhi; ncr:rajasthani_kadhi_pakoda; ncr:vegetable_sindhi_kadhi
+potato,veg_dry,5,,bangalore:chettinad_potato_varuval; bangalore:chilli_potato_chinese_style; bangalore:potato_cauliflower_milagupirati; bangalore:potato_varuval; bangalore:urulai_chutney_podi_vathakal_red_baby_potato
+raita,curd_side,5,,ncr:aloo_tadka_raita; ncr:jeera_tadka_raita; ncr:kachumber_raita; ncr:onion_tadka_raita; ncr:tadka_raita
+sundal,salad,5,,bangalore:peanut_sundal; bangalore:sundal; chennai:karamani_sundal; chennai:peanut_sundal; chennai:white_sundal
+vada,starter,5,,bangalore:batata_vada; bangalore:dill_leaves_vada; bangalore:hesarubele_vada; bangalore:jodhpuri_mirchi_vada; chennai:mor_kolambu_vada
+arbi,veg_gravy,4,,bangalore:arbi_lababdar; ncr:ajwaini_arbi; ncr:arbi_ajwaini; ncr:arbi_ajwani
+bhaji,veg_gravy,4,,bangalore:bhaji; bangalore:sindhi_sui_bhaji; ncr:pao_bhaji; ncr:veg_bhaji
+bharta,veg_gravy,4,,bangalore:baigan_bharta; ncr:baigian_bharta_matar; ncr:punjabi_baingan_bharta; ncr:punjabi_bharta
+bonda,starter,4,,bangalore:mangalore_bonda; bangalore:mix_veg_bonda; bangalore:sabsige_bonda; bangalore:sweet_bonda
+capsicum,veg_gravy,4,,bangalore:capsicum_ennegayi; ncr:capsicum_corn; ncr:nutri_capsicum; pune:stuffed_capsicum
+chapati,bread,4,,bangalore:appam_chapati; bangalore:kalonji_chapati; bangalore:methi_chapati_dosa; bangalore:triangle_chapati_puri
+chole,veg_gravy,4,,bangalore:chole; bangalore:punjabi_pindi_chole; ncr:pindi_chole_lipatwan; ncr:punjabi_chole_white
+coleslaw,salad,4,,bangalore:cabbage_and_carrot_coleslaw; bangalore:classic_coleslaw; bangalore:coleslaw; bangalore:vegetable_coleslaw
+corn,salad,4,,bangalore:boiled_corn; ncr:corn_on_the_cob; ncr:corn_on_the_cobe; ncr:corn_relish
+fry,veg_dry,4,,bangalore:arbi_fry; bangalore:heerekaayi_stir_fry; bangalore:ridge_gourd_stir_fry; bangalore:vazakkai_gola_urundai_oil_fry
+ghiya,veg_gravy,4,,ncr:ghiya_soya; ncr:ghiya_tamatari; ncr:ghiya_vadi; ncr:ghiya_vadi_rasmissi
+idli,bread,4,,chennai:chilli_idli; chennai:tri_color_idli; ncr:fried_idli; ncr:idli_vada
+jeerasam,rasam,4,,bangalore:jeerasam; chennai:jeerasam; ncr:jeerasam; pune:jeerasam
+kadhai,veg_gravy,4,,ncr:kadhai_chap; ncr:kadhai_nutri; ncr:kadhai_sabziyan; ncr:kadhai_veggies
+kosambari,salad,4,,bangalore:hesaru_bele_kosambari; bangalore:hesarubele_dalimba_kosambari; bangalore:kadale_bele_kosambari; bangalore:peanut_kosambari
+pak,dessert,4,,bangalore:gujarati_amruth_pak; ncr:gaund_pak; ncr:gond_pak; ncr:massor_pak
+paruppu,dal,4,,bangalore:ghee_paruppu; bangalore:manga_paruppu_curry; bangalore:nei_paruppu; bangalore:paruppu_curry
+rajma,veg_gravy,4,,ncr:boiled_rajma; ncr:rajma_rasile; ncr:rajma_rasmisa; pune:rajma_adraki
+sabzi,veg_gravy,4,,bangalore:sabzi_dhansak; bangalore:sabzi_jaipuri; bangalore:sabzi_miloni; ncr:mangodi_ki_sabzi
+stir,healthy_rice,4,,bangalore:soya_stir_fry; bangalore:stir_fried_asian_greens_with_tofu; bangalore:stir_fried_soya; bangalore:tofu_and_vegetable_stir_fry
+tikki,starter,4,,bangalore:tikki_poori; bangalore:tikki_puri; bangalore:veg_tikki; bangalore:veg_tikki_puri
+vegetables,healthy_rice,4,,bangalore:butter_garlic_vegetables; bangalore:cajun_spiced_vegetables; bangalore:ratatouille_vegetables; bangalore:sauteed_vegetables
+vegetables,veg_gravy,4,,ncr:dhaba_style_bhuna_vegetables; ncr:madrasi_curried_vegetables; ncr:sweet_n_sour_vegetables; ncr:tawa_vegetables
+baingan,veg_dry,3,,bangalore:baingan_gunda; ncr:kalongi_wale_baingan; pune:baingan_bharta
+banana,veg_dry,3,,bangalore:banana_podimas; bangalore:raw_banana_varuval; bangalore:raw_banana_vepudu
+beans,veg_dry,3,,bangalore:beans_mezhukkupuratti; bangalore:cluster_beans; pune:french_beans_dry
+bhindi,veg_dry,3,,bangalore:amchuri_bhindi_dry; bangalore:bhindi_kurkure; bangalore:bhindi_tamater
+bhurji,nonveg_main,3,,ncr:ande_ki_bhurji; ncr:banarasi_baby_aloo_muli_ki_bhurji; ncr:paneer_bhurji
+chilli,veg_gravy,3,,bangalore:baby_corn_chilli; bangalore:veg_ball_chilli; ncr:chilli_chiken
+chole,dal,3,,ncr:chole; ncr:homestyle_chole; ncr:peshawari_chole
+cooler,welcome_drink,3,,bangalore:lychee_lime_cooler; bangalore:mushmelon_cooler; bangalore:watermelon_basil_cooler
+cutlet,starter,3,,bangalore:mix_veg_cutlet; bangalore:paneer_cutlet; bangalore:soya_veg_cutlet
+june,veg_gravy,3,,ncr:june; ncr:stryker_lunch_08_june_to_13_june; ncr:stryker_lunch_15_june_to_20_june
+kadhai,veg_dry,3,,bangalore:kadhai_veg; ncr:kadhai_nutri_dry; ncr:kadhai_vegetables
+khichdi,rice,3,,bangalore:moongdal_khichdi; ncr:homestyle_khichdi; ncr:special_khichdi
+khurma,veg_gravy,3,,ncr:gud_khurma; ncr:gur_khurma; ncr:khurma
+kootu,veg_dry,3,,bangalore:heerekayi_kootu; bangalore:sorekayi_kadale_bele_kootu; bangalore:yam_alsande_kootu
+kozhi,nonveg_main,3,,bangalore:chettinad_kozhi_kuzhambu; bangalore:kozhi_varutharacha_kuzhambu; bangalore:nati_style_kozhi_saru
+laccha,salad,3,,ncr:laccha_mooli; ncr:laccha_payaz; ncr:onion_laccha
+lauki,veg_dry,3,,ncr:jeera_lauki; ncr:lauki_jeera; ncr:lauki_tamatri_dry
+lauki,veg_gravy,3,,ncr:lauki_ki_subz; ncr:tamatari_lauki; ncr:tamatri_lauki
+matar,veg_gravy,3,,ncr:cabage_matar; ncr:cabbage_matar_peas; ncr:matar_mashroom
+milk,welcome_drink,3,,bangalore:kesar_badam_milk; bangalore:rooh_afza_milk; pune:masala_milk
+millet,healthy_rice,3,,bangalore:herbed_millet_and_bell_pepper; bangalore:masala_millet; bangalore:millet_upma
+miloni,veg_dry,3,,bangalore:miloni_subz_dry; bangalore:subz_miloni_dry; bangalore:sukhi_miloni_subz
+mushroom,veg_dry,3,,bangalore:mushroom_capsicum_ghee_roast; ncr:mushroom_jalfrezi; pune:tawa_mushroom
+mutter,veg_gravy,3,,bangalore:dingri_mutter; ncr:corn_capcicum_mutter; pune:mutter_cauliflower_rassa
+peda,dessert,3,,bangalore:dhawar_peda; bangalore:kesar_doodh_peda; ncr:mathura_peda
+raitha,curd_side,3,,bangalore:boondi_raitha; bangalore:raitha; chennai:raitha
+rice,healthy_rice,3,,bangalore:brown_rice_kanji; bangalore:brown_rice_pulao; bangalore:red_rice_khanji
+sadam,rice,3,,bangalore:thakkali_sadam; bangalore:thengai_manga_sadam; bangalore:thengai_sadam
+sauce,veg_gravy,3,,bangalore:crispy_veg_with_hot_garlic_sauce; ncr:sauce; ncr:shechwan_sauce
+sharbath,welcome_drink,3,,bangalore:mohabbat_ka_sharbath; bangalore:nannari_sharbath; bangalore:nimbu_sharbath
+sirka,salad,3,,ncr:sirka_payaz; ncr:sirka_pyaz; ncr:sirka_pyaza
+tutti,veg_gravy,3,,ncr:tutti_frutimuf_n; ncr:tutti_frutti_muf_n; ncr:tutti_frutti_muffin
+angoori,dessert,2,,bangalore:angoori_basundi; bangalore:angoori_rabdi
+bhaji,veg_dry,2,,bangalore:tendly_bhaji_marati_style; ncr:bhaji
+bhat,rice,2,,bangalore:kothmiri_bhat; pune:nagpuri_vada_bhat
+bhendi,veg_dry,2,,pune:bhendi_kurkure; pune:maharashtrian_bhendi
+biryani,nonveg_main,2,,bangalore:ambur_dum_biryani; bangalore:dindigul_thalappakatti_biryani
+black,veg_gravy,2,,ncr:black_cholay; ncr:black_chum_chum
+carrot,salad,2,,bangalore:grated_carrot_and_raisin_sslad; bangalore:radish_carrot_cucumber_and_capsicum
+chach,curd_side,2,,ncr:masala_chach; ncr:namkeen_chach
+chilly,salad,2,,ncr:chilly_garlic_macroni; ncr:fried_chilly
+chitranna,rice,2,,bangalore:karivepu_chitranna; bangalore:mavinakayi_chitranna
+chola,dal,2,,ncr:chola; ncr:chola_home_style
+cholley,dal,2,,ncr:cholley; ncr:dhaba_style_cholley
+chorchori,veg_dry,2,,bangalore:bengali_chorchori_dry; bangalore:chorchori
+chowmin,veg_gravy,2,,ncr:chowmin; ncr:veg_chowmin
+choy,healthy_rice,2,,bangalore:pock_choy_and_tofu_in_black_bean_sauce; bangalore:stirfried_tofu_and_bock_choy
+chutney,bread,2,,bangalore:kali_dosa_with_raw_mango_chutney; bangalore:stuffed_pyaz_paratha_with_mint_chutney
+chutney,veg_gravy,2,,ncr:coconut_tomato_chutney; ncr:shegdana_chutney
+crush,welcome_drink,2,,bangalore:mixed_crush; bangalore:mixed_fruit_crush
+curry,starter,2,,bangalore:baked_veg_momos_in_red_thai_curry_sauce; bangalore:singaporean_curry_noodles
+dahi,curd_side,2,,ncr:dahi_arbi_gravy; ncr:tadka_dahi
+dil,veg_gravy,2,,ncr:dil_khusal; ncr:dil_khushal
+ennegayi,veg_gravy,2,,bangalore:ennegayi; bangalore:heerekai_ennegayi
+fry,veg_gravy,2,,ncr:kathal_fry; ncr:stir_fry_kung_pao_veg
+huli,dal,2,,bangalore:majige_huli; bangalore:majje_huli
+icecream,veg_gravy,2,,ncr:assorted_icecream; ncr:icecream
+imarti,dessert,2,,bangalore:imarti; ncr:imarti
+jamoon,dessert,2,,bangalore:angoor_jamoon; bangalore:gulkan_jamoon
+jeera,veg_gravy,2,,ncr:jal_jeera; ncr:jeera_potato
+kalan,veg_gravy,2,,bangalore:kalan_patani_koora; bangalore:mirchi_ka_kalan
+kasta,dessert,2,,bangalore:kasta_gajak; bangalore:kasta_khaja
+kathi,starter,2,,bangalore:mix_veg_kathi_roll; bangalore:veg_kathi_roll
+khoya,veg_gravy,2,,ncr:khoya_cutlet; ncr:khoya_roll
+kitchadi,healthy_rice,2,,bangalore:couscous_and_ash_gourd_kitchadi; bangalore:sabudana_dal_kitchadi
+kodi,nonveg_main,2,,bangalore:andhra_kodi_koora; bangalore:kodi_guddu_masala
+kokum,welcome_drink,2,,ncr:kokum; ncr:kokum_shikanj
+kovakkai,veg_dry,2,,bangalore:kovakkai_thoran; bangalore:kovakkai_varuval
+kulfi,dessert,2,,bangalore:matka_kulfi; ncr:kulfi
+kuzhambu,dal,2,,bangalore:puzi_kuzhambu; bangalore:sundekkai_kuzhambu
+laddoo,dessert,2,,bangalore:motichur_laddoo; ncr:sweet_laddoo
+ladhu,dessert,2,,bangalore:motichor_ladhu; bangalore:motichur_ladhu
+lemon,infused_water,2,,bangalore:leeks_and_lemon; bangalore:lemon_ginger_zing
+lemon,welcome_drink,2,,bangalore:lemon_iced_tea; bangalore:masala_lemon_soda
+march,veg_gravy,2,,ncr:march; ncr:march_26_april
+meetha,veg_dry,2,,ncr:katha_meetha_pertha; ncr:sitaphal_khata_meetha
+menu,veg_gravy,2,,ncr:sael_caf_menu; ncr:sael_menu
+moongdal,veg_dry,2,,pune:dodka_moongdal; pune:shepu_moongdal
+onion,salad,2,,ncr:lachha_onion; ncr:onion_ring_masala
+onion,veg_gravy,2,,ncr:caramelised_onion_potato; ncr:laccha_onion
+pakoda,starter,2,,bangalore:raw_banana_pakoda; bangalore:stuffd_bread_pakoda
+pasta,salad,2,,ncr:pasta; ncr:white_sauce_pasta
+pepper,starter,2,,bangalore:mix_veg_salt_and_pepper; bangalore:mix_veg_salt_and_pepper_roasted_in_combi_oven
+pickle,veg_gravy,2,,ncr:mix_pickle; ncr:pickle_mouth_freshner
+poli,dessert,2,,bangalore:puran_poli; chennai:sweet_poli
+potato,healthy_rice,2,,bangalore:parsley_potato; bangalore:roasted_potato
+punch,welcome_drink,2,,bangalore:orange_punch; bangalore:pineapple_punch
+puri,bread,2,,bangalore:ajwani_puri; bangalore:puri
+roll,dessert,2,,bangalore:pista_roll; bangalore:swiss_roll
+sprout,salad,2,,ncr:kala_chana_mix_sprout; ncr:moongdal_sprout
+stew,veg_gravy,2,,bangalore:kerala_vegetable_stew; bangalore:vegetable_stew
+subz,veg_gravy,2,,bangalore:subz_makhanwal; ncr:makhni_subz
+sukha,veg_dry,2,,bangalore:mix_veg_sukha; bangalore:soyabean_chunk_mutter_sukha
+sukhi,veg_dry,2,,bangalore:kachhe_kele_ki_sukhi_subji; bangalore:panchmel_sabz_sukhi
+sukka,veg_dry,2,,bangalore:kadle_sukka; bangalore:thondekai_sukka
+tawa,veg_dry,2,,bangalore:tawa_mix_veg; bangalore:tawa_mix_veg_dry
+upma,veg_dry,2,,ncr:seviyan_upma; ncr:upma
+week,veg_gravy,2,,ncr:may_week; ncr:week
+3rd,veg_gravy,1,,ncr:monday_3rd
+4th,veg_gravy,1,,ncr:tuesday_4th
+5th,veg_gravy,1,,ncr:wednesday_5th
+6th,veg_gravy,1,,ncr:thursday_6th
+7th,veg_gravy,1,,ncr:friday_7th
+achaar,veg_gravy,1,,ncr:mirch_ka_achaar
+achaarialoo,veg_gravy,1,,ncr:achaarialoo
+ada,dessert,1,,bangalore:ada_pradanam
+adraki,veg_gravy,1,,ncr:adraki_gobi
+ala,dessert,1,,ncr:pudding_ala_cream
+aloo,curd_side,1,,ncr:kadahi_shimla_aloo
+aloo,rice,1,,ncr:gobi_aloo_masala
+alugadde,sambar,1,,bangalore:horsegram_with_alugadde_huli
+amritshari,dal,1,,ncr:amritshari_chiley
+amti,dal,1,,pune:amti
+arbi,veg_dry,1,,bangalore:arbi_dry
+arisiparupu,rice,1,,chennai:arisiparupu_satham
+arrabiata,rice,1,,bangalore:pasta_arrabiata
+avail,veg_dry,1,,ncr:veg_avail
+avail,veg_gravy,1,,ncr:avail
+avicha,starter,1,,chennai:avicha_kadalai
+badami,nonveg_soup,1,,bangalore:murgh_badami_shorba
+badushahi,dessert,1,,bangalore:badushahi
+bagare,veg_gravy,1,,ncr:bagare_baingan
+bahji,veg_gravy,1,,bangalore:bahji
+baji,starter,1,,chennai:pazham_pori_baji
+bajji,starter,1,,bangalore:turai_bajji
+ball,veg_dry,1,,bangalore:veg_ball_chilli_dry
+balushahi,veg_gravy,1,,ncr:pista_balushahi
+bananacake,dessert,1,,ncr:bananacake
+bassuru,dal,1,,bangalore:bassuru
+bautra,bread,1,,bangalore:bautra
+beans,salad,1,,ncr:kidney_beans_relish
+beas,veg_gravy,1,,ncr:beas_bur
+beetroot,bread,1,,bangalore:beetroot_roti
+beetroot,starter,1,,bangalore:carrot_beetroot_kabab
+bella,welcome_drink,1,,bangalore:bella_panaka
+besan,dessert,1,,ncr:dahi_besan_guttey_ki_subz
+beverage,veg_gravy,1,,ncr:beverage
+beverages,veg_gravy,1,,ncr:beverages
+bhaji,dal,1,,ncr:mumbai_style_bhaji
+bharwa,veg_dry,1,,ncr:bharwa_simla_mirch
+bhindi,veg_gravy,1,,ncr:bhindi
+bhuna,veg_gravy,1,,pune:veg_bhuna
+bittergourd,veg_dry,1,,bangalore:bittergourd_dry
+bobby,papad,1,,pune:bobby
+boiled,salad,1,,bangalore:boiled_chickpea
+bon,starter,1,,bangalore:mix_veg_bon_bon
+boondi,veg_gravy,1,,ncr:rajasthani_boondi_laddo
+bowl,starter,1,,bangalore:burrito_bowl
+bread,salad,1,,ncr:brown_bread_veg_cole_slaw_sandwich
+brinji,rice,1,,bangalore:soya_brinji
+browine,veg_gravy,1,,ncr:browine
+bufri,dessert,1,,bangalore:horlicks_bufri
+burwan,veg_dry,1,,bangalore:burwan_shimlamirch
+butter,healthy_rice,1,,bangalore:herbed_butter_vegetable
+capsicum,starter,1,,bangalore:stuffed_capsicum
+carrat,veg_gravy,1,,ncr:carrat
+chaach,veg_gravy,1,,ncr:plain_chaach
+chaas,welcome_drink,1,,bangalore:dhungar_chaas
+cham,veg_gravy,1,,ncr:white_cham_cham
+chandra,dessert,1,,bangalore:chandra_kala
+chane,dal,1,,ncr:kale_chane_tariwala
+chatpata,veg_dry,1,,bangalore:mix_veg_chatpata
+chavali,veg_dry,1,,pune:chavali_sheng_dry
+chawal,rice,1,,bangalore:rajma_chawal
+chettinad,veg_dry,1,,pune:suran_chettinad
+chettinadaloo,veg_gravy,1,,ncr:chettinadaloo
+chikki,veg_gravy,1,,ncr:peanuts_chikki
+chikkudu,veg_dry,1,,bangalore:goru_chikkudu_vepudu
+chilli,salad,1,,ncr:fried_chilli
+chilli,sambar,1,,bangalore:paneer_chilli
+chilli,starter,1,,bangalore:steamed_veg_momos_with_spicy_chilli_dip
+chinese,veg_gravy,1,,ncr:chinese_veg_in_sweet_n_sour
+chitharana,rice,1,,bangalore:mavinakayi_chitharana
+choco,veg_gravy,1,,ncr:choco_muffin
+choru,rice,1,,bangalore:nei_choru
+chow,rice,1,,bangalore:chow_mein
+chum,dessert,1,,bangalore:chum_chum
+chumchum,dessert,1,,bangalore:dry_chumchum
+churma,veg_gravy,1,,ncr:churma
+chuteny,starter,1,,bangalore:chuteny
+chutney,salad,1,,ncr:coconut_chutney_tomato_chutney
+chutney,starter,1,,bangalore:dhokla_with_chutney
+cirry,veg_gravy,1,,ncr:konkani_veg_cirry
+cob,healthy_rice,1,,bangalore:grilled_corn_on_the_cob
+cocktail,salad,1,,ncr:macaroni_e_cocktail_sauce
+colour,bread,1,,chennai:tri_colour_uttappam
+creamy,dessert,1,,bangalore:creamy_lamcha
+crisp,veg_gravy,1,,ncr:crisp
+crisps,veg_gravy,1,,ncr:crisps
+crudittes,salad,1,,ncr:veg_crudittes
+cryspe,starter,1,,bangalore:cryspe_veg
+curdites,curd_side,1,,ncr:veg_curdites
+curdrice,dal,1,,bangalore:curdrice
+curry,dal,1,,ncr:sindhi_curry
+curry,sambar,1,,bangalore:steamed_paruppu_urundai_curry
+custard,dessert,1,,ncr:strawberry_flavoured_custard
+custerd,veg_gravy,1,,ncr:custerd
+cut,salad,1,,bangalore:cut_fruits
+dabeli,starter,1,,bangalore:dabeli
+dal,dessert,1,,bangalore:dal_payasam
+dalma,dal,1,,bangalore:dalma
+dalmakhani,veg_gravy,1,,ncr:dalmakhani
+dar,veg_dry,1,,ncr:gheeya_latpata_masale_dar
+dark,veg_gravy,1,,bangalore:mix_veg_in_dark_soya
+date,veg_gravy,1,,ncr:date
+dates,dessert,1,,bangalore:dates_mysorepak
+day,welcome_drink,1,,bangalore:holi_day
+days,veg_gravy,1,,ncr:days
+detox,welcome_drink,1,,bangalore:detox_water
+dhaba,veg_dry,1,,bangalore:dhaba_mix_veg
+dhaniya,soup,1,,bangalore:dhaniya_shorba
+dilkhushad,veg_gravy,1,,ncr:dilkhushad
+donuts,dessert,1,,chennai:sweet_donuts
+dosekkai,sambar,1,,bangalore:dosekkai_pappu
+double,dessert,1,,bangalore:double_ka_meetha
+double,veg_gravy,1,,ncr:double_ka_mitha
+drink,veg_gravy,1,,ncr:mago_drink
+drumstick,dal,1,,bangalore:drumstick_with_mavinakayi_tovve
+due,veg_gravy,1,,ncr:non_veg_not_serving_due_to_navratri
+ennagai,veg_gravy,1,,bangalore:ennagai
+firni,veg_gravy,1,,ncr:firni
+fodanich,dal,1,,pune:fodanich_waran
+fruit,veg_dry,1,,bangalore:jack_fruit_varuval
+fruits,dessert,1,,ncr:manesar_fruits
+fryems,veg_gravy,1,,ncr:fryems
+frymes,salad,1,,ncr:frymes
+frymus,veg_gravy,1,,ncr:frymus
+games,veg_gravy,1,,ncr:junglee_games
+gappa,starter,1,,bangalore:gol_gappa
+garlic,starter,1,,bangalore:pad_thai_noodle_with_soya_garlic_veg
+geovise,soup,1,,bangalore:minestrone_geovise
+ghewada,veg_dry,1,,pune:shravani_ghewada
+goan,nonveg_main,1,,bangalore:goan_vindaloo
+golgappa,starter,1,,bangalore:golgappa
+gourd,veg_dry,1,,bangalore:ridge_gourd_kottu
+gourd,veg_gravy,1,,bangalore:ridge_gourd_tovve
+gourmer,veg_gravy,1,,ncr:styker_x_gourmer_services
+gulab,welcome_drink,1,,ncr:gulab_sherbat
+guvava,veg_gravy,1,,ncr:guvava
+holi,dal,1,,ncr:holi
+hospitality,veg_gravy,1,,ncr:d_star_hospitality
+huli,curd_side,1,,bangalore:kumblekai_majjige_huli
+imarthi,dessert,1,,ncr:imarthi
+jal,welcome_drink,1,,bangalore:jal_jeera
+jalfrezi,veg_dry,1,,bangalore:mix_veg_jalfrezi
+jaljeera,welcome_drink,1,,ncr:jaljeera_treat
+jelabi,dessert,1,,bangalore:jelabi
+jhal,starter,1,,bangalore:jhal_muri
+jilebi,dessert,1,,bangalore:jilebi
+july,veg_gravy,1,,ncr:stryker_lunch_20_july_to_25_july
+kachori,veg_gravy,1,,ncr:mawa_kachori
+kadala,veg_dry,1,,bangalore:kadala_thoran
+kaju,veg_gravy,1,,bangalore:kumbh_kaju_shabnam
+kalan,sambar,1,,bangalore:kalan
+kalimirch,veg_gravy,1,,bangalore:mix_veg_kalimirch
+kasturia,nonveg_main,1,,bangalore:kasturia_kebab
+ketchup,starter,1,,bangalore:veg_nuggets_with_ketchup
+khaja,dessert,1,,bangalore:puri_khaja
+kharam,veg_dry,1,,bangalore:vankaya_kothimeera_kharam
+kheema,veg_dry,1,,pune:veg_kheema
+khus,veg_gravy,1,,ncr:khus_sharbat
+kishmish,veg_gravy,1,,ncr:kishmish
+kodiguddu,nonveg_main,1,,bangalore:kothimeera_kodiguddu
+kolakkatai,dessert,1,,bangalore:pal_kolakkatai
+kung,dal,1,,ncr:vegetable_kung_pao_sauce
+kurchan,veg_gravy,1,,bangalore:mix_veg_kurchan
+laksa,nonveg_soup,1,,bangalore:laksa
+lassi,welcome_drink,1,,bangalore:tadka_lassi
+leches,dessert,1,,bangalore:tres_leches
+lemon,bread,1,,chennai:lemon_poha
+lentil,dal,1,,ncr:lentil
+live,starter,1,,bangalore:pani_puri_live
+luchi,bread,1,,bangalore:luchi
+lunch,welcome_drink,1,,bangalore:special_lunch
+luncha,dessert,1,,bangalore:luncha
+maal,veg_gravy,1,,ncr:maal_pua
+macroni,veg_gravy,1,,ncr:macroni
+makhanwala,veg_gravy,1,,bangalore:veg_makhanwala
+malai,dessert,1,,bangalore:malai_sandwich
+malai,veg_gravy,1,,ncr:ras_malai
+malpua,dessert,1,,bangalore:malpua_with_rabri
+manesar,veg_gravy,1,,ncr:new_vendor_at_manesar
+manga,veg_dry,1,,bangalore:manga_paruppu_vada
+mangodi,veg_gravy,1,,ncr:mangodi
+mangodialoo,veg_gravy,1,,ncr:mangodialoo
+maratha,veg_gravy,1,,pune:veg_maratha
+marinara,healthy_rice,1,,bangalore:stuffed_zucchini_with_marinara_sauce
+masala,dal,1,,ncr:sambar_masala
+matar,dal,1,,ncr:patila_matar
+matar,veg_dry,1,,ncr:nutrella_matar
+melon,veg_gravy,1,,ncr:musk_melon
+menthyabath,rice,1,,bangalore:menthyabath
+methi,veg_dry,1,,pune:methi_tomato
+milijuli,veg_gravy,1,,ncr:milijuli_sabziyan
+milkcake,dessert,1,,ncr:milkcake
+mocca,dessert,1,,bangalore:mocca_tiramisu
+mohanthal,veg_gravy,1,,ncr:mohanthal
+molakekalu,veg_gravy,1,,bangalore:molakekalu_saru
+morney,healthy_rice,1,,bangalore:vegetable_morney
+muffins,veg_gravy,1,,ncr:muffins
+nachos,starter,1,,bangalore:nachos_with_salsa
+navratre,veg_gravy,1,,ncr:navratre_thali
+nicchinunde,starter,1,,bangalore:nicchinunde
+nimboo,veg_gravy,1,,ncr:nimboo_paani
+nnssww,bread,1,,bangalore:nnssww
+noodles,rice,1,,bangalore:paneer_noodles
+noodles,veg_gravy,1,,ncr:street_style_noodles
+nucchinde,starter,1,,bangalore:nucchinde
+olives,veg_gravy,1,,ncr:olives
+onion,starter,1,,bangalore:mix_veg_onion_pokoda
+pachai,dal,1,,bangalore:pachai_payaru
+pakeeza,veg_gravy,1,,ncr:pakeeza
+pakora,starter,1,,bangalore:palak_pakora
+palya,veg_dry,1,,bangalore:red_pumpkin_palya
+paneer,veg_dry,1,,pune:saoji_paneer
+panner,veg_gravy,1,,bangalore:panner_do_pyaza
+pao,bread,1,,ncr:roasted_pao
+pasta,starter,1,,bangalore:red_pasta
+pasta,veg_gravy,1,,ncr:vegetable_pasta
+patiala,veg_gravy,1,,bangalore:veg_patiala
+patisa,veg_gravy,1,,ncr:patisa
+patodi,veg_gravy,1,,pune:patodi
+phirni,dessert,1,,bangalore:rose_phirni
+pickel,veg_gravy,1,,ncr:pickel_sachet
+pilaf,healthy_rice,1,,bangalore:quinoa_pilaf
+plates,veg_gravy,1,,ncr:5_plates
+pollo,nonveg_soup,1,,bangalore:zuppa_de_al_pollo
+potato,starter,1,,bangalore:potato_wedges
+pulao,healthy_rice,1,,bangalore:redrice_pulao
+puliyodarai,rice,1,,bangalore:puliyodarai
+rabdi,veg_gravy,1,,ncr:rabdi
+rajbhog,dessert,1,,bangalore:rajbhog
+rajbhog,veg_gravy,1,,ncr:rajbhog
+rasbhari,veg_gravy,1,,ncr:rasbhari
+rasgulaa,veg_gravy,1,,ncr:rasgulaa
+raskadam,dessert,1,,bangalore:raskadam
+rasmadhuri,veg_gravy,1,,ncr:rasmadhuri
+rce,rice,1,,ncr:plain_rce
+ricekheer,dessert,1,,bangalore:ricekheer
+roast,starter,1,,bangalore:urulai_roast
+roohafza,rice,1,,ncr:roohafza
+roomali,bread,1,,bangalore:tawa_roomali
+rshbhari,veg_gravy,1,,ncr:rshbhari
+sabzi,rice,1,,bangalore:sabzi_ki_tehri
+samber,dal,1,,ncr:samber
+saru,rasam,1,,bangalore:tilli_saru
+sewiyan,veg_gravy,1,,ncr:sewiyan
+shaak,veg_dry,1,,bangalore:tindora_nu_shaak
+sour,dal,1,,ncr:hot_sour_veg
+sprouts,salad,1,,bangalore:sprouts
+subz,rice,1,,ncr:subz_ki_thari
+tak,veg_dry,1,,ncr:veg_taka_tak
+takatak,veg_dry,1,,ncr:veg_takatak
+tango,welcome_drink,1,,bangalore:tropical_tango
+tawa,veg_gravy,1,,ncr:tawa_mix_veg
+tempura,starter,1,,bangalore:vegetable_tempura
+tempura,veg_dry,1,,bangalore:tempura_vegetables
+thandai,veg_gravy,1,,ncr:thandai
+thandai,welcome_drink,1,,bangalore:thandai
+thiyal,dal,1,,bangalore:ulli_thiyal
+tom,soup,1,,bangalore:tom_yum
+upma,veg_gravy,1,,ncr:veg_upma
+vegjalfrezi,veg_gravy,1,,ncr:vegjalfrezi
+watermelon,veg_gravy,1,,ncr:watermelon
+watermelon,welcome_drink,1,,bangalore:watermelon_fresh
+yeruseri,sambar,1,,bangalore:yeruseri
+mix_veg_65,veg_dry,1,,bangalore:mix_veg_65
+mixed_veg,veg_dry,1,,bangalore:mixed_veg
+c,bread,1,,bangalore:c
+mix_veg,veg_gravy,1,,pune:mix_veg
+dry_veg,veg_gravy,1,,ncr:dry_veg
+mix_veg,veg_dry,1,,ncr:mix_veg
+special,veg_gravy,1,,ncr:special
+vegetable,veg_gravy,1,,ncr:vegetable

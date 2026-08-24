@@ -115,3 +115,65 @@ def test_removing_it_left_the_curd_side_pools_usable():
         pools = PoolBuilder().build_pools(
             df, required_slots=city_required_slots(city))
         assert len(pools['curd_side']) >= 7, (city, len(pools['curd_side']))
+
+
+class TestNcrSpreadsheetScaffolding:
+    """The NCR mapping pipeline imported the spreadsheet's own furniture as
+    dishes: 26 weekday-date column headers, three sheet titles, a note to the
+    operator, and ten single-word fragments. Every one was filed `veg_gravy`
+    with `key_ingredient` copied from the first word of its own name, so all of
+    them were servable — a menu could print "Fri 19th June" as the day's
+    vegetable gravy. They surfaced because none had a colour.
+    """
+
+    @pytest.fixture(scope='class')
+    def ncr(self):
+        import pandas as pd
+        from src.ontology.paths import CITY_ITEMS_DIR
+        return pd.read_excel(CITY_ITEMS_DIR / 'ncr.xlsx')
+
+    def _names(self, df):
+        return set(df['item'].astype(str).str.strip().str.lower())
+
+    @pytest.mark.parametrize('gone', [
+        'mon_1st_june', 'tue_2nd_june', 'wed_3rd_june', 'thu_4th_june',
+        'fri_5th_june', 'fri_3rd_july', 'wed_1st_july',
+        'stryker_lunch_18_may_to_23_may',
+        'stryker_lunch_27_july_to_01_aug',
+        'from_1st_aug_2026_new_vendor_at_bhondsi_is_gourmer_foods',
+        'apr', 'day', 'eid', 'may', 'mon', 'pax', 'tue', 'wed',
+        'veg', 'non_veg',
+    ])
+    def test_the_scaffolding_rows_are_gone(self, ncr, gone):
+        assert gone not in self._names(ncr), gone
+
+    def test_no_date_shaped_dish_name_survives_in_any_city(self):
+        """A guard rather than a list: the next import of a grid-shaped menu
+        will produce the same defect, and a name that is a weekday plus a date
+        is never a dish."""
+        import re
+        import pandas as pd
+        from src.ontology.paths import CITY_ITEMS_DIR
+        pattern = re.compile(
+            r'^(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[_ ]'
+            r'|\d+(st|nd|rd|th)[_ ](jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)')
+        for city in ('bangalore', 'pune', 'chennai', 'ncr'):
+            df = pd.read_excel(CITY_ITEMS_DIR / f'{city}.xlsx')
+            hits = [n for n in df['item'].astype(str).str.strip().str.lower()
+                    if pattern.search(n)]
+            assert not hits, (city, hits)
+
+    def test_the_three_letter_dishes_that_are_real_are_still_there(self, ncr):
+        """`pav` and `pao` are three letters too. The removal list is exact
+        names for exactly this reason — a length rule would have taken them."""
+        names = self._names(ncr)
+        assert 'pav' in names or 'pao' in names, sorted(
+            n for n in names if len(n) <= 3)
+
+    def test_the_veg_gravy_pool_survived_the_cull(self, ncr):
+        """37 of the 39 were filed `veg_gravy`, so this is where a mistake would
+        show. NCR's gravy pool is still deep enough for a daily slot across the
+        20-day cooldown."""
+        pool = ncr[ncr['course_type'].astype(str).str.strip().str.lower()
+                   == 'veg_gravy']
+        assert len(pool) >= 400, len(pool)

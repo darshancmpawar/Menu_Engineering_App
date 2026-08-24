@@ -59,6 +59,17 @@
           ]
         },
         "max": 0
+      },
+      {
+        "_comment": "'Week 1-2 egg non veg main is compulsory' — an egg dish in the non-veg slot on one or two days of the week, and compulsory, so it is a floor as well as a cap. `min: 1` is what makes it compulsory; `max: 2` is the upper end of the client's range. Bangalore carries 121 egg dishes in `nonveg_main`, so neither bound is at risk of relaxing. Counted in DAYS: this counter serves two non-veg dishes, so the one or two days it lands on may each carry an egg dish beside a chicken one — which is what a non-veg station does, and what `daily_max` would have to be added to prevent.",
+        "name": "moengage_egg_1_or_2_days",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_egg_dish"
+        },
+        "min": 1,
+        "max": 2
       }
     ],
     "constant_items": {}

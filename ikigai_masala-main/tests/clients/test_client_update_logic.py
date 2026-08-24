@@ -1,7 +1,8 @@
-"""AT&T, Bakertilly, Citrix and Tekion CHN against real solves.
+"""Six clients' stated rules, against real solves.
 
-These four came from the client's `client_update.xlsx` `rules` sheet. Each one's
-stated logic is checked against a five-day plan, so a rule that loads but never
+AT&T, Bakertilly, Citrix, Moengage and Tekion CHN came from the client's
+`client_update.xlsx` `rules` sheet; Corning Chakan came from its own list. Each
+one's stated logic is checked against a real plan, so a rule that loads but never
 bites fails here rather than looking configured.
 
 The counters mirror the live `clients` rows. Requirements deliberately left to
@@ -65,10 +66,24 @@ CLIENTS = {
          'welcome_drink': 1},
         {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'mix',
          'thursday': 'mix', 'friday': 'biryani'}),
+    # Two non-veg dishes a day and a compulsory egg rule. The live row's
+    # `slot_counts` holds only `nonveg_main: 2` and its `theme_map` is empty
+    # (both recorded in docs/pending_config_changes.md as DB gaps); the rest is
+    # filled in here so the counter is actually exercised.
+    'Moengage': _client(
+        'Moengage', 'Bangalore',
+        ['bread', 'veg_dry', 'rice', 'veg_gravy', 'dal', 'sambar',
+         'nonveg_main', 'rasam', 'white_rice', 'papad', 'pickle', 'curd_side',
+         'dessert', 'welcome_drink'],
+        {'dal': 1, 'rice': 1, 'bread': 1, 'rasam': 1, 'sambar': 1,
+         'dessert': 1, 'veg_dry': 1, 'curd_side': 1, 'veg_gravy': 1,
+         'nonveg_main': 2, 'welcome_drink': 1},
+        {'monday': 'mix', 'tuesday': 'chinese', 'wednesday': 'biryani',
+         'thursday': 'south', 'friday': 'north'}),
     # Pune site, seven days a week, and the only counter with a `soup` station
     # opposite a `dessert` one. `starter` is added here because the Thursday
     # chaat rule needs it and the live row has no such category yet — the config
-    # file and docs/operator_setup.md both record that as a DB change.
+    # file and docs/pending_config_changes.md both record that as a DB change.
     'Corning Chakan': _client(
         'Corning Chakan', 'Pune',
         ['soup', 'bread', 'rice', 'veg_dry', 'veg_gravy', 'dal', 'dessert',
@@ -85,10 +100,12 @@ CLIENTS = {
         {'dal': 1, 'rice': 1, 'bread': 1, 'rasam': 1, 'salad': 1, 'sambar': 1,
          'dessert': 1, 'veg_dry': 1, 'curd_side': 1, 'veg_gravy': 1,
          'nonveg_main': 1},
-        # Tekion BLR's map, which is what "same rules as Tekion BLR" needs (the
-        # config file records the live map and the recommended change).
-        {'monday': 'mix', 'tuesday': 'chinese', 'wednesday': 'north',
-         'thursday': 'mix', 'friday': 'biryani'}),
+        # Chennai's OWN map, as the live row has it. The client's rules copy
+        # Tekion BLR but its themes do NOT, so the weekday rules land on
+        # different themes here and each was checked against what Chennai can
+        # serve on that day.
+        {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'south',
+         'thursday': 'biryani', 'friday': 'north'}),
 }
 
 
@@ -459,6 +476,25 @@ class TestTekionChn:
                    if any(_flag(chn_df, b, 'is_liquid_rice') for b in items))
         assert days == 1, f'liquid rice on {days} day(s), want 1: {rice}'
 
+    def test_no_chinese_dish_is_ever_served(self, api, chn_df):
+        """The client's decision: no Chinese at the Chennai site. BLR's two
+        Chinese-Tuesday rules are absent, and Tuesday is a `mix` day here — which
+        the theme filter does not narrow at all, so nothing but this assertion
+        would have noticed a manchurian turning up."""
+        sol = _plan(api, 'Tekion CHN')
+        for day in sol.values():
+            for b in _all_bases(day):
+                assert _attr(chn_df, b, 'cuisine_family') != 'chinese', b
+
+    def test_a_paneer_gravy_lands_on_wednesday(self, api, chn_df):
+        """Wednesday is a SOUTH day at this site and Chennai has one south
+        paneer gravy, so the rule is satisfiable exactly once per cooldown
+        window — this asserts the first week, which is the week it can meet."""
+        sol = _plan(api, 'Tekion CHN')
+        gravy = _by_day(sol, 'veg_gravy')
+        assert any(_flag(chn_df, b, 'is_paneer_gravy') for b in gravy['wed']), \
+            gravy
+
     def test_bread_is_always_a_chapati_or_phulka(self, api, chn_df):
         sol = _plan(api, 'Tekion CHN')
         breads = _by_day(sol, 'bread')
@@ -627,3 +663,44 @@ class TestCorningChakan:
                 if slot.split('__')[0] in CONST_SLOTS:
                     continue
                 assert cand['item_base'] in names, cand['item_base']
+
+
+# --------------------------------------------------------------- Moengage
+
+
+@pytest.mark.slow
+class TestMoengage:
+    """'Mutton once a month. Aloo once a week. Banned in main course: pumpkin,
+    brinjal, yam and bisibele bath. Week 1-2 egg non-veg main is compulsory.'"""
+
+    def test_an_egg_dish_lands_on_one_or_two_days(self, api, blr_df):
+        sol = _plan(api, 'Moengage')
+        nv = _by_day(sol, 'nonveg_main')
+        days = sum(1 for items in nv.values()
+                   if any(_flag(blr_df, b, 'is_egg_dish') for b in items))
+        assert 1 <= days <= 2, f'egg on {days} day(s), want 1-2: {nv}'
+
+    def test_none_of_the_banned_ingredients_appears(self, api, blr_df):
+        sol = _plan(api, 'Moengage')
+        banned = {'pumpkin', 'brinjal', 'eggplant', 'yam', 'elephant_yam'}
+        for day in sol.values():
+            for b in _all_bases(day):
+                assert _attr(blr_df, b, 'key_ingredient') not in banned, b
+                assert _attr(blr_df, b, 'primary_protein') not in banned, b
+
+    def test_no_bisibele_bath(self, api):
+        sol = _plan(api, 'Moengage')
+        for day in sol.values():
+            for b in _all_bases(day):
+                assert 'bisibele' not in b and 'bisi_bele' not in b, b
+
+    def test_aloo_on_at_most_one_day(self, api, blr_df):
+        """'Aloo (Potato): Once a week' is a LIMIT, not a requirement — it sits
+        in a list beside "Mutton: Once a month" and a banned-ingredient set, all
+        of which cap rather than mandate. So the rule is `max: 1` and a week with
+        no potato at all is compliant; asserting exactly one was reading the
+        client's sentence as a floor it does not carry."""
+        sol = _plan(api, 'Moengage')
+        days = _days_matching(
+            blr_df, sol, lambda d, b: _attr(d, b, 'key_ingredient') == 'potato')
+        assert days <= 1, f'potato on {days} day(s), want at most 1'

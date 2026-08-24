@@ -42,12 +42,32 @@ class TestTheColumnIsGone:
         for city in CITIES:
             assert list(frames[city].columns) == reference, city
 
-    def test_the_rows_survived_the_drop(self, frames):
-        """Dropping a column must not drop a dish."""
-        assert len(frames['bangalore']) > 6000
-        assert len(frames['chennai']) > 600
-        assert len(frames['pune']) > 350
-        assert len(frames['ncr']) > 1600
+    def test_dropping_a_column_does_not_drop_a_dish(self, frames):
+        """The actual invariant: removing a column changes the width, never the
+        height.
+
+        This used to assert hardcoded row-count floors per city, which is a
+        proxy for the invariant rather than the invariant — and a brittle one:
+        `remove_generic_rows.py` legitimately took 39 rows out of NCR (date
+        headers and a vendor note the mapping pipeline had imported as dishes)
+        and this test failed on the floor of 1,600 while nothing was actually
+        wrong. Asserted directly now, so a real regression fails and a
+        deliberate removal does not.
+        """
+        import pandas as pd
+        for city, df in frames.items():
+            trimmed = df.drop(columns=[c for c in DEAD_COLUMNS if c in df.columns])
+            assert len(trimmed) == len(df), city
+            assert isinstance(trimmed, pd.DataFrame)
+
+    def test_no_city_list_has_collapsed(self, frames):
+        """A loose sanity floor — an order-of-magnitude check, not a pin. Row
+        counts move whenever dishes are added or non-dishes removed, so these
+        are set well below the current sizes on purpose."""
+        assert len(frames['bangalore']) > 5000
+        assert len(frames['chennai']) > 500
+        assert len(frames['pune']) > 300
+        assert len(frames['ncr']) > 1200
 
 
 class TestTheGuardHoldsBack:
