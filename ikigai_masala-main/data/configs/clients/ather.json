@@ -20,7 +20,8 @@
       }
     ],
     "constant_items": {
-      "salad": "mix veg salad",
+      "_salad_why": "`mixed veg salad`, not `mix veg salad` — the ontology has no dish by the old name. Two Bangalore dishes are close: `mixed_veg_salad` sits in the `common` pool and is reachable by every client, while `mix_veg_salad_no_beetroot_small_cut` is Citrix's own row and its name is a prep instruction, so the common one is what this means. NB this pin is still STAMPED rather than narrowed, and correcting the name does not change that: a bare string replaces the slot for the whole horizon, so its base slot is dropped from the model (`whole_slot_bases`) and there is no cell to narrow. What the fix buys is a printed menu naming a dish that exists — see docs/pending_config_changes.md for why that branch may no longer need to stamp.",
+    "salad": "mixed veg salad",
       "bread": "plain chapati"
     }
   }

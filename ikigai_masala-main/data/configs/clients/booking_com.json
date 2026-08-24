@@ -58,7 +58,8 @@
     ],
     "constant_items": {
       "bread": "plain chapati",
-      "starter__2": "veg kati roll",
+      "_starter__2_why": "`veg kathi roll`, not `veg kati roll`. The pin was being STAMPED as text rather than narrowing the cell — a pin that names no dish has nothing to narrow to, and kati/kathi is one word spelled two ways. Booking's own menu import is where `veg_kathi_roll` came from, so the dish is in this client's own pool; `mix_veg_kathi_roll` is a different dish and the pin does not say mix. Stamped, the roll counted toward no colour, no cuisine and no no-repeat check.",
+      "starter__2": "veg kathi roll",
       "curd": {
         "monday": "Curd",
         "tuesday": "Curd",

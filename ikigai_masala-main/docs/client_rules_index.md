@@ -100,7 +100,7 @@ Bangalore site, one counter (themes Mon/Tue/Fri = mix, Wed = biryani, Thu = nort
 
 **City rules switched off:** `liquid_desserts_twice_nonconsecutive`
 
-**Pinned items:** `salad` — mix veg salad; `bread` — plain chapati
+**Pinned items:** `salad` — mixed veg salad; `bread` — plain chapati
 
 ## Bakertilly
 
@@ -135,7 +135,7 @@ Already covered elsewhere, so deliberately NOT duplicated here: 'indian bread ch
 
 **City rules switched off:** `mixedveg_pulao_biryani_weekly`
 
-**Pinned items:** `bread` — plain chapati; `starter__2` — veg kati roll; `curd` — monday=Curd, tuesday=Curd, thursday=Curd, friday=Curd; `curd_side` — wednesday=raita
+**Pinned items:** `bread` — plain chapati; `starter__2` — veg kathi roll; `curd` — monday=Curd, tuesday=Curd, thursday=Curd, friday=Curd; `curd_side` — wednesday=raita
 
 ## Cigna
 
