@@ -162,6 +162,13 @@ class ClientConfig:
     # Which counter of the client this config came from. Lets per-counter rule
     # overrides in client_rules.json be scoped to one station.
     counter_name: Optional[str] = None
+    # How many counters the client has in total. 1 means this config IS the
+    # client, which is what lets `_resolve_constant_items` tell an unambiguous
+    # pin from an ambiguous one: `constant_items` is client-scoped, so a pin for
+    # a slot the counter does not serve normally has to be dropped (it belongs
+    # to a sibling station). With one counter there is no sibling, so the pin is
+    # this counter's and is stamped as a fixed row instead of vanishing.
+    counter_count: int = 1
 
 
 def _dedupe_preserve_order(values: List[str]) -> List[str]:
@@ -439,7 +446,8 @@ class ClientConfigLoader:
 
     # ---- client read methods -----------------------------------------------
 
-    def _config_from_counter(self, name: str, counter: Dict) -> ClientConfig:
+    def _config_from_counter(self, name: str, counter: Dict,
+                             counter_count: int = 1) -> ClientConfig:
         """Build a ClientConfig for one (normalized) counter — the shape the
         solver consumes. Shared by the primary-counter path (get_client) and
         the per-counter path (get_client_configs)."""
@@ -466,13 +474,15 @@ class ClientConfigLoader:
             slot_counts=counts,
             theme_map=dict(counter.get('theme_map') or DEFAULT_THEME_MAP),
             counter_name=counter.get('name'),
+            counter_count=counter_count,
         )
 
     def get_client(self, name: str) -> ClientConfig:
         """Return a ClientConfig sourced from the primary counter
         (``counters[0]``). Output shape is unchanged, so the solver is
         unaffected."""
-        cfg = self._config_from_counter(name, self._counters_list(name)[0])
+        counters = self._counters_list(name)
+        cfg = self._config_from_counter(name, counters[0], len(counters))
         cfg.serve_weekends = self.get_client_serve_weekends(name)
         cfg.working_days = self.get_client_working_days(name)
         return cfg
@@ -488,8 +498,9 @@ class ClientConfigLoader:
         serve_weekends = self.get_client_serve_weekends(name)
         working_days = self.get_client_working_days(name)
         out = []
-        for c in self._counters_list(name):
-            cfg = self._config_from_counter(name, c)
+        counters = self._counters_list(name)
+        for c in counters:
+            cfg = self._config_from_counter(name, c, len(counters))
             cfg.serve_weekends = serve_weekends
             cfg.working_days = working_days
             out.append((c['name'], cfg))
@@ -1176,7 +1187,8 @@ class ClientConfigLoader:
         """
         out = []
         for counter in row['counters']:
-            cfg = self._config_from_counter(name, counter)
+            cfg = self._config_from_counter(
+                name, counter, len(row['counters']))
             cfg.serve_weekends = row['serve_weekends']
             cfg.working_days = row['working_days']
             out.append((counter['name'], cfg))

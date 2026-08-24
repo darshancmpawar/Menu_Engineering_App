@@ -19,6 +19,9 @@ import requests
 _RETRY_STATUSES = frozenset({429, 502, 503, 504})
 _RETRY_BACKOFF_MIN_SEC = 0.2
 _RETRY_BACKOFF_MAX_SEC = 0.7
+#: Ceiling on a 429's `Retry-After`. The retry happens inside a Streamlit
+#: rerun, so a long or malformed header must not park the UI.
+_RETRY_AFTER_MAX_SEC = 5.0
 
 
 class RuleDiagnosticsBlockedError(RuntimeError):
@@ -116,8 +119,38 @@ def _with_one_retry(
     if not retryable or resp.status_code not in _RETRY_STATUSES:
         return resp
     backoff = (rng or random).uniform(_RETRY_BACKOFF_MIN_SEC, _RETRY_BACKOFF_MAX_SEC)
+    # A 429 is not transient in the way a 502 is: the bucket refills at a known
+    # rate and the server says how long that takes in `Retry-After`. Sleeping the
+    # jitter backoff instead made this retry USELESS on the one status where a
+    # retry is guaranteed to work if you wait — /plan refills 0.3 tokens a second,
+    # so a 0.2-0.7s nap never produced one and the second request 429'd too. On a
+    # multi-counter client that cost a whole counter its menu.
+    retry_after = _retry_after_seconds(resp)
+    if retry_after is not None:
+        backoff = max(backoff, retry_after)
     sleep(backoff)
     return do_request()
+
+
+def _retry_after_seconds(resp: requests.Response) -> Optional[float]:
+    """Seconds from a 429's ``Retry-After``, or None.
+
+    Capped at ``_RETRY_AFTER_MAX_SEC``: this runs inside a Streamlit rerun, so an
+    absent or absurd header must not park the UI. Anything longer than the cap is
+    better reported than waited out.
+    """
+    if resp.status_code != 429:
+        return None
+    raw = resp.headers.get('Retry-After')
+    if raw is None:
+        return None
+    try:
+        wait = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    if wait <= 0:
+        return None
+    return min(wait, _RETRY_AFTER_MAX_SEC)
 
 
 class MenuApiClient:

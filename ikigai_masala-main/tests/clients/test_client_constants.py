@@ -84,9 +84,16 @@ class TestClientConstantItemsInPlan:
         assert plan[dates[0]]['papad'] == 'Papad'
 
 
-def _cfg(name, active_slots):
-    """A minimal ClientConfig standing in for one counter."""
-    return ClientConfig(name=name, active_slots=list(active_slots))
+def _cfg(name, active_slots, counter_count=1):
+    """A minimal ClientConfig standing in for one counter.
+
+    ``counter_count`` matters: a pin for a slot the counter does not serve is
+    dropped only when the client HAS another counter it could have belonged to.
+    With one counter there is no sibling station, and the pin is kept and
+    stamped as a fixed item (see test_fixed_items_without_a_slot.py).
+    """
+    return ClientConfig(name=name, active_slots=list(active_slots),
+                        counter_count=counter_count)
 
 
 class TestExclusiveSiblings:
@@ -105,11 +112,17 @@ class TestResolveConstantItems:
 
     def test_drops_slot_the_counter_does_not_serve(self):
         """Amadeus' Chinese station serves rice + veg_gravy only, so the
-        client-level salad/bread constants must not leak onto it."""
+        client-level salad/bread constants must not leak onto it.
+
+        ``counter_count=3`` is the whole point of the guard and is now explicit:
+        Amadeus has other stations, so a salad pin plausibly belongs to one of
+        them. A client with a SINGLE counter has no such ambiguity and keeps the
+        pin as a fixed item — test_fixed_items_without_a_slot.py covers that.
+        """
         resolved, whole = _resolve_constant_items(
             'Amadeus',
             {'salad': 'green salad', 'bread': 'plain chapati'},
-            _cfg('Chinese', ['rice', 'veg_gravy']),
+            _cfg('Chinese', ['rice', 'veg_gravy'], counter_count=3),
         )
         assert resolved == {}
         assert whole == set()

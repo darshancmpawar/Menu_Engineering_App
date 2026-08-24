@@ -25,6 +25,10 @@ from typing import Callable, Dict
 from flask import g, jsonify, request
 
 from api import metrics
+#: Imported rather than duplicated: the `plan` bucket has to hold a whole
+#: Generate click, and a click costs one request per counter. If the counter
+#: ceiling moves, this moves with it.
+from src.client.client_config import MAX_COUNTERS
 
 
 @dataclass
@@ -87,14 +91,26 @@ class _TokenBucketLimiter:
             self._buckets.clear()
 
 
+# How many times a user may press Generate in a minute. The `plan` bucket is
+# sized in CLICKS, not requests, because one click on a multi-counter client is
+# one request PER COUNTER — the planner loops `/plan` once per station. At
+# `capacity=10` a six-counter site (MAX_COUNTERS) got one click and then ran out
+# of tokens part-way through the second, so the counters after the cutoff came
+# back 429 and their tabs had no menu at all. That is the one workload the
+# docstring below promised a human would never hit, and it arrived with
+# multi-counter clients.
+_PLAN_BURST_CLICKS = 3
+
 # Named limits referenced by symbol from decorators / inline checks.
 # Tuned for realistic humans-in-the-loop workloads: a user clicking
 # through the planner should never hit these; an automated client
 # looping on /plan definitely should.
 _LIMITS: Dict[str, _TokenBucketLimiter] = {
     "plan": _TokenBucketLimiter(
-        name="plan", capacity=10, refill_per_second=10 / 60.0,
-    ),  # 10 per minute, burst 10
+        name="plan",
+        capacity=MAX_COUNTERS * _PLAN_BURST_CLICKS,
+        refill_per_second=(MAX_COUNTERS * _PLAN_BURST_CLICKS) / 60.0,
+    ),  # 3 Generate clicks a minute on the largest possible client
     "regenerate": _TokenBucketLimiter(
         name="regenerate", capacity=20, refill_per_second=20 / 60.0,
     ),  # 20 per minute, burst 20

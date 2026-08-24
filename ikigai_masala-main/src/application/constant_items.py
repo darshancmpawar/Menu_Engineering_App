@@ -134,10 +134,16 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
 
     * A slot this counter does not serve is dropped — ``constant_items`` is
       client-scoped but a client may have several counters, and a two-slot
-      Chinese station should not grow a salad row. The exception is a slot
-      whose mutually-exclusive sibling *is* served: ``curd``/``curd_side`` are
-      one logical yogurt slot and pinning "curd Mon, raita Wed" across the
-      pair is the entire point of the weekday-map form.
+      Chinese station should not grow a salad row. Two exceptions, both cases
+      where the pin is unambiguously this counter's: a slot whose
+      mutually-exclusive sibling *is* served (``curd``/``curd_side`` are one
+      logical yogurt slot, and pinning "curd Mon, raita Wed" across the pair is
+      the entire point of the weekday-map form), and a client with exactly ONE
+      counter, where no sibling station exists for the pin to have belonged to.
+      The second is how a dish becomes a FIXED ITEM without the slot being
+      configured as a rotating station — a daily curd or papad is served every
+      day and never chosen, so requiring a category for it was asking the
+      operator to configure a station that does not exist.
     * A key outside the slot registry is dropped with a warning instead of
       being stamped as an ad-hoc slot that has no display label and no rank
       in DISPLAY_SLOT_ORDER.
@@ -193,10 +199,24 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
 
         expansions = served.get(base, [])
         if not expansions:
-            # No cell of its own. Legitimate only when a mutually-exclusive
-            # sibling is served (the curd / curd_side pair); otherwise this
-            # constant belongs to a different counter.
-            if not (_exclusive_siblings(base) & set(served)):
+            # No cell of its own. Legitimate in two cases:
+            #
+            #  * a mutually-exclusive sibling IS served (the curd / curd_side
+            #    pair, where pinning "curd Mon, raita Wed" across the two is the
+            #    whole point of the weekday-map form); or
+            #  * the client has exactly ONE counter, so there is no sibling
+            #    station the pin could have belonged to. Dropping it there was
+            #    over-strict: the guard exists so a two-slot Chinese station
+            #    does not grow a salad row from a pin meant for the main
+            #    counter, and with one counter that ambiguity cannot arise.
+            #    The pin becomes a stamped fixed row — a dish served every day
+            #    without the slot being configured as a rotating station, which
+            #    is what a daily curd, papad or welcome drink actually is.
+            #    Six clients were quietly losing a stated fixed item this way
+            #    (Booking.com, Telstra and Tessolve's curd, H&M's welcome
+            #    drink, Quince's and Sinch's raita).
+            sole_counter = int(getattr(client_cfg, 'counter_count', 1) or 1) <= 1
+            if not (_exclusive_siblings(base) & set(served)) and not sole_counter:
                 logger.debug(
                     "Dropping constant_items[%r] for %s: counter %r does not "
                     "serve %r.", key, client_name,
