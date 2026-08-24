@@ -122,7 +122,8 @@ def _validate_constant_values(client_name, resolved, df) -> None:
                 )
 
 
-def _resolve_constant_items(client_name, constant_items, client_cfg):
+def _resolve_constant_items(client_name, constant_items, client_cfg,
+                            counter_scoped_keys=None):
     """Resolve a client's raw ``constant_items`` block against ONE counter.
 
     Returns ``(resolved, whole_slot_bases)``. *resolved* maps a real slot id
@@ -138,8 +139,11 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
       where the pin is unambiguously this counter's: a slot whose
       mutually-exclusive sibling *is* served (``curd``/``curd_side`` are one
       logical yogurt slot, and pinning "curd Mon, raita Wed" across the pair is
-      the entire point of the weekday-map form), and a client with exactly ONE
-      counter, where no sibling station exists for the pin to have belonged to.
+      the entire point of the weekday-map form), and a pin that is unambiguously
+      THIS counter's — either the client has exactly one counter, so no sibling
+      station exists for the pin to have belonged to, or the pin was written
+      inside this counter's own block (*counter_scoped_keys*), where the config
+      already said which station it is for.
       The second is how a dish becomes a FIXED ITEM without the slot being
       configured as a rotating station — a daily curd or papad is served every
       day and never chosen, so requiring a category for it was asking the
@@ -214,9 +218,13 @@ def _resolve_constant_items(client_name, constant_items, client_cfg):
             #    is what a daily curd, papad or welcome drink actually is.
             #    Six clients were quietly losing a stated fixed item this way
             #    (Booking.com, Telstra and Tessolve's curd, H&M's welcome
-            #    drink, Quince's and Sinch's raita).
+            #    drink, Quince's and Sinch's raita). A pin written inside one
+            #    counter's own block is the same case on a MULTI-counter client:
+            #    the config named the station, so there is nothing to guess.
             sole_counter = int(getattr(client_cfg, 'counter_count', 1) or 1) <= 1
-            if not (_exclusive_siblings(base) & set(served)) and not sole_counter:
+            scoped = key in (counter_scoped_keys or set())
+            unambiguous = sole_counter or scoped
+            if not (_exclusive_siblings(base) & set(served)) and not unambiguous:
                 logger.debug(
                     "Dropping constant_items[%r] for %s: counter %r does not "
                     "serve %r.", key, client_name,

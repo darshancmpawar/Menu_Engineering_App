@@ -85,6 +85,41 @@ KOOTU_TO_DAL = [
     "poriyal_kootu",
 ]
 
+#: The twelve kuzhambu rows, moved `veg_gravy` -> `salad`. The client's own
+#: categorisation: "kuzhambus are the dish which category should be in salad not
+#: veg gravy". TCL states it as a rule ("in salad need to give only KUZHAMBU
+#: item") and its sample week proves the two are DIFFERENT rows rather than one
+#: mislabelled — Sunday's stated menu lists "veg gravy" and "salad" separately,
+#: and the grid serves VEG KURMA beside KARA KUZHAMBU.
+#:
+#: Same shape and same reasoning as the kootu re-file above: a tamarind or
+#: buttermilk kuzhambu is not a leaf salad by a Western reading, but `course_type`
+#: is what picks the slot pool, and in a Tamil meal this is the dish that occupies
+#: the row the client calls salad. Filing it as a `veg_gravy` made TCL's stated
+#: rule unsatisfiable — the salad pool held none.
+#:
+#: Named rather than matched on the name pattern so the change stays a reviewable
+#: list: a re-import that adds a thirteenth kuzhambu leaves it in `veg_gravy` and
+#: `test_chennai_client_pools.py` says so. Deliberately NOT moved: the four
+#: non-veg kuzhambus (chicken/fish), `kolambu_sadam` and `vatha_kuzhambu_rice`
+#: (rice dishes) and `mor_kolambu_vada` (a starter) — the word names the gravy
+#: they are built from, not the dish's own course. Chennai only; Bangalore's
+#: clients serve theirs as gravies.
+KUZHAMBU_TO_SALAD = [
+    "bhindi_more_kuzhambu",
+    "coconut_veg_kuzhambu",
+    "kara_kuzhambu",
+    "mochai_kuzhambu",
+    "more_kuzhambu_with_bonda",
+    "poondu_puli_kuzhambu",
+    "sunda_vatha_kuzhambu",
+    "sundakkai_vathal_kuzhambu",
+    "urandai_kuzhambu",
+    "vatha_kuzhambu",
+    "vathal_mochai_kuzhambu",
+    "vendakkai_puli_kuzhambu",
+]
+
 #: Eight more kootus, cloned from Bangalore and re-coursed to `dal`. Chosen for
 #: eight vegetables Chennai's existing kootus do not cover: it already has three
 #: ash-gourd kootus, so more of those would not deepen anything.
@@ -254,6 +289,31 @@ def refile_kootu(df: pd.DataFrame) -> List[str]:
     return moved
 
 
+def refile_kuzhambu(df: pd.DataFrame) -> List[str]:
+    """Move the named kuzhambus into `salad`. Returns what moved.
+
+    Mirrors `refile_kootu`, including the course mirrors: `course_type` decides
+    the slot pool, and the `is_*` flags that restate the course have to follow or
+    a flag-driven rule still reads the dish as a gravy.
+    """
+    moved = []
+    names = df["item"].map(_norm)
+    for dish in KUZHAMBU_TO_SALAD:
+        hit = names.eq(dish)
+        if not hit.any():
+            print(f"    ! {dish} is not in the Chennai list — skipped")
+            continue
+        idx = df.index[hit]
+        if (df.loc[idx, "course_type"].map(_norm) == "salad").all():
+            continue
+        df.loc[idx, "course_type"] = "salad"
+        for col, want in (("is_salad", 1), ("is_veg_gravy", 0)):
+            if col in df.columns:
+                df.loc[idx, col] = want
+        moved.append(dish)
+    return moved
+
+
 def align_kootu_flags(df: pd.DataFrame) -> int:
     """Make the course-mirror flags follow the course, for every kootu in `dal`.
 
@@ -376,6 +436,14 @@ def main(dry_run: bool = False) -> int:
         print(f"[chennai] kootu -> dal: {len(moved)} row(s) ({', '.join(moved)})")
     else:
         print("[chennai] kootu -> dal: already filed as dal")
+
+    moved = refile_kuzhambu(chn)
+    if moved:
+        changed = True
+        print(f"[chennai] kuzhambu -> salad: {len(moved)} row(s) "
+              f"({', '.join(moved)})")
+    else:
+        print("[chennai] kuzhambu -> salad: already filed as salad")
 
     for dst_course, wanted, src_course in COPIES:
         chn, added = copy_rows(chn, blr, wanted, src_course, dst_course)

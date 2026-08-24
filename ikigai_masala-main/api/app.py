@@ -341,6 +341,11 @@ def _rules_and_skip_for_client(
         client_name,
         loader.get_client_constant_items(client_name, counter_name),
         client_cfg,
+        # Pins written inside THIS counter's block are unambiguous even on a
+        # multi-counter client, so they print as fixed items without the slot
+        # being configured as a rotating category.
+        counter_scoped_keys=loader.get_counter_scoped_constant_keys(
+            client_name, counter_name),
     )
     skip_cells = set()
     for rule in rules:

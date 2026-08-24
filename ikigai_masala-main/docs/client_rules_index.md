@@ -535,8 +535,8 @@ Chennai. From the client's own 13 stated rules plus a seven-day sample week (dat
 | `tcl_rice_is_a_biryani_and_a_south_rice` | rice must include (when the counter serves ≥2 of it): is_biryani_item + sub_category south_one_pot_rice or sub_category south_rice_bath or sub_category south_veg_pulao | 2 flavoured rice one will be biryani daily and other will be south flavoured rice |
 | `tcl_one_rice_on_saturday` | rice runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday serves ONE rice ('only one south flavoured rice'), so the second rice cell stands down for that day alone — `slot_indices` skips one expansion instead of the whole family, which is what a … |
 | `tcl_no_flavoured_rice_on_sunday` | rice runs only on mon, tue, wed, thu, fri, sat (blank otherwise) | Sunday serves white rice and no flavoured rice at all ('on sun chapathi, white rice, samabar, rasam, dal, veg gravy, welcome drink, salad and papad only'). |
-| `tcl_second_gravy_is_a_kuzhambu` | veg_gravy must include (when the counter serves ≥2 of it): named kuzhambu/kolumbu/kulambu/kuzhumbu/kolambu | The second veg gravy is the kuzhambu, every day it runs |
-| `tcl_one_veg_gravy_on_saturday` | veg_gravy runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday serves one veg gravy, not two ('veg gravy' singular in the Saturday list, and the sample's Saturday column has VEG KURMA and no kuzhambu) |
+| `tcl_salad_is_a_kuzhambu` | salad must include (when the counter serves ≥1 and ≤1 of it): named kuzhambu/kolumbu/kulambu/kuzhumbu/kolambu | in salad need to give only KUZHAMBU item |
+| `tcl_one_veg_gravy_on_saturday` | veg_gravy runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday serves one veg gravy |
 | `tcl_liquid_sweet_three_days` | is_liquid_dessert @ dessert: exactly 3 day(s) | liquid based sweet 3 a week |
 | `tcl_buttermilk_twice_a_week` | is_buttermilk @ welcome_drink: exactly 2 day(s) | welcome drink will be buttermilk twice a week |
 | `tcl_nonveg_egg_mwf_chicken_tue_thu` | nonveg_main must include (when the counter serves ≥1 and ≤1 of it): on mon: is_egg_dish; on wed: is_egg_dish; on fri: is_egg_dish; on tue: primary_protein chicken; on thu: primary_protein chicken | in non veg main egg based to be served on mon, Wednesday and Friday |
@@ -545,7 +545,7 @@ Chennai. From the client's own 13 stated rules plus a seven-day sample week (dat
 | `tcl_no_dal_on_saturday` | dal runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Saturday's menu is 'chapathi, only one south flavoured rice, healthy rice, veg gravy, welcome drink, veg dry and papad only' — so salad, dal, sambar, rasam, dessert and non-veg all stand down |
 | `tcl_sambar_not_on_saturday` | sambar runs only on mon, tue, wed, thu, fri, sun (blank otherwise) |  |
 | `tcl_rasam_not_on_saturday` | rasam runs only on mon, tue, wed, thu, fri, sun (blank otherwise) |  |
-| `tcl_salad_not_on_saturday` | salad runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Salad appears in Sunday's list and not Saturday's |
+| `tcl_salad_not_on_saturday` | salad runs only on mon, tue, wed, thu, fri, sun (blank otherwise) | Salad appears in Sunday's stated list and not Saturday's |
 | `tcl_veg_dry_not_on_sunday` | veg_dry runs only on mon, tue, wed, thu, fri, sat (blank otherwise) |  |
 | `tcl_curd_rice_not_on_sunday` | curd_rice runs only on mon, tue, wed, thu, fri, sat (blank otherwise) | Curd rice is in Saturday's list ('healthy rice') and not Sunday's. |
 | `tcl_dessert_on_weekdays_only` | dessert runs only on mon, tue, wed, thu, fri (blank otherwise) | Dessert and non-veg appear in neither weekend list. |

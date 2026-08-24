@@ -62,6 +62,32 @@ class TestASoleCounterKeepsThePin:
             _Cfg(['rice', 'veg_gravy'], counter_count=3))
         assert resolved == {}
 
+    def test_a_counter_scoped_pin_survives_on_a_multi_counter_client(self):
+        """Written inside this counter's own block, the config already said
+        which station it is for — so there is nothing to guess and the pin is a
+        fixed item for that counter."""
+        resolved, _ = _resolve_constant_items(
+            'Multi', {'papad': 'Appalam'},
+            _Cfg(['rice', 'veg_gravy'], counter_count=3),
+            counter_scoped_keys={'papad'})
+        assert resolved == {'papad': 'Appalam'}
+
+    def test_only_the_scoped_key_survives(self):
+        """A client-level pin alongside a counter-scoped one keeps the old
+        behaviour — the exemption is per key, not a blanket switch."""
+        resolved, _ = _resolve_constant_items(
+            'Multi', {'papad': 'Appalam', 'salad': 'Green Salad'},
+            _Cfg(['rice'], counter_count=3),
+            counter_scoped_keys={'papad'})
+        assert resolved == {'papad': 'Appalam'}
+
+    def test_a_scoped_key_for_an_unknown_slot_is_still_refused(self):
+        resolved, _ = _resolve_constant_items(
+            'Multi', {'not_a_slot': 'Something'},
+            _Cfg(['rice'], counter_count=3),
+            counter_scoped_keys={'not_a_slot'})
+        assert resolved == {}
+
     def test_the_exclusive_sibling_exception_is_unchanged(self):
         """`curd`/`curd_side` are one logical yogurt slot, so a pin across the
         pair is kept even on a multi-counter client."""
@@ -153,3 +179,37 @@ class TestTheStampWinsWhenThereIsNoCell:
         constants, forced = self._run({'rice': 'Jeera Rice'}, ['rice'])
         assert 'rice' in constants
         assert not [k for k in forced if k[1] == 'rice'], forced
+
+
+class TestTheLoaderReportsCounterScopedKeys:
+    """`get_counter_scoped_constant_keys` is what tells the resolver a pin was
+    written for one station rather than the client."""
+
+    def _loader(self, blob):
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        loader = MenuRuleLoader()
+        loader._read_client_blob = lambda: blob
+        return loader
+
+    def test_it_returns_only_the_counters_own_pins(self):
+        loader = self._loader({'C': {
+            'constant_items': {'bread': 'Chapati'},
+            'counters': {'Station A': {'constant_items': {'papad': 'Appalam'}}},
+        }})
+        assert loader.get_counter_scoped_constant_keys('C', 'Station A') == {'papad'}
+
+    def test_no_counter_name_means_nothing_is_scoped(self):
+        loader = self._loader({'C': {
+            'counters': {'Station A': {'constant_items': {'papad': 'Appalam'}}}}})
+        assert loader.get_counter_scoped_constant_keys('C', None) == set()
+
+    def test_comment_keys_are_not_slots(self):
+        loader = self._loader({'C': {'counters': {'A': {'constant_items': {
+            '_why': 'documentation', 'papad': 'Appalam'}}}}})
+        assert loader.get_counter_scoped_constant_keys('C', 'A') == {'papad'}
+
+    def test_an_unknown_client_or_counter_is_empty(self):
+        loader = self._loader({'C': {'counters': {'A': {'constant_items': {
+            'papad': 'Appalam'}}}}})
+        assert loader.get_counter_scoped_constant_keys('C', 'Nope') == set()
+        assert loader.get_counter_scoped_constant_keys('Nope', 'A') == set()

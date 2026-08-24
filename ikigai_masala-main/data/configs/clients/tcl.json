@@ -3,8 +3,7 @@
     "_comment": "Chennai. From the client's own 13 stated rules plus a seven-day sample week (data/raw/source_workbooks/chennai_client_structure.xlsx, sheets 'Sheet1' and 'TCL'). The site serves Saturday AND Sunday on reduced menus, which is what most of the rules below are about. TWO of the thirteen are NOT rules at all and need no config: 'in healthy rice we will serve only Curd Rice daily' is already what the `curd_rice` slot does (its pool is the `is_curd_rice` flag, and chennai.json's `curd_rice_is_a_staple` lets the same dish recur), and the client's kuzhambu and kootu requirements are about which SLOT holds what — see the two `_needs_db_change` notes. ONE STATED RULE CONTRADICTS THE SAMPLE: the client says 'welcome drink will be buttermilk twice a week', but all five sampled drinks are buttermilks (BUTTERMILK / SAMBARAM / INJI MOORU / BUTTERMILK / NEER MOORU — sambaram and neer mor both carry `is_buttermilk`). The stated rule is what is configured, since that is what the client wrote down; if they meant 'plain buttermilk twice and a variant otherwise' the fix is to narrow the selector to the one dish.",
     "_needs_db_change": [
       "serve_weekends = true. The client works Saturday and Sunday; the row says false, so today only Mon-Fri is planned and every weekday_restriction below that names sat/sun is inert.",
-      "categories += white_rice, papad. The sample serves steamed rice on all six non-Saturday days and fryums/appalam every day, and both are CONST slots the counter does not declare.",
-      "salad -> veg_gravy, slot_counts.veg_gravy = 2. 'In salad need to give only KUZHAMBU item': all 13 Chennai kuzhambus are `course_type = veg_gravy` (a tamarind gravy is not a salad and re-filing them would be wrong), so the client's kuzhambu row is a second gravy, not the salad slot. The composition below is gated on `min_slot_count: 2` and does nothing until the count is raised."
+      "categories += white_rice, papad. The sample serves steamed rice on all six non-Saturday days and fryums/appalam every day, and both are CONST slots the counter does not declare."
     ],
     "disable": [
       "mixedveg_pulao_biryani_weekly",
@@ -96,11 +95,12 @@
         ]
       },
       {
-        "_comment": "The second veg gravy is the kuzhambu, every day it runs. Gated on `min_slot_count: 2`, so it is inert until the counter's `salad` slot becomes a second `veg_gravy` (see _needs_db_change). All 13 kuzhambus are `sub_category = mixed_veg_curry`, which also holds the kurmas, so the family is selected by name — the one case where `name_contains` beats a column outright, since 'kuzhambu' IS the dish's form and the ontology spells it three ways.",
-        "name": "tcl_second_gravy_is_a_kuzhambu",
+        "_comment": "'in salad need to give only KUZHAMBU item'. The client categorises a kuzhambu as a SALAD, not a gravy — their words — and the sample week proves the two are different rows rather than one mislabelled: Sunday's stated menu lists 'veg gravy' and 'salad' separately, and the grid serves VEG KURMA beside KARA KUZHAMBU. scripts/chennai_client_pools.py re-files Chennai's twelve kuzhambus `veg_gravy` -> `salad` accordingly, so this composition has a pool to draw on; before that the salad pool held none and the rule was unsatisfiable. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). Selected by NAME because `sub_category` is `mixed_veg_curry`, which also holds the kurmas the veg_gravy slot serves, and because the ontology spells the word five ways.",
+        "name": "tcl_salad_is_a_kuzhambu",
         "type": "slot_composition",
-        "base_slot": "veg_gravy",
-        "min_slot_count": 2,
+        "base_slot": "salad",
+        "min_slot_count": 1,
+        "max_slot_count": 1,
         "components": [
           {
             "selector": {
@@ -117,7 +117,7 @@
         ]
       },
       {
-        "_comment": "Saturday serves one veg gravy, not two ('veg gravy' singular in the Saturday list, and the sample's Saturday column has VEG KURMA and no kuzhambu). Same one-expansion skip as the rice.",
+        "_comment": "Saturday serves one veg gravy. Retained at slot_counts.veg_gravy == 1 this is inert, and harmless: it only fires if the counter is ever given a second gravy expansion.",
         "name": "tcl_one_veg_gravy_on_saturday",
         "type": "slot_day_restriction",
         "base_slot": "veg_gravy",
@@ -284,7 +284,7 @@
         ]
       },
       {
-        "_comment": "Salad appears in Sunday's list and not Saturday's. NB once `salad` becomes the second `veg_gravy` (see _needs_db_change) this rule becomes inert and `tcl_one_veg_gravy_on_saturday` is what carries the Saturday reduction.",
+        "_comment": "Salad appears in Sunday's stated list and not Saturday's. The salad IS the kuzhambu (see tcl_salad_is_a_kuzhambu), so this is what stands the kuzhambu down on Saturday — the sample's Saturday column serves VEG KURMA and no kuzhambu.",
         "name": "tcl_salad_not_on_saturday",
         "type": "slot_day_restriction",
         "base_slot": "salad",
