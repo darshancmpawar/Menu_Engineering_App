@@ -104,7 +104,7 @@ Bangalore site, one counter (themes Mon/Tue/Fri = mix, Wed = biryani, Thu = nort
 
 ## Bakertilly
 
-Bangalore site, one counter, TWO non-veg dishes (themes Mon/Thu = mix, Tue = south, Wed = biryani, Fri = north). The non-veg station runs on the BIRYANI DAY ONLY and serves chicken dry there — the client's clarification, which replaces the earlier reading that it ran daily with a dry added on Wednesday. Its biryani-day list ('indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank') and its curd rule ('daily curd except of biryani day it is raita') disagree about the curd on a Wednesday; the client called that an outlier, so `curd_side` is KEPT there as a raita and nothing else is inferred from the conflict. 'Daily curd except on the biryani day it is raita' is the city ruleset's `curd_raita_logic` and is not restated here.
+Bangalore site, one counter, TWO non-veg dishes (themes Mon/Thu = mix, Tue = south, Wed = biryani, Fri = north). The non-veg station runs EVERY day with ONE dish, and a SECOND dish is added on the biryani day where both are chicken dry — the client's latest clarification, which replaces the earlier reading that the station stood down entirely on the other four days. Its biryani-day list ('indian bread, rasam, veg curry, flavoured rice, white rice and salad — other will be blank') and its curd rule ('daily curd except of biryani day it is raita') disagree about the curd on a Wednesday; the client called that an outlier, so `curd_side` is KEPT there as a raita and nothing else is inferred from the conflict. 'Daily curd except on the biryani day it is raita' is the city ruleset's `curd_raita_logic` and is not restated here.
 
 | Rule | What it does | Client's words |
 |---|---|---|
@@ -113,8 +113,9 @@ Bangalore site, one counter, TWO non-veg dishes (themes Mon/Thu = mix, Tue = sou
 | `bakertilly_no_dal_on_biryani_day` | dal runs only on mon, tue, thu, fri (blank otherwise) |  |
 | `bakertilly_no_sambar_on_biryani_day` | sambar runs only on mon, tue, thu, fri (blank otherwise) |  |
 | `bakertilly_no_dessert_on_biryani_day` | dessert runs only on mon, tue, thu, fri (blank otherwise) |  |
-| `bakertilly_nonveg_biryani_day_only` | nonveg_main runs only on wed (blank otherwise) | Non veg main 2 is given only on biryani day and it will be chicken dry. Other days blank. |
+| `bakertilly_second_nonveg_on_the_biryani_day_only` | nonveg_main runs only on wed (blank otherwise) | Non veg 2 will come only on biryani day, and 1' — TWO non-veg dishes on Wednesday and ONE on every other day |
 | `bakertilly_two_chicken_dry_on_the_biryani_day` | nonveg_main must include (when the counter serves ≥2 of it): on a biryani day: 2× is_nonveg_dry or is_tandoor_nonveg_dry | …'and it will be chicken dry |
+| `bakertilly_veg_gravy_from_the_named_families_daily` | veg_gravy must include (when the counter serves ≥1 and ≤1 of it): primary_protein paneer or key_ingredient mushroom or key_ingredient rajma or key_ingredient cauliflower or named paneer/cottage_cheese/mushroom/baby_corn/babycorn/gobi/cauliflower/rajma/chole/chana/channa | Need a veg gravy (paneer, baby corn, gobi, mushroom, rajma, chole, channa) all day, first priority. |
 
 **City rules switched off:** `nonveg_main_daily_pair`
 
