@@ -10,7 +10,7 @@ item list and ruleset (Pune, Chennai, NCR).
 
 GENERATED — do not hand-edit. Run ``scripts/dump_client_fixtures.py`` against a
 fresh `clients` export and commit the diff. Editing it by hand is how it fell
-5 clients behind the live table, which meant a third of the fleet was
+0 clients behind the live table, which meant a third of the fleet was
 never swept.
 
 Kept as a Python literal rather than a SQL dump so it is reviewable in diffs and
@@ -430,7 +430,7 @@ CLIENTS: List[Dict[str, Any]] = [
     },
     {
         'name': 'Booking.com',
-        'version': 8,
+        'version': 9,
         'city': 'Bangalore',
         'serve_weekends': False,
         'is_launch_site': False,
@@ -448,6 +448,7 @@ CLIENTS: List[Dict[str, Any]] = [
                 'categories': [
                     'welcome_drink',
                     'soup',
+                    'nonveg_soup',
                     'bread',
                     'rice',
                     'white_rice',
@@ -461,7 +462,7 @@ CLIENTS: List[Dict[str, Any]] = [
                     'healthy_rice',
                     'curd_side',
                     'nonveg_main',
-                    'nonveg_soup',
+                    'infused_water',
                 ],
                 'slot_counts': {
                     'dal': 1,
@@ -478,6 +479,7 @@ CLIENTS: List[Dict[str, Any]] = [
                     'nonveg_main': 1,
                     'nonveg_soup': 1,
                     'healthy_rice': 1,
+                    'infused_water': 1,
                     'welcome_drink': 1,
                 },
             },
@@ -1267,7 +1269,7 @@ CLIENTS: List[Dict[str, Any]] = [
     },
     {
         'name': 'H&M',
-        'version': 4,
+        'version': 5,
         'city': 'Bangalore',
         'serve_weekends': False,
         'is_launch_site': False,
@@ -1289,6 +1291,7 @@ CLIENTS: List[Dict[str, Any]] = [
                     'white_rice',
                     'veg_dry',
                     'veg_gravy',
+                    'starter',
                     'dal',
                     'sambar',
                     'rasam',
@@ -1296,7 +1299,7 @@ CLIENTS: List[Dict[str, Any]] = [
                     'curd',
                     'papad',
                     'nonveg_main',
-                    'starter',
+                    'welcome_drink',
                 ],
                 'slot_counts': {
                     'dal': 1,
@@ -1311,12 +1314,13 @@ CLIENTS: List[Dict[str, Any]] = [
                     'veg_dry': 1,
                     'veg_gravy': 1,
                     'nonveg_main': 1,
+                    'welcome_drink': 1,
                 },
             },
         ],
         'source_pools': [],
         'working_days': None,
-        'shared_categories': None,
+        'shared_categories': [],
     },
     {
         'name': 'Icon Blr',
@@ -3029,9 +3033,9 @@ CLIENTS: List[Dict[str, Any]] = [
     },
     {
         'name': 'TCL',
-        'version': 2,
+        'version': 4,
         'city': 'Chennai',
-        'serve_weekends': False,
+        'serve_weekends': True,
         'is_launch_site': False,
         'item_cooldown_days': 20,
         'counters': [
@@ -3055,8 +3059,10 @@ CLIENTS: List[Dict[str, Any]] = [
                     'sambar',
                     'rasam',
                     'dessert',
-                    'nonveg_main',
                     'curd_rice',
+                    'nonveg_main',
+                    'white_rice',
+                    'papad',
                 ],
                 'slot_counts': {
                     'dal': 1,
@@ -3441,7 +3447,7 @@ CLIENTS: List[Dict[str, Any]] = [
     },
     {
         'name': 'Vector',
-        'version': 2,
+        'version': 3,
         'city': 'Bangalore',
         'serve_weekends': False,
         'is_launch_site': False,
@@ -3465,9 +3471,9 @@ CLIENTS: List[Dict[str, Any]] = [
                     'veg_gravy',
                     'dal',
                     'dessert',
+                    'sambar_rasam',
                     'papad',
                     'pickle',
-                    'sambar_rasam',
                 ],
                 'slot_counts': {
                     'dal': 1,
@@ -3483,7 +3489,7 @@ CLIENTS: List[Dict[str, Any]] = [
         ],
         'source_pools': [],
         'working_days': None,
-        'shared_categories': None,
+        'shared_categories': [],
     },
     {
         'name': 'Waters',
@@ -3606,7 +3612,7 @@ CLIENTS: List[Dict[str, Any]] = [
     },
     {
         'name': 'World Bank',
-        'version': 1,
+        'version': 2,
         'city': 'Chennai',
         'serve_weekends': False,
         'is_launch_site': False,
@@ -3622,17 +3628,17 @@ CLIENTS: List[Dict[str, Any]] = [
                     'wednesday': 'mix',
                 },
                 'categories': [
+                    'welcome_drink',
                     'bread',
-                    'veg_dry',
-                    'veg_gravy',
-                    'nonveg_main',
                     'rice',
                     'white_rice',
+                    'veg_dry',
+                    'veg_gravy',
                     'dal',
                     'sambar',
                     'rasam',
                     'dessert',
-                    'welcome_drink',
+                    'nonveg_main',
                 ],
                 'slot_counts': {
                     'dal': 1,
@@ -3643,7 +3649,7 @@ CLIENTS: List[Dict[str, Any]] = [
                     'dessert': 1,
                     'veg_dry': 1,
                     'veg_gravy': 1,
-                    'nonveg_main': 2,
+                    'nonveg_main': 4,
                     'welcome_drink': 1,
                 },
             },
