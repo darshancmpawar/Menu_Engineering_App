@@ -35,8 +35,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
+
 
 def _atomic_to_excel(frame, path, **kw):
     """Write via a temp file + rename.
@@ -193,7 +198,7 @@ CORRECTIONS = {
 #: row, because these are `common` dishes copied across all four workbooks.
 KEY_INGREDIENT_CORRECTIONS = {
     city: {'soppu_saru': 'leafy_greens'}
-    for city in ('bangalore', 'chennai', 'pune', 'ncr')
+    for city in CITIES
 }
 
 #: The seven Chennai `veg_gravy` rows no evidence could settle, adjudicated one
@@ -242,7 +247,7 @@ _SAARU_REFILE = {
     'uppu_saru': ('sambar', 'vegetable_sambar', None),
 }
 
-for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
+for _city in CITIES:
     CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)
 
 #: A pav is not a plain phulka or chapathi — client-confirmed. All three cities
@@ -272,7 +277,7 @@ _PAV = {
 #: {city: {item: {'sub_category'/'key_ingredient'/'flags': …}}} — a row whose
 #: FORM was recorded wrongly, as opposed to its course.
 ATTRIBUTE_CORRECTIONS = {city: dict(_PAV)
-                         for city in ('bangalore', 'chennai', 'pune', 'ncr')}
+                         for city in CITIES}
 
 #: An American coleslaw is not a Chinese dish. Chennai's import labelled its one
 #: and only "chinese" salad `american_coleslaw`, which matters because a client

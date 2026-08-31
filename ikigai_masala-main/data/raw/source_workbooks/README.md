@@ -31,6 +31,7 @@ attachments and would have been lost.
 | `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `scripts/import_booking_menu.py` |
 | `corning_chakan_pune_menu.xlsx` | Pune | Corning Chakan's nine weekly sheets, one column per day, identical row layout on every sheet. **The first client menu for a city other than Bangalore or Chennai**, and the first Maharashtrian list. Lunch and dinner only; the salad block is a salad BAR whose components are ingredients, and one sheet carries an unlabelled Independence Day menu below the grid that is read by dish name rather than position | `scripts/import_corning_pune_menu.py`, `scripts/marathi_ingredient_names.py` |
 | `chennai_client_structure.xlsx` | Chennai | **four clients' rules in their own words**, on `Sheet1`, plus a sample week per client on its own sheet — a different kind of source from Toast Tab's service history, since these are stated rather than inferred. TCL, Gartner, World Bank and ICON Chn. RNTBCI is listed with nothing beside it and an empty sheet: on hold | `docs/chennai_client_logic.md`, `configs/clients/{tcl,gartner,world_bank,icon_chn}.json`, `scripts/chennai_client_pools.py` |
+| `quest_hyderabad_menu_2026.xlsx` | Hyderabad | Quest's 41-day grid (31 Mar – 30 Jul 2026), one column per service day. **The source that created the Hyderabad city list.** Two layouts OFFSET from each other — Tue/Thu carry the full menu in rows 2-13, Wed is the biryani day in rows 5-13 with nothing above — so a column is read on the biryani map exactly when row 2 is blank; on the wrong map the Wednesday veg gravy files as a dal. The two non-veg rows are dry and gravy in that order and the biryani row is a third form, which is evidence no name heuristic has. "Chef Choice Desserts" is a placeholder and the fruit row holds serving counts, not dishes | `scripts/import_quest_hyderabad_menu.py`, `city_items/hyderabad.xlsx` |
 | `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `scripts/import_stripe_menu.py` |
 
 ## Adding a city
@@ -68,7 +69,20 @@ attachments and would have been lost.
    `scripts/canonical_dish_spellings.py` (one dish, one spelling).
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
-5. Declare the city's categories in `city_items/ontology_categories.json`.
+5. Declare the city's categories in `city_items/ontology_categories.json` — **only if the
+   city does not cover every mandatory slot.** An undeclared city is held to the FULL
+   check, which is the stricter one; declaring a complete list only lowers the bar.
+   Hyderabad is deliberately absent for that reason.
+6. If the city's rows carry pool tokens that mean nothing there, add it to
+   `src.constants.FULL_POOL_CITIES`. Hyderabad had to: it was SEEDED from Bangalore
+   (`scripts/import_quest_hyderabad_menu.py` — a 191-dish standalone list starves under
+   the cooldown, see `tests/cities/test_hyderabad_ontology.py`), so ~5,300 of its rows are
+   tagged to Bangalore sites and `common` alone is 960 rows holding none of the city's own
+   dishes. Seeding also doubles the corpus the all-cities scripts learn from, which is why
+   `complete_ontology.py` and `fill_item_colours.py` weigh evidence per DISH, not per row.
+7. Nothing to do for the correction scripts themselves: they read
+   `scripts/city_list.py`, which is derived from the workbooks on disk.
+   `tests/data/test_city_coverage.py` fails if one goes back to a hard-coded list.
 
 ## Correction scripts, in the order they must run
 
@@ -81,7 +95,10 @@ attachments and would have been lost.
 6. `scripts/expand_side_pools.py`
 7. the client menu imports (`import_booking_menu.py`, `import_stripe_menu.py`,
    `import_stryker_menu.py`, `import_moengage_menu.py`, `import_citrix_menu.py`,
-   `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`)
+   `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`,
+   `import_quest_hyderabad_menu.py` — which also SEEDS `city_items/hyderabad.xlsx`
+   from Bangalore's list on a fresh checkout, so it must run before anything
+   that expects the file to exist)
 8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
    are what adds new non-veg rows with no form flag
 8b. `scripts/bread_form_flags.py` — same slot, same reason, for

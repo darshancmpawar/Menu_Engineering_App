@@ -21,6 +21,7 @@ Idempotent; re-run after any re-import. `test_duplicate_curd.py` pins it.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -42,7 +43,8 @@ def _atomic_to_excel(frame, path, **kw):
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ["bangalore", "pune", "chennai", "ncr"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 KEEP = "curd"
 DROP = "plain_curd"

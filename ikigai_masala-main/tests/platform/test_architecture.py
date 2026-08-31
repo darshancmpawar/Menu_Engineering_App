@@ -257,20 +257,26 @@ class TestOntologyCachesAreNotPokedByName:
         assert all(v == 0 for v in api_app._ontology.cache_sizes().values())
 
     def test_cities_sharing_a_workbook_share_one_entry(self):
-        """Why the caches are keyed by resolved path, not city name: Hyderabad
-        falls back to Bangalore's list, and keying by city would hold two copies
-        of a 4,300-row frame. (NCR used to share it too; it now has its own
-        file, so it is a second entry — which is exactly the path-keying working:
-        a distinct file is a distinct entry, a shared file is not.)"""
+        """Why the caches are keyed by resolved path, not city name: a city with
+        no workbook falls back to Bangalore's list, and keying by city would hold
+        two copies of a 6,000-row frame.
+
+        NCR, Chennai and Hyderabad have each been the example here and each got
+        its own file, so the sharing side is now a city the app has never heard
+        of — which is the same state every one of them was in first. Both
+        directions still assert: a distinct file is a distinct entry, a shared
+        file is not."""
         import api.app as api_app
         api_app.reset_caches()
         api_app._get_menu_data('Bangalore')
-        api_app._get_menu_data('Hyderabad')      # shares bangalore.xlsx
+        api_app._get_menu_data('Kolkata')        # no file — shares bangalore.xlsx
         assert api_app._ontology.cache_sizes()['menu_data'] == 1
-        api_app._get_menu_data('NCR')            # own file now
+        api_app._get_menu_data('NCR')            # own file
         assert api_app._ontology.cache_sizes()['menu_data'] == 2
         api_app._get_menu_data('Chennai')        # own file
         assert api_app._ontology.cache_sizes()['menu_data'] == 3
+        api_app._get_menu_data('Hyderabad')      # own file, seeded from Bangalore
+        assert api_app._ontology.cache_sizes()['menu_data'] == 4
         api_app.reset_caches()
 
 

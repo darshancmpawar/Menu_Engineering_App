@@ -37,8 +37,8 @@ class TestTheCommittedMapMatchesTheWorkbooks:
             'after-a-re-import checklist alongside the correction scripts).')
 
     def test_it_is_keyed_by_workbook_not_city(self):
-        """Hyderabad resolves to bangalore.xlsx (NCR now has its own file). One
-        entry per city would let two keys describing the same rows drift apart."""
+        """One entry per city would let two keys describing the same rows drift
+        apart — a city with no workbook of its own reads Bangalore's."""
         committed = load()
         assert committed
         assert all(k.endswith('.xlsx') for k in committed), list(committed)
@@ -68,9 +68,18 @@ class TestLookupBehaviour:
         assert 'stryker' in tokens_for_city('NCR')
 
     def test_cities_sharing_a_workbook_share_tokens(self):
-        """The payoff of keying by path: Hyderabad has no workbook of its own, so
-        it must see exactly Bangalore's tokens rather than an empty list."""
-        assert tokens_for_city('Hyderabad') == tokens_for_city('Bangalore')
+        """The payoff of keying by path: a city with no workbook of its own must
+        see exactly Bangalore's tokens rather than an empty list."""
+        assert tokens_for_city('Kolkata') == tokens_for_city('Bangalore')
+
+    def test_hyderabad_has_its_own_tokens_now(self):
+        """It was the example above until it got a workbook. Seeded from
+        Bangalore, so it carries Bangalore's tokens PLUS `quest` — which is also
+        why it is in `FULL_POOL_CITIES`: those Bangalore tokens name sites in
+        another city and no Hyderabad client will ever select one."""
+        hyd = set(tokens_for_city('Hyderabad'))
+        assert hyd > set(tokens_for_city('Bangalore'))
+        assert 'quest' in hyd
 
     def test_a_missing_map_degrades_rather_than_raises(self, tmp_path, monkeypatch):
         """Absent map => None => the endpoint falls back to the workbooks. A fresh

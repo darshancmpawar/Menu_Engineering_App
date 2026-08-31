@@ -22,13 +22,15 @@ weight, not information.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 #: Columns to remove, each verified empty in every city before anything is
 #: written. Add to this list only after checking nothing reads the column.

@@ -92,6 +92,7 @@ idempotent thereafter: a row that already has a colour is never touched.
 from __future__ import annotations
 
 import argparse
+import sys
 import csv
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -100,7 +101,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 REPORT = ROOT / "docs" / "dishes_needing_a_colour.csv"
 GROUPED_REPORT = ROOT / "docs" / "colours_to_confirm_by_family.csv"
 
@@ -140,8 +142,27 @@ def _norm(value) -> str:
 
 
 def _known(frames) -> pd.DataFrame:
+    """The coloured rows, ONE PER DISH.
+
+    Every tier below weighs evidence by how many rows carry it, against
+    thresholds picked by held-out measurement (6 rows / 70% agreement = 90%
+    accuracy at 30% coverage). The city workbooks overlap heavily, so a dish
+    coloured in four cities was already counted four times — and
+    `hyderabad.xlsx`, seeded from Bangalore's list, doubled the weight of ~6,000
+    Bangalore rows without adding one new fact about them. That alone would have
+    coloured 249 dishes across the four established workbooks, all of them rows
+    this script had previously looked at and left for the client to confirm. The
+    measurement that set the thresholds counted dishes, so the vote must too.
+
+    A colour is a property of the dish, so the key is `item` alone (unlike
+    `complete_ontology.distinct_dishes`, which keys on the course as well
+    because a dish filed as a `dal` in one city and a `veg_gravy` in another is
+    two facts). City order — reference city first, see `city_list` — decides
+    which copy survives where two disagree, so the master's colour wins.
+    """
     rows = pd.concat(frames.values(), ignore_index=True)
-    return rows[rows["item_color"].notna()]
+    known = rows[rows["item_color"].notna()]
+    return known[~known["item"].astype(str).str.strip().str.lower().duplicated()]
 
 
 def colour_by_name(known) -> dict:

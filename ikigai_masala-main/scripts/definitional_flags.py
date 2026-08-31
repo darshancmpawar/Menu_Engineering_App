@@ -82,7 +82,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "chennai", "pune", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 #: Words that name a liquid sweet. `sheer` is milk (sheer korma, sheer
 #: surkumba), `pradhaman` and `paramannam` are the Kerala and Telugu names for a

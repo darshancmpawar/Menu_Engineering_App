@@ -291,11 +291,12 @@ class TestPerCityIsolation:
     def test_ontology_caches_are_shared_by_path_not_city(self, pune_api):
         pune_api.reset_caches()
         blr, _ = pune_api._get_menu_data('Bangalore')
-        # Hyderabad, not Chennai: Chennai has its own workbook now, so it is a
-        # separate entry rather than a second reference to Bangalore's.
-        hyd, _ = pune_api._get_menu_data('Hyderabad')
+        # A city with no workbook of its own — every city in AVAILABLE_CITIES
+        # has one now (Chennai, then NCR, then Hyderabad each stopped being the
+        # example as it was added), so the sharing case is the fallback path.
+        other, _ = pune_api._get_menu_data('Kolkata')
         pune, _ = pune_api._get_menu_data('Pune')
-        assert blr is hyd                           # same file, one load
+        assert blr is other                         # same file, one load
         assert pune is not blr and len(pune) == _pune_row_count()
         assert pune_api._ontology.cache_sizes()['menu_data'] == 2
 

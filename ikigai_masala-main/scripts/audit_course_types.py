@@ -147,6 +147,23 @@ ADJUDICATED = {
         'dish is the raita — correctly curd_side',
 }
 
+#: Hyderabad's list was SEEDED from Bangalore's (`import_quest_hyderabad_menu`),
+#: so it carries every row Bangalore's adjudications were written about — the
+#: same eight dishes, filed the same way, for the same reasons. Mirrored rather
+#: than retyped because two copies of one verdict are two things that can
+#: disagree: re-adjudicating `sambar_rice` in Bangalore and forgetting Hyderabad
+#: would leave the audit asserting opposite things about the same row.
+#:
+#: Deliberately a one-way mirror, and deliberately not applied to any other
+#: city: it is true only because Hyderabad's rows ARE Bangalore's rows. A dish
+#: Quest's import added is Hyderabad's own and has to be adjudicated on its own
+#: evidence, which is why nothing here reaches back the other way.
+ADJUDICATED.update({
+    ('hyderabad', item): reason
+    for (city, item), reason in list(ADJUDICATED.items())
+    if city == 'bangalore'
+})
+
 
 def unservable_rows(df: pd.DataFrame):
     """Rows that no slot can ever serve, found structurally rather than by name.

@@ -59,6 +59,7 @@ settle goes to `docs/ontology_gaps.csv`.
 from __future__ import annotations
 
 import argparse
+import sys
 import csv
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -67,7 +68,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 REPORT = ROOT / "docs" / "ontology_gaps.csv"
 
 #: A token must appear in this many classified rows of the same course, and
@@ -594,9 +596,37 @@ def load():
     return frames
 
 
+def distinct_dishes(everything):
+    """One row per (dish, course) — the unit the row-counting channels measure.
+
+    `learn_text`, `learn_attribute_rules`, `learn_flag_tokens` and
+    `learn_exclusive_pairs` all weigh evidence by how many ROWS support it,
+    against thresholds (`MIN_SUPPORT`, `MIN_PRECISION`) calibrated on the
+    corpus. The city workbooks overlap heavily, so a dish carried by four cities
+    was already counted four times — and `hyderabad.xlsx`, seeded from
+    Bangalore's list, made that acute: it doubled the weight of ~6,000 Bangalore
+    rows without adding a single new fact about them, and 292 cells in the four
+    established workbooks crossed a threshold on the strength of it. The four
+    were at a fixed point before, so every one of those was duplication.
+
+    A dish is one dish. `(item, course_type)` rather than `item` alone because
+    two cities may legitimately file the same name differently — Chennai's kootu
+    is a `dal` and Bangalore's is a `veg_gravy` — and those are two facts, not a
+    contradiction. City order (`city_list.CITIES`, reference city first) decides
+    which copy survives, so the master's row is the one that speaks.
+
+    `learn_by_dish` deliberately does NOT use this: it collapses each dish to a
+    SET of observed values and keeps the unanimous ones, so repetition already
+    costs it nothing.
+    """
+    key = (everything["item"].astype(str).str.strip().str.lower() + "|"
+           + everything["course_type"].astype(str).str.strip().str.lower())
+    return everything[~key.duplicated()]
+
+
 def learn_all(frames):
     everything = pd.concat(frames.values(), ignore_index=True)
-    classified = _classified(everything)
+    classified = _classified(distinct_dishes(everything))
     flags = [c for c in everything.columns
              if c.startswith("is_") and c not in DERIVED_FLAGS]
     learned_text = {c: learn_text(classified, c) for c in COLUMN_SCOPE}

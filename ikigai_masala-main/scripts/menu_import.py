@@ -95,6 +95,21 @@ SPELLING = [
     (_tok("dryfruit"), "dry_fruit"),
     (_tok("hydrabadi", "hyderabadi"), "hyderabadi"),
     (_tok("lashooni", "lassoni", "lasooni"), "lasooni"),
+    # Typed by Quest's Hyderabad sheet. Ordinary misspellings, so they belong
+    # in the shared list rather than that one importer: each otherwise becomes a
+    # second row for a dish the ontology already has under the right spelling
+    # (`palvo`/`pulao`, `shai_tukda`/`shahi_tukda`, `tomatorice`/`tomato_rice`).
+    (_tok("palvo", "palav", "pulav"), "pulao"),
+    (_tok("shai"), "shahi"),
+    (_tok("tomatorice"), "tomato_rice"),
+    (_tok("keshari"), "kesari"),
+    (_tok("doasakaya"), "dosakaya"),
+    (_tok("pulhihora"), "pulihora"),
+    (_tok("papu"), "pappu"),
+    (_tok("pessari"), "pesara"),
+    (_tok("tamato"), "tomato"),
+    (_tok("andra"), "andhra"),
+    (_tok("mangloreanc", "mangalorean"), "mangalore"),
     # Typed by Corning Chakan's Pune sheet. Ordinary misspellings rather than
     # anything regional, so they belong in the shared list: each one otherwise
     # becomes a second row for a dish the same workbook already names correctly
@@ -747,16 +762,24 @@ def nonveg_structural_flags(item: str, protein: str, cuisine: str,
     with a `min: 1` frequency rule made the whole counter INFEASIBLE rather
     than simply not choosing it.
 
-    *style* is the printed menu's own verdict ("dry" / "gravy") when its row
-    label carries one — Stripe prints "Non-Veg Semi Dry or Dry" and "Non-Veg
-    Curry or Main Course" as separate rows, which is better evidence than any
-    name heuristic. The name decides when the label does not, and a biryani is
-    a biryani whatever row it was printed on.
+    *style* is the printed menu's own verdict ("dry" / "gravy" / "biryani")
+    when its row label carries one — Stripe prints "Non-Veg Semi Dry or Dry" and
+    "Non-Veg Curry or Main Course" as separate rows, which is better evidence
+    than any name heuristic. The name decides when the label does not, and a
+    dish named biryani is one whatever row printed it.
+
+    `"biryani"` is the third value because a biryani row does not always print
+    the word. Quest's Wednesday biryani row runs `Andra Chicken Palvo` and
+    `Hyderabadi Dum Pulao` — a pulao and a biryani are genuinely different
+    dishes, so the name is right to refuse, and the row is still saying this is
+    the day's rice-based non-veg showpiece. Left unflagged the dish carries no
+    form at all, which on a 2-4 slot counter means `nonveg_main_daily_pair` can
+    never place it: it sits in the pool and is silently never chosen.
     """
     toks = set(item.split("_"))
     out: Set[str] = set()
 
-    if "biryani" in toks:
+    if style == "biryani" or "biryani" in toks:
         return {"is_nonveg_biryani", "is_biryani_item"}
 
     dry = style == "dry" or (not style and bool(toks & set(DRY_WORDS)))
