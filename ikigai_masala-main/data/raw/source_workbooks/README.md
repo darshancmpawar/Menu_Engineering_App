@@ -67,6 +67,14 @@ attachments and would have been lost.
    Also pan-city: `scripts/misspelled_protein_names.py` (meat-named dishes the
    mapping pipeline left sitting in veg pools) and
    `scripts/canonical_dish_spellings.py` (one dish, one spelling).
+
+   **Run the chain as a WHOLE, not piecemeal.** Several scripts repair what an
+   earlier one removes, and running one on its own leaves the workbook between
+   two consistent states: folding `raitha` into `raita` took Chennai's
+   `curd_side` from 13 dishes to 11, and it is `expand_side_pools.py` — six
+   steps earlier in the list — that tops such a pool back up to its floor of 12.
+   The chain converges (a second full pass changes nothing), so re-running it
+   costs only time.
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
 5. Declare the city's categories in `city_items/ontology_categories.json` — **only if the
@@ -110,6 +118,10 @@ attachments and would have been lost.
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
     pass then implies a sub_category and flags from.
+10b. `scripts/fill_cuisine_family.py` — after the re-files (it reads
+    `course_type` and `sub_category`) and before `complete_ontology.py`, whose
+    attribute implication learns from the column this fills. Only NCR has
+    blanks; the other four are complete.
 11. `scripts/fill_item_colours.py` — the same argument as the dictionary, for
     `item_color`, and it must come BEFORE `complete_ontology.py`. It reads only
     dish names and the colours already present, so nothing that pass fills can
