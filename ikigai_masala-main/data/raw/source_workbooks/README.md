@@ -133,6 +133,11 @@ attachments and would have been lost.
     imports, the re-files, the flag corrections, the ingredient dictionary and
     the colours to have happened first. It runs to a fixed point internally; a
     second invocation is a no-op.
+12b. `scripts/normalize_item_ids.py` — `item_id` is `MENU######` in every
+    city. Two allocators used to compute "one past the city's highest" with
+    `pd.to_numeric`, which coerces a prefixed id to NaN, so they restarted at 1
+    and stamped bare integers onto 64 rows. Fixed at the source; this repairs
+    what they wrote and is a no-op on a clean workbook.
 13. `scripts/definitional_flags.py` — **after** `complete_ontology.py`, and the
     only thing in the chain that CLEARS a flag rather than filling one. That
     pass's token vote is what put `is_liquid_dessert` on 55 NCR pethas, laddus

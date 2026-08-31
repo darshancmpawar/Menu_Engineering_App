@@ -220,7 +220,13 @@ SPEC = ImportSpec(
     skip_items=SKIP_ITEMS,
     clean_name=_clean,
     refile=_refile,
-    id_prefix="HYD",
+    # `MENU` is the schema's one key format, and the default every other
+    # importer takes. An `HYD` prefix looked tidier — a seeded city's own rows
+    # kept out of the master's number space — but that guarantee does not exist
+    # anyway: `item_id` is unique only WITHIN a city, and Chennai, NCR and Pune
+    # already overlap Bangalore's range. A second convention is just a second
+    # thing to know. See `scripts/normalize_item_ids.py`.
+    id_prefix="MENU",
 )
 
 

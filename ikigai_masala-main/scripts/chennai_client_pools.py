@@ -60,6 +60,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import re
+
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -268,8 +270,22 @@ def _names(df) -> set:
 
 
 def _next_id(df) -> int:
-    ids = pd.to_numeric(df.get("item_id"), errors="coerce")
-    return int(ids.max()) + 1 if ids is not None and ids.notna().any() else 1
+    """One past the highest id in the file.
+
+    `item_id` is `MENU######`, so `pd.to_numeric` coerces every one of them to
+    NaN and the max of an all-NaN series is nothing — which is how this returned
+    1 and stamped bare integers `1, 2, 3...` onto rows in a column whose format
+    is a prefixed string. The numeric part has to be parsed out, the way
+    `expand_side_pools._next_id` already does it.
+    """
+    nums = [int(m.group(1)) for s in df["item_id"].dropna().astype(str)
+            for m in [re.search(r"(\d+)", s)] if m]
+    return (max(nums) + 1) if nums else 1
+
+
+def _mk_id(n: int) -> str:
+    """The schema's key format. A bare int is not it."""
+    return f"MENU{n:06d}"
 
 
 def refile_kootu(df: pd.DataFrame) -> List[str]:
@@ -355,7 +371,7 @@ def copy_rows(target: pd.DataFrame, source: pd.DataFrame, wanted: List[str],
             print(f"    ! {dish} is not a {src_course} in bangalore.xlsx — skipped")
             continue
         row = hit.iloc[0].copy()
-        row["item_id"] = nid
+        row["item_id"] = _mk_id(nid)
         nid += 1
         row["course_type"] = dst_course
         # Chennai tags shared dishes `common`; a per-site token would make the
@@ -387,7 +403,7 @@ def add_new(target: pd.DataFrame, specs: List[Dict[str, Any]]):
         for col in row.index:
             if str(col).startswith("is_"):
                 row[col] = 0
-        row["item_id"] = nid
+        row["item_id"] = _mk_id(nid)
         nid += 1
         for field, value in spec["fields"].items():
             row[field] = value

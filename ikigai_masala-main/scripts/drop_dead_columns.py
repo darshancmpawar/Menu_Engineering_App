@@ -36,6 +36,20 @@ from city_list import CITIES  # noqa: E402
 #: written. Add to this list only after checking nothing reads the column.
 DEAD_COLUMNS = ("universe",)
 
+#: Numeric columns whose BLANK means zero, listed here so the same cell reads
+#: the same way in every city.
+#:
+#: `richness_score` was 1,022 blanks in NCR and an explicit 0 in the other four,
+#: which made it the one column whose dtype differed across the workbooks —
+#: float64 where the NaNs were, int64 everywhere else. Nothing reads it (77
+#: non-zero rows in Bangalore, 25 in NCR), so this is not a behaviour change; it
+#: is the difference between "no score" and "a score of zero" being spelled two
+#: ways, which is exactly the kind of drift a five-city schema should not carry.
+#:
+#: It does NOT qualify for DEAD_COLUMNS: it holds real values in every city, so
+#: dropping it would lose data however unused it is today.
+ZERO_FILL_COLUMNS = ("richness_score",)
+
 
 def _atomic_to_excel(frame, path):
     tmp = Path(path).with_name(Path(path).name + ".tmp")
@@ -68,6 +82,28 @@ def main(dry_run: bool = False):
             continue
         print(f"{col}: empty in {sorted(holders)} ({sum(holders.values())} values)")
         droppable.append(col)
+
+    # Blank-vs-zero, independent of the drops above: a column can need this
+    # while being far from dead.
+    zero_filled = {}
+    for col in ZERO_FILL_COLUMNS:
+        for city, d in frames.items():
+            if col not in d.columns:                       # pragma: no cover
+                continue
+            blanks = int(d[col].isna().sum())
+            if not blanks:
+                continue
+            d[col] = pd.to_numeric(d[col], errors="coerce").fillna(0)
+            if d[col].eq(d[col].round()).all():
+                d[col] = d[col].astype("int64")
+            zero_filled.setdefault(city, []).append(f"{col} ({blanks})")
+    for city, cols in zero_filled.items():
+        print(f"[{city}] zero-filled {', '.join(cols)}")
+        if not dry_run:
+            _atomic_to_excel(frames[city], CITY_DIR / f"{city}.xlsx")
+            print(f"[{city}] wrote {city}.xlsx")
+    if not zero_filled:
+        print("no blank numeric cells to zero-fill")
 
     if not droppable:
         print("nothing to drop")
