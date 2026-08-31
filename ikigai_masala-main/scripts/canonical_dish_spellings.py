@@ -169,12 +169,33 @@ DUPLICATES = {
                   # survivor is the attributed one — `cuisine_family: drink`,
                   # `drink_rule_group: buttermilk`, `key_ingredient: kokum` —
                   # against a stub filed `north_indian` / red / `fruit_drink`.
-                  "masala_butter_milk": "masala_buttermilk"},
+                  "masala_butter_milk": "masala_buttermilk",
+                  # The raita family, once `raitha` -> `raita` is folded — the
+                  # same stub-vs-master shape as the chapati family above.
+                  # `raita` carries `sub_category: raita` and `is_raita`;
+                  # `raitha` carried neither and no flag at all, and was one of
+                  # the four flagless `curd_side` rows. The two compound pairs
+                  # were surfaced as collisions by the rename rather than found
+                  # by eye, which is what that collision report is for.
+                  "raitha": "raita",
+                  "boondi_raitha": "boondi_raita",
+                  "mint_raitha": "mint_raita"},
     "pune": {  # same pair, same direction: the `drink`-filed row wins.
                "butter_milk": "buttermilk"},
+    "chennai": {"raitha": "raita", "mint_raitha": "mint_raita"},
     "ncr": {"palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda"},
 }
+
+# Hyderabad's list was SEEDED from Bangalore's, so it carries the same duplicate
+# pairs and needs the same verdicts. Mirrored rather than retyped, the same way
+# `audit_course_types.ADJUDICATED` and `course_type_corrections.CORRECTIONS`
+# are: a verdict written twice is a verdict that can disagree with itself.
+# Hyderabad's own entries win, so a deliberate divergence can still be written.
+if "hyderabad" in CITIES:
+    _mirrored = dict(DUPLICATES.get("bangalore", {}))
+    _mirrored.update(DUPLICATES.get("hyderabad", {}))
+    DUPLICATES["hyderabad"] = _mirrored
 
 #: >= this many clients make it -> the merged row becomes `common`
 COMMON_AT = 6

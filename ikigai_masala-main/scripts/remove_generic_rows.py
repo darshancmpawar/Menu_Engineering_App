@@ -107,6 +107,25 @@ GENERIC_ROWS = {
         # names, never a length rule.
         'apr', 'day', 'eid', 'may', 'mon', 'pax', 'tue', 'wed',
         'veg', 'non_veg',
+        # ------------------------------------------------------------------
+        # A SECOND sheet's scaffolding, missed the first time because its
+        # headers are spelled out in full (`monday_3rd`) where the ones above
+        # are abbreviated with a month (`mon_1st_june`), so neither an exact
+        # name nor a shared prefix caught both. Same fingerprint, verified row
+        # by row: every one is filed `veg_gravy`, carries no `item_color`, and
+        # has `key_ingredient` copied from a word of its own name — `days`,
+        # `week`, `plates`, `beverage`, `star`, `styker`.
+        # ------------------------------------------------------------------
+        # Five weekday column headers and two range labels.
+        'monday_3rd', 'tuesday_4th', 'wednesday_5th', 'thursday_6th',
+        'friday_7th', 'days', 'week',
+        # A head-count cell and the beverage section label, singular and plural.
+        '5_plates', 'beverage', 'beverages',
+        # TWO VENDOR NAMES. `styker_x_gourmer_services` is the same sheet title
+        # family as the three above (Stryker misspelled); `d_star_hospitality`
+        # is the caterer. Both were servable as the day's vegetable gravy, so a
+        # printed menu could have offered "D Star Hospitality" for lunch.
+        'd_star_hospitality', 'styker_x_gourmer_services',
     ],
 }
 

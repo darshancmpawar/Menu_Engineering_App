@@ -195,6 +195,11 @@ OWNED_ELSEWHERE = {
     # payasams, "sweet" came to imply "liquid". Voting on them again would undo
     # that clearing on the next chain run, in whichever order the two scripts go.
     ("is_liquid_dessert", "dessert"), ("is_buttermilk", "welcome_drink"),
+    # Same script, and the same reason the other way round: `is_bakery_dessert`
+    # was zero in every city, so the vote had nothing to learn it from and could
+    # only ever have guessed it from neighbouring sweets. It is now derived from
+    # the dish name, with `milk_cake` excluded as the mawa sweet it is.
+    ("is_bakery_dessert", "dessert"),
     # Same script, ingredient-in-a-course half. The vote must not touch these
     # either, and here it is `key_ingredient` rather than the tokens that misleads:
     # `paneer` is the de-facto default for a Chinese dish, so an attribute

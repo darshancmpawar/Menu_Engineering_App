@@ -54,12 +54,20 @@ CITY_ITEMS = os.path.join(
 
 #: ``course_type`` -> name tokens that imply it. Whole tokens only.
 NAME_SIGNALS = {
+    #: NB the spellings are the MASTER's. NCR writes `ras_malai`, `cham_cham`
+    #: and `custerd` where this list had only `rasmalai`, `chumchum` and
+    #: `custard`, so twenty of its sweets and drinks sat in `veg_gravy`
+    #: unflagged until `fill_cuisine_family.py` made them visible. The variants
+    #: below are added for that reason; each was checked against every city
+    #: first, and the ones that would have produced false positives are recorded
+    #: in `REJECTED_SIGNALS`.
     'dessert': {
         'payasam', 'payasa', 'kheer', 'halwa', 'kesari', 'laddu', 'laddoo',
         'burfi', 'barfi', 'jamun', 'jalebi', 'jelabi', 'custard', 'peda', 'pak',
         'badusha', 'adhirasam', 'tukda', 'malpua', 'chumchum', 'rasmalai',
         'basundi', 'kulfi', 'sheera', 'pudding', 'kalkandu', 'mishti', 'holige',
         'obbattu', 'sandesh', 'rabri', 'phirni', 'shrikhand',
+        'custerd', 'cham', 'chamcham', 'icecream', 'rajbhog', 'rasgulla',
     },
     'rice': {'biryani', 'biriyani', 'pulao', 'pulav', 'rice', 'bisibelebath',
              'khichdi', 'bagara'},
@@ -79,7 +87,31 @@ NAME_SIGNALS = {
     #: `buttermilk`-shaped rather than `majjige`-shaped.
     'welcome_drink': {'buttermilk', 'lassi', 'juice', 'sharbath', 'sherbat',
                       'sherbet', 'panna', 'jaljeera', 'kokum', 'sambaram',
-                      'mojito', 'cooler', 'smoothie', 'milkshake'},
+                      'mojito', 'cooler', 'smoothie', 'milkshake',
+                      'thandai', 'shikanji', 'tang'},
+}
+
+#: Words that LOOK like a course signal and are not, each rejected after
+#: measuring what it would flag across every city. Recorded rather than simply
+#: omitted, because the next person to notice that `malai_kofta_curry` is not in
+#: the dessert list should find the reason here instead of adding it.
+REJECTED_SIGNALS = {
+    'malai': 'dessert — 49 rows, and most are `malai_kofta_curry`, '
+             '`aloo_methi_malai`, `corn_methi_malai`. Malai is cream, an '
+             'ordinary gravy ingredient.',
+    'cream': 'dessert — 27 rows, mostly `cream_of_mushroom` and its sibling '
+             'soups.',
+    'ras':   'dessert — would catch `ras_malai`, but `ras`/`rassa` is also a '
+             'Maharashtrian gravy word (`vangya_rassa_bhaji`). The dish is '
+             'corrected by name in `course_type_corrections.py` instead.',
+    'gulab': 'dessert — `gulab_sherbat` is a rose drink, correctly a welcome '
+             'drink. Rose flavours both sweets and drinks.',
+    'aamras': 'welcome_drink — `aamras_kadhi` is a kadhi.',
+    'chutney': 'accompaniment — the ontology has its own `chutney` course and '
+               'files them there; the word is not a mis-filing signal.',
+    'papad': 'accompaniment — Pune files its papads under the `papad` course '
+             'by design, so the word flags correct rows in one city and '
+             'incorrect ones in another. `disco_papad` is named directly.',
 }
 
 #: ``(filed course_type, name-implied course_type)`` pairs that are correct by
@@ -145,6 +177,8 @@ ADJUDICATED = {
     ('ncr', 'masala_raita_aam_panna'):
         'a masala raita (is_raita=1); aam panna is a modifier in the name, the '
         'dish is the raita — correctly curd_side',
+    ('bangalore', 'thandai_burfi'):
+        'a burfi flavoured with thandai, not a drink — correctly a dessert',
 }
 
 #: Hyderabad's list was SEEDED from Bangalore's (`import_quest_hyderabad_menu`),

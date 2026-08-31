@@ -2243,7 +2243,6 @@ bangalore,mango_phirnee,dessert,sub_category,no word its siblings agree about
 bangalore,mango_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,mango_shikanji,welcome_drink,drink_rule_group,no word its siblings agree about
 bangalore,mango_shikanji,welcome_drink,drink_type,no word its siblings agree about
-bangalore,mango_shikanji,welcome_drink,key_ingredient,no word its siblings agree about
 bangalore,mango_shikanji,welcome_drink,sub_category,no word its siblings agree about
 bangalore,masala_adai_dosa_with_ginger_chutney,bread,sub_category,no word its siblings agree about
 bangalore,masala_akki_roti_with_red_chutney,bread,sub_category,no word its siblings agree about
@@ -2261,6 +2260,8 @@ bangalore,masala_millet,healthy_rice,sub_category,no word its siblings agree abo
 bangalore,masala_ragi_roti_with_red_chutney,bread,sub_category,no word its siblings agree about
 bangalore,masala_ragi_rotti,bread,sub_category,no word its siblings agree about
 bangalore,masala_ragi_rotti_with_khara_chutney,bread,sub_category,no word its siblings agree about
+bangalore,masala_shikanji,welcome_drink,drink_rule_group,no word its siblings agree about
+bangalore,masala_shikanji,welcome_drink,drink_type,no word its siblings agree about
 bangalore,masala_veg_khuska,rice,key_ingredient,no word its siblings agree about
 bangalore,masaledar_rice,rice,flavoured_rice_region,no word its siblings agree about
 bangalore,masaledar_rice,rice,key_ingredient,no word its siblings agree about
@@ -3101,9 +3102,6 @@ bangalore,railway_chicken_curry,nonveg_main,gravy_region,no word its siblings ag
 bangalore,railway_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,railway_chicken_curry,nonveg_main,sub_category,no word its siblings agree about
 bangalore,rainbow_pastry,dessert,dessert_form,no word its siblings agree about
-bangalore,raitha,curd_side,is_* flags,no attribute or word its siblings agree about
-bangalore,raitha,curd_side,key_ingredient,no word its siblings agree about
-bangalore,raitha,curd_side,sub_category,no word its siblings agree about
 bangalore,rajasthani_gatta_curry,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,rajasthani_gatta_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 bangalore,rajasthani_gatta_curry,veg_gravy,key_ingredient,no word its siblings agree about
@@ -3116,7 +3114,6 @@ bangalore,rajasthani_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,rajasthani_pulao,rice,sub_category,no word its siblings agree about
 bangalore,rajasthani_veg_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,rajasthani_veg_pulao,rice,sub_category,no word its siblings agree about
-bangalore,rajbhog,dessert,dessert_form,no word its siblings agree about
 bangalore,rajma_chawal,rice,flavoured_rice_region,no word its siblings agree about
 bangalore,rajma_chawal,rice,sub_category,no word its siblings agree about
 bangalore,rajput_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
@@ -4179,6 +4176,8 @@ chennai,mexican_dosa,bread,key_ingredient,no word its siblings agree about
 chennai,mexican_dosa,bread,sub_category,no word its siblings agree about
 chennai,mint_millet_pulao,healthy_rice,key_ingredient,no word its siblings agree about
 chennai,mint_millet_pulao,healthy_rice,sub_category,no word its siblings agree about
+chennai,mint_raitha,curd_side,key_ingredient,no word its siblings agree about
+chennai,mint_raitha,curd_side,sub_category,no word its siblings agree about
 chennai,mixed_chaat,starter,key_ingredient,no word its siblings agree about
 chennai,mixed_chaat,starter,sub_category,no word its siblings agree about
 chennai,mixed_fruit_custard,dessert,key_ingredient,no word its siblings agree about
@@ -4251,9 +4250,6 @@ chennai,quinoa_idli,bread,key_ingredient,no word its siblings agree about
 chennai,raagi_dosa,bread,key_ingredient,no word its siblings agree about
 chennai,raagi_dosa,bread,sub_category,no word its siblings agree about
 chennai,ragi_semiya,bread,sub_category,no word its siblings agree about
-chennai,raitha,curd_side,is_* flags,no attribute or word its siblings agree about
-chennai,raitha,curd_side,key_ingredient,no word its siblings agree about
-chennai,raitha,curd_side,sub_category,no word its siblings agree about
 chennai,rasa_vada,starter,key_ingredient,no word its siblings agree about
 chennai,roast_chicken_thokku,nonveg_main,gravy_region,no word its siblings agree about
 chennai,roast_chicken_thokku,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -6689,7 +6685,6 @@ hyderabad,mango_phirnee,dessert,sub_category,no word its siblings agree about
 hyderabad,mango_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,mango_shikanji,welcome_drink,drink_rule_group,no word its siblings agree about
 hyderabad,mango_shikanji,welcome_drink,drink_type,no word its siblings agree about
-hyderabad,mango_shikanji,welcome_drink,key_ingredient,no word its siblings agree about
 hyderabad,mango_shikanji,welcome_drink,sub_category,no word its siblings agree about
 hyderabad,masala_adai_dosa_with_ginger_chutney,bread,sub_category,no word its siblings agree about
 hyderabad,masala_akki_roti_with_red_chutney,bread,sub_category,no word its siblings agree about
@@ -6707,6 +6702,8 @@ hyderabad,masala_millet,healthy_rice,sub_category,no word its siblings agree abo
 hyderabad,masala_ragi_roti_with_red_chutney,bread,sub_category,no word its siblings agree about
 hyderabad,masala_ragi_rotti,bread,sub_category,no word its siblings agree about
 hyderabad,masala_ragi_rotti_with_khara_chutney,bread,sub_category,no word its siblings agree about
+hyderabad,masala_shikanji,welcome_drink,drink_rule_group,no word its siblings agree about
+hyderabad,masala_shikanji,welcome_drink,drink_type,no word its siblings agree about
 hyderabad,masala_veg_khuska,rice,key_ingredient,no word its siblings agree about
 hyderabad,masaledar_rice,rice,flavoured_rice_region,no word its siblings agree about
 hyderabad,masaledar_rice,rice,key_ingredient,no word its siblings agree about
@@ -7587,9 +7584,6 @@ hyderabad,railway_chicken_curry,nonveg_main,gravy_region,no word its siblings ag
 hyderabad,railway_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,railway_chicken_curry,nonveg_main,sub_category,no word its siblings agree about
 hyderabad,rainbow_pastry,dessert,dessert_form,no word its siblings agree about
-hyderabad,raitha,curd_side,is_* flags,no attribute or word its siblings agree about
-hyderabad,raitha,curd_side,key_ingredient,no word its siblings agree about
-hyderabad,raitha,curd_side,sub_category,no word its siblings agree about
 hyderabad,rajasthani_gatta_curry,veg_gravy,gravy_region,no word its siblings agree about
 hyderabad,rajasthani_gatta_curry,veg_gravy,is_* flags,no attribute or word its siblings agree about
 hyderabad,rajasthani_gatta_curry,veg_gravy,key_ingredient,no word its siblings agree about
@@ -7602,7 +7596,6 @@ hyderabad,rajasthani_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,rajasthani_pulao,rice,sub_category,no word its siblings agree about
 hyderabad,rajasthani_veg_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,rajasthani_veg_pulao,rice,sub_category,no word its siblings agree about
-hyderabad,rajbhog,dessert,dessert_form,no word its siblings agree about
 hyderabad,rajma_chawal,rice,flavoured_rice_region,no word its siblings agree about
 hyderabad,rajma_chawal,rice,sub_category,no word its siblings agree about
 hyderabad,rajput_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
@@ -8482,7 +8475,6 @@ hyderabad,zafrani_kheer,dessert,key_ingredient,no word its siblings agree about
 hyderabad,zuppa_de_al_pollo,nonveg_soup,is_* flags,no attribute or word its siblings agree about
 hyderabad,zuppa_de_al_pollo,nonveg_soup,key_ingredient,no word its siblings agree about
 hyderabad,zuppa_de_al_pollo,nonveg_soup,sub_category,no word its siblings agree about
-ncr,5_plates,veg_gravy,gravy_region,no word its siblings agree about
 ncr,a_pastry,dessert,dessert_form,no word its siblings agree about
 ncr,aachari_petha,dessert,dessert_form,no word its siblings agree about
 ncr,achaarialoo,veg_gravy,gravy_region,no word its siblings agree about
@@ -8505,7 +8497,6 @@ ncr,apple_halwa,dessert,key_ingredient,no word its siblings agree about
 ncr,apple_kheer,dessert,key_ingredient,no word its siblings agree about
 ncr,arbi_ajwaini,veg_gravy,gravy_region,no word its siblings agree about
 ncr,arbi_ajwani,veg_gravy,gravy_region,no word its siblings agree about
-ncr,assorted_icecream,veg_gravy,gravy_region,no word its siblings agree about
 ncr,avail,veg_gravy,gravy_region,no word its siblings agree about
 ncr,awadhi_chicken_curry,nonveg_main,gravy_region,no word its siblings agree about
 ncr,awadhi_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -8529,8 +8520,6 @@ ncr,besan_gatte_ki_sabzi,dessert,dessert_form,no word its siblings agree about
 ncr,besan_katli,dessert,dessert_form,no word its siblings agree about
 ncr,besan_ki_barfi,dessert,dessert_form,no word its siblings agree about
 ncr,besan_laddoo,dessert,dessert_form,no word its siblings agree about
-ncr,beverage,veg_gravy,gravy_region,no word its siblings agree about
-ncr,beverages,veg_gravy,gravy_region,no word its siblings agree about
 ncr,bhuna_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,bhuna_chicken_masala_in_gujrati_style_chicken_rasawala,nonveg_main,gravy_region,no word its siblings agree about
 ncr,bhuna_chicken_masala_in_gujrati_style_chicken_rasawala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -8675,7 +8664,6 @@ ncr,chole,dal,dal_region,no word its siblings agree about
 ncr,cholley,dal,dal_region,no word its siblings agree about
 ncr,chowmin,veg_gravy,gravy_region,no word its siblings agree about
 ncr,churma,veg_gravy,gravy_region,no word its siblings agree about
-ncr,coconut_coated_cham_cham,veg_gravy,gravy_region,no word its siblings agree about
 ncr,coconut_dip,veg_gravy,gravy_region,no word its siblings agree about
 ncr,coconut_khoya_barfi,dessert,dessert_form,no word its siblings agree about
 ncr,coconut_mawa_barfi,dessert,dessert_form,no word its siblings agree about
@@ -8697,14 +8685,11 @@ ncr,cucumber_tomato_beetroot_onion,veg_gravy,gravy_region,no word its siblings a
 ncr,cucumber_tomato_carrot_onion,veg_gravy,gravy_region,no word its siblings agree about
 ncr,curd_millet_rice,healthy_rice,key_ingredient,no word its siblings agree about
 ncr,curd_millet_rice,healthy_rice,sub_category,no word its siblings agree about
-ncr,custerd,veg_gravy,gravy_region,no word its siblings agree about
-ncr,d_star_hospitality,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dahi_besan_guttey_ki_subz,dessert,dessert_form,no word its siblings agree about
 ncr,dalmakhani,veg_gravy,gravy_region,no word its siblings agree about
 ncr,date,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dates_and_nuts_ladoo,dessert,key_ingredient,no word its siblings agree about
 ncr,dates_and_nuts_ladoo,dessert,sub_category,no word its siblings agree about
-ncr,days,veg_gravy,gravy_region,no word its siblings agree about
 ncr,desi_saag,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dhaba_chicken,nonveg_main,gravy_region,no word its siblings agree about
 ncr,dhaba_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -8716,7 +8701,6 @@ ncr,dhaniya_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,dil_khusal,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dil_khushal,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dilkhushad,veg_gravy,gravy_region,no word its siblings agree about
-ncr,disco_papad,veg_gravy,gravy_region,no word its siblings agree about
 ncr,dry_fruit_pulao,dessert,dessert_form,no word its siblings agree about
 ncr,dum_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
 ncr,dum_ka_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -8750,7 +8734,6 @@ ncr,egg_roghan_josh,nonveg_main,nonveg_biryani_region,no word its siblings agree
 ncr,firni,veg_gravy,gravy_region,no word its siblings agree about
 ncr,fish_curry,nonveg_main,gravy_region,no word its siblings agree about
 ncr,fish_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-ncr,friday_7th,veg_gravy,gravy_region,no word its siblings agree about
 ncr,fruit_muffin,dessert,dessert_form,no word its siblings agree about
 ncr,fryems,veg_gravy,gravy_region,no word its siblings agree about
 ncr,frymus,veg_gravy,gravy_region,no word its siblings agree about
@@ -8791,12 +8774,12 @@ ncr,hyderabadi_chicken_curry,nonveg_main,nonveg_biryani_region,no word its sibli
 ncr,hyderabadi_chicken_masala,nonveg_main,gravy_region,no word its siblings agree about
 ncr,hyderabadi_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,hyderabadi_paneer_masala,veg_gravy,gravy_region,no word its siblings agree about
-ncr,icecream,veg_gravy,gravy_region,no word its siblings agree about
 ncr,imarthi,dessert,dessert_form,no word its siblings agree about
 ncr,imarti,dessert,dessert_form,no word its siblings agree about
 ncr,inji_rasam,rasam,key_ingredient,no word its siblings agree about
 ncr,inji_rasam,rasam,sub_category,no word its siblings agree about
-ncr,jal_jeera,veg_gravy,gravy_region,no word its siblings agree about
+ncr,jal_jeera,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,jal_jeera,welcome_drink,drink_type,no word its siblings agree about
 ncr,jaljeera_treat,welcome_drink,drink_rule_group,no word its siblings agree about
 ncr,jaljeera_treat,welcome_drink,drink_type,no word its siblings agree about
 ncr,jangli_chicken_masala,nonveg_main,gravy_region,no word its siblings agree about
@@ -8879,7 +8862,8 @@ ncr,mango_custard,dessert,dessert_form,no word its siblings agree about
 ncr,mango_drink,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mango_drinks,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mango_muf_n,veg_gravy,gravy_region,no word its siblings agree about
-ncr,mango_tang,veg_gravy,gravy_region,no word its siblings agree about
+ncr,mango_tang,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,mango_tang,welcome_drink,drink_type,no word its siblings agree about
 ncr,mangodi,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mangodialoo,veg_gravy,gravy_region,no word its siblings agree about
 ncr,march,veg_gravy,gravy_region,no word its siblings agree about
@@ -8887,6 +8871,8 @@ ncr,march_26_april,veg_gravy,gravy_region,no word its siblings agree about
 ncr,masala_chaap_dhabha_style,rice,flavoured_rice_region,no word its siblings agree about
 ncr,masala_chaas,welcome_drink,drink_rule_group,no word its siblings agree about
 ncr,masala_chaas,welcome_drink,drink_type,no word its siblings agree about
+ncr,masala_shikanji,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,masala_shikanji,welcome_drink,drink_type,no word its siblings agree about
 ncr,matar_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,mattar_paneer,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mawa_kachori,veg_gravy,gravy_region,no word its siblings agree about
@@ -8900,11 +8886,9 @@ ncr,mint_millet_pulao,healthy_rice,key_ingredient,no word its siblings agree abo
 ncr,mint_millet_pulao,healthy_rice,sub_category,no word its siblings agree about
 ncr,mint_mojito,welcome_drink,drink_rule_group,no word its siblings agree about
 ncr,mint_mojito,welcome_drink,drink_type,no word its siblings agree about
-ncr,mix_pickle,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mixed_fruit_custard,dessert,key_ingredient,no word its siblings agree about
 ncr,mixed_fruit_custard,dessert,sub_category,no word its siblings agree about
 ncr,mohanthal,veg_gravy,gravy_region,no word its siblings agree about
-ncr,monday_3rd,veg_gravy,gravy_region,no word its siblings agree about
 ncr,muffins,veg_gravy,gravy_region,no word its siblings agree about
 ncr,mughlai_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,mumbai_chicken_curry,nonveg_main,gravy_region,no word its siblings agree about
@@ -8934,7 +8918,8 @@ ncr,onion_saute_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,onion_tomato_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,orange_drink,veg_gravy,gravy_region,no word its siblings agree about
 ncr,orange_refresher,veg_gravy,gravy_region,no word its siblings agree about
-ncr,orange_tang,veg_gravy,gravy_region,no word its siblings agree about
+ncr,orange_tang,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,orange_tang,welcome_drink,drink_type,no word its siblings agree about
 ncr,orange_treat,veg_gravy,gravy_region,no word its siblings agree about
 ncr,pakeeza,veg_gravy,gravy_region,no word its siblings agree about
 ncr,palak_chana_bhurji,nonveg_main,gravy_region,no word its siblings agree about
@@ -8967,7 +8952,6 @@ ncr,petha,dessert,dessert_form,no word its siblings agree about
 ncr,petha_khatta_meetha,dessert,dessert_form,no word its siblings agree about
 ncr,petha_masala,dessert,dessert_form,no word its siblings agree about
 ncr,pickel_sachet,veg_gravy,gravy_region,no word its siblings agree about
-ncr,pickle_mouth_freshner,veg_gravy,gravy_region,no word its siblings agree about
 ncr,pineapple,veg_gravy,gravy_region,no word its siblings agree about
 ncr,pineapple_pastry,dessert,dessert_form,no word its siblings agree about
 ncr,pista_balushahi,veg_gravy,gravy_region,no word its siblings agree about
@@ -8987,7 +8971,6 @@ ncr,rajasthani_chicken_curry,nonveg_main,nonveg_biryani_region,no word its sibli
 ncr,rajasthani_kadhi,dal,dal_region,no word its siblings agree about
 ncr,rajasthani_kadhi_pakoda,dal,dal_region,no word its siblings agree about
 ncr,rajasthani_kadhi_pakora,dal,dal_region,no word its siblings agree about
-ncr,rajbhog,veg_gravy,gravy_region,no word its siblings agree about
 ncr,rajsthani_gutta_curry,veg_gravy,gravy_region,no word its siblings agree about
 ncr,rara_chicken_masala,nonveg_main,gravy_region,no word its siblings agree about
 ncr,rara_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -9018,7 +9001,6 @@ ncr,sauce,veg_gravy,gravy_region,no word its siblings agree about
 ncr,schezwan_sauce,veg_gravy,gravy_region,no word its siblings agree about
 ncr,sewiyan,veg_gravy,gravy_region,no word its siblings agree about
 ncr,shechwan_sauce,veg_gravy,gravy_region,no word its siblings agree about
-ncr,shegdana_chutney,veg_gravy,gravy_region,no word its siblings agree about
 ncr,sindhi_curry,dal,dal_region,no word its siblings agree about
 ncr,soya_caap_curry,veg_gravy,gravy_region,no word its siblings agree about
 ncr,soya_chap,veg_gravy,gravy_region,no word its siblings agree about
@@ -9038,7 +9020,6 @@ ncr,street_style_noodles,veg_gravy,gravy_region,no word its siblings agree about
 ncr,stryker_lunch_08_june_to_13_june,veg_gravy,gravy_region,no word its siblings agree about
 ncr,stryker_lunch_15_june_to_20_june,veg_gravy,gravy_region,no word its siblings agree about
 ncr,stryker_lunch_20_july_to_25_july,veg_gravy,gravy_region,no word its siblings agree about
-ncr,styker_x_gourmer_services,veg_gravy,gravy_region,no word its siblings agree about
 ncr,subz_ki_thari,rice,flavoured_rice_region,no word its siblings agree about
 ncr,sweet_n_sour_vegetables,veg_gravy,gravy_region,no word its siblings agree about
 ncr,sweetlime_water,veg_gravy,gravy_region,no word its siblings agree about
@@ -9058,17 +9039,15 @@ ncr,tawa_mix_veg,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tawa_mushroom,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tawa_vegetables,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tejpatta_rice,rice,flavoured_rice_region,no word its siblings agree about
-ncr,thandai,veg_gravy,gravy_region,no word its siblings agree about
-ncr,thursday_6th,veg_gravy,gravy_region,no word its siblings agree about
+ncr,thandai,welcome_drink,drink_rule_group,no word its siblings agree about
+ncr,thandai,welcome_drink,drink_type,no word its siblings agree about
 ncr,tiranga_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,tomato_chapati,bread,sub_category,no word its siblings agree about
 ncr,tossed_macroni,veg_gravy,gravy_region,no word its siblings agree about
-ncr,tuesday_4th,veg_gravy,gravy_region,no word its siblings agree about
 ncr,turmeric_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,tutti_frutimuf_n,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tutti_frutti_muf_n,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tutti_frutti_muffin,veg_gravy,gravy_region,no word its siblings agree about
-ncr,vanilla_icecream,veg_gravy,gravy_region,no word its siblings agree about
 ncr,veg_bhaji,veg_gravy,gravy_region,no word its siblings agree about
 ncr,veg_chowmin,veg_gravy,gravy_region,no word its siblings agree about
 ncr,veg_keema_matar,nonveg_main,gravy_region,no word its siblings agree about
@@ -9084,7 +9063,6 @@ ncr,veg_spring_roll,starter,key_ingredient,no word its siblings agree about
 ncr,veg_spring_roll,starter,sub_category,no word its siblings agree about
 ncr,veg_upma,veg_gravy,gravy_region,no word its siblings agree about
 ncr,vegetable,veg_gravy,gravy_region,no word its siblings agree about
-ncr,vegetable_kung_pao_sauce,dal,dal_region,no word its siblings agree about
 ncr,vegetable_pasta,veg_gravy,gravy_region,no word its siblings agree about
 ncr,vegetable_sindhi_kadhi,dal,dal_region,no word its siblings agree about
 ncr,vegjalfrezi,veg_gravy,gravy_region,no word its siblings agree about
@@ -9092,11 +9070,8 @@ ncr,walnut_brownie_choc_sauce,dessert,dessert_form,no word its siblings agree ab
 ncr,walnut_chocolate_brownie,dessert,dessert_form,no word its siblings agree about
 ncr,water_melon,veg_gravy,gravy_region,no word its siblings agree about
 ncr,watermelon,veg_gravy,gravy_region,no word its siblings agree about
-ncr,wednesday_5th,veg_gravy,gravy_region,no word its siblings agree about
-ncr,week,veg_gravy,gravy_region,no word its siblings agree about
 ncr,wheat_flour_ladoo,dessert,key_ingredient,no word its siblings agree about
 ncr,wheat_flour_ladoo,dessert,sub_category,no word its siblings agree about
-ncr,white_cham_cham,veg_gravy,gravy_region,no word its siblings agree about
 ncr,yellow_rice,rice,flavoured_rice_region,no word its siblings agree about
 pune,akha_masoor_masala,veg_gravy,is_* flags,no attribute or word its siblings agree about
 pune,akha_masoor_masala,veg_gravy,sub_category,no word its siblings agree about

@@ -41,12 +41,12 @@ pastry,dessert,10,,bangalore:blueberry_pastry; bangalore:kiwi_pastry; bangalore:
 potato,veg_dry,10,,bangalore:chettinad_potato_varuval; bangalore:chilli_potato_chinese_style; bangalore:potato_cauliflower_milagupirati; bangalore:potato_varuval; bangalore:urulai_chutney_podi_vathakal_red_baby_potato; hyderabad:chettinad_potato_varuval
 soya,veg_dry,10,,bangalore:louki_soya_chatpata; bangalore:soya_burji; bangalore:soya_chatpata; bangalore:soya_ghee_roast; hyderabad:louki_soya_chatpata; hyderabad:soya_burji
 chana,veg_dry,9,,bangalore:beetroot_black_chana_palya; bangalore:lauki_kabuli_chana_subji; bangalore:louki_chana; bangalore:padvalkayi_chana_kootu; hyderabad:beetroot_black_chana_palya; hyderabad:lauki_kabuli_chana_subji
+chutney,chutney,9,,ncr:shegdana_chutney; pune:cabbage_pachdi_chutney; pune:dates_chutney; pune:jawas_chutney; pune:karala_chutney; pune:ola_khobra_chutney
 gobi,veg_dry,9,,bangalore:gobi_burji; bangalore:gobi_chili; bangalore:gobi_chilli_dry; hyderabad:gobi_burji; hyderabad:gobi_chili; hyderabad:gobi_chilli_dry
 kodi,nonveg_main,9,,bangalore:andhra_kodi_koora; bangalore:kodi_guddu_masala; hyderabad:andhra_kodi_koora; hyderabad:avakaya_kodi_kura; hyderabad:inti_kodi_kura; hyderabad:kodi_guddu_masala
 petha,dessert,9,,ncr:aachari_petha; ncr:agar_ka_petha; ncr:chatpata_petha; ncr:katha_meetha_petha; ncr:kesri_petha; ncr:khatta_meetha_petha
 bonda,starter,8,,bangalore:mangalore_bonda; bangalore:mix_veg_bonda; bangalore:sabsige_bonda; bangalore:sweet_bonda; hyderabad:mangalore_bonda; hyderabad:mix_veg_bonda
 chapati,bread,8,,bangalore:appam_chapati; bangalore:kalonji_chapati; bangalore:methi_chapati_dosa; bangalore:triangle_chapati_puri; hyderabad:appam_chapati; hyderabad:kalonji_chapati
-chutney,chutney,8,,pune:cabbage_pachdi_chutney; pune:dates_chutney; pune:jawas_chutney; pune:karala_chutney; pune:ola_khobra_chutney; pune:shengdana_chutney
 coleslaw,salad,8,,bangalore:cabbage_and_carrot_coleslaw; bangalore:classic_coleslaw; bangalore:coleslaw; bangalore:vegetable_coleslaw; hyderabad:cabbage_and_carrot_coleslaw; hyderabad:classic_coleslaw
 fruit,dessert,8,,bangalore:atta_ki_dry_fruit_pinni; bangalore:dry_fruit_ladhu; bangalore:shrikhand_dry_fruit; hyderabad:atta_ki_dry_fruit_pinni; hyderabad:dry_fruit_ladhu; hyderabad:shrikhand_dry_fruit
 fry,veg_dry,8,,bangalore:arbi_fry; bangalore:heerekaayi_stir_fry; bangalore:ridge_gourd_stir_fry; bangalore:vazakkai_gola_urundai_oil_fry; hyderabad:arbi_fry; hyderabad:heerekaayi_stir_fry
@@ -87,7 +87,6 @@ kadhi,dal,5,,ncr:kadhi_pakoda; ncr:punjabi_kadhi_pakoda; ncr:rajasthani_kadhi; n
 pak,dessert,5,,bangalore:gujarati_amruth_pak; hyderabad:gujarati_amruth_pak; ncr:gaund_pak; ncr:gond_pak; ncr:massor_pak
 pappu,dal,5,,hyderabad:dosakaya_pappu; hyderabad:gujarati_pappu; hyderabad:menthikoora_pappu; hyderabad:paalakoora_pappu; hyderabad:thotakura_pappu
 raita,curd_side,5,,ncr:aloo_tadka_raita; ncr:jeera_tadka_raita; ncr:kachumber_raita; ncr:onion_tadka_raita; ncr:tadka_raita
-raitha,curd_side,5,,bangalore:boondi_raitha; bangalore:raitha; chennai:raitha; hyderabad:boondi_raitha; hyderabad:raitha
 tawa,veg_dry,5,,bangalore:tawa_mix_veg; bangalore:tawa_mix_veg_dry; hyderabad:tawa_mix_veg; hyderabad:tawa_mix_veg_dry; pune:tawa_mushroom
 angoori,dessert,4,,bangalore:angoori_basundi; bangalore:angoori_rabdi; hyderabad:angoori_basundi; hyderabad:angoori_rabdi
 baingan,veg_dry,4,,bangalore:baingan_gunda; hyderabad:baingan_gunda; ncr:kalongi_wale_baingan; pune:baingan_bharta
@@ -136,6 +135,7 @@ chole,dal,3,,ncr:chole; ncr:homestyle_chole; ncr:peshawari_chole
 dal,dessert,3,,bangalore:dal_payasam; chennai:dal_payasam; hyderabad:dal_payasam
 idli,bread,3,,chennai:chilli_idli; chennai:tri_color_idli; ncr:fried_idli
 imarti,dessert,3,,bangalore:imarti; hyderabad:imarti; ncr:imarti
+jal,welcome_drink,3,,bangalore:jal_jeera; hyderabad:jal_jeera; ncr:jal_jeera
 jalfrezi,veg_dry,3,,bangalore:mix_veg_jalfrezi; hyderabad:mix_veg_jalfrezi; ncr:mushroom_jalfrezi
 june,veg_gravy,3,,ncr:june; ncr:stryker_lunch_08_june_to_13_june; ncr:stryker_lunch_15_june_to_20_june
 kabab,starter,3,,bangalore:carrot_beetroot_kabab; hyderabad:carrot_beetroot_kabab; hyderabad:sabzi_dahi_kabab
@@ -143,11 +143,14 @@ khurma,veg_gravy,3,,ncr:gud_khurma; ncr:gur_khurma; ncr:khurma
 kulfi,dessert,3,,bangalore:matka_kulfi; hyderabad:matka_kulfi; ncr:kulfi
 laddoo,dessert,3,,bangalore:motichur_laddoo; hyderabad:motichur_laddoo; ncr:sweet_laddoo
 lauki,veg_dry,3,,ncr:jeera_lauki; ncr:lauki_jeera; ncr:lauki_tamatri_dry
+malai,dessert,3,,bangalore:malai_sandwich; hyderabad:malai_sandwich; ncr:ras_malai
 matar,veg_gravy,3,,ncr:cabage_matar; ncr:cabbage_matar_peas; ncr:matar_mashroom
 milk,welcome_drink,3,,bangalore:kesar_badam_milk; hyderabad:kesar_badam_milk; pune:masala_milk
 poli,dessert,3,,bangalore:puran_poli; chennai:sweet_poli; hyderabad:puran_poli
+rajbhog,dessert,3,,bangalore:rajbhog; hyderabad:rajbhog; ncr:rajbhog
 rajma,veg_gravy,3,,ncr:boiled_rajma; ncr:rajma_rasile; ncr:rajma_rasmisa
 sirka,salad,3,,ncr:sirka_payaz; ncr:sirka_pyaz; ncr:sirka_pyaza
+thandai,welcome_drink,3,,bangalore:thandai; hyderabad:thandai; ncr:thandai
 tutti,veg_gravy,3,,ncr:tutti_frutimuf_n; ncr:tutti_frutti_muf_n; ncr:tutti_frutti_muffin
 ada,dessert,2,,bangalore:ada_pradanam; hyderabad:ada_pradanam
 alugadde,sambar,2,,bangalore:horsegram_with_alugadde_huli; hyderabad:horsegram_with_alugadde_huli
@@ -168,6 +171,7 @@ bittergourd,veg_dry,2,,bangalore:bittergourd_dry; hyderabad:bittergourd_dry
 black,veg_gravy,2,,ncr:black_cholay; ncr:black_chum_chum
 boiled,salad,2,,bangalore:boiled_chickpea; hyderabad:boiled_chickpea
 bon,starter,2,,bangalore:mix_veg_bon_bon; hyderabad:mix_veg_bon_bon
+boondi,curd_side,2,,bangalore:boondi_raitha; hyderabad:boondi_raitha
 bowl,starter,2,,bangalore:burrito_bowl; hyderabad:burrito_bowl
 brinji,rice,2,,bangalore:soya_brinji; hyderabad:soya_brinji
 bufri,dessert,2,,bangalore:horlicks_bufri; hyderabad:horlicks_bufri
@@ -194,7 +198,6 @@ chum,dessert,2,,bangalore:chum_chum; hyderabad:chum_chum
 chumchum,dessert,2,,bangalore:dry_chumchum; hyderabad:dry_chumchum
 chuteny,starter,2,,bangalore:chuteny; hyderabad:chuteny
 chutney,starter,2,,bangalore:dhokla_with_chutney; hyderabad:dhokla_with_chutney
-chutney,veg_gravy,2,,ncr:coconut_tomato_chutney; ncr:shegdana_chutney
 cob,healthy_rice,2,,bangalore:grilled_corn_on_the_cob; hyderabad:grilled_corn_on_the_cob
 coconut,sambar,2,,bangalore:tomato_coconut_sambar; hyderabad:tomato_coconut_sambar
 creamy,dessert,2,,bangalore:creamy_lamcha; hyderabad:creamy_lamcha
@@ -226,9 +229,7 @@ golgappa,starter,2,,bangalore:golgappa; hyderabad:golgappa
 gourd,veg_dry,2,,bangalore:ridge_gourd_kottu; hyderabad:ridge_gourd_kottu
 gourd,veg_gravy,2,,bangalore:ridge_gourd_tovve; hyderabad:ridge_gourd_tovve
 huli,curd_side,2,,bangalore:kumblekai_majjige_huli; hyderabad:kumblekai_majjige_huli
-icecream,veg_gravy,2,,ncr:assorted_icecream; ncr:icecream
-jal,welcome_drink,2,,bangalore:jal_jeera; hyderabad:jal_jeera
-jeera,veg_gravy,2,,ncr:jal_jeera; ncr:jeera_potato
+icecream,dessert,2,,ncr:assorted_icecream; ncr:icecream
 jelabi,dessert,2,,bangalore:jelabi; hyderabad:jelabi
 jhal,starter,2,,bangalore:jhal_muri; hyderabad:jhal_muri
 jilebi,dessert,2,,bangalore:jilebi; hyderabad:jilebi
@@ -256,7 +257,6 @@ luchi,bread,2,,bangalore:luchi; hyderabad:luchi
 lunch,welcome_drink,2,,bangalore:special_lunch; hyderabad:special_lunch
 luncha,dessert,2,,bangalore:luncha; hyderabad:luncha
 makhanwala,veg_gravy,2,,bangalore:veg_makhanwala; hyderabad:veg_makhanwala
-malai,dessert,2,,bangalore:malai_sandwich; hyderabad:malai_sandwich
 malpua,dessert,2,,bangalore:malpua_with_rabri; hyderabad:malpua_with_rabri
 march,veg_gravy,2,,ncr:march; ncr:march_26_april
 marinara,healthy_rice,2,,bangalore:stuffed_zucchini_with_marinara_sauce; hyderabad:stuffed_zucchini_with_marinara_sauce
@@ -282,7 +282,7 @@ pasta,salad,2,,ncr:pasta; ncr:white_sauce_pasta
 pasta,starter,2,,bangalore:red_pasta; hyderabad:red_pasta
 patiala,veg_gravy,2,,bangalore:veg_patiala; hyderabad:veg_patiala
 phirni,dessert,2,,bangalore:rose_phirni; hyderabad:rose_phirni
-pickle,veg_gravy,2,,ncr:mix_pickle; ncr:pickle_mouth_freshner
+pickle,accompaniment,2,,ncr:mix_pickle; ncr:pickle_mouth_freshner
 pilaf,healthy_rice,2,,bangalore:quinoa_pilaf; hyderabad:quinoa_pilaf
 pollo,nonveg_soup,2,,bangalore:zuppa_de_al_pollo; hyderabad:zuppa_de_al_pollo
 potato,starter,2,,bangalore:potato_wedges; hyderabad:potato_wedges
@@ -290,7 +290,6 @@ pudding,dessert,2,,hyderabad:red_velvet_pudding; ncr:pudding_ala_cream
 pulao,healthy_rice,2,,bangalore:redrice_pulao; hyderabad:redrice_pulao
 puliyodarai,rice,2,,bangalore:puliyodarai; hyderabad:puliyodarai
 pulusu,veg_gravy,2,,hyderabad:munakkaya_pulusu; hyderabad:vankaya_pulusu
-rajbhog,dessert,2,,bangalore:rajbhog; hyderabad:rajbhog
 raskadam,dessert,2,,bangalore:raskadam; hyderabad:raskadam
 ricekheer,dessert,2,,bangalore:ricekheer; hyderabad:ricekheer
 roast,starter,2,,bangalore:urulai_roast; hyderabad:urulai_roast
@@ -303,19 +302,12 @@ sprouts,salad,2,,bangalore:sprouts; hyderabad:sprouts
 tango,welcome_drink,2,,bangalore:tropical_tango; hyderabad:tropical_tango
 tempura,starter,2,,bangalore:vegetable_tempura; hyderabad:vegetable_tempura
 tempura,veg_dry,2,,bangalore:tempura_vegetables; hyderabad:tempura_vegetables
-thandai,welcome_drink,2,,bangalore:thandai; hyderabad:thandai
 thiyal,dal,2,,bangalore:ulli_thiyal; hyderabad:ulli_thiyal
 tom,soup,2,,bangalore:tom_yum; hyderabad:tom_yum
 upma,veg_dry,2,,ncr:seviyan_upma; ncr:upma
 watermelon,welcome_drink,2,,bangalore:watermelon_fresh; hyderabad:watermelon_fresh
-week,veg_gravy,2,,ncr:may_week; ncr:week
 yeruseri,sambar,2,,bangalore:yeruseri; hyderabad:yeruseri
-3rd,veg_gravy,1,,ncr:monday_3rd
-4th,veg_gravy,1,,ncr:tuesday_4th
-5th,veg_gravy,1,,ncr:wednesday_5th
-6th,veg_gravy,1,,ncr:thursday_6th
-7th,veg_gravy,1,,ncr:friday_7th
-achaar,veg_gravy,1,,ncr:mirch_ka_achaar
+achaar,accompaniment,1,,ncr:mirch_ka_achaar
 achaarialoo,veg_gravy,1,,ncr:achaarialoo
 adraki,veg_gravy,1,,ncr:adraki_gobi
 aloo,curd_side,1,,ncr:kadahi_shimla_aloo
@@ -336,8 +328,6 @@ beans,salad,1,,ncr:kidney_beans_relish
 beas,veg_gravy,1,,ncr:beas_bur
 beerakaya,dal,1,,hyderabad:beerakaya_senagapappu
 besan,dessert,1,,ncr:dahi_besan_guttey_ki_subz
-beverage,veg_gravy,1,,ncr:beverage
-beverages,veg_gravy,1,,ncr:beverages
 bhaji,dal,1,,ncr:mumbai_style_bhaji
 bharwa,veg_dry,1,,ncr:bharwa_simla_mirch
 bhindi,veg_gravy,1,,ncr:bhindi
@@ -349,7 +339,7 @@ browine,veg_gravy,1,,ncr:browine
 cabbage,salad,1,,hyderabad:cabbage_khimchi
 carrat,veg_gravy,1,,ncr:carrat
 chaach,veg_gravy,1,,ncr:plain_chaach
-cham,veg_gravy,1,,ncr:white_cham_cham
+cham,dessert,1,,ncr:white_cham_cham
 chane,dal,1,,ncr:kale_chane_tariwala
 chavali,veg_dry,1,,pune:chavali_sheng_dry
 chettinad,veg_dry,1,,pune:suran_chettinad
@@ -361,6 +351,7 @@ chinese,veg_gravy,1,,ncr:chinese_veg_in_sweet_n_sour
 choco,veg_gravy,1,,ncr:choco_muffin
 churma,veg_gravy,1,,ncr:churma
 chutney,salad,1,,ncr:coconut_chutney_tomato_chutney
+chutney,veg_gravy,1,,ncr:coconut_tomato_chutney
 cirry,veg_gravy,1,,ncr:konkani_veg_cirry
 cocktail,salad,1,,ncr:macaroni_e_cocktail_sauce
 colour,bread,1,,chennai:tri_colour_uttappam
@@ -370,11 +361,10 @@ crudittes,salad,1,,ncr:veg_crudittes
 curdites,curd_side,1,,ncr:veg_curdites
 curry,dal,1,,ncr:sindhi_curry
 custard,dessert,1,,ncr:strawberry_flavoured_custard
-custerd,veg_gravy,1,,ncr:custerd
+custerd,dessert,1,,ncr:custerd
 dalmakhani,veg_gravy,1,,ncr:dalmakhani
 dar,veg_dry,1,,ncr:gheeya_latpata_masale_dar
 date,veg_gravy,1,,ncr:date
-days,veg_gravy,1,,ncr:days
 dilkhushad,veg_gravy,1,,ncr:dilkhushad
 donuts,dessert,1,,chennai:sweet_donuts
 double,veg_gravy,1,,ncr:double_ka_mitha
@@ -389,12 +379,11 @@ frymes,salad,1,,ncr:frymes
 frymus,veg_gravy,1,,ncr:frymus
 games,veg_gravy,1,,ncr:junglee_games
 ghewada,veg_dry,1,,pune:shravani_ghewada
-gourmer,veg_gravy,1,,ncr:styker_x_gourmer_services
 gulab,welcome_drink,1,,ncr:gulab_sherbat
 guvava,veg_gravy,1,,ncr:guvava
 holi,dal,1,,ncr:holi
-hospitality,veg_gravy,1,,ncr:d_star_hospitality
 imarthi,dessert,1,,ncr:imarthi
+jeera,veg_gravy,1,,ncr:jeera_potato
 july,veg_gravy,1,,ncr:stryker_lunch_20_july_to_25_july
 kachori,veg_gravy,1,,ncr:mawa_kachori
 kheema,veg_dry,1,,pune:veg_kheema
@@ -403,18 +392,18 @@ kimchi,salad,1,,hyderabad:veg_kimchi
 kishmish,veg_gravy,1,,ncr:kishmish
 kodikura,nonveg_main,1,,hyderabad:kothmeera_kodikura
 kosha,nonveg_main,1,,hyderabad:kosha_murgir
-kung,dal,1,,ncr:vegetable_kung_pao_sauce
+kung,accompaniment,1,,ncr:vegetable_kung_pao_sauce
 lemon,bread,1,,chennai:lemon_poha
 lentil,dal,1,,ncr:lentil
 maal,veg_gravy,1,,ncr:maal_pua
 macroni,veg_gravy,1,,ncr:macroni
-malai,veg_gravy,1,,ncr:ras_malai
 manesar,veg_gravy,1,,ncr:new_vendor_at_manesar
 mangodi,veg_gravy,1,,ncr:mangodi
 mangodialoo,veg_gravy,1,,ncr:mangodialoo
 maratha,veg_gravy,1,,pune:veg_maratha
 matar,dal,1,,ncr:patila_matar
 matar,veg_dry,1,,ncr:nutrella_matar
+may,veg_gravy,1,,ncr:may_week
 melon,veg_gravy,1,,ncr:musk_melon
 methi,veg_dry,1,,pune:methi_tomato
 milijuli,veg_gravy,1,,ncr:milijuli_sabziyan
@@ -433,10 +422,8 @@ pasta,veg_gravy,1,,ncr:vegetable_pasta
 patisa,veg_gravy,1,,ncr:patisa
 patodi,veg_gravy,1,,pune:patodi
 pickel,veg_gravy,1,,ncr:pickel_sachet
-plates,veg_gravy,1,,ncr:5_plates
 pulihora,rice,1,,hyderabad:pulihora
 rabdi,veg_gravy,1,,ncr:rabdi
-rajbhog,veg_gravy,1,,ncr:rajbhog
 rasbhari,veg_gravy,1,,ncr:rasbhari
 rasgulaa,veg_gravy,1,,ncr:rasgulaa
 rasmadhuri,veg_gravy,1,,ncr:rasmadhuri
@@ -450,7 +437,6 @@ subz,rice,1,,ncr:subz_ki_thari
 tak,veg_dry,1,,ncr:veg_taka_tak
 takatak,veg_dry,1,,ncr:veg_takatak
 tawa,veg_gravy,1,,ncr:tawa_mix_veg
-thandai,veg_gravy,1,,ncr:thandai
 upma,veg_gravy,1,,ncr:veg_upma
 vegjalfrezi,veg_gravy,1,,ncr:vegjalfrezi
 watermelon,veg_gravy,1,,ncr:watermelon

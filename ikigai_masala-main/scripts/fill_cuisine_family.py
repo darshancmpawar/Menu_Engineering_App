@@ -352,8 +352,11 @@ def main(dry_run: bool = False) -> int:
                     "cuisine_family"])
         for row in sorted(leftover):
             w.writerow(list(row) + [""])
-    print(f"\nwrote {REPORT.relative_to(ROOT)} ({len(leftover)} dishes need "
-          f"the client)")
+    try:
+        shown = REPORT.relative_to(ROOT)
+    except ValueError:                      # a test pointed REPORT elsewhere
+        shown = REPORT
+    print(f"\nwrote {shown} ({len(leftover)} dishes need the client)")
     return 0
 
 

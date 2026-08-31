@@ -343,6 +343,17 @@ CANONICAL_SPELLINGS = {
     # buttermilk EVERY day, so these two names go on a printed menu weekly.
     "malasa": "masala",
     "tempared": "tempered",
+    # `raitha` -> `raita`, and it has to live HERE rather than only in
+    # `canonical_dish_spellings.DUPLICATES`, because the fold alone breaks
+    # import stability: Stryker's printed menu writes "Raitha", so dropping the
+    # row simply made the next re-import add it straight back. Exactly the
+    # failure recorded for `chapati` / `plain_chapati` in `KNOWN_SPLITS`, and
+    # the reason that one was left alone — but this pair is a spelling rather
+    # than a granularity question, so the right fix is to teach the importer the
+    # spelling instead of keeping two rows. `raita` is the direction: it carries
+    # `sub_category: raita` and `is_raita` while `raitha` carried neither and
+    # was one of the four flagless `curd_side` rows.
+    "raitha": "raita",
     "subzi": "sabzi",
     "sabji": "sabzi",
     "payasa": "payasam",

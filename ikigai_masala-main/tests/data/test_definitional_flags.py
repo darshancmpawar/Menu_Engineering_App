@@ -156,8 +156,23 @@ class TestEnforceItself:
         assert list(df["is_buttermilk"]) == [0, 0]
 
     def test_every_definition_names_a_course(self):
-        for _flag_name, course, tokens, _names in DEFINITIONS:
+        for _flag_name, course, tokens, _names, _excluded in DEFINITIONS:
             assert course and tokens
+
+    def test_an_exclusion_beats_the_token_list(self):
+        """`milk_cake` carries the token `cake` and is a mawa sweet, not a
+        bakery item — the same two rows `dessert_cuisine_corrections.py` keeps
+        out of its western retag. Dropping `cake` from the token list to exclude
+        them would have lost the other fifty-nine."""
+        from scripts.definitional_flags import (
+            BAKERY_DESSERT_EXCLUDED, BAKERY_DESSERT_WORDS, matches,
+        )
+        for name in BAKERY_DESSERT_EXCLUDED:
+            assert matches(name, BAKERY_DESSERT_WORDS, set())
+            assert not matches(name, BAKERY_DESSERT_WORDS, set(),
+                               BAKERY_DESSERT_EXCLUDED)
+        assert matches("chocolate_brownie", BAKERY_DESSERT_WORDS, set(),
+                       BAKERY_DESSERT_EXCLUDED)
 
     def test_every_ingredient_definition_is_complete(self, frames):
         """A course with no protein values, or a flag column no city has, would

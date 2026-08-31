@@ -40,7 +40,12 @@ from canonical_dish_spellings import (          # noqa: E402
 )
 from src.ontology.paths import city_excel_path  # noqa: E402
 
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+# Derived, not typed: `DUPLICATES` is parametrised over below, and once
+# Hyderabad joined it (seeded from Bangalore, so it inherits Bangalore's
+# adjudications) a hard-coded four-city tuple made the fixture raise KeyError
+# for a city the test was asked to check. Same failure `scripts/city_list.py`
+# exists to prevent one layer down.
+from scripts.city_list import CITIES  # noqa: E402
 
 
 def _frame(city):
