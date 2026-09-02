@@ -94,6 +94,11 @@ KNOWN_SPLITS = {
                                   "cities whose row IS `chapati`), so the "
                                   "granularity is the client's call, not a "
                                   "migration's",
+    ("mixed_fruit_crush", "mixed_fruit_custard"):
+        "the client's enrichment pass folds these together and they are TWO "
+        "DISHES, not two spellings: a fruit crush is a `welcome_drink` and a "
+        "fruit custard is a `dessert`. String similarity is what matched them; "
+        "the courses are what settle it. Refused.",
 }
 
 #: city -> {row to drop: the row it duplicates}. A rename that would collide is
@@ -179,12 +184,70 @@ DUPLICATES = {
                   # by eye, which is what that collision report is for.
                   "raitha": "raita",
                   "boondi_raitha": "boondi_raita",
-                  "mint_raitha": "mint_raita"},
+                  "mint_raitha": "mint_raita",
+                  # Duplicate pairs the client's enrichment pass found
+                  # (`data/raw/source_workbooks/bangalore_enriched_final.xlsx`).
+                  # Each was checked column by column first and follows the
+                  # house pattern exactly: the survivor is the attributed row
+                  # and the loser a bare stub. `jelabi` has no sub_category,
+                  # colour or flags against `jalebi`'s syrup-soaked/orange/5;
+                  # `bassuru` is a flagless `dal` against `bassaru` the brown
+                  # `rasam`; `ennegayi` a flagless `veg_gravy` against
+                  # `ennegai` the red brinjal `veg_dry`.
+                  "bassuru": "bassaru",
+                  "ennegayi": "ennegai",
+                  "gol_gappa": "golgappa",
+                  "jelabi": "jalebi",
+                  "motichur_ladhu": "motichur_laddu",
+                  "nucchinde": "nuchinunde"},
     "pune": {  # same pair, same direction: the `drink`-filed row wins.
                "butter_milk": "buttermilk"},
     "chennai": {"raitha": "raita", "mint_raitha": "mint_raita"},
     "ncr": {"palak_kadi": "palak_kadhi",
-            "kadi_pakdoa": "kadi_pakoda"},
+            "kadi_pakdoa": "kadi_pakoda",
+            # The three `remove_generic_rows.py` recorded as "real dishes
+            # misspelled — duplicates to adjudicate rather than scaffolding to
+            # delete", now adjudicated. Each is a stub sitting beside its own
+            # attributed twin, and each surfaced as a BLANK `item_color`, which
+            # is how they were found: a blank is not neutral, it clamps the
+            # day's required distinct colours down to what is present.
+            #
+            # `avail` and `veg_avail` carry the mapping pipeline's fingerprint —
+            # `cuisine_family: north_indian` on a Kerala dish and
+            # `key_ingredient` copied from the first word of the name — while
+            # `avial` is `south_indian`, `mixed_vegetables`, green and served by
+            # two sites. The attributed row wins, as with `chapatti`/`chapati`.
+            "avail": "avial",
+            "veg_avail": "avial",
+            # `veg_chowmin` matches `chowmin` on course, sub_category, cuisine
+            # and client, and differs only by a `veg` qualifier and a missing
+            # colour. (Both are filed `veg_gravy`, which is wrong for a noodle
+            # dish — a course question, deliberately not opened here.)
+            "veg_chowmin": "chowmin",
+            # Same enrichment pass. Straight stub-vs-stub or stub-vs-master
+            # folds, adopted after checking both rows.
+            "chettinadaloo": "chettinad_aloo",
+            "dil_khushal": "dil_khusal",
+            "dilkhushad": "dil_khusal",
+            "gond_pak": "gaund_pak",
+            "gur_khurma": "gud_khurma",
+            "imarti": "imarthi",
+            "rshbhari": "rasbhari",
+            "veg_takatak": "veg_taka_tak",
+            # `frymes` sat in `salad` and `frymus` in `veg_gravy`; the survivor
+            # is the one filed where a fryum belongs, `accompaniment / papad`,
+            # and it is the only one with a colour.
+            "frymes": "fryums",
+            "frymus": "fryums",
+            # A crudités platter is raw veg, so `salad / fresh_veg_salad` is the
+            # right filing and `curd_side / raita` is not. Both spellings are
+            # wrong; the better-FILED row survives.
+            "veg_curdites": "veg_crudittes",
+            # REVERSED from the enriched file, which keeps `rasgulaa`. That row
+            # is misspelled AND filed `veg_gravy / mixed_veg_curry` — a rasgulla
+            # served as the day's vegetable gravy. `rasgulla` is the dessert,
+            # `bengali_sweet`, brown, and it is the one that stays.
+            "rasgulaa": "rasgulla"},
 }
 
 # Hyderabad's list was SEEDED from Bangalore's, so it carries the same duplicate
@@ -212,8 +275,28 @@ def canonical_name(name: str) -> str:
     return out
 
 
-def _merge_clients(df, keep_idx, drop_row):
-    """Fold the dropped row's client tokens into the surviving row."""
+def _has_common_pool(df) -> bool:
+    """Does this city use a `common` pool at all?
+
+    NCR does not: all ~1,630 rows are tagged to one of eight sites, and the
+    convention that every row carries a site token or nothing is asserted in
+    `tests/data/test_expand_side_pools.py`. Promoting a merged row to `common`
+    there writes a token that names no pool the city has — the fold's own
+    invention rather than anything the source said. Read from the frame rather
+    than from a list of city names, so a city that later gains or loses a
+    common pool needs no second place updating.
+    """
+    return df["client"].fillna("").astype(str).str.lower().str.split(",").map(
+        lambda ts: any(t.strip() == "common" for t in ts)).any()
+
+
+def _merge_clients(df, keep_idx, drop_row, allow_common=True):
+    """Fold the dropped row's client tokens into the surviving row.
+
+    *allow_common* is False for a city with no common pool (see
+    `_has_common_pool`); the merged token list is then kept as-is however long
+    it grows, which is the honest record of which sites serve the dish.
+    """
     def toks(v):
         return [t.strip() for t in str(v or "").split(",") if t.strip()]
 
@@ -223,13 +306,15 @@ def _merge_clients(df, keep_idx, drop_row):
     have = {t.lower() for t in kept}
     for t in toks(drop_row["client"]):
         if t.lower() == "common":
-            df.at[keep_idx, "client"] = "common"
-            return
+            if allow_common:
+                df.at[keep_idx, "client"] = "common"
+                return
+            continue
         if t.lower() not in have:
             kept.append(t)
             have.add(t.lower())
-    df.at[keep_idx, "client"] = ("common" if len(kept) >= COMMON_AT
-                                 else ",".join(kept))
+    df.at[keep_idx, "client"] = (
+        "common" if allow_common and len(kept) >= COMMON_AT else ",".join(kept))
 
 
 def apply(df: pd.DataFrame, city: str = ""):
@@ -242,13 +327,17 @@ def apply(df: pd.DataFrame, city: str = ""):
     merged = []
     dupes = DUPLICATES.get(city, {})
     if dupes:
+        # Read before any merge, so the answer describes the CITY rather than
+        # whatever the fold has written so far.
+        allow_common = _has_common_pool(df)
         names = df["item"].astype(str).str.strip().str.lower()
         index_by_name = {n: i for i, n in names.items()}
         drop_idx = []
         for loser, winner in dupes.items():
             if loser not in index_by_name or winner not in index_by_name:
                 continue
-            _merge_clients(df, index_by_name[winner], df.loc[index_by_name[loser]])
+            _merge_clients(df, index_by_name[winner], df.loc[index_by_name[loser]],
+                           allow_common=allow_common)
             drop_idx.append(index_by_name[loser])
             merged.append((loser, winner))
         if drop_idx:

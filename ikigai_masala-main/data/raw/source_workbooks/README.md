@@ -94,9 +94,34 @@ attachments and would have been lost.
 
 ## Correction scripts, in the order they must run
 
+0. `scripts/merge_enriched_ontology.py` — **first of the writers.** Folds the
+   client's `<city>_enriched_final.xlsx` values into the city lists. It runs at
+   the head for the same reason the ingredient dictionary and the colour fill
+   run before `complete_ontology.py`: it supplies *evidence* — a complete
+   `item_color`, a real `primary_protein` vocabulary, NCR's last blank cuisines
+   — that every later pass learns from. Run it afterwards instead and those
+   passes vote on a thinner corpus and the chain stops converging. It is a
+   merge, not a replacement: the current workbook is the base and only values
+   cross over, because the uploads branch from a snapshot predating the last
+   three commits. Their ROW edits are deliberately elsewhere — the junk they
+   caught is in `remove_generic_rows.py` (step 5) and their duplicate folds are
+   in `canonical_dish_spellings.py` (step 3), which is also why running this
+   first cannot undo them.
+0b. `scripts/dump_chef_review.py` — a REPORT, so it can run any time, but it is
+   worth running at the end: the enriched files ship 720 Bangalore and 354 NCR
+   low-confidence colours in their own `chef_review` sheet, and once merged
+   those are indistinguishable from the 5,000 the client verified. It writes
+   them to `docs/chef_review_queue.csv` with what the merge actually stored, so
+   the open question stays visible instead of living inside a workbook nobody
+   opens.
 1. `scripts/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
 2. `scripts/misspelled_protein_names.py` — meat-named rows left in veg pools
-3. `scripts/canonical_dish_spellings.py` — one dish, one spelling
+3. `scripts/canonical_dish_spellings.py` — one dish, one spelling. NB its
+   duplicate fold **folds the merged rows' pool tokens together**, and the
+   promotion to `common` at 6 tokens is switched off for a city that has no
+   `common` pool (`_has_common_pool`, read from the frame before any merge).
+   NCR is that city — all its rows carry a site token or nothing — so promoting
+   there invented a token naming no pool the city has.
 4. `scripts/merge_duplicate_curd.py` — before `expand_side_pools.py`
 5. the per-city corrections (`seafood_taxonomy`, `course_type_corrections`,
    `remove_generic_rows`, `dessert_cuisine_corrections`, the `ncr_*` set)
@@ -152,8 +177,19 @@ sit with the per-city corrections (step 5).
 It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
 sweets four clients' stated rules asked more of than the list held.
 
-Steps 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
+Steps 0, 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
 docstrings give.
+
+**A removal is the one step the chain cannot undo.** Every other script fills or
+corrects a cell and re-running it converges; `remove_generic_rows.py` deletes
+rows, so a name added to its list by mistake, run once, is gone from the
+workbook and taking it back out of the list does NOT bring the rows back. That
+happened: `mixed_veg` and `sprouts` were briefly listed, removed from Bangalore,
+and survived in Hyderabad — which reads as Quest's import having added them,
+since `tests/cities/test_hyderabad_ontology.py` scopes "what Quest added" to
+rows absent from Bangalore. The recovery is `git checkout HEAD -- data/raw/city_items/`
+and a clean re-run, not a surgical re-add; anything else leaves residue from the
+bad run that nothing will report.
 
 The whole chain is **convergent**: run it twice and the second pass reports
 "already correct" everywhere. That is the check worth doing after any re-import,

@@ -391,10 +391,26 @@ PLACEHOLDERS = {"na", "n/a", "n.a.", "nil", "none", "-", "--", "---", "x",
                 # a day the site is closed is not a dish
                 "holiday", "closed", "off", "leave", "no service"}
 
+#: The NAME of a meal or a section, sitting in a dish cell. A printed grid puts
+#: these in the same column as the food — Booking's sheet writes "Lungcha" (the
+#: word LUNCH, garbled) where a dessert should be — and imported straight they
+#: become dishes: `luncha` sat in Bangalore's list as a `dessert` with no
+#: sub_category, no key_ingredient and no colour, servable as the day's sweet.
+#: `remove_generic_rows.py` deletes such rows, but it runs BEFORE the imports in
+#: the chain, so deleting alone is not enough — the next import mints it again
+#: under whatever spelling its own source uses. Matched by normalised NAME so a
+#: source's spelling does not decide, and separate from `PLACEHOLDERS` because
+#: these are not "no dish today", they are a label in the wrong cell.
+MEAL_PERIOD_WORDS = {"lunch", "luncha", "lungcha", "dinner", "breakfast",
+                     "brunch", "snacks", "snack", "evening_snacks", "supper",
+                     "menu", "meal", "meals", "veg", "non_veg", "nonveg"}
+
 
 def is_placeholder(text: str) -> bool:
     s = str(text).strip().lower().strip(".-–— ")
-    return not s or s in PLACEHOLDERS
+    if not s or s in PLACEHOLDERS:
+        return True
+    return re.sub(r"[^a-z0-9]+", "_", s).strip("_") in MEAL_PERIOD_WORDS
 
 
 def norm(v) -> str:
@@ -456,6 +472,27 @@ ALIASES = {
     "uppusaaru": "uppu_saru",
     "upsaaru": "uppu_saru",
     "soppu_saaru": "soppu_saru",
+    # The same fight, one fold later. These five arrived with the client's
+    # enriched workbooks, which caught duplicate pairs our own fold had missed,
+    # and each one re-broke the importer that writes the losing spelling —
+    # Citrix re-added `ennegayi`, `gol_gappa` and `nucchinde`, MOengage
+    # `bassuru` and `jelabi`. Per whole name rather than per token for the same
+    # reason as the four above: `gol_gappa` -> `golgappa` closes a word gap that
+    # no token rule can express, and the other four are single-token names where
+    # the two forms are the same length of edit — folding the token globally
+    # would reach into any longer dish name that happens to contain it.
+    "bassuru": "bassaru",
+    "ennegayi": "ennegai",
+    "gol_gappa": "golgappa",
+    "jelabi": "jalebi",
+    "nucchinde": "nuchinunde",
+    # NCR's three, folded for the same reason and pre-empting the same break:
+    # Stryker and Siemens are the sites that serve them, and both have an
+    # importer here. NB `mix_veg` is deliberately NOT in this dict — Corning
+    # Chakan's Pune menu prints it as a real dish, and `ALIASES` is global.
+    "avail": "avial",
+    "veg_avail": "avial",
+    "veg_chowmin": "chowmin",
 }
 
 

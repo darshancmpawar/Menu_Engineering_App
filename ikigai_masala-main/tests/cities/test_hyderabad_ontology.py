@@ -75,7 +75,7 @@ class TestTheCityHasItsOwnList:
 
     def test_the_workbook_is_the_master_schema(self, hyd, blr):
         """A column absent from the reference list cannot exist in a city's."""
-        assert len(hyd.columns) == 134
+        assert len(hyd.columns) == 136
         assert list(hyd.columns) == list(blr.columns)
 
     def test_it_is_not_declared_in_ontology_categories(self):

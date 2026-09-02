@@ -135,7 +135,7 @@
         ]
       },
       {
-        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case).",
+        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case). Weekly, not per-horizon: the rule's own sentence says 'the week's one chicken biryani', and Friday is forced by the composition, so a 14-day plan forces two and a horizon-wide `max: 1` made the pair unsatisfiable.",
         "name": "citrix_biryani_only_on_biryani_day",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",
@@ -145,7 +145,7 @@
         "allowed_day_types": [
           "biryani"
         ],
-        "max": 1
+        "max_per_week": 1
       },
       {
         "_comment": "'The region should alternate from south and north, should not be the same on 2 continuous days for flavour rice, veg gravy and veg dry.' Six rules — one per (slot, region) — because `avoid_consecutive` penalises ONE selector repeating on adjacent days, and a base_slot list would instead read a north rice on Monday beside a north gravy on Tuesday as the repeat. Written out rather than shelved: the rule library is for bodies a SECOND client needs.",

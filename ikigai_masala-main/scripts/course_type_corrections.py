@@ -167,7 +167,10 @@ CORRECTIONS = {
         # Sweets filed as veg_gravy/dal — would have plated as a "gravy".
         'badami_moong_dal_barfi': ('dessert', 'burfi', 'semi_dry'),
         'gaund_pak':              ('dessert', 'burfi', 'semi_dry'),
-        'gond_pak':               ('dessert', 'burfi', 'semi_dry'),
+        # `gond_pak` used to be listed here as well — the same sweet spelled a
+        # second way. `canonical_dish_spellings.py` now folds it into
+        # `gaund_pak`, so an entry for it would name a row that no longer
+        # exists and the script would report it missing on every run.
         'kesari_rawa':            ('dessert', 'halwa', 'semi_dry'),
         'rava_kesari':            ('dessert', 'halwa', 'semi_dry'),
         'kulfi':                  ('dessert', 'custard_/_pudding', 'wet'),
@@ -374,9 +377,19 @@ PROTEIN_CORRECTIONS = {
         'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
     },
     'ncr': {
-        # Minced soya, not meat — `mutton` was a fuzzy match on "keema". Cleared
-        # to veg; the course_type fix above files it as a soya veg dry.
-        'soya_keema': '',
+        # Minced soya, not meat — `mutton` was a fuzzy match on "keema". The
+        # course_type fix above files it as the soya veg dry it is.
+        #
+        # `soy`, not blank. Blank was the original fix and it was only half of
+        # one: it removed the false meat but left the dish with no protein at
+        # all, while its own siblings `soya_keema_mutter` (veg_dry) and
+        # `soya_keema_pulao` (rice) both carry `soy`, so the family disagreed
+        # with itself and a `primary_protein: soy` selector saw two of three.
+        # The client's enriched workbook says `soy` too — and because this
+        # correction runs AFTER the merge, leaving it blank made the merge
+        # non-idempotent: it filled `soy` on every run and this cleared it
+        # again, so the chain never settled on this cell.
+        'soya_keema': 'soy',
     },
 }
 

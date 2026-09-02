@@ -182,7 +182,9 @@ def test_weekly_cap_pairs_with_the_window(ncr_rules):
     cap = caps[0]
     assert cap.validate_config(), cap.validation_errors()
     assert cap.base_slot == 'bread'
-    assert getattr(cap, 'max_days', None) == 1 or cap.config.get('max') == 1
+    # Expressed PER WEEK now: `max` counts across the whole horizon, so a
+    # rule named `*_weekly_max` meant 'once a fortnight' on a 14-day plan.
+    assert cap.config.get('max_per_week') == 1 or cap.config.get('max') == 1
 
 
 def test_cadence_covers_every_south_bread_and_only_breads(cadence, ncr):

@@ -117,7 +117,7 @@
         "flag": "is_mixedveg_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "veg_kofta_weekly",
@@ -126,7 +126,7 @@
         "flag": "is_veg_kofta_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "black_dal_weekly",
@@ -135,7 +135,7 @@
         "flag": "is_black_dal"
       },
       "base_slot": "dal",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "pappu_dal_weekly",
@@ -144,7 +144,7 @@
         "flag": "is_pappu_dal"
       },
       "base_slot": "dal",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "liquid_desserts_twice_nonconsecutive",
@@ -163,7 +163,7 @@
         "key_ingredient": "potato"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "potato_veg_dry_weekly",
@@ -172,7 +172,7 @@
         "key_ingredient": "potato"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "lentil_daily_max_3",
@@ -208,7 +208,7 @@
         "flag": "is_special_sambar"
       },
       "base_slot": "sambar",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "The 15-day rolling window behind special_sambar_weekly (rulebook 82). The weekly max caps it within a plan; this reads saved history so a special sambar served last week is held off until the 15 days clear.",
@@ -227,7 +227,7 @@
         "flag": "is_maida_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "multigrain_bread_weekly",
@@ -236,7 +236,7 @@
         "flag": "is_multigrain_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "continental_rice_weekly",
@@ -245,7 +245,7 @@
         "flag": "is_continental_rice"
       },
       "base_slot": "rice",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "mixedveg_pulao_biryani_weekly",
@@ -257,7 +257,7 @@
         ]
       },
       "base_slot": "rice",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "icecream_custard_weekly",
@@ -266,7 +266,7 @@
         "flag": "is_custard_or_icecream"
       },
       "base_slot": "dessert",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "sugar_syrup_nonconsecutive",
@@ -284,7 +284,7 @@
         "flag": "is_lassi"
       },
       "base_slot": "welcome_drink",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "milkshake_heavy_milk_weekly",
@@ -296,7 +296,7 @@
         ]
       },
       "base_slot": "welcome_drink",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "soda_weekly",
@@ -305,7 +305,7 @@
         "flag": "is_soda_drink"
       },
       "base_slot": "welcome_drink",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "oil_based_bread_weekly",
@@ -314,7 +314,7 @@
         "flag": "is_oil_based_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "leafy_veg_dry_weekly",
@@ -323,7 +323,7 @@
         "flag": "is_leafy_based_dish"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "black_chana_gravy_weekly",
@@ -332,7 +332,7 @@
         "flag": "is_black_chana_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "kabuli_chana_gravy_weekly",
@@ -341,7 +341,7 @@
         "flag": "is_kabuli_chana_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "rajma_gravy_weekly",
@@ -350,7 +350,7 @@
         "flag": "is_rajma_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "kadhi_dal_weekly",
@@ -359,7 +359,7 @@
         "flag": "is_kadhi_dal"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "deep_fried_nonveg_weekly",
@@ -368,7 +368,7 @@
         "flag": "is_deep_fried_nonveg_dry"
       },
       "base_slot": "nonveg_main",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "name": "dal_colour_non_consecutive",
@@ -598,7 +598,7 @@
       ]
     },
     {
-      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only \u2014 see SameDayExclusionRule._hits.",
+      "_comment": "No soya, baby corn, chole or mushroom on a paneer day (client rule, all cities) — they read as substitutes for each other, so serving two wastes a slot. Counted across every slot because the point is the day's plate: a paneer gravy next to a soya veg dry is exactly the pairing to avoid. 'chole' is selected as the chana-gravy family (is_chana_gravy) since that is how the ontology files chole in both cities; the flag also covers the other whole-legume gravies, which fits the intent. Pune carries no mushroom dish, so that part of the selector is simply inert there. Baby corn is matched on the NAME, not on key_ingredient: that column tags 67 Bangalore rows baby_corn of which only 3 are baby-corn dishes (it is the de-facto default for a mixed salad, incl. iceberg_lettuce and black_olives) while the 34 dishes actually named after baby corn are tagged corn / bell_pepper / cauliflower. A HARD rule on that column would ban nearly every salad from paneer days and still miss 31 of the 34 real dishes. A dish matching BOTH sides (chole_paneer) counts as paneer only — see SameDayExclusionRule._hits.",
       "name": "paneer_not_with_soya_babycorn_chole_mushroom",
       "type": "same_day_exclusion",
       "selector": {

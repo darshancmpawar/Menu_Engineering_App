@@ -161,7 +161,7 @@ class TestPuneLeafyVegDry:
 class TestShape:
     def test_the_schema_is_unchanged_and_shared(self, frames):
         widths = {c: len(df.columns) for c, df in frames.items()}
-        assert set(widths.values()) == {134}, widths
+        assert set(widths.values()) == {136}, widths
 
     @pytest.mark.parametrize("city", CITIES)
     def test_no_duplicate_names_or_ids(self, frames, city):

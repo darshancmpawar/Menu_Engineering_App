@@ -13,6 +13,7 @@ Config::
         "selector": {"flag": "is_mixedveg_gravy"},   # exactly one selector key
         "base_slot": "veg_gravy",                     # optional slot scope
         "max": 1,            # horizon day-level: at most N days have a match
+        "max_per_week": null,# CALENDAR-week day-level: at most N days a week
         "min": 0,            # horizon day-level: at least N days
         "exact": null,       # horizon day-level: exactly N days
         "non_consecutive": false,   # matched days may not be adjacent
@@ -31,6 +32,27 @@ Selector keys: ``flag`` (column name), ``sub_category``, ``item``,
 Combinators: ``any_flag`` (any of these flag columns), ``any_of`` / ``all_of``
 (a list of sub-selectors, OR / AND), ``name_contains`` (substrings of the dish
 NAME).
+
+``max`` counts across the WHOLE HORIZON, which is what "at most N" has always
+meant here and is right for a one-week plan — but it silently tightens as the
+plan grows: a rule named `*_weekly` with ``max: 1`` means "once a fortnight" on
+14 days and "once in three weeks" on 21. That is not a hypothetical. Sixty rules
+across the shipped configs are named that way, and on a 14-day horizon it is
+what blocks most of the fleet: 74 of 85 counters diagnose clean at 7 days and
+only 34 at 14, almost all of them on `nonveg_biryani_once_per_week`,
+`mixedveg_pulao_biryani_weekly` or `kootu_twice_weekly`.
+
+``max_per_week`` is the fix, and it means what the rule name says: at most N
+days **in each calendar week**. Weeks are ISO (Monday-Sunday), the same
+boundary `chinese_continental` already resolves its parity on, so a rule reads
+the same way whatever horizon it is planned over. On a Monday-start week-long
+plan it is identical to ``max``; beyond that it stops over-constraining. Note it
+is a CALENDAR week, not a rolling 7 days, so a plan starting mid-week may place
+two matches within seven consecutive days either side of the boundary — that is
+the client's own "once a week" and the looser reading is deliberate.
+
+The two may be combined: ``max_per_week`` for the recurring cadence and ``max``
+for an absolute ceiling on the plan.
 
 Counting is day-level for max/min/exact (how many days carry >= 1 match), which
 equals occurrence count for single-per-day slots. ``daily_max`` is an
@@ -103,6 +125,8 @@ class SelectorFrequencyRule(BaseMenuRule):
             self.base_slots = {str(bs)} if bs else None
             self.base_slot = bs
         self.max: Optional[int] = self._int_or_none(rule_config, 'max')
+        self.max_per_week: Optional[int] = self._int_or_none(
+            rule_config, 'max_per_week')
         self.min: Optional[int] = self._int_or_none(rule_config, 'min')
         self.exact: Optional[int] = self._int_or_none(rule_config, 'exact')
         self.daily_max: Optional[int] = self._int_or_none(rule_config, 'daily_max')
@@ -217,14 +241,22 @@ class SelectorFrequencyRule(BaseMenuRule):
         if not self.sel_kind:
             errs.append("selector must contain exactly one of " + ", ".join(sorted(_SELECTOR_KEYS)))
         if all(v is None for v in (self.max, self.min, self.exact, self.daily_max,
-                                   self.daily_min)) \
+                                   self.daily_min, self.max_per_week)) \
                 and not self.non_consecutive \
                 and not self.forbidden_weekdays:
-            errs.append("at least one of max / min / exact / daily_max / "
-                        "non_consecutive / forbidden_weekdays is required")
+            errs.append("at least one of max / max_per_week / min / exact / "
+                        "daily_max / non_consecutive / forbidden_weekdays is "
+                        "required")
+        if self.exact is not None and self.max_per_week is not None:
+            errs.append("exact cannot be combined with max_per_week")
+        if (self.max is not None and self.max_per_week is not None
+                and self.max_per_week > self.max):
+            errs.append(f"max_per_week ({self.max_per_week}) must be <= max "
+                        f"({self.max})")
         if self.exact is not None and (self.max is not None or self.min is not None):
             errs.append("exact cannot be combined with max/min")
-        for k in ('max', 'min', 'exact', 'daily_max', 'daily_min'):
+        for k in ('max', 'min', 'exact', 'daily_max', 'daily_min',
+                  'max_per_week'):
             v = getattr(self, k)
             if v is not None and v < 0:
                 errs.append(f"{k} must be >= 0 (got {v})")
@@ -331,6 +363,19 @@ class SelectorFrequencyRule(BaseMenuRule):
 
         if self.max is not None:
             model.Add(sum(hvars) <= self.max)
+
+        # ...and the per-CALENDAR-week cap, which is what a rule named `*_weekly`
+        # actually means. One constraint per ISO week present in the horizon, so
+        # the rule reads the same whether it is planned over 5 days or 25.
+        if self.max_per_week is not None and dates:
+            by_week: Dict[Any, List[Any]] = {}
+            for di, hv in day_has:
+                if di >= len(dates):                       # pragma: no cover
+                    continue
+                iso = dates[di].isocalendar()
+                by_week.setdefault((iso[0], iso[1]), []).append(hv)
+            for week, wv in by_week.items():
+                model.Add(sum(wv) <= self.max_per_week)
 
         # min / exact: cap to what the horizon can actually place so a thin pool
         # relaxes instead of going INFEASIBLE.
@@ -470,6 +515,7 @@ class SelectorFrequencyRule(BaseMenuRule):
             return 0
 
         forced = 0
+        self._forced_dates = []
         for d in ctx.dates:
             if (d, self.base_slot) in (ctx.skip_cells or set()):
                 continue
@@ -488,14 +534,19 @@ class SelectorFrequencyRule(BaseMenuRule):
                 continue
             if all(self._row_matches(row) for _i, row in pool.iterrows()):
                 forced += 1
+                self._forced_dates.append(d)
 
         # A composition rule mandating a matching item forces the selector just
         # as hard as a pool that offers nothing else.
-        from .slot_composition_rule import days_forced_by_composition
-        by_composition = days_forced_by_composition(
+        from .slot_composition_rule import dates_forced_by_composition
+        by_composition = dates_forced_by_composition(
             self._peer_rules, ctx, self.base_slot, self._row_matches,
         )
-        return max(forced, by_composition)
+        # Dates, not counts — see the same change in `nonveg_rules.py`. A
+        # `max_per_week` cap needs to know WHICH days are forced so it can ask
+        # whether any single week exceeds it.
+        self._forced_dates = sorted(set(self._forced_dates) | set(by_composition))
+        return max(forced, len(by_composition), len(self._forced_dates))
 
     def diagnose(self, ctx: "DiagnoseContext") -> List["Diagnostic"]:
         """Report when this rule cannot ask for what it is configured to ask.
@@ -526,9 +577,23 @@ class SelectorFrequencyRule(BaseMenuRule):
         # counter failed while this pass reported "would_succeed: true". Provable
         # from the pools, so it is an ERROR and /plan answers 422 with the fix.
         cap = self.max if self.max is not None else self.exact
-        if cap is not None:
+        if cap is not None or self.max_per_week is not None:
             forced = self._forced_days(ctx)
-            if forced > cap:
+            # A per-week cap is only contradicted when a SINGLE week is forced
+            # past it. Comparing the horizon total against a weekly number is
+            # what made every `*_weekly` rule look impossible on a fortnight.
+            if self.max_per_week is not None:
+                by_week: Dict[Any, int] = {}
+                for d in getattr(self, '_forced_dates', []):
+                    iso = d.isocalendar()
+                    key = (iso[0], iso[1])
+                    by_week[key] = by_week.get(key, 0) + 1
+                worst = max(by_week.values(), default=0)
+                if cap is None or self.max_per_week < cap:
+                    cap, forced = self.max_per_week, worst
+                elif worst > self.max_per_week:
+                    cap, forced = self.max_per_week, worst
+            if cap is not None and forced > cap:
                 sel_desc = f"{self.sel_kind}={self.sel_value!r}"
                 where = (f"for '{self.base_slot}'" if self.base_slot
                          else "somewhere on this counter")

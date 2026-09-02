@@ -67,7 +67,7 @@ Amadeus Pune — from the client's sample week (docs/pune_client_logic.md). Seve
 | `amadeus_pune_buttermilk_daily` | welcome_drink must include (when the counter serves ≥1 of it): is_buttermilk | welcome drink will have butter milk daily' — the client's answer to the Pune rulebook's R59: the welcome drink IS the buttermilk, not an extra accompaniment |
 | `amadeus_pune_paneer_weekly` | key_ingredient paneer: exactly 1 day(s) | weekly 1 panner' — exactly one paneer dish a week, counted across every slot (the Pune list has 13 paneer gravies and one paneer-based veg dry). |
 | `amadeus_pune_soya_veg_dry_weekly` | key_ingredient soy @ veg_dry: exactly 1 day(s) | weekly 1 soya' — the sample's soya is a veg DRY (Monday's Soya Chatpata Dry), and all three of Pune's is_premium_veg_dry items are the soya dries, so this is also what makes the city ruleset's pre… |
-| `amadeus_pune_soya_total_weekly` | key_ingredient soy: ≤ 1 day(s) | …and no SECOND soya dish anywhere else that week (the Pune list has one soya gravy, soya_masala) |
+| `amadeus_pune_soya_total_weekly` | key_ingredient soy: ≤ 1/week | …and no SECOND soya dish anywhere else that week (the Pune list has one soya gravy, soya_masala) |
 | `amadeus_pune_sunday_veg_biryani` | rice must include (when the counter serves ≥1 of it): on sun: is_mixedveg_biryani | in sun we server only flvour rice(any veg biryani)' — Sunday's rice must be a veg biryani, and 'any' is why this is a composition over the biryani flag rather than a pinned dish: the solver picks … |
 
 ## Astrazeneca
@@ -158,7 +158,7 @@ Bangalore site, one counter, one dish per slot (themes Mon-Thu = mix, Fri = biry
 | `citrix_rice_and_veg_gravy_same_region` | prefer (medium): rice and veg_gravy should agree on cuisine_family (north_indian/south_indian) | Flavour rice and veg gravy should be of the same region. |
 | `citrix_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on tue: is_egg_dish; on fri: is_nonveg_biryani | Nonveg main: Mon & Wed Chicken gravy, Tue - Egg curry, Friday Biryani. |
 | `citrix_nonveg_mon_tue_wed_fri` | nonveg_main runs only on mon, tue, wed, fri (blank otherwise) | Nonveg main: Mon & Wed chicken gravy, Tue egg curry, Friday biryani' names four days out of five, and the client confirmed the fifth is deliberate: THURSDAY IS BLANK |
-| `citrix_biryani_only_on_biryani_day` | is_nonveg_biryani @ nonveg_main: ≤ 1 day(s), only on biryani days; only on biryani days | Friday is this counter's biryani day and the client asked for the biryani there |
+| `citrix_biryani_only_on_biryani_day` | is_nonveg_biryani @ nonveg_main: ≤ 1/week, only on biryani days; only on biryani days | Friday is this counter's biryani day and the client asked for the biryani there |
 | `citrix_rice_north_not_two_days_running` | prefer (medium): avoid cuisine_family north_indian @ rice on adjacent days | The region should alternate from south and north, should not be the same on 2 continuous days for flavour rice, veg gravy and veg dry. |
 | `citrix_rice_south_not_two_days_running` | prefer (medium): avoid cuisine_family south_indian @ rice on adjacent days |  |
 | `citrix_veg_gravy_north_not_two_days_running` | prefer (medium): avoid cuisine_family north_indian @ veg_gravy on adjacent days |  |
@@ -200,7 +200,7 @@ Bangalore site. NOT configured as rules because they are DB values, not logic: '
 | `computa_plain_chapati_phulka_2x` | shelf component `plain_chapati_twice_a_week` |  |
 | `computa_paneer_exact_1` | shelf component `paneer_once_a_week` |  |
 | `computa_biryani_pulao_rice_3x` | is_nonveg_biryani or is_mixedveg_biryani or is_premium_biryani or is_pulao @ rice: ≥ 3 day(s) |  |
-| `computa_chinese_veg_dry_weekly` | cuisine_family chinese @ veg_dry: ≤ 1 day(s) |  |
+| `computa_chinese_veg_dry_weekly` | cuisine_family chinese @ veg_dry: ≤ 1/week |  |
 | `computa_no_mixed_veg` | never serve: mixed_veg, mixed veg |  |
 
 **City rules switched off:** `mixedveg_pulao_biryani_weekly`, `mixed_veg_gravy_weekly`
@@ -216,12 +216,12 @@ Pune site, one counter, seven days a week (`serve_weekends` is true, which the s
 | `corning_chakan_soup_tue_thu_sat_sun` | soup runs only on tue, thu, sat, sun (blank otherwise) | Soup should be served on Tuesday, Thursday, Saturday and Sunday. |
 | `corning_chakan_dessert_mon_wed_fri` | dessert runs only on mon, wed, fri (blank otherwise) | Sweets should be served on Monday, Wednesday and Friday. |
 | `corning_chakan_no_liquid_sweets` | is_liquid_dessert @ dessert: ≤ 0 day(s) | Liquid sweets should not be considered. |
-| `corning_chakan_black_dal_weekly` | is_black_dal @ dal: ≤ 1 day(s) | All black dal preparations combined should be served maximum once a week. |
-| `corning_chakan_sprouts_gravy_twice_weekly` | named sprout/matki @ veg_gravy: ≤ 2 day(s) | Sprouts gravy should be served maximum twice a week. |
+| `corning_chakan_black_dal_weekly` | is_black_dal @ dal: ≤ 1/week | All black dal preparations combined should be served maximum once a week. |
+| `corning_chakan_sprouts_gravy_twice_weekly` | named sprout/matki @ veg_gravy: ≤ 2/week | Sprouts gravy should be served maximum twice a week. |
 | `corning_chakan_paneer_gravy_weekly` | is_paneer_gravy @ veg_gravy: exactly 1 day(s) | Paneer gravy should be included once a week across all meal sessions. |
-| `corning_chakan_paneer_or_kofta_weekly` | key_ingredient paneer or is_veg_kofta_gravy: ≤ 1 day(s) | Paneer/kofta preparations should be served once a week across lunch and dinner. |
-| `corning_chakan_mixedveg_kurma_kofta_twice_weekly` | is_mixedveg_gravy or is_kurma_gravy or is_veg_kofta_gravy @ veg_gravy: ≤ 2 day(s) | Mixed-veg, veg kurma and veg kofta gravies should be served maximum twice a week. |
-| `leafy_veg_dry_weekly` | is_leafy_based_dish @ veg_dry: ≥ 2 day(s), ≤ 2 day(s) | Leafy-vegetable dry preparations should be served twice a week. |
+| `corning_chakan_paneer_or_kofta_weekly` | key_ingredient paneer or is_veg_kofta_gravy: ≤ 1/week | Paneer/kofta preparations should be served once a week across lunch and dinner. |
+| `corning_chakan_mixedveg_kurma_kofta_twice_weekly` | is_mixedveg_gravy or is_kurma_gravy or is_veg_kofta_gravy @ veg_gravy: ≤ 2/week | Mixed-veg, veg kurma and veg kofta gravies should be served maximum twice a week. |
+| `leafy_veg_dry_weekly` | is_leafy_based_dish @ veg_dry: ≥ 2 day(s), ≤ 2/week | Leafy-vegetable dry preparations should be served twice a week. |
 | `corning_chakan_starter_thursday_only` | starter runs only on thu (blank otherwise) | On Thursday only we will give a starter. |
 | `corning_chakan_starter_is_a_chaat` | starter must include (when the counter serves ≥1 and ≤1 of it): named chaat/chat | Starter should be chat item. |
 
@@ -639,7 +639,7 @@ Chennai. Derived from a 7-day SERVICE HISTORY (Wed 01 Jul – Thu 09 Jul 2026, w
 | `toast_tab_chn_rasam_south_days` | rasam runs only on mon, thu, fri (blank otherwise) | Rasam on the SOUTH days only — the 'RASAM / CURD' cell, which the source workbook auto-split into two servings |
 | `toast_tab_chn_curd_side_south_and_biryani_days` | curd_side runs only on mon, wed, thu, fri (blank otherwise) | The curd half of 'RASAM / CURD', same four south days |
 | `toast_tab_chn_curd_rice_north_biryani_days` | curd_rice runs only on tue, wed (blank otherwise) | Curd rice on the NORTH and BIRYANI days — the sour/yogurt component when there is no white rice + rasam |
-| `maida_bread_weekly` | is_maida_bread @ bread: ≤ 2 day(s) | Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1) |
+| `maida_bread_weekly` | is_maida_bread @ bread: ≤ 2/week | Overrides the city rule of the same name (merged by name, so this REPLACES chennai.json's max of 1) |
 | `toast_tab_chn_bread_is_a_wheat_flatbread` | bread must include (when the counter serves ≥1 of it): is_plain_phulka_chapathi or is_paratha or is_maida_bread or is_tandoori_roti | The bread is always a wheat or maida flat bread, never the dosai/idly family |
 
 ## Vector

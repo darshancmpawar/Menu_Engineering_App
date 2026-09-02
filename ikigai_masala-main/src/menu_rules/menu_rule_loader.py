@@ -515,6 +515,30 @@ class MenuRuleLoader:
             return set()
         return {k for k in pins if not str(k).startswith('_')}
 
+    def _rebuild(self, rules: List[BaseMenuRule],
+                 client_name: str) -> List[BaseMenuRule]:
+        """Fresh instances of *rules*, reconstructed from their configs.
+
+        A rule that cannot be rebuilt is passed through rather than dropped: a
+        shared instance is a concurrency hazard, but losing a constraint
+        silently is worse than the hazard. Stubs with no ``config`` (tests pass
+        them) have nothing to rebuild from and are passed through too.
+        """
+        out: List[BaseMenuRule] = []
+        for rule in rules:
+            cfg = getattr(rule, 'config', None)
+            if not cfg:
+                out.append(rule)
+                continue
+            try:
+                fresh = self._create_rule(dict(cfg))
+            except (ValueError, KeyError, TypeError) as exc:
+                logger.warning("Could not rebuild rule %s for %s: %s",
+                               getattr(rule, 'name', '?'), client_name, exc)
+                fresh = None
+            out.append(fresh if fresh is not None else rule)
+        return out
+
     def load_for_client(
         self, client_name: str, generic_rules: List[BaseMenuRule],
         counter_name: Optional[str] = None,
@@ -528,10 +552,23 @@ class MenuRuleLoader:
 
         *counter_name* additionally applies that counter's ``counters`` entry, so
         an override can be scoped to one station of a multi-counter client.
+
+        **The returned rules are always fresh instances**, including when the
+        client has no overrides at all. `generic_rules` is the process-wide
+        ruleset `OntologyRepository.rules_for_city` caches per city, and rules
+        are not stateless: `UniqueItemsMenuRule.apply()` stores the model's
+        repeat-penalty VARIABLES on `self` for `get_objective_terms()` to read
+        back. Handing the same instance to two concurrent solves — which the
+        `@solver_gate` allows by design, and which any two clients of one city
+        hit — lets the second `apply()` clobber the first's list, so the first
+        solve's objective references variables belonging to the other model and
+        CP-SAT rejects it as MODEL_INVALID. Rebuilding costs one `_create_rule`
+        per rule against a CP-SAT solve, and the override path below always did
+        it anyway; the early return was the only sharing route.
         """
         client_block = self._read_client_blob().get(client_name)
         if not client_block:
-            return list(generic_rules)
+            return self._rebuild(generic_rules, client_name)
 
         parsed = self._parse_client_block(client_block, counter_name)
         parent_dicts = [

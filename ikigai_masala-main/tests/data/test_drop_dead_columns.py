@@ -18,7 +18,7 @@ import pytest
 from scripts.complete_ontology import load
 from scripts.drop_dead_columns import DEAD_COLUMNS, CITIES
 
-EXPECTED_COLUMNS = 134
+EXPECTED_COLUMNS = 136
 
 
 @pytest.fixture(scope='module')

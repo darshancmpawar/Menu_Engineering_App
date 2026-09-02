@@ -36,7 +36,7 @@
         "selector": {
           "cuisine_family": "chinese"
         },
-        "max": 1
+        "max_per_week": 1
       },
       {
         "name": "computa_no_mixed_veg",

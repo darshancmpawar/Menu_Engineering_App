@@ -96,30 +96,84 @@ class TestWhatTheVoteRefuses:
         at least survives a mix day. No NCR client runs either day."""
         assert set(PREDICTABLE) == {"north_indian", "south_indian"}
 
-    def test_a_theme_exclusive_row_is_never_given_a_region(self, frames):
-        """Rows carrying an is_chinese_*/is_continental_* flag are reported, not
-        given a region. The flags are not clean enough to write from either —
-        they agree with the column 89% and 94% of the time, under the 95% this
-        pass demands.
+    #: The two tiers that READ a field rather than inferring from one. Both
+    #: deliberately beat the exclusive-flag skip: a row whose `sub_category`
+    #: says `north` while a continental flag says otherwise is contradicting
+    #: itself, and the sub_category is the half that names a region.
+    EVIDENCE_TIERS = {"same dish in another city",
+                      "sub_category names the region"}
 
-        Asserted by re-running the pass rather than by looking at the column:
-        some of these rows arrived with a region already on them and the pass is
-        monotone, so what has to hold is that it never WRITES one — which is a
-        different statement from "none of them has one"."""
+    def test_the_vote_never_gives_a_theme_exclusive_row_a_region(self, frames):
+        """A guessed region is worse than a blank for these rows: chinese and
+        continental make a dish appear ONLY on their own theme day, while a
+        blank at least survives a mix day. The flags are not clean enough to
+        write from either — they agree with the column 89% and 94% of the time,
+        under the 95% this pass demands.
+
+        Scoped to the VOTE on purpose. The two tiers above it read a field
+        instead of inferring from one, and the pass lets them answer an
+        exclusive row; asserting "never filled" was broader than the code
+        promises, and the first five rows planted on happened to have a
+        `sub_category` that names a region. What has to hold is that anything
+        which DID get filled was filled by evidence.
+
+        The blank is PLANTED. It used to be taken from NCR's own leftovers and
+        the client's enriched workbooks filled the last of them, so the test
+        started failing with "nothing left to prove" — a guard going quiet
+        because the data got better, which is the one way a guard must not go
+        quiet. Planting asks the same question however complete the column
+        becomes.
+        """
         import scripts.fill_cuisine_family as F
         d = frames["ncr"].copy()
         m = exclusive_mask(d)
-        assert int(m.sum()) > 0
-        blank_and_exclusive = m & _norm(d[F.COLUMN]).eq("")
-        assert int(blank_and_exclusive.sum()) > 0, "nothing left to prove"
+        assert int(m.sum()) > 0, "no theme-exclusive rows to reason about"
+
+        d[F.COLUMN] = d[F.COLUMN].astype(object)
+        planted = list(d.index[m])
+        d.loc[planted, F.COLUMN] = ""
+        names = {_norm(pd.Series([d.at[i, "item"]]))[0] for i in planted}
 
         rows = pd.concat([frames[c] for c in CITIES], ignore_index=True)
         known = rows[_norm(rows[F.COLUMN]) != ""]
-        out, filled, _ = F.apply(
+        _out, filled, unresolved = F.apply(
             d, F.learn_by_dish(rows), F.learn(known), F.learn(known))
-        touched = {name for name, _ct, _v, _why in filled}
-        still_blank = _norm(out[F.COLUMN]).eq("")
-        assert (blank_and_exclusive & ~still_blank).sum() == 0, sorted(touched)
+
+        guessed = [(n, v, why) for n, _ct, v, why in filled
+                   if n in names and why not in self.EVIDENCE_TIERS]
+        assert not guessed, guessed
+        assert unresolved, "every exclusive row was answered by evidence — " \
+                           "the skip is no longer reachable, so re-read it"
+        assert any(why == "carries a chinese/continental flag"
+                   for _n, _ct, why in unresolved)
+
+    def test_an_ordinary_row_blanked_the_same_way_is_filled(self, frames):
+        """The counter-check: the refusal has to be about the exclusive flags
+        rather than about the planting.
+
+        Deliberately NOT "and by the vote". Almost every NCR dish also exists
+        in another city, so `learn_by_dish` — the strongest and cheapest tier —
+        answers a planted NCR row before the vote is consulted, and demanding a
+        vote fill here tests which tier happens to win rather than anything
+        about the refusal. The vote's own thresholds are measured in
+        `test_the_threshold_is_the_measured_one`."""
+        import scripts.fill_cuisine_family as F
+        d = frames["ncr"].copy()
+        ordinary = list(d.index[
+            ~exclusive_mask(d)
+            & _norm(d["course_type"]).isin(CUISINE_MAIN)
+            & _norm(d[F.COLUMN]).ne("")
+        ][:200])
+        assert ordinary, "no ordinary cuisine-main row to plant on"
+
+        d[F.COLUMN] = d[F.COLUMN].astype(object)
+        d.loc[ordinary, F.COLUMN] = ""
+        rows = pd.concat([frames[c] for c in CITIES], ignore_index=True)
+        known = rows[_norm(rows[F.COLUMN]) != ""]
+        out, _filled, _ = F.apply(
+            d, F.learn_by_dish(rows), F.learn(known), F.learn(known))
+        refilled = int(_norm(out.loc[ordinary, F.COLUMN]).ne("").sum())
+        assert refilled > len(ordinary) // 2, refilled
 
     def test_welcome_drinks_are_left_alone(self):
         """The corpus splits 331 `drink` / 139 `north_indian` for that course,
