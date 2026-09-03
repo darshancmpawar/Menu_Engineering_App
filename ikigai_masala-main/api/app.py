@@ -1158,6 +1158,142 @@ def regenerate_cells():
         return _internal_error_response(500)
 
 
+#: Counter label used when reporting an unknown dish on the single-counter save
+#: path, where there is no counter to name.
+_SINGLE_COUNTER = 'plan'
+
+
+def _saved_response(unknown):
+    """The /save body. `unknown_items` appears only when there is something to
+    say, so a clean save is byte-for-byte what it always was."""
+    body = {'success': True, 'message': 'Plan saved to history'}
+    if unknown:
+        body['unknown_items'] = unknown
+        body['warning'] = (
+            f"{len(unknown)} dish name(s) were saved but match no item in this "
+            f"client's city list, so the cooldown and freshness rules will not "
+            f"recognise them."
+        )
+    return body
+
+
+def _declared_constant_values(client_name):
+    """Every literal a client's `constant_items` can stamp, lower-cased.
+
+    These are legitimately off-ontology (note 9): "Mutton Biryani" and "Fish
+    Tikka Masala" name dishes the veg-only list does not carry, are stamped
+    verbatim post-solve, and reach `/save` like any other dish. So they must
+    not be reported as unrecognised.
+
+    A pin's value is a string, a `{weekday: value}` map, or a list that
+    alternates by ISO week — all three flattened here, since which one fires on
+    a given day is not the question.
+    """
+    def literals(spec):
+        if isinstance(spec, str):
+            yield spec
+        elif isinstance(spec, list):
+            for v in spec:
+                yield from literals(v)
+        elif isinstance(spec, dict):
+            for k, v in spec.items():
+                if not str(k).startswith('_'):
+                    yield from literals(v)
+
+    out = set()
+    loader = MenuRuleLoader()
+    for counter in (None, *_counter_names(client_name)):
+        try:
+            pins = loader.get_client_constant_items(client_name, counter)
+        except Exception:  # noqa: BLE001 — a missing block is not an error here
+            continue
+        for slot, spec in (pins or {}).items():
+            if str(slot).startswith('_'):
+                continue
+            out.update(v.strip().lower() for v in literals(spec) if v)
+    return out
+
+
+def _counter_names(client_name):
+    try:
+        return [c.counter_name for c in _get_client_loader()
+                .get_client_configs(client_name) if c.counter_name]
+    except Exception:  # noqa: BLE001 — validation must never block a save
+        return []
+
+
+def _canonicalise_saved_plan(client_name, counter_plans):
+    """Rewrite each dish to the ontology's own spelling; report what will not.
+
+    THE REASON THIS EXISTS. `menu_history` is not a write-only log — it is read
+    back on every subsequent plan, by the item cooldown
+    (`banned_items_by_date`), the freshness objective
+    (`days_since_last_served`), the cross-week cadence rules
+    (`selector_banned_by_date`) and the week signatures. Every one of those
+    compares the stored string against the ontology's `item` column:
+    `ItemCooldownMenuRule.pre_filter_pool` is literally
+    ``pool['item'].isin(banned)``.
+
+    `/save` used to store whatever it was handed. A plan this client's own
+    `/plan` produced round-trips fine — `item_base` IS the ontology spelling —
+    so the bug never showed on the normal path. Anything else fails SILENTLY
+    and in the worst direction: a display name ("Dal Tadka") is stored as
+    `dal tadka`, which matches no pool row, so the dish is never banned and
+    never ages. The cooldown simply stops working for it, with nothing logged,
+    no diagnostic, and a plausible menu every week.
+
+    So each dish is resolved through the same space/underscore matching a
+    `constant_items` pin uses, and the ontology's spelling is what gets stored.
+    That turns the silent failure into a correct save rather than a warning
+    about an incorrect one.
+
+    What does NOT resolve is reported and stored as given — **never rejected**.
+    Two reasons: an off-ontology pin is a real feature, and a plan the user has
+    just spent a solve generating must not be lost to a name we failed to
+    recognise. A wrong cooldown is recoverable; a discarded plan is not.
+
+    Returns ``(counter_plans, unknown)`` where *unknown* is a sorted list of
+    ``"<counter>/<slot>: <item>"`` strings.
+    """
+    try:
+        city = _client_row(client_name)['city']
+        known = _ontology.item_names(city)
+    except Exception as exc:  # noqa: BLE001 — never block a save on a lookup
+        logger.warning("Could not load %s's item list to check the saved "
+                       "plan: %s", client_name, exc)
+        return counter_plans, []
+    if not known:
+        return counter_plans, []
+    pinned = _declared_constant_values(client_name)
+
+    unknown, out = set(), []
+    for counter_name, week_plan in counter_plans:
+        fixed = {}
+        for day, slots in week_plan.items():
+            day_out = {}
+            for slot_id, value in (slots or {}).items():
+                base = strip_color_suffix(value if isinstance(value, str)
+                                          else str(value))
+                canonical = _canonical_item_name(base, known)
+                if canonical is not None:
+                    day_out[slot_id] = canonical
+                    continue
+                day_out[slot_id] = value
+                if base.strip() and base.strip().lower() not in pinned:
+                    unknown.add(f"{counter_name}/{slot_id}: {base.strip()}")
+            fixed[day] = day_out
+        out.append((counter_name, fixed))
+
+    if unknown:
+        logger.warning(
+            "Saving %s: %d dish name(s) match no item in its city list and no "
+            "declared constant, so the cooldown and freshness rules will not "
+            "recognise them: %s",
+            client_name, len(unknown), "; ".join(sorted(unknown)[:10]),
+        )
+    return out, sorted(unknown)
+
+
 @app.route('/api/v1/save', methods=['POST'])
 @rate_limit("write")
 @require_write_token
@@ -1191,6 +1327,11 @@ def save_plan():
             all_dates = sorted({d for _n, wp in counter_plans for d in wp.keys()})
             if not all_dates:
                 return jsonify({'success': False, 'error': 'week_plan is required'}), 400
+            # Canonicalise BEFORE the signature: the signature is what
+            # `week_signature_cooldown` compares a future week against, so it
+            # has to be computed over the same spellings that get stored.
+            counter_plans, unknown = _canonicalise_saved_plan(
+                client_name, counter_plans)
             primary_wp = counter_plans[0][1]
             sig = HistoryManager.compute_week_signature(
                 primary_wp, all_dates, const_slots=CONST_SLOTS,
@@ -1198,7 +1339,7 @@ def save_plan():
             )
             hm.save_counters(counter_plans, all_dates, client_name, week_start, sig,
                              supabase_client=sb, strip_color_fn=strip_color_suffix)
-            return jsonify({'success': True, 'message': 'Plan saved to history'})
+            return jsonify(_saved_response(unknown))
 
         # Single-cuisine (classic) path.
         week_plan_raw = data.get('week_plan', {})
@@ -1209,6 +1350,9 @@ def save_plan():
             for d_str, day_data in week_plan_raw.items()
         }
         dates = sorted(week_plan.keys())
+        canonical, unknown = _canonicalise_saved_plan(
+            client_name, [(_SINGLE_COUNTER, week_plan)])
+        week_plan = canonical[0][1]
         sig = HistoryManager.compute_week_signature(
             week_plan, dates, const_slots=CONST_SLOTS,
             strip_color_fn=strip_color_suffix,
@@ -1216,7 +1360,7 @@ def save_plan():
         hm.save(week_plan, dates, client_name, week_start, sig,
                 supabase_client=sb, strip_color_fn=strip_color_suffix)
 
-        return jsonify({'success': True, 'message': 'Plan saved to history'})
+        return jsonify(_saved_response(unknown))
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
