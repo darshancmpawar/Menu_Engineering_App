@@ -679,6 +679,34 @@ class SolverInputs:
     # anything derived from the ontology downstream (the non-veg name set that
     # colours the rendered menu) reads the same list the solver did.
     city: Optional[str] = None
+    # Every date the horizon SPANS, including the ones this client does not
+    # serve. `weekday_dates` above is the subset the solver plans; this is what
+    # the menu is rendered against, so a non-working day shows as a blank
+    # column instead of vanishing (see `_span_dates`). Same list for a client
+    # with no `working_days` restriction, which is all but three of them.
+    span_dates: List[dt.date] = field(default_factory=list)
+
+
+def _span_dates(plan_dates, inputs):
+    """The dates the MENU covers, which is not always the dates it plans.
+
+    A client with a restricted `working_days` list (Clario Mon-Thu, Piramel
+    Mon/Tue/Thu, Quince Wed/Thu/Fri) serves fewer days than the horizon spans.
+    Those days used to be filtered out before the solve and never came back, so
+    a 5-day horizon from Monday returned FOUR days for Clario and the table
+    simply had no Friday — the gap closed up, and "5 days" quietly meant
+    something different per client.
+
+    The solver still plans only the days the client serves; this widens what is
+    RENDERED, so Friday appears as an empty column. `SolutionFormatter` already
+    reads `week_plan.get(d, {})`, so a date with no plan formats as a day with
+    no items — no solver change and no rule sees an extra day.
+
+    Returns the union, so a solver that dropped a date (an infeasible day it
+    could not fill) still has it rendered rather than silently missing.
+    """
+    span = getattr(inputs, 'span_dates', None) or []
+    return sorted(set(plan_dates) | set(span))
 
 
 def _resolve_counter(client_name: str, data: Dict[str, Any]):
@@ -765,12 +793,16 @@ def _prepare_solver_inputs(
     city = row['city']
     df, pools = _menu_data_for_client(client_name, city=city)
     start_date = dt.date.fromisoformat(start_date_str) if start_date_str else today_in_app_tz()
-    weekday_dates = _weekdays_from(
+    # The horizon SPANS `num_days` weekdays (or calendar days for a weekend
+    # site); the client then serves some subset of them.
+    span_dates = _weekdays_from(
         start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
     )
     # Restrict to the client's working weekdays (e.g. Quince = Wed/Thu/Fri).
+    # The dropped dates are NOT lost — `span_dates` keeps them so the menu
+    # renders them blank rather than closing the gap (note 29).
     weekday_dates = _filter_dates_by_working_days(
-        weekday_dates, getattr(client_cfg, 'working_days', None),
+        span_dates, getattr(client_cfg, 'working_days', None),
     )
     rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
@@ -824,6 +856,7 @@ def _prepare_solver_inputs(
         recency_by_item=recency_by_item,
         cfg=cfg,
         city=city,
+        span_dates=span_dates,
     )
 
 
@@ -972,8 +1005,10 @@ def plan_menu():
 
         def _format(plan):
             return SolutionFormatter(
-                plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+                plan, _span_dates(plan_dates, inputs),
+                theme_map=inputs.client_cfg.theme_map or None,
                 nonveg_items=nonveg_items,
+                served_dates=set(inputs.weekday_dates),
             ).to_dict()
 
         try:
@@ -1129,8 +1164,10 @@ def regenerate_cells():
             base_plan, replace_mask, extra_forbidden=extra_forbidden)
 
         formatter = SolutionFormatter(
-            week_plan, plan_dates, theme_map=inputs.client_cfg.theme_map or None,
+            week_plan, _span_dates(plan_dates, inputs),
+            theme_map=inputs.client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(inputs.city),
+            served_dates=set(inputs.weekday_dates),
         )
         response = {
             'success': True,
@@ -1421,15 +1458,18 @@ def saved_plan():
         row = _client_row(client_name)
         client_cfg = loader.get_client_configs_from_row(client_name, row)[0][1]
         city = row['city']
-        weekday_dates = _weekdays_from(
+        span_dates = _weekdays_from(
             start_date, num_days, getattr(client_cfg, 'serve_weekends', False),
         )
         weekday_dates = _filter_dates_by_working_days(
-            weekday_dates, getattr(client_cfg, 'working_days', None),
+            span_dates, getattr(client_cfg, 'working_days', None),
         )
 
         from src.db import get_supabase
         sb = get_supabase()
+        # Only the served days can have a saved menu, but the table is rendered
+        # over the whole span so a non-working day stays a blank column here
+        # too — a saved plan and a fresh one must have the same shape.
         raw_saved = HistoryManager.load_saved_plan(
             sb, client_name, weekday_dates,
         )
@@ -1440,9 +1480,10 @@ def saved_plan():
         enriched = _enrich_history_plan(raw_saved, df)
 
         formatter = SolutionFormatter(
-            enriched, weekday_dates,
+            enriched, span_dates,
             theme_map=client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(city),
+            served_dates=set(weekday_dates),
         )
         covered = sorted(d.isoformat() for d in enriched.keys())
         exists = len(enriched) == len(weekday_dates) and len(enriched) > 0

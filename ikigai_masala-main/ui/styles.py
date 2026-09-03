@@ -208,6 +208,12 @@ STYLES = f"""
         text-align: left; min-width: 120px; background: #000;
     }}
     .menu-table thead th:last-child {{ border-right: none; }}
+    /* A day the client does not work. It stays a column so the week keeps its
+       shape (a 5-day horizon is Mon-Fri whoever the client is), but it is
+       dimmed and labelled "Not served" — an unmarked empty column reads as a
+       day the solver failed on. */
+    .menu-table thead th.day-off {{ background: #2A2A2A; }}
+    .menu-table thead th.day-off .day-label {{ color: var(--text-secondary); }}
     .day-label {{
         display: block; color: #fff; font-weight: 700;
         font-size: 0.82rem; margin-bottom: 4px;

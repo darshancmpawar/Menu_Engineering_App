@@ -32,10 +32,22 @@ class SolutionFormatter:
 
     def __init__(self, week_plan: Dict[dt.date, Dict[str, str]], dates: List[dt.date],
                  theme_map: Optional[Dict[str, str]] = None,
-                 nonveg_items: Optional[Set[str]] = None):
+                 nonveg_items: Optional[Set[str]] = None,
+                 served_dates: Optional[Set[dt.date]] = None):
         self.week_plan = week_plan
         self.dates = dates
         self._theme_map = theme_map
+        # Which of `dates` the client actually serves. A horizon spans days a
+        # client with a restricted `working_days` list does not work (Clario is
+        # Mon-Thu, so a 5-day plan from Monday covers a Friday it never cooks
+        # on), and those days are rendered as blank columns rather than dropped
+        # — otherwise the gap closes and "5 days" means something different per
+        # client. They need marking, because an empty column otherwise reads as
+        # a day the solver FAILED on: a non-working day carries
+        # ``is_working_day: False`` and no theme, so the UI can say "not served"
+        # instead of showing a cuisine tag over an empty column.
+        # ``None`` means every date is served, which is all but three clients.
+        self._served_dates = served_dates
         # Lower-cased item base-names that are non-vegetarian, used to tag each
         # item with ``is_nonveg`` so the UI / export can colour them. ``None``
         # means "unknown" → everything reported as veg.
@@ -70,11 +82,13 @@ class SolutionFormatter:
         result = {}
         for d in self.dates:
             day_key = d.isoformat()
-            day_type = _weekday_type_cfg(d, self._theme_map)
+            served = self._served_dates is None or d in self._served_dates
+            day_type = _weekday_type_cfg(d, self._theme_map) if served else ''
             result[day_key] = {
-                'theme': _theme_label(day_type),
+                'theme': _theme_label(day_type) if served else '',
                 'day_type': day_type,
                 'items': {},
+                'is_working_day': served,
             }
             for slot_id, item_str in self.week_plan.get(d, {}).items():
                 item_base = _strip_color_suffix(item_str)

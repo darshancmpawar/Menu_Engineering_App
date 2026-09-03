@@ -211,6 +211,30 @@ def _cached_list_clients(_api: MenuApiClient) -> list:
     """Return ``[{'name', 'city'}, …]`` for the sidebar's client + city pickers."""
     return _api.list_clients_with_city()
 
+
+#: A working week for a weekday-only kitchen, and for one that serves Sat/Sun.
+WEEK_LENGTH_WEEKDAYS = 5
+WEEK_LENGTH_WITH_WEEKENDS = 7
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_week_length(_api: MenuApiClient, client_name: str) -> int:
+    """How many days this client's week is — the horizon default.
+
+    5 for a Mon-Fri kitchen, 7 for one that serves Saturday and Sunday. A
+    weekend site asked for "5 days" got Mon-Fri and no weekend at all, so the
+    default has to follow the client rather than the app.
+
+    Falls back to 5 if the config cannot be read: a wrong default is a slider
+    the operator moves, while an exception here would take the sidebar down.
+    """
+    try:
+        cfg = _api.get_client_config(client_name)
+    except Exception:  # noqa: BLE001 — the sidebar must render regardless
+        return WEEK_LENGTH_WEEKDAYS
+    return (WEEK_LENGTH_WITH_WEEKENDS if cfg.get("serve_weekends")
+            else WEEK_LENGTH_WEEKDAYS)
+
 # ---------------------------------------------------------------------------
 # Session state initialization
 # ---------------------------------------------------------------------------
@@ -356,9 +380,25 @@ with st.sidebar:
 
     start_date = st.date_input("Start date", value=dt.date.today(),
                                key="planner_start_date")
-    num_days = st.slider("Weekdays", min_value=1, max_value=20, value=5,
-                         key="planner_num_days",
-                         help="Number of weekdays (Sat/Sun are skipped)")
+
+    # The horizon default is the CLIENT's week, not the app's: 7 for a site
+    # that serves Sat/Sun, 5 otherwise. Reset when the client changes, because
+    # a Streamlit widget with a `key` keeps its session value and would carry
+    # a 5 over to a weekend site (and a 7 back to a weekday one).
+    _week = (_cached_week_length(client, selected_client)
+             if clients_list and selected_client != _empty_msg
+             else WEEK_LENGTH_WEEKDAYS)
+    if st.session_state.get("_planner_week_for") != selected_client:
+        st.session_state["_planner_week_for"] = selected_client
+        st.session_state["planner_num_days"] = _week
+
+    _serves_weekends = _week == WEEK_LENGTH_WITH_WEEKENDS
+    num_days = st.slider(
+        "Days" if _serves_weekends else "Weekdays",
+        min_value=1, max_value=20, value=_week, key="planner_num_days",
+        help=("Number of days (this client serves Sat/Sun)" if _serves_weekends
+              else "Number of weekdays (Sat/Sun are skipped). A day the client "
+                   "does not work is still shown, as a blank column."))
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -922,7 +962,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
                 _pool_warnings_expander(b)
                 st.markdown(
                     menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
-                                     b.get("nonveg")),
+                                     b.get("nonveg"), b.get("off_days")),
                     unsafe_allow_html=True)
                 st.markdown("")
                 cc1, cc2, _cc = st.columns([1, 1, 4])
@@ -938,7 +978,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
         _pool_warnings_expander(b)
         st.markdown(
             menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
-                             b.get("nonveg")),
+                             b.get("nonveg"), b.get("off_days")),
             unsafe_allow_html=True)
         st.markdown("")
         c1, c2, c3, _c = st.columns([1, 1, 1, 3])
