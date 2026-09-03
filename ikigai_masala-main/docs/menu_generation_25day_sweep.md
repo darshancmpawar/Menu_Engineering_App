@@ -70,19 +70,58 @@ show timeouts, and they must not be read as broken configs.
 All three break at the same place — after 5 to 10 days of SAVED history, once
 the 20-day cooldown has started removing dishes. None is a broken config.
 
-| client | counter | fails at | thin cells | cause |
+| client | counter | fails at | thin cells | the binding shortage |
 |---|---|---|---:|---|
-| ToastTab CHN | Counter 1 | block 2 (5 days in) | 2 | Chennai `curd_rice` has **2 distinct dishes**; both thin cells are that slot |
-| Siemens | Counter 1 | block 3 (10 days in) | 0 | no starved cell — a combinatorial conflict |
-| Stripe | Counter 1 | block 3 (10 days in) | 0 | no starved cell — a combinatorial conflict |
+| ToastTab CHN | Counter 1 | block 2 (5 days in) | 2 | Chennai `curd_rice`: **2 distinct dishes** |
+| Siemens | Counter 1 | block 3 (10 days in) | 0 | NCR `is_nonveg_dry`: **11 distinct dishes**, needed daily |
+| Stripe | Counter 1 | block 3 (10 days in) | 0 | Bangalore `is_fish_dish`: **3 distinct dishes**, needed weekly |
 
-**ToastTab CHN** is fully attributed. At the failing block 2 of its 51 cells
-have fewer than 4 candidates and both are `curd_rice`, which Chennai carries
-exactly two of. Dropping `item_cooldown_20d`, `unique_items_session` **or**
-`theme_cuisine_filter` each makes the block solvable, which is the signature of
-a pool too thin to satisfy no-repeat once a theme filter also narrows the week.
-This is already open as **D4** in `docs/data_fixes_for_client.md`. The fix is
-dishes, not rules.
+Attributed by ablation — dropping one rule at a time and re-solving the failing
+block:
+
+| client | dropping any ONE of these makes it solvable |
+|---|---|
+| ToastTab CHN | `item_cooldown_20d`, `unique_items_session`, `theme_cuisine_filter` |
+| Siemens | `item_cooldown_20d`, `nonveg_main_daily_pair`, `siemens_nonveg_pair_by_weekday` |
+| Stripe | `item_cooldown_20d`, `theme_cuisine_filter`, `nonveg_main_daily_pair`, `stripe_fish_1x_week` |
+
+`item_cooldown_20d` appears in all three, which is the tell: none of these is a
+contradiction between rules, it is a pool that runs out once the cooldown has
+been eating it for two weeks. Each is arithmetic, and each has a number:
+
+* **ToastTab CHN** — 2 of its 51 cells are thin at the failing block and both
+  are `curd_rice`, which Chennai carries exactly two of. Already open as **D4**
+  in `docs/data_fixes_for_client.md`.
+* **Siemens** — `nonveg_main_daily_pair` and the client's own
+  `siemens_nonveg_pair_by_weekday` both want one `is_nonveg_dry` **every day**.
+  NCR's non-veg pool is 150 rows but only **11** are dry. A daily component
+  needs roughly one distinct dish per working day inside the 20-day cooldown
+  window — about 15 — so 11 cannot carry five weeks.
+* **Stripe** — `stripe_fish_1x_week` wants a fish once a week and Bangalore has
+  **3** fish dishes. Three cannot cover five weekly slots while the cooldown
+  holds each one for 20 days.
+
+## Why the pre-flight sees none of this
+
+`POST /diagnose` reports **zero errors** for all three and zero warnings for two
+of them. The solver's own tightest-slot hint also finds nothing, and for Siemens
+and Stripe there is genuinely nothing to find: every cell has candidates, and
+their slot pools are 150 and 596 rows.
+
+The reason is a single mismatch of granularity. **The pre-flight measures
+SLOTS; the rules that fail measure SELECTORS INSIDE a slot.** Siemens'
+`nonveg_main` is comfortable — 150 dishes for 2 cells a day — and starving on
+the 11 of them that are dry. Stripe's is comfortable at 596 and starving on 3
+fish. No per-slot count can see that, and the cooldown only makes it visible
+once two weeks of history exist, which a single-block diagnose never has.
+
+That is the same gap the previous sweep recorded, and it is still open. Two
+specific interactions have been modelled since — `selector_frequency` now
+cross-checks the days a `slot_composition` forces (note 9e) and the per-week
+caps compare the busiest week rather than a horizon total (note 26) — but both
+are interactions somebody went and modelled. The general form, "does this
+selector have enough distinct dishes to survive its own cadence against the
+cooldown", is not checked anywhere and would catch all three of these.
 
 ## Per client
 
