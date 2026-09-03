@@ -123,3 +123,75 @@ class TestEveryUseRefNamesARealComponent:
                                        f"{ref!r}, which rule_library.json "
                                        f"does not define")
         assert missing == [], "\n".join(missing)
+
+
+class TestEveryClientRuleActuallyBuilds:
+    """A rule that fails to build or validate is dropped and the plan is served.
+
+    `load_for_client` calls `_create_rule` and `validate_config()` per rule and,
+    on a failure, logs a warning and moves on — so an unknown `type`, a
+    misspelled field or an out-of-range number costs the client that rule while
+    `/plan` still answers 200 and `/diagnose` still reports clean. It is the
+    same failure SHAPE as the two guards above (a config that reads as though it
+    says something and says nothing), and the log line is the only trace, on a
+    server nobody is tailing.
+
+    The per-city rulesets already have this check — `test_pune_rules.py` and
+    `test_chennai_rules.py` each assert every rule in their file validates — and
+    the 36 per-client files had none, which is where the untested rules are:
+    a city ruleset is written once and reviewed, a client block is written per
+    site and copied between them.
+    """
+
+    def _built(self, client, blk):
+        """Every rule the loader ends up with for this client, per counter."""
+        loader = MenuRuleLoader()
+        city = _city_of(client) or DEFAULT_CITY
+        generic = loader.load_for_city(city)
+        out = [("", loader.load_for_client(client, generic))]
+        for cname in (blk.get("counters") or {}):
+            out.append((f" / {cname}",
+                        loader.load_for_client(client, generic, cname)))
+        return out
+
+    def test_every_rule_in_every_client_file_validates(self):
+        bad = []
+        for fname, client, blk in _client_entries():
+            for label, rules in self._built(client, blk):
+                for rule in rules:
+                    if not rule.validate_config():
+                        errs = "; ".join(rule.validation_errors() or
+                                         ["validate_config() returned False"])
+                        bad.append(f"{fname}: {client}{label} → "
+                                   f"{getattr(rule, 'name', '?')}: {errs}")
+        assert bad == [], "\n".join(bad)
+
+    def test_every_declared_rule_survives_the_merge(self):
+        """The other half: validating is not the same as being THERE.
+
+        A rule dropped by `_create_rule` raising never reaches the list above,
+        so it would pass that test by being absent. Count what each block
+        declares against what comes back named.
+        """
+        missing = []
+        for fname, client, blk in _client_entries():
+            built = {getattr(r, "name", None)
+                     for _label, rules in self._built(client, blk)
+                     for r in rules}
+            for label, block in _blocks(blk):
+                for spec in (block.get("rules") or []):
+                    name = (spec or {}).get("name")
+                    if name and name not in built:
+                        missing.append(f"{fname}: {client}{label} declares "
+                                       f"{name!r}, which the loader did not "
+                                       f"return")
+        assert missing == [], "\n".join(missing)
+
+    def test_the_guard_catches_a_planted_bad_rule(self):
+        """Otherwise it passes whether or not it is looking at anything."""
+        loader = MenuRuleLoader()
+        rule = loader._create_rule({
+            "name": "planted", "type": "selector_frequency",
+            "selector": {"flag": "is_x"}, "max": -1,
+        })
+        assert rule is None or not rule.validate_config()

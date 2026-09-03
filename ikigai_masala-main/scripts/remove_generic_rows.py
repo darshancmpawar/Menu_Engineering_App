@@ -76,7 +76,12 @@ GENERIC_ROWS = {
         'brinjal', 'chutney', 'curd_base', 'darbar_soup', 'dry_sweet',
         'local_salna', 'milk_sweet', 'sweet', 'toast_salad', 'veg_gravy',
     ],
-    'pune': ['curd_base', 'salad', 'sweet'],
+    'pune': [
+        'curd_base', 'salad', 'sweet',
+        # Found by the client's enrichment pass: a `papad` row with no
+        # attributes at all, named for nothing.
+        'bobby',
+    ],
     'ncr': [
         'chutney', 'dal', 'dessert', 'gravy', 'raita', 'rasam', 'rice',
         'salad', 'sambar', 'veg_dry',
@@ -107,8 +112,84 @@ GENERIC_ROWS = {
         # names, never a length rule.
         'apr', 'day', 'eid', 'may', 'mon', 'pax', 'tue', 'wed',
         'veg', 'non_veg',
+        # ------------------------------------------------------------------
+        # A SECOND sheet's scaffolding, missed the first time because its
+        # headers are spelled out in full (`monday_3rd`) where the ones above
+        # are abbreviated with a month (`mon_1st_june`), so neither an exact
+        # name nor a shared prefix caught both. Same fingerprint, verified row
+        # by row: every one is filed `veg_gravy`, carries no `item_color`, and
+        # has `key_ingredient` copied from a word of its own name — `days`,
+        # `week`, `plates`, `beverage`, `star`, `styker`.
+        # ------------------------------------------------------------------
+        # Five weekday column headers and two range labels.
+        'monday_3rd', 'tuesday_4th', 'wednesday_5th', 'thursday_6th',
+        'friday_7th', 'days', 'week',
+        # A head-count cell and the beverage section label, singular and plural.
+        '5_plates', 'beverage', 'beverages',
+        # TWO VENDOR NAMES. `styker_x_gourmer_services` is the same sheet title
+        # family as the three above (Stryker misspelled); `d_star_hospitality`
+        # is the caterer. Both were servable as the day's vegetable gravy, so a
+        # printed menu could have offered "D Star Hospitality" for lunch.
+        'd_star_hospitality', 'styker_x_gourmer_services',
+        # ------------------------------------------------------------------
+        # A THIRD batch, found by the client's own enrichment pass
+        # (`data/raw/source_workbooks/ncr_enriched_final.xlsx`) and adopted
+        # after checking each carries the same fingerprint: filed `veg_gravy`
+        # or `dal`, no `item_color`, and `key_ingredient` copied from the first
+        # word of its own name (`june`, `march`, `stryker`, `pakeeza`).
+        # ------------------------------------------------------------------
+        # Three more sheet titles, in a different format from the three above.
+        'stryker_lunch_08_june_to_13_june', 'stryker_lunch_15_june_to_20_june',
+        'stryker_lunch_20_july_to_25_july',
+        # Bare month and festival headers.
+        'march', 'march_26_april', 'may_week', 'june', 'holi',
+        # A client name, a caterer, a site note and an operator note — all
+        # servable as the day's gravy.
+        'junglee_games', 'pakeeza', 'new_vendor_at_manesar',
+        'non_veg_not_serving_due_to_navratri',
+        # A whole-meal label rather than a dish, and four name fragments.
+        'navratre_thali', 'carrat', 'crisp', 'crisps', 'date',
+        # DELIBERATELY NOT TAKEN from the enriched file: `veg_chowmin` and
+        # `veg_avail` are real dishes misspelled (NCR carries `chowmin` and
+        # `avial` too), so they were duplicates to adjudicate rather than
+        # scaffolding to delete. Now adjudicated, as folds rather than
+        # deletions, in `canonical_dish_spellings.DUPLICATES['ncr']` — along
+        # with `avail`, the same misspelling without the `veg` qualifier.
     ],
 }
+
+# The enriched pass caught these in Bangalore too — the master list had its own
+# scaffolding. `sprouts` goes with them: the file carries eight specific sprout
+# salads (`green_sprouts`, `boiled_moong_sprouts_salad`, …), so a bare row named
+# for the ingredient class is the same case as `veg_dry`.
+#
+# NOT taken either: `mix_veg`, `mixed_veg` and `sprouts`. The enriched file drops
+# all three and they are DISH families, not slot names — the distinction this
+# list turns on. A menu printing "Veg Gravy" or "Dessert" tells the diner
+# nothing; one printing "Mixed Veg" or "Sprouts" tells them what they are
+# getting. Corning Chakan's printed menu settles it: `mix_veg` is the gravy half
+# of a "Puri + Mix Veg" cell that `import_corning_pune_menu.py` splits on
+# purpose, and `test_corning_pune_import.py` asserts it lands in `veg_gravy`.
+#
+# NOT taken: the enriched file also drops Chennai's `carrot_raita`, which is a
+# real dish — orange, `key_ingredient: carrot`, sitting beside six sibling
+# raitas. That one looks like a casualty of their `raitha`/`raita` fold rather
+# than a judgement, so it stays.
+GENERIC_ROWS.setdefault('bangalore', []).extend([
+    'bautra', 'c', 'holi_day', 'luncha', 'nnssww', 'special_lunch',
+    'pani_puri_live',
+])
+
+# Hyderabad's list was SEEDED from Bangalore's, so Bangalore's scaffolding came
+# along with it and has to go for the same reason. Mirrored rather than retyped
+# — the same treatment `canonical_dish_spellings.DUPLICATES` gives the seeded
+# city, and for the same reason: a verdict written twice can disagree with
+# itself. Hyderabad's own entries are kept, so a deliberate divergence is still
+# writable. Without this the rows survive only in Hyderabad AND, because
+# `tests/cities/test_hyderabad_ontology.py` scopes "what Quest added" to rows
+# absent from Bangalore, they read as part of Quest's import.
+GENERIC_ROWS['hyderabad'] = sorted(
+    set(GENERIC_ROWS.get('hyderabad', [])) | set(GENERIC_ROWS['bangalore']))
 
 
 def apply_removals(df: pd.DataFrame, city: str):

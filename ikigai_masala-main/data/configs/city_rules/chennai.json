@@ -101,7 +101,7 @@
         "flag": "is_premium_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "One premium veg dry a week (7 eligible rows).",
@@ -111,7 +111,7 @@
         "flag": "is_premium_veg_dry"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "At most one premium veg dish on any single day, so the two weekly premiums cannot stack onto one plate.",
@@ -133,7 +133,7 @@
         ]
       },
       "base_slot": "rice",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "One non-veg biryani a week (5 rows). Chennai's non-veg pool is 63 dishes, so this leaves plenty for the other days.",
@@ -143,7 +143,7 @@
         "flag": "is_nonveg_biryani"
       },
       "base_slot": "nonveg_main",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "At most one non-veg biryani on a day, so a multi-slot non-veg counter cannot satisfy the weekly cap by stacking two onto one day (the trap note 9e documents).",
@@ -162,7 +162,7 @@
         "flag": "is_maida_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "Baby corn once a week. Matched on the dish NAME, not `key_ingredient` — in Chennai all 4 baby-corn rows agree on both, but Bangalore's list showed key_ingredient='baby_corn' is the de-facto default for a mixed salad (67 rows, 3 of them actually baby corn), so the name is the trustworthy column across cities.",
@@ -174,7 +174,7 @@
           "babycorn"
         ]
       },
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "One leafy veg dry a week (4 rows: keerai and mint dishes).",
@@ -184,7 +184,7 @@
         "flag": "is_leafy_based_dish"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "Kootu at most twice a week. Chennai-specific and only expressible because `kootu` is its own sub_category (7 rows) — `course_type` files kootu under veg_gravy alongside the kurmas, so a course_type selector could not separate them. Two rather than one because kootu is an everyday Tamil dish, not a treat.",
@@ -193,7 +193,7 @@
       "selector": {
         "sub_category": "kootu"
       },
-      "max": 2
+      "max_per_week": 2
     },
     {
       "_comment": "One chana gravy a week (4 rows).",
@@ -202,7 +202,7 @@
       "selector": {
         "flag": "is_chana_gravy"
       },
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "Dal colour must not repeat on adjacent days.",
@@ -265,7 +265,7 @@
         "flag": "is_seafood"
       },
       "base_slot": "nonveg_main",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "Same for North Indian chicken gravies (13 rows).",

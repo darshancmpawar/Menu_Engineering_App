@@ -35,8 +35,13 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
+
 
 def _atomic_to_excel(frame, path, **kw):
     """Write via a temp file + rename.
@@ -86,6 +91,25 @@ CORRECTIONS = {
         'buttermilk':         ('welcome_drink', 'indian_regional_drink', None),
         'masala_buttermilk':  ('welcome_drink', 'indian_regional_drink', None),
         'boondi_buttermilk':  ('welcome_drink', 'indian_regional_drink', None),
+        # A lemonade filed as a mixed-veg curry — the same defect as the three
+        # buttermilks above, in the same workbook, and NCR carries the identical
+        # row. Bangalore's own `shikanji` and `kokum_shikanji` are welcome
+        # drinks, so once again the file disagrees with itself.
+        'masala_shikanji': ('welcome_drink', 'indian_regional_drink', None),
+        # These two have the right COURSE and the wrong sub_category: both still
+        # read `mixed_veg_curry`, which is the fingerprint left behind when the
+        # course was fixed and the attribute was not. Harmless to the theme
+        # filter, which reads `cuisine_family`, but `mixed_veg_curry` is the
+        # single largest sub_category there is and every attribute-driven
+        # inference learns from it — `fill_cuisine_family.py` refuses to give it
+        # a region precisely because it is 77% north and 21% south, and rows
+        # like these are part of why.
+        'rajbhog':   ('dessert', 'bengali_sweet', 'semi_dry'),
+        'jal_jeera': ('welcome_drink', 'indian_regional_drink', None),
+        # A cham cham is a Bengali sweet, and this one sat in `veg_gravy` in the
+        # MASTER list — the same misfile as NCR's two, found only once the
+        # dessert signals were taught NCR's spelling of the word.
+        'malai_chamcham': ('dessert', 'bengali_sweet', 'semi_dry'),
         # Filed `accompaniment / non-herb_chutney`, so it could never be selected
         # for `veg_gravy` — yet ToastTab's Friday sample serves tomato thokku in
         # the veg-gravy position (D2 in docs/data_fixes_for_client.md). The client
@@ -143,7 +167,10 @@ CORRECTIONS = {
         # Sweets filed as veg_gravy/dal — would have plated as a "gravy".
         'badami_moong_dal_barfi': ('dessert', 'burfi', 'semi_dry'),
         'gaund_pak':              ('dessert', 'burfi', 'semi_dry'),
-        'gond_pak':               ('dessert', 'burfi', 'semi_dry'),
+        # `gond_pak` used to be listed here as well — the same sweet spelled a
+        # second way. `canonical_dish_spellings.py` now folds it into
+        # `gaund_pak`, so an entry for it would name a row that no longer
+        # exists and the script would report it missing on every run.
         'kesari_rawa':            ('dessert', 'halwa', 'semi_dry'),
         'rava_kesari':            ('dessert', 'halwa', 'semi_dry'),
         'kulfi':                  ('dessert', 'custard_/_pudding', 'wet'),
@@ -165,6 +192,51 @@ CORRECTIONS = {
         'spinach_soup':          ('soup', 'chunky_veg_soup', None),
         'tomato_dhaniya_shorba': ('soup', 'clear_/_broth_soup', None),
         'veg_noodle_soup':       ('soup', 'asian_soup', None),
+        # ------------------------------------------------------------------
+        # Twenty more of the same, found by asking what `fill_cuisine_family.py`
+        # had just made servable. Every one carries the NCR mapping pipeline's
+        # fingerprint — `sub_category: mixed_veg_curry`, `is_mixedveg_gravy`, and
+        # `key_ingredient` copied from a word of its own name (`custerd`,
+        # `disco`, `pickle`) — so all twenty were in the veg_gravy pool and the
+        # solver could plate an ice cream, a pickle or a glass of Tang as the
+        # day's vegetable gravy.
+        #
+        # `audit_course_types.py` missed them because its NAME_SIGNALS are
+        # spelled the way the master list spells them: it has `rasmalai` where
+        # NCR writes `ras_malai`, `chumchum` where NCR writes `cham_cham`, and
+        # `custard` where NCR writes `custerd`. Tokens for the rest are added
+        # there so the next one is caught rather than found by accident.
+        # ------------------------------------------------------------------
+        # Bengali sweets. `bengali_sweet` is what the master files the rasgulla
+        # / rasmalai / cham cham family as; wet for the syrup-soaked ones.
+        'ras_malai':                ('dessert', 'bengali_sweet', 'wet'),
+        'white_cham_cham':          ('dessert', 'bengali_sweet', 'semi_dry'),
+        'coconut_coated_cham_cham': ('dessert', 'bengali_sweet', 'semi_dry'),
+        'rajbhog':                  ('dessert', 'bengali_sweet', 'semi_dry'),
+        # Frozen and set desserts.
+        'custerd':           ('dessert', 'custard_/_pudding', 'wet'),
+        'icecream':          ('dessert', 'custard_/_pudding', 'wet'),
+        'assorted_icecream': ('dessert', 'custard_/_pudding', 'wet'),
+        'vanilla_icecream':  ('dessert', 'custard_/_pudding', 'wet'),
+        # Drinks. Bangalore already files thandai and jal jeera as welcome
+        # drinks, so NCR's copies contradict the master as well as themselves.
+        'thandai':         ('welcome_drink', 'indian_regional_drink', None),
+        'jal_jeera':       ('welcome_drink', 'indian_regional_drink', None),
+        'masala_shikanji': ('welcome_drink', 'indian_regional_drink', None),
+        'mango_tang':      ('welcome_drink', 'fruit_spritzer_/_punch', None),
+        'orange_tang':     ('welcome_drink', 'fruit_spritzer_/_punch', None),
+        # Condiments. Every city — including NCR's own `pickle`, `papad`,
+        # `masala_papad` and `fryums_papad` rows — files these `accompaniment`;
+        # these four are the ones that did not.
+        'mirch_ka_achaar':       ('accompaniment', 'pickle', None),
+        'mix_pickle':            ('accompaniment', 'pickle', None),
+        'pickle_mouth_freshner': ('accompaniment', 'pickle', None),
+        'disco_papad':           ('accompaniment', 'papad', None),
+        'shegdana_chutney':      ('chutney', 'non-herb_chutney', None),
+        # A Chinese dip filed as a DAL, with `sub_category: leafy_dal`,
+        # `is_lentil_based` and `is_legume_based` — there are no lentils in a
+        # kung pao sauce, and a dal slot could have served it.
+        'vegetable_kung_pao_sauce': ('accompaniment', 'chinese_dip', None),
         # A pulao filed as bread.
         'jodhpuri_pulao': ('rice', 'north_rich_pulao', None),
         # `idly_vada` used to be corrected here (a steamed idli/vada plate filed
@@ -193,7 +265,7 @@ CORRECTIONS = {
 #: row, because these are `common` dishes copied across all four workbooks.
 KEY_INGREDIENT_CORRECTIONS = {
     city: {'soppu_saru': 'leafy_greens'}
-    for city in ('bangalore', 'chennai', 'pune', 'ncr')
+    for city in CITIES
 }
 
 #: The seven Chennai `veg_gravy` rows no evidence could settle, adjudicated one
@@ -242,8 +314,24 @@ _SAARU_REFILE = {
     'uppu_saru': ('sambar', 'vegetable_sambar', None),
 }
 
-for _city in ('bangalore', 'chennai', 'pune', 'ncr'):
+for _city in CITIES:
     CORRECTIONS.setdefault(_city, {}).update(_SAARU_REFILE)
+
+# Hyderabad's list was SEEDED from Bangalore's, so it carries every row the
+# Bangalore corrections were written about and needs the same verdicts. Mirrored
+# rather than retyped for the reason `audit_course_types.ADJUDICATED` gives: two
+# copies of one verdict are two things that can disagree, and this one already
+# did — `masala_shikanji` was corrected in Bangalore and left a `veg_gravy` in
+# Hyderabad, where the audit then flagged it.
+#
+# One-way and Hyderabad-only: it is true because Hyderabad's rows ARE
+# Bangalore's rows. A dish Quest's import added is Hyderabad's own and gets
+# adjudicated on its own evidence. Existing Hyderabad entries win, so a
+# deliberate divergence can still be written above.
+if 'hyderabad' in CORRECTIONS or 'hyderabad' in CITIES:
+    _mirrored = dict(CORRECTIONS.get('bangalore', {}))
+    _mirrored.update(CORRECTIONS.get('hyderabad', {}))
+    CORRECTIONS['hyderabad'] = _mirrored
 
 #: A pav is not a plain phulka or chapathi — client-confirmed. All three cities
 #: that carry it filed it as `sub_category: plain_chapatti/phulka` with
@@ -272,7 +360,7 @@ _PAV = {
 #: {city: {item: {'sub_category'/'key_ingredient'/'flags': …}}} — a row whose
 #: FORM was recorded wrongly, as opposed to its course.
 ATTRIBUTE_CORRECTIONS = {city: dict(_PAV)
-                         for city in ('bangalore', 'chennai', 'pune', 'ncr')}
+                         for city in CITIES}
 
 #: An American coleslaw is not a Chinese dish. Chennai's import labelled its one
 #: and only "chinese" salad `american_coleslaw`, which matters because a client
@@ -289,9 +377,19 @@ PROTEIN_CORRECTIONS = {
         'urandai_kuzhambu': '',   # '' -> blank, i.e. vegetarian
     },
     'ncr': {
-        # Minced soya, not meat — `mutton` was a fuzzy match on "keema". Cleared
-        # to veg; the course_type fix above files it as a soya veg dry.
-        'soya_keema': '',
+        # Minced soya, not meat — `mutton` was a fuzzy match on "keema". The
+        # course_type fix above files it as the soya veg dry it is.
+        #
+        # `soy`, not blank. Blank was the original fix and it was only half of
+        # one: it removed the false meat but left the dish with no protein at
+        # all, while its own siblings `soya_keema_mutter` (veg_dry) and
+        # `soya_keema_pulao` (rice) both carry `soy`, so the family disagreed
+        # with itself and a `primary_protein: soy` selector saw two of three.
+        # The client's enriched workbook says `soy` too — and because this
+        # correction runs AFTER the merge, leaving it blank made the merge
+        # non-idempotent: it filled `soy` on every run and this cleared it
+        # again, so the chain never settled on this cell.
+        'soya_keema': 'soy',
     },
 }
 

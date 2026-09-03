@@ -113,9 +113,6 @@ DEFAULT_RESTARTS_PER_MULTIPLIER = 4  # attempts per multiplier
 DEFAULT_SEED_MULT_FACTOR = 1000  # seed formula: base + mult * FACTOR + restart * 17
 DEFAULT_SEED_RESTART_STEP = 17
 
-# Penalty/bonus weights
-REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during regen
-
 # Soft freshness objective (menu variety). A dish's bonus is
 # ``min(days_since_last_served, FRESHNESS_CAP_DAYS) * FRESHNESS_UNIT``; a dish
 # absent from the recency map (never served in the window) scores the full cap.
@@ -126,6 +123,27 @@ REGEN_SIMILARITY_PENALTY = -10_000  # penalty for re-selecting old items during 
 # still fall to the random tie-break, preserving cross-solve variety.
 FRESHNESS_CAP_DAYS = 30
 FRESHNESS_UNIT = 3_000  # 30 * 3000 = 90_000  < LOW (1e6); step 3000 > tie-break
+
+#: The most freshness can be worth to a single candidate.
+MAX_FRESHNESS_BONUS = FRESHNESS_CAP_DAYS * FRESHNESS_UNIT  # 90_000
+
+# Penalty/bonus weights.
+#
+# Charged against the dish a regenerate is replacing, on the PENALTY path only —
+# `MenuRegenerator` first tries to forbid it outright and falls back here when
+# the hard block would empty the cell.
+#
+# It has to outbid freshness, and by a clear margin rather than a hair, because
+# the two are pulling on the same candidate: the dish being replaced is usually
+# the one freshness likes MOST. A dish absent from the recency map scores the
+# full cap, and absent is the common case — the map only holds what has been
+# saved to history. At the old -10_000 against a +90_000 cap the arithmetic was
+# not close: the solver re-picked the dish the user had just asked to replace,
+# and the button did nothing. Derived from the cap rather than written as a
+# literal so the two cannot drift apart; still an order of magnitude under one
+# LOW-tier soft rule unit (1e6), so the rule tiers are untouched and a real
+# preference can still keep a dish in place.
+REGEN_SIMILARITY_PENALTY = -3 * MAX_FRESHNESS_BONUS  # -270_000
 
 
 @dataclass

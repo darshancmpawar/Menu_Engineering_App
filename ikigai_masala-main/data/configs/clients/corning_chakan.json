@@ -47,7 +47,7 @@
         "selector": {
           "flag": "is_black_dal"
         },
-        "max": 1
+        "max_per_week": 1
       },
       {
         "_comment": "'Sprouts gravy should be served maximum twice a week.' Matched on the NAME rather than a column: Pune has no sprouts flag, and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule.",
@@ -60,7 +60,7 @@
             "matki"
           ]
         },
-        "max": 2
+        "max_per_week": 2
       },
       {
         "_comment": "'Paneer gravy should be included once a week across all meal sessions.' Exactly one day, so it is a floor as well as a cap — the client asked for the dish, not merely for a limit. Pune carries 18 paneer gravies.",
@@ -86,7 +86,7 @@
             }
           ]
         },
-        "max": 1
+        "max_per_week": 1
       },
       {
         "_comment": "'Mixed-veg, veg kurma and veg kofta gravies should be served maximum twice a week.' The client stated a COMBINED number, so it gets its own rule over the union; Pune's ruleset separately caps each of the three at one day, which is stricter and stays in force. Written out because a future relaxation of a city rule must not silently relax the client's requirement too.",
@@ -100,7 +100,7 @@
             "is_veg_kofta_gravy"
           ]
         },
-        "max": 2
+        "max_per_week": 2
       },
       {
         "_comment": "'Leafy-vegetable dry preparations should be served twice a week.' This is the one rule that contradicts Pune's rulebook head-on: R31 caps leafy dry at one day a week (`leafy_veg_dry_weekly`) and R14's cadence allows it only once per 15 days (`leafy_veg_dry_15d_window`, disabled above for this client). Overriding the weekly rule by name rather than adding a second one, so the two cannot disagree. NB Pune carries only FIVE leafy veg dries, and two days a week across the 20-day cooldown needs about eight distinct dishes — `min` caps itself to what the pool can supply and `diagnose()` reports the shortfall, so this under-enforces rather than failing, but the real fix is three or four more leafy dry dishes in the Pune list.",
@@ -111,7 +111,7 @@
           "flag": "is_leafy_based_dish"
         },
         "min": 2,
-        "max": 2
+        "max_per_week": 2
       },
       {
         "_comment": "'On Thursday only we will give a starter.' NEEDS A DB CHANGE FIRST: this counter has no `starter` category today, so until one is added the rule is inert and `diagnose()` says so. The restriction stands the station down on the other six days.",

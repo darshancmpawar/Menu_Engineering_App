@@ -59,6 +59,7 @@ a misspelled protein word.
 from __future__ import annotations
 
 import argparse
+import sys
 import re
 from pathlib import Path
 
@@ -137,7 +138,8 @@ VEG_FLAGS_TO_CLEAR = ("is_mixedveg_gravy", "is_mixedveg_biryani",
                       "is_veg_starter", "is_veg_dry", "is_premium_veg",
                       "is_premium_veg_dry")
 
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 
 def apply(df: pd.DataFrame, city: str):

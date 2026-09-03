@@ -45,6 +45,33 @@ def test_rerunning_the_removal_changes_nothing(city):
     assert not removed, removed
 
 
+def test_no_city_key_is_written_twice():
+    """A duplicate key in the `GENERIC_ROWS` literal is silent — Python keeps
+    the last one — so appending a second `'pune': [...]` block DELETES the three
+    rows the first one removed, and the workbook simply grows them back on the
+    next run with nothing red. That happened once. Read from the AST, because
+    the parsed dict is exactly what cannot show it."""
+    import ast
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[2] / 'scripts' / 'remove_generic_rows.py'
+    tree = ast.parse(src.read_text(encoding='utf-8'))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        keys = [k.value for k in node.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+        dupes = sorted({k for k in keys if keys.count(k) > 1})
+        assert not dupes, f'duplicated city key(s): {dupes}'
+
+
+def test_the_seeded_city_inherits_its_donor_s_removals():
+    """Hyderabad's list was seeded from Bangalore's, so Bangalore's scaffolding
+    came with it. Without the mirror the rows survive in Hyderabad alone, and —
+    because `test_hyderabad_ontology` scopes "what Quest added" to rows absent
+    from Bangalore — they read as part of Quest's import."""
+    assert set(GENERIC_ROWS['bangalore']) <= set(GENERIC_ROWS['hyderabad'])
+
+
 def test_removal_matches_whole_names_not_substrings():
     """`sweet` must not drag `dry_sweet` with it. Since the real workbook already
     has both removed, prove the matcher is exact on a synthetic frame."""

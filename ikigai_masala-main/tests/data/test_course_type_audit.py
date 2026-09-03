@@ -223,7 +223,7 @@ class TestTheThreeCitySheetsAgree:
             assert list(_read(city).columns) == ref, city
         # 134 since `scripts/drop_dead_columns.py` removed `universe`, which was
         # blank on all 8,787 rows and read by nothing.
-        assert len(ref) == 134
+        assert len(ref) == 136
         assert 'universe' not in ref
 
     def test_sub_categories_are_mostly_shared_with_the_master(self):

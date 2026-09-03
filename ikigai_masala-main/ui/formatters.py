@@ -127,6 +127,22 @@ def shared_items_from_solution(
     return out
 
 
+def off_days_from_solution(raw_solution: Dict[str, Any]) -> Set[str]:
+    """Dates the client does not work, as the API marked them.
+
+    A horizon spans days a restricted-`working_days` client never cooks on
+    (Clario is Mon-Thu, so a 5-day plan from Monday covers a Friday). Those
+    come back as days with no items and ``is_working_day: False`` — kept as
+    columns so the week keeps its shape, but they must be LABELLED, because an
+    empty column is otherwise indistinguishable from a day the solver failed
+    on. Absent key means served, which is every client but three.
+    """
+    return {
+        date_key for date_key, day_data in (raw_solution or {}).items()
+        if isinstance(day_data, dict) and day_data.get('is_working_day') is False
+    }
+
+
 def flatten_api_solution(
     raw_solution: Dict[str, Any],
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:

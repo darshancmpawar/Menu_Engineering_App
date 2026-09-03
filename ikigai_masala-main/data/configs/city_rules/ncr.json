@@ -7,7 +7,9 @@
       "name": "ncr_south_bread_cadence",
       "type": "selector_history_window",
       "base_slot": "bread",
-      "selector": {"cuisine_family": "south_indian"},
+      "selector": {
+        "cuisine_family": "south_indian"
+      },
       "window_days": 15
     },
     {
@@ -15,8 +17,10 @@
       "name": "ncr_south_bread_weekly_max",
       "type": "selector_frequency",
       "base_slot": "bread",
-      "selector": {"cuisine_family": "south_indian"},
-      "max": 1
+      "selector": {
+        "cuisine_family": "south_indian"
+      },
+      "max_per_week": 1
     }
   ]
 }

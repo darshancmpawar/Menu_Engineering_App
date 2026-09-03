@@ -133,6 +133,47 @@ def test_freshness_bonus_stays_below_low_tier():
     assert FRESHNESS_UNIT > 1000
 
 
+class TestRegenerateOutbidsFreshness:
+    """The regenerate penalty and the freshness bonus pull on the SAME dish.
+
+    `MenuRegenerator` falls back to a penalty when hard-forbidding the old dish
+    would empty the cell. The dish it is penalising is usually the one freshness
+    likes most: a dish absent from the recency map scores the full cap, and
+    absent is the common case, since the map holds only what has been saved to
+    history. At -10_000 against a +90_000 cap the penalty lost by 9:1 and the
+    solver re-picked the dish the user had just asked to replace — the button
+    appeared to do nothing.
+
+    Pinned as an ORDERING between the two constants rather than as literals, so
+    tuning either one cannot quietly re-open it.
+    """
+
+    def test_the_penalty_outbids_the_biggest_freshness_bonus(self):
+        from src.solver.menu_solver import (
+            MAX_FRESHNESS_BONUS, REGEN_SIMILARITY_PENALTY,
+        )
+        assert abs(REGEN_SIMILARITY_PENALTY) > MAX_FRESHNESS_BONUS
+
+    def test_it_outbids_it_by_a_margin_not_a_hair(self):
+        """A one-unit margin would be decided by the random tie-break."""
+        from src.solver.menu_solver import (
+            FRESHNESS_UNIT, MAX_FRESHNESS_BONUS, REGEN_SIMILARITY_PENALTY,
+        )
+        head = abs(REGEN_SIMILARITY_PENALTY) - MAX_FRESHNESS_BONUS
+        assert head > FRESHNESS_UNIT * FRESHNESS_CAP_DAYS
+
+    def test_it_still_sits_under_one_low_tier_rule_unit(self):
+        """A regenerate is the user's request, not a licence to overrule the
+        rules: a soft preference must still be able to keep a dish in place."""
+        from src.constants import OBJECTIVE_TIER_WEIGHTS
+        from src.solver.menu_solver import REGEN_SIMILARITY_PENALTY
+        assert abs(REGEN_SIMILARITY_PENALTY) < OBJECTIVE_TIER_WEIGHTS['low']
+
+    def test_the_cap_constant_matches_the_bonus_it_names(self):
+        from src.solver.menu_solver import MAX_FRESHNESS_BONUS
+        assert MAX_FRESHNESS_BONUS == FRESHNESS_CAP_DAYS * FRESHNESS_UNIT
+
+
 # --- end-to-end: least-recently-served candidate wins ----------------------
 
 @pytest.fixture(scope="module")

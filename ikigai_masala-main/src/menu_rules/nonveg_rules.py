@@ -78,7 +78,7 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
             if biryani_lits:
                 day_has_biryani = model.NewBoolVar(f'nonveg_biryani_day_{di}')
                 link_any(model, biryani_lits, day_has_biryani)
-                biryani_day_vars.append(day_has_biryani)
+                biryani_day_vars.append((di, day_has_biryani))
 
         if not biryani_day_vars:
             return
@@ -91,7 +91,18 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
         # config change to make (disable this rule for the counter, or raise
         # max_per_week) so the relaxation is a decision someone takes, not one
         # the solver takes for them.
-        model.Add(sum(biryani_day_vars) <= self.max_per_week)
+        # PER CALENDAR WEEK, which is what the key has always been called. It
+        # used to sum over the whole horizon, so `max_per_week: 1` meant "once a
+        # fortnight" on a 14-day plan and "once in three weeks" on 21 — and
+        # because a biryani-theme day narrows a single-nonveg counter to biryani
+        # only, the second biryani day was FORCED. That one rule blocked 33 of
+        # the 85 counters at 14 days while every one of them planned fine at 7.
+        by_week: Dict[Any, List[Any]] = {}
+        for di, var in biryani_day_vars:
+            iso = dates[di].isocalendar()
+            by_week.setdefault((iso[0], iso[1]), []).append(var)
+        for wv in by_week.values():
+            model.Add(sum(wv) <= self.max_per_week)
 
     def forced_biryani_days(self, ctx: DiagnoseContext) -> int:
         """Days whose nonveg_main pool offers nothing but nonveg biryani.
@@ -108,6 +119,10 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
             return 0
 
         forced = 0
+        # Also recorded per DATE, so `diagnose()` can ask "is any one WEEK
+        # forced past the cap" rather than comparing a horizon total against a
+        # weekly number.
+        self._forced_dates = []
         for d in ctx.dates:
             if (d, 'nonveg_main') in (ctx.skip_cells or set()):
                 continue
@@ -125,18 +140,27 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
                 for v in day_pool['is_nonveg_biryani'].tolist()
             ):
                 forced += 1
+                self._forced_dates.append(d)
 
         # A biryani is also unavoidable on a day whose slot_composition mandates
         # one — the pool is not biryani-only there (the pair's other half is a
         # gravy), so the check above misses it. Siemens Technology's non-veg
         # counter has two biryani-theme days against this cap of one and used to
         # come back as a bare INFEASIBLE.
-        from .slot_composition_rule import days_forced_by_composition
-        by_composition = days_forced_by_composition(
+        from .slot_composition_rule import dates_forced_by_composition
+        by_composition = dates_forced_by_composition(
             getattr(self, '_peer_rules', None), ctx, 'nonveg_main',
             lambda r: _to_bool01(r.get('is_nonveg_biryani', 0)) == 1,
         )
-        return max(forced, by_composition)
+        # Union the two sets of DATES, not the two counts. A count cannot be
+        # bucketed by week, and the composition half is where most of the
+        # forcing comes from — a biryani-theme day gets its biryani from
+        # `nonveg_main_daily_pair`, not from a biryani-only pool. Taking
+        # `max()` of two counts left `_forced_dates` empty for exactly those
+        # counters, so the per-week check silently fell back to the horizon
+        # total and the rule still read as impossible on a fortnight.
+        self._forced_dates = sorted(set(self._forced_dates) | set(by_composition))
+        return max(forced, len(by_composition), len(self._forced_dates))
 
     # Populated by the diagnostics aggregator so the check above can replay the
     # theme filter that narrows the pool.
@@ -198,7 +222,16 @@ class NonvegBiryaniWeeklyRule(BaseMenuRule):
         # than the cap permits. Provably unsatisfiable, so report it as an ERROR
         # (which gates /plan with an actionable 422) rather than letting the
         # solver return a bare INFEASIBLE — or, worse, quietly raising the cap.
+        # Compared PER WEEK, to match what apply() now enforces. The horizon
+        # total against a weekly number is what made this rule read as
+        # impossible on any plan longer than a week.
         forced = self.forced_biryani_days(ctx)
+        by_week: Dict[Any, int] = {}
+        for d in getattr(self, '_forced_dates', []):
+            iso = d.isocalendar()
+            by_week[(iso[0], iso[1])] = by_week.get((iso[0], iso[1]), 0) + 1
+        if by_week:
+            forced = max(by_week.values())
         if forced > self.max_per_week:
             diags.append(Diagnostic(
                 rule=self.name, rule_type=self.rule_type.value,

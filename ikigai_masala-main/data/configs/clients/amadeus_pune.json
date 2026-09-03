@@ -179,7 +179,7 @@
         "selector": {
           "key_ingredient": "soy"
         },
-        "max": 1
+        "max_per_week": 1
       },
       {
         "_comment": "'in sun we server only flvour rice(any veg biryani)' — Sunday's rice must be a veg biryani, and 'any' is why this is a composition over the biryani flag rather than a pinned dish: the solver picks between veg_biryani and handi_biryani. Only `sun` is listed, so no other day gets a mandated component. One biryani day also satisfies the city ruleset's mixedveg_pulao_biryani_weekly cap of one.",

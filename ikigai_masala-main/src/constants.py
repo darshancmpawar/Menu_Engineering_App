@@ -274,10 +274,21 @@ THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 # argument as Bangalore: these are dishes the same operation cooks in the same
 # city, and ICON's own `source_pools` already names all eight tokens.
 #
+# Hyderabad is the strongest case of the four, because its pool tags are not
+# merely lopsided — they name the wrong city. `hyderabad.xlsx` was seeded from
+# Bangalore's list (a 191-dish standalone city would starve under the cooldown),
+# so 5,300 of its 6,260 rows carry a BANGALORE client's token: healthineers,
+# citrix, booking.com, cloudera, moengage. Those are sites in another city and
+# no Hyderabad client will ever name one, so without this line every Hyderabad
+# client would resolve to `common` alone — 960 rows of 6,260, and none of the
+# Telugu or Hyderabadi cooking the Quest import added, all 140 rows of which are
+# tagged `quest`. The tokens are an artefact of where the list came from; the
+# dishes are simply the city's list.
+#
 # Deliberately a city-level switch, not a per-client edit: it is reversible in
 # one line and leaves every client row untouched. Remove a city from this set to
 # restore per-client pools.
-FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'ncr'}
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'hyderabad', 'ncr'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.

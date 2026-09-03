@@ -29,13 +29,15 @@ there always wins. Idempotent.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 #: Marathi / regional dish word -> the `key_ingredient` value the ontology
 #: already uses for that ingredient. Matched as a whole `_`-token.

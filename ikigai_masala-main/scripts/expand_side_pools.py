@@ -25,6 +25,7 @@ re-running after a re-import changes nothing. ``--dry-run`` writes nothing.
 from __future__ import annotations
 
 import argparse
+import sys
 import re
 from pathlib import Path
 
@@ -47,7 +48,8 @@ def _atomic_to_excel(frame, path, **kw):
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ["bangalore", "pune", "chennai", "ncr"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 CATEGORIES = ["healthy_rice", "dessert", "bread", "starter"]
 
 # --- Part 2: top up thin pools by SHARING real dishes from a donor city -------
@@ -86,6 +88,15 @@ CITY_SHARE_TARGETS = {
     ("ncr", "welcome_drink"): 22,    # Corning; city had 17
 }
 # Donor preference order per category (first city that has the dish wins).
+#
+# Deliberately NOT `city_list.CITIES`, and the one place in this file that is
+# right to name cities by hand: lending is a menu decision, not a mechanical
+# one. Hyderabad is absent on purpose — it was seeded from Bangalore, so every
+# dish worth borrowing from it is already reachable through Bangalore, and the
+# only rows that are its own are Quest's Telugu and Telangana cooking. Sharing a
+# kodi pulusu into Pune's all-veg Maharashtrian list or NCR's North Indian one
+# would be a menu change nobody asked for. `tests/data/test_city_coverage.py`
+# lists this as an intentional exception.
 SHARE_DONORS = ["bangalore", "chennai", "ncr", "pune"]
 
 # A shared dish must be **doable in the target region**, so bread — the most
@@ -289,19 +300,72 @@ def _mk_id(n):
 MASTER_CITY = "bangalore"
 
 
+def _shareable_into(slug):
+    """The categories this script can ever WRITE into *slug*.
+
+    The second half of "did we put this row here", and the half that catches
+    what an id test cannot. Chennai's `sambaram` is a `welcome_drink` added by
+    `scripts/chennai_client_pools.py` — TCL's own grid names SAMBARAM as its
+    Monday drink, and Chennai had no welcome drinks at all before that script.
+    This script never shares a welcome drink into Chennai (only Pune and NCR ask
+    for one), so a blocklisted name in that slot cannot be its doing.
+
+    Without this the un-share deleted the row, taking Chennai from ten
+    buttermilks to nine and silently breaking a client's stated drink. It went
+    unnoticed because nothing had re-run this script since that row was added —
+    which is the argument for the whole chain being re-runnable end to end.
+    """
+    return (set(SHARE_TARGETS)
+            | set(CATEGORIES)
+            | {cat for (city, cat) in CITY_SHARE_TARGETS if city == slug})
+
+
+def _shared_by_us(df, master):
+    """Rows this script COPIED in, as opposed to rows the city's own list holds.
+
+    A copied row is written with a fresh `item_id` past the target city's
+    highest, so it can never carry the master's id for that dish. A row that
+    does — same `item_id`, same `item` — came from the city's own workbook.
+
+    The distinction did not exist while every non-master city was built from its
+    own raw list: there, a master dish appearing in another city could only have
+    been shared. `hyderabad.xlsx` is SEEDED from the master, so ~6,000 of its
+    rows are the master's rows, ids and all, and the old name-only test read
+    every one of them as a bad share. It deleted four — `sambaram`, `pretzel`,
+    `a2b_juice`, `tea_cake` — from a list that is supposed to be a superset of
+    its seed, and being name-keyed it would delete any future blocklist entry
+    from that city too.
+    """
+    if master is None:
+        return pd.Series(True, index=df.index)
+    theirs = set(zip(master["item_id"].astype(str),
+                     master["item"].map(_norm)))
+    own = pd.Series(list(zip(df["item_id"].astype(str), df["item"].map(_norm))),
+                    index=df.index).isin(theirs)
+    return ~own
+
+
 def _unshare_blocklisted(dfs):
     """Drop blocklisted dishes a previous run of this script shared out.
 
     The blocklist is applied when *choosing* what to share, but a name can only
     be added to it after a bad share has already been written (``sambaram`` was).
     Removing it here makes the script self-healing and keeps it idempotent.
-    Scoped to the non-master cities so the source list keeps its own rows.
+    Scoped to the non-master cities so the source list keeps its own rows — and,
+    within those, to rows this script actually wrote (see `_shared_by_us`).
     """
     removed = {}
+    master = dfs.get(MASTER_CITY)
     for slug, df in dfs.items():
         if slug == MASTER_CITY:
             continue
-        mask = df["item"].map(_norm).isin(SHARE_BLOCKLIST)
+        # Two independent tests of "did this script put the row here", because
+        # each catches what the other cannot: the id says the row is not the
+        # master's own (a seeded city's is), the category says this script could
+        # have written into that slot at all (another script's addition is not).
+        shared = (_shared_by_us(df, master)
+                  & df["course_type"].map(_norm).isin(_shareable_into(slug)))
+        mask = df["item"].map(_norm).isin(SHARE_BLOCKLIST) & shared
         # Rows an earlier, less careful pass wrote: drop by (city, category).
         for (sl, cat), items in UNSHARE.items():
             if sl != slug:

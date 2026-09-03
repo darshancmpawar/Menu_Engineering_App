@@ -65,7 +65,7 @@
           "flag": "is_maida_bread"
         },
         "base_slot": "bread",
-        "max": 2
+        "max_per_week": 2
       },
       {
         "_comment": "The bread is always a wheat or maida flat bread, never the dosai/idly family. Every one of the seven sampled breads is chapati, paratha, kulcha or kothu parotta; Chennai's 29-dish bread pool also holds 9 rice-breads (dosai, idly, appam) and the solver picked 'podi idly' as a bread row until this was added. A one-slot composition component with count 1 IS 'this slot must be a matching dish' (note 20) — `fixed_daily_item` would be the wrong tool, it only makes the choice consistent.",

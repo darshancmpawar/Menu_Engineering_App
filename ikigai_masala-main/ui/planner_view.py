@@ -22,6 +22,7 @@ from ui.formatters import (
     format_item_for_ui,
     format_item_html,
     nonveg_slots_from_solution,
+    off_days_from_solution,
     slot_sort_key,
 )
 
@@ -37,6 +38,7 @@ def flatten_result(result: dict) -> dict:
         "plan": flat,
         "plan_dates": sorted(flat.keys()),
         "day_types": day_types,
+        "off_days": off_days_from_solution(solution),
         "nonveg": nonveg_slots_from_solution(solution),
         "pool_warnings": result.get("pool_warnings", []),
         "source": "solver",
@@ -52,11 +54,27 @@ def date_label(d_str: str) -> str:
 
 
 def menu_table_html(plan: dict, plan_dates: list, day_types: dict,
-                    nonveg: Optional[dict] = None) -> str:
+                    nonveg: Optional[dict] = None,
+                    off_days: Optional[set] = None) -> str:
+    """*off_days* are dates the client does not work.
+
+    They are still columns — a horizon of 5 from Monday covers Mon-Fri whether
+    or not the client cooks on Friday, and dropping the day would close the gap
+    and make "5 days" mean something different per client. But an empty column
+    under a cuisine tag reads as a day the solver failed on, so a non-working
+    day is labelled instead.
+    """
     nonveg = nonveg or {}
+    off_days = off_days or set()
     header_html = '<tr><th>Category</th>'
     for d_str in plan_dates:
         d_lbl = date_label(d_str)
+        if d_str in off_days:
+            header_html += (
+                f'<th class="day-off"><span class="day-label">{d_lbl}</span>'
+                f'<span class="theme-tag" style="background:#F0F0F0;'
+                f'color:#777777;">Not served</span></th>')
+            continue
         day_type = day_types.get(d_str, "")
         bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
         icon = THEME_ICONS.get(day_type, "")

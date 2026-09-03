@@ -92,6 +92,7 @@ idempotent thereafter: a row that already has a colour is never touched.
 from __future__ import annotations
 
 import argparse
+import sys
 import csv
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -100,7 +101,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 REPORT = ROOT / "docs" / "dishes_needing_a_colour.csv"
 GROUPED_REPORT = ROOT / "docs" / "colours_to_confirm_by_family.csv"
 
@@ -135,13 +137,93 @@ MODIFIER_STOPWORDS = {
 }
 
 
+#: ``(item, course_type) -> (colour, reason)`` for a dish no tier can decide.
+#:
+#: Three dishes, all with the same origin: the client's enrichment pass DROPPED
+#: them as generic and we deliberately kept them (`mixed_veg` and `sprouts` are
+#: dish families rather than slot names — see `remove_generic_rows.py`;
+#: `mixed_fruit_crush` is a welcome drink distinct from the `mixed_fruit_custard`
+#: dessert, which is `canonical_dish_spellings.KNOWN_SPLITS`). So no enriched
+#: colour crosses over for them, and each falls just short of a MEASURED
+#: threshold below — which is a reason to give a verdict, not to loosen one:
+#:
+#:   * `mixed_veg`: `(veg_dry, mixed_vegetables)` is green in 92 of 117 rows —
+#:     79%, six points under `MIN_ATTR_AGREEMENT`. Note the same key across ALL
+#:     courses is green only 27% of the time, which is exactly why the tier is
+#:     scoped by course and why the cross-course figure must not be used.
+#:   * `sprouts`: every plain sprouts SALAD is green (`sprouts_salad`,
+#:     `green_sprouts`, `sprouts_kosambari`, `mixed_sprouts_salad`) — 8 of 11,
+#:     but the token vote needs the agreement, not just the count.
+#:   * `mixed_fruit_crush`: the `crush` family is orange in both rows that
+#:     carry it (`mixed_crush`, `orange_crush`) — unanimous but only two rows,
+#:     under `MIN_TOKEN_ROWS`. Orange follows the name's own family; the mixed
+#:     fruit JUICE/punch/smoothie rows are red, and that reading was rejected
+#:     because `mixed_crush` is the nearer twin.
+#:
+#: A blank is not neutral — `MenuSolver._add_color_constraints` clamps a day's
+#: required distinct colours to the number PRESENT among the candidates, so an
+#: uncoloured row quietly relaxes the rule wherever it is a candidate.
+#: `mix_veg` is the same dish under a shorter name, blank in NCR (`veg_dry`) and
+#: Pune (`veg_gravy`). It is NOT folded onto `mixed_veg_dry`: Corning Chakan's
+#: printed menu splits `mix_veg` out of a "Puri + Mix Veg" cell and
+#: `test_corning_pune_import.py` pins it as a Pune `veg_gravy`, so a fold would
+#: have to be per-city AND per-course, which is more machinery than a colour.
+#: Both courses are listed because each verdict is argued from the row's own
+#: course; both are green, and Pune's carries `sub_category: mixed_veg_dry`,
+#: which is green in every city that has it.
+ADJUDICATED = {
+    ("mixed_veg", "veg_dry"): (
+        "green", "(veg_dry, mixed_vegetables) is green in 92/117 rows (79%)"),
+    ("mix_veg", "veg_dry"): (
+        "green", "the same dish as mixed_veg_dry, green in every city"),
+    ("mix_veg", "veg_gravy"): (
+        "green", "sub_category mixed_veg_dry is green in every city"),
+    ("sprouts", "salad"): (
+        "green", "every plain sprouts salad in the list is green (8/11)"),
+    ("mixed_fruit_crush", "welcome_drink"): (
+        "orange", "the crush family is orange (mixed_crush, orange_crush)"),
+}
+
+
 def _norm(value) -> str:
     return str(value).strip().lower()
 
 
+def adjudicated_colour(item, course):
+    """The hand-given verdict for this dish, or ``(None, None)``.
+
+    Keyed by course as well as name: a colour is a property of the dish, but
+    these verdicts are each argued from the dish's own COURSE (the mixed-veg
+    evidence is 79% within `veg_dry` and 27% across all courses), so applying
+    one to a same-named row in another category would be applying an argument
+    that was never made.
+    """
+    hit = ADJUDICATED.get((_norm(item), _norm(course)))
+    return hit if hit else (None, None)
+
+
 def _known(frames) -> pd.DataFrame:
+    """The coloured rows, ONE PER DISH.
+
+    Every tier below weighs evidence by how many rows carry it, against
+    thresholds picked by held-out measurement (6 rows / 70% agreement = 90%
+    accuracy at 30% coverage). The city workbooks overlap heavily, so a dish
+    coloured in four cities was already counted four times — and
+    `hyderabad.xlsx`, seeded from Bangalore's list, doubled the weight of ~6,000
+    Bangalore rows without adding one new fact about them. That alone would have
+    coloured 249 dishes across the four established workbooks, all of them rows
+    this script had previously looked at and left for the client to confirm. The
+    measurement that set the thresholds counted dishes, so the vote must too.
+
+    A colour is a property of the dish, so the key is `item` alone (unlike
+    `complete_ontology.distinct_dishes`, which keys on the course as well
+    because a dish filed as a `dal` in one city and a `veg_gravy` in another is
+    two facts). City order — reference city first, see `city_list` — decides
+    which copy survives where two disagree, so the master's colour wins.
+    """
     rows = pd.concat(frames.values(), ignore_index=True)
-    return rows[rows["item_color"].notna()]
+    known = rows[rows["item_color"].notna()]
+    return known[~known["item"].astype(str).str.strip().str.lower().duplicated()]
 
 
 def colour_by_name(known) -> dict:
@@ -240,7 +322,9 @@ def apply(df: pd.DataFrame, by_name: dict, tokens: dict,
     filled, unresolved = [], []
     for idx in df.index[df["item_color"].isna()]:
         item = str(df.at[idx, "item"]).strip().lower()
-        colour, why = infer(item, by_name, tokens, df.loc[idx], attrs, flags)
+        colour, why = adjudicated_colour(item, df.at[idx, "course_type"])
+        if not colour:
+            colour, why = infer(item, by_name, tokens, df.loc[idx], attrs, flags)
         if colour:
             df.at[idx, "item_color"] = colour
             filled.append((item, colour, why))

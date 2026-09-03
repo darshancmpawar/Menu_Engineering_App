@@ -34,14 +34,17 @@ class TestCityExcelPath:
     def test_default_city_resolves_to_the_default_path(self):
         assert city_excel_path(DEFAULT_ONTOLOGY_CITY) == DEFAULT_EXCEL_PATH
 
-    # Chennai dropped from this list once it got its own workbook — the point
-    # is cities that have NOT had one dropped in yet.
-    @pytest.mark.parametrize('city', [None, '', 'Hyderabad'])
+    # Chennai, NCR and now Hyderabad have each dropped off this list as they
+    # got their own workbook — EVERY city in AVAILABLE_CITIES has one today, so
+    # the only remaining fallback cases are a blank city and a name nobody has
+    # added yet. `Kolkata` stands for the latter deliberately: the fallback has
+    # to hold for a city the app has never heard of, which is exactly the state
+    # a new city is in between "a client row names it" and "someone drops in
+    # city_items/<slug>.xlsx".
+    @pytest.mark.parametrize('city', [None, '', 'Kolkata'])
     def test_city_without_a_file_falls_back_to_default(self, city):
         """Adding a city to AVAILABLE_CITIES must not break planning — it keeps
-        using the default list until someone drops in city_items/<slug>.xlsx.
-        (Hyderabad still has no file of its own; NCR now does, so it is no
-        longer a fallback case — see test_every_available_city_resolves.)"""
+        using the default list until someone drops in city_items/<slug>.xlsx."""
         assert city_excel_path(city) == DEFAULT_EXCEL_PATH
 
     def test_slug_normalises_case_and_spaces(self):
@@ -67,7 +70,10 @@ class TestCityRequiredSlots:
         """Bangalore must still fail loudly if a mapping regression empties a
         slot — that is the whole point of the check."""
         assert city_required_slots(DEFAULT_ONTOLOGY_CITY) is None
-        # Hyderabad, not Chennai: Chennai declares its 16 categories now.
+        # Hyderabad has its own workbook now but is deliberately NOT declared:
+        # it was seeded from Bangalore's list, so it covers every mandatory slot
+        # and the undeclared default is the STRICTER check. Declaring it would
+        # only lower the bar.
         assert city_required_slots('Hyderabad') is None
 
     def test_manifest_only_names_real_base_slots(self):
@@ -159,26 +165,31 @@ class TestPuneOntologyFile:
 
 class TestPerCityCaches:
     def test_menu_data_is_keyed_by_resolved_path(self, fake_supabase):
-        """Cities sharing the default workbook share ONE cache entry; a city with
-        its own file gets its own. Keyed by path, not city name, so Hyderabad and
-        NCR don't each hold a copy of the 4,300-row default list.
+        """Cities sharing a workbook share ONE cache entry; a city with its own
+        file gets its own.
 
-        Hyderabad stands in for Chennai here — Chennai shared the default path
-        until it got `city_items/chennai.xlsx`, and now it is a third entry."""
+        Every city in AVAILABLE_CITIES has its own workbook now — Chennai, then
+        NCR, then Hyderabad each stopped being the example as one was added — so
+        the sharing case is a city that FALLS BACK to the default list. That is
+        not a hypothetical: it is the state of any city a client row names
+        before someone drops in `city_items/<slug>.xlsx`, and it is the reason
+        the key is the resolved path rather than the city name."""
         import api.app as api_app
         api_app.reset_caches()
 
         blr_df, _ = api_app._get_menu_data('Bangalore')
-        hyd_df, _ = api_app._get_menu_data('Hyderabad')
+        fallback_df, _ = api_app._get_menu_data('Kolkata')   # no file of its own
         pune_df, _ = api_app._get_menu_data('Pune')
-        chn_df, _ = api_app._get_menu_data('Chennai')
+        hyd_df, _ = api_app._get_menu_data('Hyderabad')
 
-        assert blr_df is hyd_df
+        assert blr_df is fallback_df
         assert pune_df is not blr_df
-        assert chn_df is not blr_df
+        assert hyd_df is not blr_df
         assert len(pune_df) < len(blr_df)
-        assert len(chn_df) < len(blr_df)
-        # bangalore (shared with hyderabad) + pune + chennai
+        # Hyderabad was seeded FROM Bangalore, so it is a superset, not a subset
+        # — and a separate cache entry, which is the assertion that matters.
+        assert len(hyd_df) > len(blr_df)
+        # bangalore (shared with the fallback city) + pune + hyderabad
         assert api_app._ontology.cache_sizes()['menu_data'] == 3
 
     def test_nonveg_items_are_per_city(self, fake_supabase):
@@ -201,10 +212,10 @@ class TestPerCityCaches:
         hand a Pune client Bangalore's `common` pool.
 
         Asserted on the KEY rather than by populating two entries, because
-        Pune is now the only city that narrows at all — Bangalore, Chennai and
-        NCR are in `FULL_POOL_CITIES` and never reach this cache, and Hyderabad
-        resolves to Bangalore's workbook. A count-based test would quietly stop
-        asserting anything the next time a city joins that set.
+        Pune is now the only city that narrows at all — Bangalore, Chennai, NCR
+        and Hyderabad are all in `FULL_POOL_CITIES` and never reach this cache.
+        A count-based test would quietly stop asserting anything the next time a
+        city joins that set.
         """
         import api.app as api_app
         from src.ontology.paths import city_excel_path

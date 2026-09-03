@@ -95,6 +95,21 @@ SPELLING = [
     (_tok("dryfruit"), "dry_fruit"),
     (_tok("hydrabadi", "hyderabadi"), "hyderabadi"),
     (_tok("lashooni", "lassoni", "lasooni"), "lasooni"),
+    # Typed by Quest's Hyderabad sheet. Ordinary misspellings, so they belong
+    # in the shared list rather than that one importer: each otherwise becomes a
+    # second row for a dish the ontology already has under the right spelling
+    # (`palvo`/`pulao`, `shai_tukda`/`shahi_tukda`, `tomatorice`/`tomato_rice`).
+    (_tok("palvo", "palav", "pulav"), "pulao"),
+    (_tok("shai"), "shahi"),
+    (_tok("tomatorice"), "tomato_rice"),
+    (_tok("keshari"), "kesari"),
+    (_tok("doasakaya"), "dosakaya"),
+    (_tok("pulhihora"), "pulihora"),
+    (_tok("papu"), "pappu"),
+    (_tok("pessari"), "pesara"),
+    (_tok("tamato"), "tomato"),
+    (_tok("andra"), "andhra"),
+    (_tok("mangloreanc", "mangalorean"), "mangalore"),
     # Typed by Corning Chakan's Pune sheet. Ordinary misspellings rather than
     # anything regional, so they belong in the shared list: each one otherwise
     # becomes a second row for a dish the same workbook already names correctly
@@ -328,6 +343,17 @@ CANONICAL_SPELLINGS = {
     # buttermilk EVERY day, so these two names go on a printed menu weekly.
     "malasa": "masala",
     "tempared": "tempered",
+    # `raitha` -> `raita`, and it has to live HERE rather than only in
+    # `canonical_dish_spellings.DUPLICATES`, because the fold alone breaks
+    # import stability: Stryker's printed menu writes "Raitha", so dropping the
+    # row simply made the next re-import add it straight back. Exactly the
+    # failure recorded for `chapati` / `plain_chapati` in `KNOWN_SPLITS`, and
+    # the reason that one was left alone — but this pair is a spelling rather
+    # than a granularity question, so the right fix is to teach the importer the
+    # spelling instead of keeping two rows. `raita` is the direction: it carries
+    # `sub_category: raita` and `is_raita` while `raitha` carried neither and
+    # was one of the four flagless `curd_side` rows.
+    "raitha": "raita",
     "subzi": "sabzi",
     "sabji": "sabzi",
     "payasa": "payasam",
@@ -365,10 +391,26 @@ PLACEHOLDERS = {"na", "n/a", "n.a.", "nil", "none", "-", "--", "---", "x",
                 # a day the site is closed is not a dish
                 "holiday", "closed", "off", "leave", "no service"}
 
+#: The NAME of a meal or a section, sitting in a dish cell. A printed grid puts
+#: these in the same column as the food — Booking's sheet writes "Lungcha" (the
+#: word LUNCH, garbled) where a dessert should be — and imported straight they
+#: become dishes: `luncha` sat in Bangalore's list as a `dessert` with no
+#: sub_category, no key_ingredient and no colour, servable as the day's sweet.
+#: `remove_generic_rows.py` deletes such rows, but it runs BEFORE the imports in
+#: the chain, so deleting alone is not enough — the next import mints it again
+#: under whatever spelling its own source uses. Matched by normalised NAME so a
+#: source's spelling does not decide, and separate from `PLACEHOLDERS` because
+#: these are not "no dish today", they are a label in the wrong cell.
+MEAL_PERIOD_WORDS = {"lunch", "luncha", "lungcha", "dinner", "breakfast",
+                     "brunch", "snacks", "snack", "evening_snacks", "supper",
+                     "menu", "meal", "meals", "veg", "non_veg", "nonveg"}
+
 
 def is_placeholder(text: str) -> bool:
     s = str(text).strip().lower().strip(".-–— ")
-    return not s or s in PLACEHOLDERS
+    if not s or s in PLACEHOLDERS:
+        return True
+    return re.sub(r"[^a-z0-9]+", "_", s).strip("_") in MEAL_PERIOD_WORDS
 
 
 def norm(v) -> str:
@@ -430,6 +472,27 @@ ALIASES = {
     "uppusaaru": "uppu_saru",
     "upsaaru": "uppu_saru",
     "soppu_saaru": "soppu_saru",
+    # The same fight, one fold later. These five arrived with the client's
+    # enriched workbooks, which caught duplicate pairs our own fold had missed,
+    # and each one re-broke the importer that writes the losing spelling —
+    # Citrix re-added `ennegayi`, `gol_gappa` and `nucchinde`, MOengage
+    # `bassuru` and `jelabi`. Per whole name rather than per token for the same
+    # reason as the four above: `gol_gappa` -> `golgappa` closes a word gap that
+    # no token rule can express, and the other four are single-token names where
+    # the two forms are the same length of edit — folding the token globally
+    # would reach into any longer dish name that happens to contain it.
+    "bassuru": "bassaru",
+    "ennegayi": "ennegai",
+    "gol_gappa": "golgappa",
+    "jelabi": "jalebi",
+    "nucchinde": "nuchinunde",
+    # NCR's three, folded for the same reason and pre-empting the same break:
+    # Stryker and Siemens are the sites that serve them, and both have an
+    # importer here. NB `mix_veg` is deliberately NOT in this dict — Corning
+    # Chakan's Pune menu prints it as a real dish, and `ALIASES` is global.
+    "avail": "avial",
+    "veg_avail": "avial",
+    "veg_chowmin": "chowmin",
 }
 
 
@@ -747,16 +810,24 @@ def nonveg_structural_flags(item: str, protein: str, cuisine: str,
     with a `min: 1` frequency rule made the whole counter INFEASIBLE rather
     than simply not choosing it.
 
-    *style* is the printed menu's own verdict ("dry" / "gravy") when its row
-    label carries one — Stripe prints "Non-Veg Semi Dry or Dry" and "Non-Veg
-    Curry or Main Course" as separate rows, which is better evidence than any
-    name heuristic. The name decides when the label does not, and a biryani is
-    a biryani whatever row it was printed on.
+    *style* is the printed menu's own verdict ("dry" / "gravy" / "biryani")
+    when its row label carries one — Stripe prints "Non-Veg Semi Dry or Dry" and
+    "Non-Veg Curry or Main Course" as separate rows, which is better evidence
+    than any name heuristic. The name decides when the label does not, and a
+    dish named biryani is one whatever row printed it.
+
+    `"biryani"` is the third value because a biryani row does not always print
+    the word. Quest's Wednesday biryani row runs `Andra Chicken Palvo` and
+    `Hyderabadi Dum Pulao` — a pulao and a biryani are genuinely different
+    dishes, so the name is right to refuse, and the row is still saying this is
+    the day's rice-based non-veg showpiece. Left unflagged the dish carries no
+    form at all, which on a 2-4 slot counter means `nonveg_main_daily_pair` can
+    never place it: it sits in the pool and is silently never chosen.
     """
     toks = set(item.split("_"))
     out: Set[str] = set()
 
-    if "biryani" in toks:
+    if style == "biryani" or "biryani" in toks:
         return {"is_nonveg_biryani", "is_biryani_item"}
 
     dry = style == "dry" or (not style and bool(toks & set(DRY_WORDS)))

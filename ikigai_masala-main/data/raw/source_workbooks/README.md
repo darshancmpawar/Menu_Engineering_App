@@ -31,6 +31,7 @@ attachments and would have been lost.
 | `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `scripts/import_booking_menu.py` |
 | `corning_chakan_pune_menu.xlsx` | Pune | Corning Chakan's nine weekly sheets, one column per day, identical row layout on every sheet. **The first client menu for a city other than Bangalore or Chennai**, and the first Maharashtrian list. Lunch and dinner only; the salad block is a salad BAR whose components are ingredients, and one sheet carries an unlabelled Independence Day menu below the grid that is read by dish name rather than position | `scripts/import_corning_pune_menu.py`, `scripts/marathi_ingredient_names.py` |
 | `chennai_client_structure.xlsx` | Chennai | **four clients' rules in their own words**, on `Sheet1`, plus a sample week per client on its own sheet — a different kind of source from Toast Tab's service history, since these are stated rather than inferred. TCL, Gartner, World Bank and ICON Chn. RNTBCI is listed with nothing beside it and an empty sheet: on hold | `docs/chennai_client_logic.md`, `configs/clients/{tcl,gartner,world_bank,icon_chn}.json`, `scripts/chennai_client_pools.py` |
+| `quest_hyderabad_menu_2026.xlsx` | Hyderabad | Quest's 41-day grid (31 Mar – 30 Jul 2026), one column per service day. **The source that created the Hyderabad city list.** Two layouts OFFSET from each other — Tue/Thu carry the full menu in rows 2-13, Wed is the biryani day in rows 5-13 with nothing above — so a column is read on the biryani map exactly when row 2 is blank; on the wrong map the Wednesday veg gravy files as a dal. The two non-veg rows are dry and gravy in that order and the biryani row is a third form, which is evidence no name heuristic has. "Chef Choice Desserts" is a placeholder and the fruit row holds serving counts, not dishes | `scripts/import_quest_hyderabad_menu.py`, `city_items/hyderabad.xlsx` |
 | `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `scripts/import_stripe_menu.py` |
 
 ## Adding a city
@@ -66,22 +67,71 @@ attachments and would have been lost.
    Also pan-city: `scripts/misspelled_protein_names.py` (meat-named dishes the
    mapping pipeline left sitting in veg pools) and
    `scripts/canonical_dish_spellings.py` (one dish, one spelling).
+
+   **Run the chain as a WHOLE, not piecemeal.** Several scripts repair what an
+   earlier one removes, and running one on its own leaves the workbook between
+   two consistent states: folding `raitha` into `raita` took Chennai's
+   `curd_side` from 13 dishes to 11, and it is `expand_side_pools.py` — six
+   steps earlier in the list — that tops such a pool back up to its floor of 12.
+   The chain converges (a second full pass changes nothing), so re-running it
+   costs only time.
 4. Re-run `scripts/build_pool_token_map.py` so `city_items/pool_tokens.json`
    picks up the new city (keeps `/editor-metadata` fast).
-5. Declare the city's categories in `city_items/ontology_categories.json`.
+5. Declare the city's categories in `city_items/ontology_categories.json` — **only if the
+   city does not cover every mandatory slot.** An undeclared city is held to the FULL
+   check, which is the stricter one; declaring a complete list only lowers the bar.
+   Hyderabad is deliberately absent for that reason.
+6. If the city's rows carry pool tokens that mean nothing there, add it to
+   `src.constants.FULL_POOL_CITIES`. Hyderabad had to: it was SEEDED from Bangalore
+   (`scripts/import_quest_hyderabad_menu.py` — a 191-dish standalone list starves under
+   the cooldown, see `tests/cities/test_hyderabad_ontology.py`), so ~5,300 of its rows are
+   tagged to Bangalore sites and `common` alone is 960 rows holding none of the city's own
+   dishes. Seeding also doubles the corpus the all-cities scripts learn from, which is why
+   `complete_ontology.py` and `fill_item_colours.py` weigh evidence per DISH, not per row.
+7. Nothing to do for the correction scripts themselves: they read
+   `scripts/city_list.py`, which is derived from the workbooks on disk.
+   `tests/data/test_city_coverage.py` fails if one goes back to a hard-coded list.
 
 ## Correction scripts, in the order they must run
 
+0. `scripts/merge_enriched_ontology.py` — **first of the writers.** Folds the
+   client's `<city>_enriched_final.xlsx` values into the city lists. It runs at
+   the head for the same reason the ingredient dictionary and the colour fill
+   run before `complete_ontology.py`: it supplies *evidence* — a complete
+   `item_color`, a real `primary_protein` vocabulary, NCR's last blank cuisines
+   — that every later pass learns from. Run it afterwards instead and those
+   passes vote on a thinner corpus and the chain stops converging. It is a
+   merge, not a replacement: the current workbook is the base and only values
+   cross over, because the uploads branch from a snapshot predating the last
+   three commits. Their ROW edits are deliberately elsewhere — the junk they
+   caught is in `remove_generic_rows.py` (step 5) and their duplicate folds are
+   in `canonical_dish_spellings.py` (step 3), which is also why running this
+   first cannot undo them.
+0b. `scripts/dump_chef_review.py` — a REPORT, so it can run any time, but it is
+   worth running at the end: the enriched files ship 720 Bangalore and 354 NCR
+   low-confidence colours in their own `chef_review` sheet, and once merged
+   those are indistinguishable from the 5,000 the client verified. It writes
+   them to `docs/chef_review_queue.csv` with what the merge actually stored, so
+   the open question stays visible instead of living inside a workbook nobody
+   opens.
 1. `scripts/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
 2. `scripts/misspelled_protein_names.py` — meat-named rows left in veg pools
-3. `scripts/canonical_dish_spellings.py` — one dish, one spelling
+3. `scripts/canonical_dish_spellings.py` — one dish, one spelling. NB its
+   duplicate fold **folds the merged rows' pool tokens together**, and the
+   promotion to `common` at 6 tokens is switched off for a city that has no
+   `common` pool (`_has_common_pool`, read from the frame before any merge).
+   NCR is that city — all its rows carry a site token or nothing — so promoting
+   there invented a token naming no pool the city has.
 4. `scripts/merge_duplicate_curd.py` — before `expand_side_pools.py`
 5. the per-city corrections (`seafood_taxonomy`, `course_type_corrections`,
    `remove_generic_rows`, `dessert_cuisine_corrections`, the `ncr_*` set)
 6. `scripts/expand_side_pools.py`
 7. the client menu imports (`import_booking_menu.py`, `import_stripe_menu.py`,
    `import_stryker_menu.py`, `import_moengage_menu.py`, `import_citrix_menu.py`,
-   `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`)
+   `import_chennai_menu_bank.py`, `import_corning_pune_menu.py`,
+   `import_quest_hyderabad_menu.py` — which also SEEDS `city_items/hyderabad.xlsx`
+   from Bangalore's list on a fresh checkout, so it must run before anything
+   that expects the file to exist)
 8. `scripts/nonveg_structural_flags.py` — **after** the imports, because they
    are what adds new non-veg rows with no form flag
 8b. `scripts/bread_form_flags.py` — same slot, same reason, for
@@ -93,6 +143,10 @@ attachments and would have been lost.
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
     pass then implies a sub_category and flags from.
+10b. `scripts/fill_cuisine_family.py` — after the re-files (it reads
+    `course_type` and `sub_category`) and before `complete_ontology.py`, whose
+    attribute implication learns from the column this fills. Only NCR has
+    blanks; the other four are complete.
 11. `scripts/fill_item_colours.py` — the same argument as the dictionary, for
     `item_color`, and it must come BEFORE `complete_ontology.py`. It reads only
     dish names and the colours already present, so nothing that pass fills can
@@ -104,6 +158,11 @@ attachments and would have been lost.
     imports, the re-files, the flag corrections, the ingredient dictionary and
     the colours to have happened first. It runs to a fixed point internally; a
     second invocation is a no-op.
+12b. `scripts/normalize_item_ids.py` — `item_id` is `MENU######` in every
+    city. Two allocators used to compute "one past the city's highest" with
+    `pd.to_numeric`, which coerces a prefixed id to NaN, so they restarted at 1
+    and stamped bare integers onto 64 rows. Fixed at the source; this repairs
+    what they wrote and is a no-op on a clean workbook.
 13. `scripts/definitional_flags.py` — **after** `complete_ontology.py`, and the
     only thing in the chain that CLEARS a flag rather than filling one. That
     pass's token vote is what put `is_liquid_dessert` on 55 NCR pethas, laddus
@@ -118,8 +177,19 @@ sit with the per-city corrections (step 5).
 It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
 sweets four clients' stated rules asked more of than the list held.
 
-Steps 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
+Steps 0, 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
 docstrings give.
+
+**A removal is the one step the chain cannot undo.** Every other script fills or
+corrects a cell and re-running it converges; `remove_generic_rows.py` deletes
+rows, so a name added to its list by mistake, run once, is gone from the
+workbook and taking it back out of the list does NOT bring the rows back. That
+happened: `mixed_veg` and `sprouts` were briefly listed, removed from Bangalore,
+and survived in Hyderabad — which reads as Quest's import having added them,
+since `tests/cities/test_hyderabad_ontology.py` scopes "what Quest added" to
+rows absent from Bangalore. The recovery is `git checkout HEAD -- data/raw/city_items/`
+and a clean re-run, not a surgical re-add; anything else leaves residue from the
+bad run that nothing will report.
 
 The whole chain is **convergent**: run it twice and the second pass reports
 "already correct" everywhere. That is the check worth doing after any re-import,

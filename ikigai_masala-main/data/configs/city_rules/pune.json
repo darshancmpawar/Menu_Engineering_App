@@ -76,7 +76,7 @@
         "flag": "is_aloo_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 2
+      "max_per_week": 2
     },
     {
       "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; scripts/pune_flag_corrections.py sets it on black_chana_malwani.",
@@ -86,7 +86,7 @@
         "flag": "is_black_chana_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R16 — kabuli chana gravies max once a week.",
@@ -96,7 +96,7 @@
         "flag": "is_kabuli_chana_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R20 (mixed-veg part) — mixed-veg gravies max once a week.",
@@ -106,7 +106,7 @@
         "flag": "is_mixedveg_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R20 (kurma part) — veg kurma gravies max once a week.",
@@ -116,7 +116,7 @@
         "flag": "is_kurma_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R20 (kofta part) + R18 (malai kofta) + R32 (kofta needs a 7-day gap) — one kofta gravy per week covers all three inside a weekly horizon. R6 (malai kofta excludes other premium gravies that week) follows from premium_gravy_weekly below.",
@@ -126,7 +126,7 @@
         "flag": "is_veg_kofta_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R30 — kadhi-style dal once in 15 days; projected onto the horizon as once a week (the 20-day item cooldown carries the rest of the window for the same dish). Kadhi sits under veg_gravy in the ontology.",
@@ -136,7 +136,7 @@
         "flag": "is_kadhi_dal"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R30's 15-day window, enforced across plans from saved history (kadhi_weekly is the within-plan half). A kadhi served last week is held off until the 15 days clear, not just kept to one per week.",
@@ -156,7 +156,7 @@
         "flag": "is_premium_gravy"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R23 — premium-ingredient veg dry max once a week.",
@@ -166,7 +166,7 @@
         "flag": "is_premium_veg_dry"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R13 — at most one premium veg item on a day, counted across every slot (a paneer gravy and a soya dry on the same day is two).",
@@ -184,7 +184,7 @@
       "selector": {
         "key_ingredient": "baby_corn"
       },
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R15 — deep-fried veg dry once per 7 days.",
@@ -194,7 +194,7 @@
         "flag": "is_deep_fried_veg_dry"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; scripts/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
@@ -204,7 +204,7 @@
         "flag": "is_leafy_based_dish"
       },
       "base_slot": "veg_dry",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R31's 15-day window across plans (leafy_veg_dry_weekly is the within-plan half): a leafy veg dry served last week is held off until the 15 days clear.",
@@ -233,7 +233,7 @@
         "flag": "is_pappu_dal"
       },
       "base_slot": "dal",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R25 — the remaining dal days should be mostly yellow dal ('roughly one every 3 days'). Read as a floor over the horizon: at least 2 of a 5-day week. min targets auto-cap to what is placeable, so a shorter horizon or a thinner pool lowers it rather than failing.",
@@ -256,7 +256,7 @@
         ]
       },
       "base_slot": "rice",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R17 — maida-based breads max once a week. Inert in the current Pune list (no maida breads); kept as a stated rule.",
@@ -266,7 +266,7 @@
         "flag": "is_maida_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R47 — oil-based breads (lachha parota, poori) are monthly. A month is longer than any horizon, so this caps them at one per horizon; the 20-day item cooldown extends it for the same dish. Inert in the current Pune list.",
@@ -276,7 +276,7 @@
         "flag": "is_oil_based_bread"
       },
       "base_slot": "bread",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "R47's monthly window enforced across plans from history: once an oil-based bread is served it is held off for 30 days, so the cadence is truly monthly and not once-a-week. Inert in the current Pune list (no oil-based breads).",
@@ -306,7 +306,7 @@
         "flag": "is_chinese_fried_rice"
       },
       "base_slot": "rice",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "State rule: Chinese is allowed only once per 7 days. `max` counts DAYS, so this is one Chinese DAY a week rather than one Chinese dish — which is the point, otherwise a chinese rice and a chinese veg dry on the same day would spend two of the week's allowance. Scoped to the cuisine-main slots; an incidental chinese salad or chutney is not what makes a day Chinese. No Pune counter themes a weekday chinese today, so nothing forces this cap past its limit (note 9e).",
@@ -321,7 +321,7 @@
         "veg_dry",
         "starter"
       ],
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "State rule: legume gravies, not more than once a week. 24 of Pune's 103 veg gravies are whole-legume (chana, rajma, chole, lobia). This is the umbrella the black-chana and kabuli-chana caps below sit under — with legume total at 1/day-a-week those two become redundant rather than wrong, and they are kept because the client stated them separately.",
@@ -331,7 +331,7 @@
         "flag": "is_whole_legume_based"
       },
       "base_slot": "veg_gravy",
-      "max": 1
+      "max_per_week": 1
     },
     {
       "_comment": "State rule: mix-veg or aloo dry should appear roughly once a week, COMPULSORY — so a `min`, not a cap. 27 of Pune's 92 veg dries qualify (14 potato, 13 mixed_vegetables), and `selector_frequency` caps `min` to what is actually placeable, so a week where the cooldown has taken them all relaxes instead of going INFEASIBLE.",

@@ -35,8 +35,13 @@ so they are declared separately in `COURSE_INGREDIENT_FLAGS`:
   rule has therefore never constrained anything: `min` caps itself to what the
   pool can place, which for an empty selector is nothing, so it has been
   silently inert since it was written. It is the only one of the 112 flag
-  columns that is empty everywhere AND read by a shipped config — the other two
-  (`is_bakery_dessert`, `is_nonveg_starter`) are unreferenced.
+  columns that is empty everywhere AND read by a shipped config. The other two
+  are unreferenced, and were adjudicated separately: **`is_bakery_dessert`** is
+  a real gap — 61 cakes, brownies and muffins sat in the ontology while the
+  column that names them was zero — so it is derived here too.
+  **`is_nonveg_starter`** is a FACT, not a gap: this ontology files every
+  non-veg starter (kebabs, chicken 65) under `nonveg_main`, so the `starter`
+  course contains no non-veg row in any city. It is left empty deliberately.
 * **`is_paneer_gravy`** — the working twin, and the column that says what the
   empty one should mean: it agrees with "a paneer dish in `veg_gravy`" on 165 of
   167 Bangalore rows and 7 of 7 in Chennai. In **NCR** it is wrong in both
@@ -82,7 +87,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "chennai", "pune", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 #: Words that name a liquid sweet. `sheer` is milk (sheer korma, sheer
 #: surkumba), `pradhaman` and `paramannam` are the Kerala and Telugu names for a
@@ -110,10 +116,34 @@ BUTTERMILK_NAMES = {
     "boondi_butter_milk", "tadka_neer_mor", "neer_mor", "neer_moru",
 }
 
-#: (flag, course, tokens, whole names) — the definition, in both directions.
-DEFINITIONS: List[Tuple[str, str, Set[str], Set[str]]] = [
-    ("is_liquid_dessert", "dessert", LIQUID_DESSERT_WORDS, set()),
-    ("is_buttermilk", "welcome_drink", BUTTERMILK_WORDS, BUTTERMILK_NAMES),
+#: Words that name a WESTERN BAKED sweet. `is_bakery_dessert` was the only flag
+#: in the schema that was zero in every city while the dishes plainly existed —
+#: 61 of them, cakes and brownies and muffins — so a rule could name the family
+#: and match nothing, silently, which is the failure mode `is_paneer_fry` had.
+BAKERY_DESSERT_WORDS = {
+    "cake", "brownie", "pastry", "pastries", "muffin", "cookie", "cookies",
+    "cupcake", "cheesecake", "donut", "doughnut", "tart", "waffle",
+    "croissant", "eclair", "pie",
+}
+
+#: The mawa sweets whose names carry a bakery word and are not baked at all.
+#: The same two `dessert_cuisine_corrections.py` excludes from its western
+#: retag, for the same reason and with the same verdict: a milk cake is a
+#: reduced-milk Indian sweet, not a bakery item.
+BAKERY_DESSERT_EXCLUDED = {
+    "milk_cake", "ajmeri_milk_cake",
+}
+
+#: (flag, course, tokens, whole names, excluded names) — the definition, in both
+#: directions. `excluded` is checked first and wins: it is how a name that
+#: carries a family's word without belonging to the family is kept out, without
+#: weakening the token list for the dishes that do.
+DEFINITIONS: List[Tuple[str, str, Set[str], Set[str], Set[str]]] = [
+    ("is_liquid_dessert", "dessert", LIQUID_DESSERT_WORDS, set(), set()),
+    ("is_buttermilk", "welcome_drink", BUTTERMILK_WORDS, BUTTERMILK_NAMES,
+     set()),
+    ("is_bakery_dessert", "dessert", BAKERY_DESSERT_WORDS, set(),
+     BAKERY_DESSERT_EXCLUDED),
 ]
 
 #: (flag, course, primary_protein values, name phrases) — "this ingredient,
@@ -166,9 +196,19 @@ def _norm(v) -> str:
     return str(v).strip().lower()
 
 
-def matches(item: str, tokens: Set[str], names: Set[str]) -> bool:
-    """Does this dish name belong to the family?"""
+def matches(item: str, tokens: Set[str], names: Set[str],
+            excluded: Set[str] = frozenset()) -> bool:
+    """Does this dish name belong to the family?
+
+    *excluded* is checked first and wins. It exists so a token list can stay
+    broad enough to catch the family while a name that merely borrows one of its
+    words stays out — `milk_cake` is a mawa sweet, not a bakery item, and
+    dropping `cake` from the token list to keep it out would lose the other
+    fifty-nine.
+    """
     key = _norm(item)
+    if key in excluded:
+        return False
     if key in names:
         return True
     return bool(set(t for t in key.split("_") if t) & tokens)
@@ -226,7 +266,8 @@ def refile(df: pd.DataFrame, wanted: List[str]) -> List[str]:
 
 
 def enforce(df: pd.DataFrame, flag: str, course: str,
-            tokens: Set[str], names: Set[str]):
+            tokens: Set[str], names: Set[str],
+            excluded: Set[str] = frozenset()):
     """Set *flag* on every row of *course* the definition holds for and clear it
     everywhere else. Returns (set, cleared) dish names.
 
@@ -243,7 +284,8 @@ def enforce(df: pd.DataFrame, flag: str, course: str,
         return [], []
     in_course = df["course_type"].map(_norm).eq(course)
     current = pd.to_numeric(df[flag], errors="coerce").fillna(0).eq(1)
-    should = df["item"].map(lambda i: matches(i, tokens, names)) & in_course
+    should = df["item"].map(
+        lambda i: matches(i, tokens, names, excluded)) & in_course
 
     to_set = df.index[should & ~current]
     to_clear = df.index[current & ~should]
@@ -266,8 +308,8 @@ def main(dry_run: bool = False) -> int:
             print(f"[{city}] -> welcome_drink: {', '.join(moved)}")
 
         passes = (
-            [(f, lambda d, f=f, c=c, t=t, n=n: enforce(d, f, c, t, n))
-             for f, c, t, n in DEFINITIONS]
+            [(f, lambda d, f=f, c=c, t=t, n=n, x=x: enforce(d, f, c, t, n, x))
+             for f, c, t, n, x in DEFINITIONS]
             + [(f, lambda d, f=f, c=c, p=p, nm=nm:
                 enforce_ingredient(d, f, c, p, nm))
                for f, c, p, nm in COURSE_INGREDIENT_FLAGS]

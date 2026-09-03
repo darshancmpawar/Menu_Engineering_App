@@ -270,7 +270,14 @@ class TestThePuneConventionsStillHold:
         the dish becomes unservable rather than merely mislabelled."""
         rows = pune[pune["item"].map(_norm).isin({"veg_kheema", "soya_kheema"})]
         assert len(rows) == 2
-        assert not [p for p in rows["primary_protein"].dropna().map(_norm) if p]
+        # No MEAT protein — not "no protein at all". A veg kheema carrying
+        # `soy` is correct, that being what it is made of, and the enriched
+        # merge fills it. What must never happen is the `keema` -> mutton /
+        # chicken fuzzy match this guards.
+        from src.constants import NONVEG_PROTEINS
+        meat = {_norm(p) for p in NONVEG_PROTEINS}
+        assert not [p for p in rows["primary_protein"].dropna().map(_norm)
+                    if p in meat]
 
     def test_no_duplicate_names_or_ids(self, pune):
         assert not pune["item"].duplicated().any()

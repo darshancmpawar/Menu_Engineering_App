@@ -107,6 +107,17 @@ def _safe(matcher) -> str:
     return f"{kind}_{val}".replace(' ', '_')[:60]
 
 
+def dates_forced_by_composition(peer_rules, ctx, base_slot, row_matches):
+    """The DATES `days_forced_by_composition` counts.
+
+    Same computation, returning which days rather than how many. A caller with a
+    PER-WEEK cap has to bucket the forced days by week — comparing a horizon
+    total against a weekly number is what made `nonveg_biryani_once_per_week`
+    read as impossible on any plan longer than one week.
+    """
+    return _forced_dates_by_composition(peer_rules, ctx, base_slot, row_matches)
+
+
 def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
     """How many days a peer composition rule *mandates* an item that
     ``row_matches`` accepts, for ``base_slot``.
@@ -155,7 +166,27 @@ def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
     if not slots:
         return 0
 
-    forced = 0
+    return len(_forced_dates_by_composition(
+        peer_rules, ctx, base_slot, row_matches))
+
+
+def _forced_dates_by_composition(peer_rules, ctx, base_slot, row_matches):
+    comps_by_rule = [
+        r for r in (peer_rules or [])
+        if isinstance(r, SlotCompositionRule)
+        and (base_slot is None or r.base_slot == base_slot)
+    ]
+    if not comps_by_rule:
+        return []
+    slots = ([base_slot] if base_slot is not None
+             else sorted({r.base_slot for r in comps_by_rule if r.base_slot}))
+    active = ctx.active_base_slots
+    if active is not None:
+        slots = [s for s in slots if s in active]
+    if not slots:
+        return []
+
+    forced = []
     for d in ctx.dates:
         day_type = ctx.day_types.get(d, '')
         hit = False
@@ -187,7 +218,7 @@ def days_forced_by_composition(peer_rules, ctx, base_slot, row_matches) -> int:
             if hit:
                 break
         if hit:
-            forced += 1
+            forced.append(d)
     return forced
 
 

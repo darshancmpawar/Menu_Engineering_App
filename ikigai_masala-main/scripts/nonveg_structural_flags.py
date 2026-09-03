@@ -60,7 +60,8 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
-CITIES = ("bangalore", "pune", "chennai", "ncr")
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+from city_list import CITIES  # noqa: E402
 
 from menu_import import nonveg_structural_flags  # noqa: E402
 
