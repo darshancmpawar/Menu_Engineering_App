@@ -305,3 +305,47 @@ class TestOperatorFacingLogsKeepOneName:
         roots = _imported_roots(os.path.join(SRC, 'log_names.py'))
         assert not (roots & INTERFACE_PACKAGES)
         assert 'src' not in roots
+
+
+class TestWeekdaySpellingsAgreeAcrossModules:
+    """A config writing "sat" must mean the same thing to every rule that
+    reads a weekday.
+
+    Two tables hold the accepted spellings and they cannot be merged, because
+    they map to different things: `menu_solver._WEEKDAY_ALIASES` resolves an
+    alias to a full weekday NAME (what `working_days` and
+    `slot_day_restriction` compare against), and
+    `selector_frequency_rule._WEEKDAY_TOKENS` resolves it to a weekday INDEX
+    (what `forbidden_weekdays` needs for `date.weekday()`).
+
+    What must not happen is the two drifting: adding "thurs" to one leaves a
+    config that works in `slot_day_restriction` and is silently ignored in
+    `forbidden_weekdays` — a weekday ban that reads as configured and bans
+    nothing. Pinned as an agreement on the KEYS, which is the only thing they
+    share and the only thing that can go wrong.
+    """
+
+    def _tables(self):
+        from src.menu_rules.selector_frequency_rule import _WEEKDAY_TOKENS
+        from src.solver.menu_solver import _WEEKDAY_ALIASES
+        return _WEEKDAY_TOKENS, _WEEKDAY_ALIASES
+
+    def test_they_accept_the_same_spellings(self):
+        tokens, aliases = self._tables()
+        assert set(tokens) == set(aliases)
+
+    def test_every_weekday_has_a_short_and_a_long_spelling(self):
+        tokens, _ = self._tables()
+        assert len(tokens) == 14, sorted(tokens)
+        assert set(tokens.values()) == set(range(7))
+
+    def test_the_two_resolve_an_alias_consistently(self):
+        """Different value types, same answer: alias -> index and alias -> name
+        must name the same day."""
+        import datetime as dt
+        tokens, aliases = self._tables()
+        # 2026-09-07 is a Monday, so index i is that weekday's name.
+        monday = dt.date(2026, 9, 7)
+        for alias, idx in tokens.items():
+            expected = (monday + dt.timedelta(days=idx)).strftime('%A').lower()
+            assert aliases[alias] == expected, (alias, idx, aliases[alias])

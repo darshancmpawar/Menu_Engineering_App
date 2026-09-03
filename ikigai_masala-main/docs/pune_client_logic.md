@@ -8,7 +8,7 @@ clients are in [`client_logics.md`](client_logics.md).
 nine stated rules. Scope is **lunch**.
 
 **Implementation:** the `"Amadeus Pune"` entry in
-`data/configs/client_rules.json`. Asserted end to end by
+`data/configs/clients/<slug>.json`. Asserted end to end by
 `tests/test_pune_client_logic.py`.
 
 ---
@@ -170,7 +170,9 @@ becomes unservable on every counter in every city. `SameDayExclusionRule._hits`
 drops such a dish from the exclude side only, so a chole-paneer curry stays
 servable and still blocks a *separate* soya dish that day.
 
-Fleet check: all 57 counters still generate and no paneer day anywhere carries an
+Fleet check (at the time of that change, when the fleet was 57 counters; it is
+85 now — see `docs/menu_generation_25day_sweep.md` for the current run): all 57
+counters still generated and no paneer day anywhere carried an
 excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
 excluded pairing before these rules — which is expected, since the client asked
 for them in all cities.
@@ -231,7 +233,7 @@ Each was a silent failure, and each is pinned by a test in
    so `raita` (a real Pune dish, filed under `curd_side`) was routed to
    `forced_items`, failed to match any `salad` candidate, and the cell was solved
    normally — while the stamping pass skipped it for being in `forced_items`. The
-   test is now slot-scoped. Checked across every pin in `client_rules.json`: only
+   test is now slot-scoped. Checked across every pin in the client's rules file: only
    this one changes behaviour (Cloudera's `healthy_rice: "curd rice"` looks
    similar but is a whole-horizon pin, which was already stamped).
 

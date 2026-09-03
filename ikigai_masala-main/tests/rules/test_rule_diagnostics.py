@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
+import pytest
 
 from src.menu_rules import (
     Diagnostic,
@@ -37,8 +38,8 @@ from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.cuisine_menu_rule import CuisineMenuRule
 from src.menu_rules.diagnostics import pool_size_diagnostics, color_variety_diagnostics
 from src.menu_rules.ingredient_ban_rule import IngredientBanRule
-from src.menu_rules.item_frequency_rule import ItemFrequencyRule
 from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
+from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
 from src.menu_rules.premium_menu_rule import PremiumMenuRule
 from src.menu_rules.theme_rules import (
     ThemeDayMenuRule,
@@ -573,28 +574,52 @@ class TestIngredientBanDiagnose:
         assert all(x.severity == DiagnosticSeverity.INFO for x in diags)
 
 
-class TestItemFrequencyDiagnose:
-    def test_error_when_min_per_week_unreachable(self):
+class TestUnreachableFloorsAreReported:
+    """A floor the pool cannot reach is INFO, not ERROR.
+
+    `apply()` caps every floor to what is placeable, so the solve proceeds and
+    the plan is fine — gating /plan with a 422 for a counter that generates a
+    perfectly good menu is the wrong trade (note 9c). What must not happen is
+    silence: a selector matching nothing drops a client requirement, and the
+    only trace is this line.
+
+    Replaces the old `item_frequency` version of this test. That rule type
+    raised ERROR here and was retired — it was a strictly weaker duplicate of
+    `selector_frequency` whose per-week keys summed over the whole horizon.
+    """
+
+    def _ctx_and_rule(self, **cfg):
         dates = [dt.date(2026, 5, 11), dt.date(2026, 5, 12)]
-        pool = pd.DataFrame({
-            'item': ['a', 'b'],
-            'sub_category': ['x', 'y'],
-        })
+        pool = pd.DataFrame({'item': ['a', 'b'], 'sub_category': ['x', 'y']})
         ctx = _ctx(
             pools={'rice': pool}, dates=dates,
             day_types={d: 'mix' for d in dates},
             active_base_slots=['rice'],
         )
-        rule = ItemFrequencyRule({
-            'name': 'paneer_min', 'type': 'item_frequency',
-            'base_slot': 'rice',
-            'selector': {'sub_category': 'paneer'},
-            'min_per_week': 2,
+        rule = SelectorFrequencyRule({
+            'name': 'paneer_min', 'type': 'selector_frequency',
+            'base_slot': 'rice', 'selector': {'sub_category': 'paneer'},
+            **cfg,
         })
+        return ctx, rule
+
+    @pytest.mark.parametrize('cfg', [{'min': 2}, {'exact': 2},
+                                     {'min_per_week': 2}])
+    def test_an_inert_floor_is_reported(self, cfg):
+        """`min_per_week` is in the list on purpose: it was added after the
+        others, and a new key that skips this hook is inert AND silent."""
+        ctx, rule = self._ctx_and_rule(**cfg)
         diags = rule.diagnose(ctx)
-        errors = [x for x in diags if x.severity == DiagnosticSeverity.ERROR]
-        assert len(errors) == 1
-        assert errors[0].affected['min_per_week'] == 2
+        assert [d for d in diags
+                if d.severity == DiagnosticSeverity.INFO
+                and 'inert' in d.message], (cfg, diags)
+
+    @pytest.mark.parametrize('cfg', [{'min': 2}, {'exact': 2},
+                                     {'min_per_week': 2}])
+    def test_it_is_never_an_error(self, cfg):
+        ctx, rule = self._ctx_and_rule(**cfg)
+        assert not [d for d in rule.diagnose(ctx)
+                    if d.severity == DiagnosticSeverity.ERROR]
 
 
 class TestNonvegBiryaniDiagnose:

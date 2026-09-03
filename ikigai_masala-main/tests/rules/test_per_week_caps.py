@@ -66,6 +66,62 @@ class TestTheConfigContract:
         assert r.max == 1 and r.max_per_week is None
 
 
+class TestTheWeeklyFloor:
+    """`min_per_week` is the twin of `max_per_week`, and exists for the same
+    reason: `min` counts days across the horizon, so "at least one a week"
+    written as `min: 1` becomes "once a fortnight" on 14 days.
+
+    It replaces the retired `item_frequency` rule type, whose keys were already
+    NAMED `min_per_week`/`max_per_week` while summing over the horizon — so
+    Tekion's "one liquid rice a week" allowed one in twenty-five days while a
+    `slot_composition` forced one every Thursday.
+    """
+
+    def test_it_can_stand_alone(self):
+        assert _rule(min_per_week=1).validate_config()
+
+    def test_a_negative_is_rejected(self):
+        assert not _rule(min_per_week=-1).validate_config()
+
+    def test_it_pairs_with_the_ceiling(self):
+        """Both set to 1 is "exactly one per calendar week"."""
+        assert _rule(min_per_week=1, max_per_week=1).validate_config()
+
+    def test_a_floor_above_the_ceiling_is_rejected(self):
+        assert not _rule(min_per_week=2, max_per_week=1).validate_config()
+
+    def test_it_cannot_be_combined_with_exact(self):
+        assert not _rule(exact=1, min_per_week=1).validate_config()
+
+    def test_the_retired_rule_type_is_gone(self):
+        """`item_frequency` was a strictly weaker duplicate — five selector
+        keys against thirteen — carrying the horizon-summing bug. Both of its
+        configs were migrated; leaving the type registered would let the next
+        one reintroduce the defect."""
+        from src.menu_rules.menu_rule_loader import MenuRuleLoader
+        assert 'item_frequency' not in MenuRuleLoader.RULE_CLASSES
+
+    def test_no_config_still_references_it(self):
+        import json
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2] / "data" / "configs"
+        bad = []
+        for p in sorted(root.rglob("*.json")):
+            d = json.loads(p.read_text(encoding="utf-8"))
+
+            def walk(o, where=p.name):
+                if isinstance(o, dict):
+                    if o.get("type") == "item_frequency":
+                        bad.append(f"{where}:{o.get('name')}")
+                    for v in o.values():
+                        walk(v, where)
+                elif isinstance(o, list):
+                    for v in o:
+                        walk(v, where)
+            walk(d)
+        assert not bad, bad
+
+
 class TestWeeksAreCalendarWeeks:
     """ISO Monday-Sunday, the same boundary `chinese_continental` resolves its
     parity on. A rolling 7-day window would be stricter than the client's own

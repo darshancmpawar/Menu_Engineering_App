@@ -192,7 +192,8 @@ ikigai_masala-main/
 ├── customisation/            Streamlit editor UIs
 ├── data/
 │   ├── raw/city_items/<city>.xlsx   one item list per city + ontology_categories.json
-│   └── configs/city_rules/<city>.json  one ruleset per city (+ client_rules.json)
+│   ├── configs/city_rules/<city>.json  one ruleset per city
+│   └── configs/clients/<slug>.json  one overrides file per client
 ├── scripts/                  Supabase seeders + SQL schema
 ├── tests/                    Pytest suite
 ├── docs/                     setup, architecture, api, operations
