@@ -306,6 +306,43 @@ class MenuApiClient:
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Diagnose failed")
 
+    def explain(
+        self,
+        client_name: str,
+        start_date: str,
+        solution: Dict[str, Any],
+        num_days: int = 5,
+        counter_index: int = 0,
+        relaxations: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Explain a plan this client already has. Never solves.
+
+        ``relaxations`` comes from the ``plan()`` response and cannot be
+        recomputed here — the solver's "I could not fully enforce this" lines
+        are only observable while it runs. Pass them through or the explanation
+        silently stops mentioning which rule did not hold.
+
+        Returns ``{success, days: [{date, bullets, prose, checks, …}], …}``.
+        ``prose`` is None unless the optional model is enabled AND its reply
+        passed the validator; ``bullets`` are always present.
+        """
+        payload: Dict[str, Any] = {
+            "client_name": client_name,
+            "start_date": start_date,
+            "num_days": num_days,
+            "counter_index": counter_index,
+            "solution": solution,
+        }
+        if relaxations:
+            payload["relaxations"] = relaxations
+
+        def _do():
+            return self.session.post(
+                f"{self.base_url}/api/v1/explain", json=payload, timeout=45,
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        return _parse_response(resp, "Explain failed")
+
     def get_saved_plan(
         self, client_name: str, start_date: str, num_days: int = 5,
     ) -> Dict[str, Any]:

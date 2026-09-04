@@ -89,6 +89,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from ..preprocessor.column_mapper import _norm_str
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +338,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d (%s) is outside allowed_day_types but the "
                         "slot has nothing else to offer; ban skipped",
                         self.name, di, day_type,
+                        extra={RELAXATION: self.name},
                     )
             # Weekday ban, same degrade-rather-than-fail rule as the theme ban
             # above: a slot whose whole pool matches the selector must still be
@@ -352,6 +354,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d falls on a forbidden weekday but the slot "
                         "has nothing else to offer; ban skipped",
                         self.name, di,
+                        extra={RELAXATION: self.name},
                     )
             # Per-day occurrence cap.
             if self.daily_max is not None:
@@ -372,6 +375,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d can place only %d of the %d required "
                         "matching item(s); floor relaxed for that day",
                         self.name, di, want, self.daily_min,
+                        extra={RELAXATION: self.name},
                     )
             hv = model.NewBoolVar(f'{self.name}_day_{di}')
             link_any(model, lits, hv)
@@ -413,6 +417,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: ISO week %s can place the selector on only %d "
                         "day(s); weekly floor relaxed from %d for that week.",
                         self.name, week, want, self.min_per_week,
+                        extra={RELAXATION: self.name},
                     )
 
         # min / exact: cap to what the horizon can actually place so a thin pool
@@ -456,6 +461,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                     "Widen this client's item pools or lower the target.",
                     self.name, self.exact, tgt, len(distinct_matches),
                     len(day_has),
+                    extra={RELAXATION: self.name},
                 )
             if tgt > 0:
                 model.Add(sum(hvars) == tgt)
@@ -469,6 +475,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                     "or lower the target.",
                     self.name, self.min, tgt, len(distinct_matches),
                     len(day_has),
+                    extra={RELAXATION: self.name},
                 )
             if tgt > 0:
                 model.Add(sum(hvars) >= tgt)

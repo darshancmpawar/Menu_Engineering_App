@@ -6,6 +6,38 @@
 
 ---
 
+## Status — all six steps built
+
+| Step | State | Where it landed |
+|---|---|---|
+| 1 `checks.py` | done | `src/explain/checks.py`, `tests/explain/test_checks.py` |
+| 2 `evidence.py` | done | `src/explain/evidence.py`, `tests/explain/test_evidence.py` |
+| 3 `renderer.py` | done | `src/explain/renderer.py` |
+| 4 relaxation capture | done | `src/menu_rules/relaxations.py`, `tests/explain/test_relaxations.py` — CLAUDE.md note 31 |
+| 5 `explain_llm.py` | done | `api/explain_llm.py`, `tests/explain/test_evidence.py::TestValidator` |
+| 6 wire it up | done | `POST /api/v1/explain`, `MenuApiClient.explain`, the planner's "Why this menu" expander |
+
+**Two things the spec said that turned out not to hold**, both corrected in the
+build rather than followed:
+
+1. **Step 4's "WARNING and above from `src.menu_rules`" captures almost
+   nothing.** Eleven of the sixteen relaxation sites are `logger.info`, and
+   three of that tree's WARNINGs are not relaxations at all (a malformed rule
+   config skipped at load time). Level does not separate the two populations.
+   Each site now stamps `extra={RELAXATION: self.name}` and an AST test fails if
+   a new relaxation-shaped line is added without it.
+2. **Step 6's `/explain` cannot derive the relaxations itself**, because it
+   never solves and they exist only while the solver runs. `/plan` returns them
+   and the caller passes them back in.
+
+**Still open, and deliberately so:** the three calibration defects in
+`docs/explain_layer_calibration.md`. Two checks cannot fire at their shipped
+thresholds and two flag menus for obeying rules the client asked for. Per this
+document's own build order, thresholds are the chef's call — the measurement is
+ready for them, and no threshold has been moved without it.
+
+---
+
 ## 0. Read this first — the one design rule
 
 **The LLM never decides anything. It only renders facts that Python already computed.**
@@ -236,14 +268,21 @@ always. If a check FLAGS, show it — do not hide failures behind a happy summar
 
 ## Definition of done
 
-- [ ] `pytest tests/explain/` green
-- [ ] `pytest tests/platform/test_architecture.py` still green (no `src/` → `api/` leak)
-- [ ] Full suite still at 1,750+ passing
-- [ ] Feature works end-to-end with `EXPLAIN_LLM_ENABLED=false`
-- [ ] With the LLM on, a deliberately corrupted model response (inject a fake
-      number) is rejected by the validator and falls back to bullets — **add a
-      test for this**
-- [ ] Coverage stays above the CI floor (82%)
+- [x] `pytest tests/explain/` green — 96 tests
+- [x] `pytest tests/platform/test_architecture.py` still green (no `src/` → `api/` leak)
+- [x] Full suite still passing
+- [x] Feature works end-to-end with `EXPLAIN_LLM_ENABLED=false` — that is the
+      default path, and `tests/explain/test_explain_endpoint.py` exercises it
+- [x] With the LLM on, a deliberately corrupted model response (inject a fake
+      number) is rejected by the validator and falls back to bullets —
+      `TestValidator::test_rejection_falls_back_to_bullets_not_a_patched_sentence`,
+      plus `test_bad_reply_is_never_cached` and the sharper case
+      `test_a_true_but_unsourced_number_is_still_rejected` (a number that is
+      arithmetically correct but absent from the pack is still refused: the
+      validator has no opinion on truth, only on provenance)
+- [ ] Coverage stays above the CI floor (82%) — **not measured in this pass.**
+      Every file added here ships with tests, so it should not have moved, but
+      that is an expectation and not a number; run `pytest --cov` to settle it.
 
 ---
 

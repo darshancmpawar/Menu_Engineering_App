@@ -23,6 +23,7 @@ from src.constants import (
     repeatable_row,
 )
 from ..preprocessor.column_mapper import _norm_str
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ class UniqueItemsMenuRule(BaseMenuRule):
                 "plan, so items in it may repeat. Add items to this slot, widen "
                 "the client's source_pools, or reduce its slot count / horizon.",
                 slot, avg,
+                extra={RELAXATION: self.name},
             )
 
         # Uniqueness still holds everywhere else. Occurrences of an item inside

@@ -41,6 +41,12 @@ def flatten_result(result: dict) -> dict:
         "off_days": off_days_from_solution(solution),
         "nonveg": nonveg_slots_from_solution(solution),
         "pool_warnings": result.get("pool_warnings", []),
+        # Kept unflattened for /explain, which describes the plate rather than
+        # renders it and so needs the per-slot attributes `flat` discards.
+        "solution": solution,
+        # Rules the solve under-enforced. Only observable while the solver runs,
+        # so /explain cannot recompute them — they ride along or they are lost.
+        "relaxations": result.get("relaxations", []),
         "source": "solver",
         "error": None,
     }

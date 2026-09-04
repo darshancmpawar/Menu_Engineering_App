@@ -79,6 +79,11 @@ from src.menu_rules import (
     pool_warnings_projection,
 )
 from src.menu_rules.selector_history_window_rule import SelectorHistoryWindowRule
+from src.menu_rules.relaxations import RelaxationCapture
+from src.explain.evidence import (
+    attach_relaxations, attrs_from_dataframe, build_plan_evidence,
+)
+from api.explain_llm import explain_plan
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
     weekday_type_for_config as _weekday_type_cfg,
@@ -1011,12 +1016,17 @@ def plan_menu():
                 served_dates=set(inputs.weekday_dates),
             ).to_dict()
 
+        # The solver's own "I could not fully enforce this" lines are only
+        # observable while it runs, so they are collected here and shipped with
+        # the plan; /explain cannot recover them after the fact.
+        relax = RelaxationCapture()
         try:
-            if n_alt > 0:
-                plans, plan_dates = solver.solve(n_alternates=n_alt)
-            else:
-                week_plan, plan_dates = solver.solve()
-                plans = [week_plan]
+            with relax:
+                if n_alt > 0:
+                    plans, plan_dates = solver.solve(n_alternates=n_alt)
+                else:
+                    week_plan, plan_dates = solver.solve()
+                    plans = [week_plan]
         except RuntimeError:
             # The cross-counter sync is best-effort and must never be what
             # makes a counter unsolvable (note 22). Individually eligible pins
@@ -1049,11 +1059,13 @@ def plan_menu():
                 skip_cells=inputs.skip_cells,
                 recency_by_item=inputs.recency_by_item,
             )
-            if n_alt > 0:
-                plans, plan_dates = solver.solve(n_alternates=n_alt)
-            else:
-                week_plan, plan_dates = solver.solve()
-                plans = [week_plan]
+            relax = RelaxationCapture()
+            with relax:
+                if n_alt > 0:
+                    plans, plan_dates = solver.solve(n_alternates=n_alt)
+                else:
+                    week_plan, plan_dates = solver.solve()
+                    plans = [week_plan]
             pool_warnings = list(pool_warnings or []) + [
                 "Cross-counter sync skipped for this counter: the shared "
                 "dishes could not all be served here, so it was planned "
@@ -1076,6 +1088,11 @@ def plan_menu():
             response['alternates'] = [_format(p) for p in plans[1:]]
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
+        # Rules the solve under-enforced rather than failed on. Pass these back
+        # to /explain so the explanation says which rule did not hold — the
+        # honesty channel, not decoration (design note 9c).
+        if relax.records:
+            response['relaxations'] = relax.records
         if solver.rule_failures:
             response['rule_warnings'] = solver.rule_failures
             _count_rule_failures(solver.rule_failures)
@@ -2038,6 +2055,122 @@ def diagnose_plan():
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error("Failed to run diagnostics: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
+def _rule_notes(rules) -> Dict[str, str]:
+    """``{base_slot: the client's own sentence}`` from each rule's ``_comment``.
+
+    `docs/client_rules_index.md` already renders these; reusing them means the
+    explanation quotes the client back to themselves instead of inventing a
+    phrasing for a rule it only half understands.
+
+    A rule whose ``base_slot`` is a LIST is skipped: it constrains the plate
+    rather than one slot ("a protein source somewhere"), so attributing it to a
+    particular dish would be a claim the config does not support. First rule to
+    name a slot wins, which makes the result deterministic in config order.
+    """
+    notes: Dict[str, str] = {}
+    for rule in rules or []:
+        cfg = getattr(rule, 'config', None)
+        if not isinstance(cfg, dict):
+            continue        # a stub, or the legacy bare-list rule form
+        comment = cfg.get('_comment')
+        slot = cfg.get('base_slot')
+        if not comment or not slot or isinstance(slot, (list, tuple, set)):
+            continue
+        notes.setdefault(str(slot), str(comment))
+    return notes
+
+
+@app.route('/api/v1/explain', methods=['POST'])
+@rate_limit("diagnose")
+def explain_menu():
+    """Explain a plan the caller already has. Never solves, never fails a menu.
+
+    Its own endpoint rather than part of /plan because /plan is the slow path
+    and this is optional: a caller that does not want the explanation does not
+    pay for it, and a failure here cannot cost anyone a menu.
+
+    Body is /plan's, plus what only /plan could know::
+
+        {client_name, start_date, num_days, counter_index?,
+         solution: {...},            # a /plan response's `solution`
+         relaxations: [...]}         # a /plan response's `relaxations`
+
+    Response::
+
+        {"success": true,
+         "days": [{date, weekday, theme, bullets: [...], prose: str|null,
+                   checks: [...], provenance: [...], plate_profile: {...},
+                   relaxations: [...], llm_used: bool, reason: str}],
+         "llm_used": bool}
+
+    ``prose`` is null whenever the model is off (the default), unreachable, or
+    said something the validator would not stand behind; ``bullets`` are always
+    present, so the feature degrades to the renderer rather than to nothing.
+    """
+    try:
+        data = request.get_json() or {}
+        _require_known_client(data.get('client_name'))
+        solution = data.get('solution') or {}
+        if not isinstance(solution, dict) or not solution:
+            raise ValueError('solution is required and must be a non-empty object')
+
+        counter_index, counter_name, counter_count, client_cfg = _resolve_counter(
+            data.get('client_name'), data,
+        )
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
+
+        # `forced_items` is keyed by (date, slot_id) rather than by slot, but
+        # `build_provenance` only reads the VALUES to learn which dish names are
+        # pinned — and these are the pins the solver actually used, with weekday
+        # maps and ISO-week alternation already resolved (note 9).
+        pinned = {f'{d}:{s}': v for (d, s), v in
+                  (getattr(inputs.cfg, 'forced_items', None) or {}).items()}
+        packs = build_plan_evidence(
+            solution=solution,
+            attrs=attrs_from_dataframe(inputs.df),
+            client_name=inputs.client_name,
+            counter_name=counter_name,
+            city=inputs.city,
+            recency=inputs.recency_by_item,
+            constant_items=pinned,
+            rule_notes=_rule_notes(inputs.rules),
+        )
+        relaxations = data.get('relaxations')
+        if isinstance(relaxations, list) and relaxations:
+            attach_relaxations(packs, [r for r in relaxations if isinstance(r, dict)])
+
+        rendered = explain_plan(packs)
+        days = []
+        for pack in packs:
+            extra = rendered.get(pack['date'], {})
+            days.append({
+                'date': pack['date'],
+                'weekday': pack['weekday'],
+                'theme': pack['theme'],
+                'plate_profile': pack['plate_profile'],
+                'checks': pack['checks'],
+                'provenance': pack['provenance'],
+                'relaxations': pack['relaxations'],
+                'bullets': extra.get('bullets') or [],
+                'prose': extra.get('prose'),
+                'llm_used': bool(extra.get('llm_used')),
+                'reason': extra.get('reason', ''),
+            })
+        return jsonify({
+            'success': True,
+            'days': days,
+            'llm_used': any(d['llm_used'] for d in days),
+            'counter_index': counter_index,
+            'counter_name': counter_name,
+            'counter_count': counter_count,
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error("Failed to explain plan: %s", e, exc_info=True)
         return _internal_error_response(500)
 
 

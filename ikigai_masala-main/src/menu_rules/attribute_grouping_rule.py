@@ -45,6 +45,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from ..preprocessor.column_mapper import _norm_str
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class AttributeGroupingRule(BaseMenuRule):
                         "%d day(s) — alternation is not achievable, so the "
                         "non-consecutive ban is relaxed for this horizon",
                         self.name, non_dominant, self.group_by, n_days,
+                        extra={RELAXATION: self.name},
                     )
                     return
 
@@ -169,6 +171,7 @@ class AttributeGroupingRule(BaseMenuRule):
                         "%s: days %d/%d have no alternative %s left, so the "
                         "non-consecutive ban is relaxed for that pair",
                         self.name, di, di + 1, self.group_by,
+                        extra={RELAXATION: self.name},
                     )
                     continue
                 for val in values:

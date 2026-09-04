@@ -65,6 +65,7 @@ from src.constants import repeatable_row
 from .selector_frequency_rule import SelectorFrequencyRule
 from .slot_day_restriction_rule import _WEEKDAY_TOKENS
 from .unique_items_menu_rule import matches_declared
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -442,7 +443,9 @@ class SlotCompositionRule(BaseMenuRule):
                     logger.info(
                         "%s: day %d component %s dropped (no cell left to fill; "
                         "the rest of the family is pinned or restricted)",
-                        self.name, di, matcher)
+                        self.name, di, matcher,
+                        extra={RELAXATION: self.name},
+                    )
                     continue
                 lits = [
                     v for c in day_cells
@@ -462,7 +465,9 @@ class SlotCompositionRule(BaseMenuRule):
                     logger.info(
                         "%s: day %d component %s capped %d -> %d "
                         "(pool/cell limit)",
-                        self.name, di, matcher, count, required)
+                        self.name, di, matcher, count, required,
+                        extra={RELAXATION: self.name},
+                    )
                 if required > 0:
                     model.Add(sum(lits) >= required)
                     budget -= required
@@ -529,7 +534,9 @@ class SlotCompositionRule(BaseMenuRule):
                     "but the pool holds %d distinct matching item(s); enforcing "
                     "it on %d day(s) instead of every day",
                     self.name, entry['matcher'], entry['need'], entry['days'],
-                    distinct, distinct)
+                    distinct, distinct,
+                    extra={RELAXATION: self.name},
+                )
                 entry['distinct'] = distinct
                 out[key] = entry
         return out
