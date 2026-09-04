@@ -30,6 +30,10 @@ build rather than followed:
    never solves and they exist only while the solver runs. `/plan` returns them
    and the caller passes them back in.
 
+Known issue 5 (objective tier headroom) is also done, and measured off a real
+model rather than estimated — see that section for the two corrections the
+measurement produced, one of which is an open menu-policy decision.
+
 **Still open, and deliberately so:** the three calibration defects in
 `docs/explain_layer_calibration.md`. Two checks cannot fire at their shipped
 thresholds and two flag menus for obeying rules the client asked for. Per this
@@ -317,9 +321,31 @@ Found while auditing the repo; unrelated to this feature but cheap to fix:
    is failing** — the import retags 1 row on re-run. The `ambiguous` log shows
    why: `chili_chicken`/`chilli_chicken`, `pepper_chicken_dry`/`pepper_chicken_fry`
    cannot be settled, so the fold re-decides each run.
-5. **Objective tier headroom.** Weights are 1e15/1e12/1e9/1e6 — 1000x separation.
+5. **Objective tier headroom.** ~~Weights are 1e15/1e12/1e9/1e6 — 1000x separation.
    That is not a mathematical guarantee, only a "holds at current scale" property.
    At `MAX_NUM_DAYS=30` the fleet's widest counter (19 slots) yields 570 terms —
-   **1.75x headroom**. `client_config` permits 22 base slots x 5 = 110 expanded;
-   30d x 40 slots = 1,200 terms would silently break lexicographic ordering and
-   return OPTIMAL having optimised the wrong priority. Add a guard test.
+   **1.75x headroom**.~~ **Measured** — `tests/rules/test_objective_tier_headroom.py`
+   builds the real model for Booking.com counter 0 (the fleet's widest, 19
+   expanded slots) at `MAX_NUM_DAYS=30` and reads the coefficients back off the
+   CP-SAT proto, so nothing is estimated. Two corrections to the estimate:
+
+   * **The rule ladder is comfortable, not marginal** — medium **21.3x**,
+     high **45.4x**, theme **10.0x**. The 1.75x figure came from counting all
+     objective terms; most of them are per-CANDIDATE and mutually exclusive
+     (every cell has an exactly-one constraint), so the reachable mass is far
+     below the term count. The guard test asserts each rung and fails below
+     1.5x, so a future widening of `_MAX_SLOT_COUNT` or `MAX_NUM_DAYS` shows up
+     as a failing test rather than a quietly wrong menu.
+   * **The rung that does not hold is one nobody was looking at.** Freshness is
+     one bonus per cell, capped at 90,000 (design note 24), and there are 516
+     cells here — so the freshness band reaches **47 LOW units**. Note 24's
+     "any rule outranks freshness" is true *in a cell*, which is the scope it
+     claims, and false across a plan: the solver may accept several
+     low-priority violations in exchange for fresher dishes.
+
+   **Open decision, not a bug to patch.** Whether freshness should outrank a
+   low-priority soft rule at plan scale is a menu-policy question, and both
+   knobs (`FRESHNESS_UNIT`, `OBJECTIVE_TIER_WEIGHTS['low']`) change every menu
+   for every client. Nothing was retuned. What is pinned is the bound that is
+   about correctness rather than taste: even at full stretch the band cannot
+   reach a MEDIUM rule (0.047 of one unit).
