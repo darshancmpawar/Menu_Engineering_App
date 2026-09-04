@@ -226,3 +226,158 @@ class TestValidator:
         mod.reset_cache_for_tests()
         out = mod.explain_plan([pack])['2026-09-10']
         assert out['llm_used'] is False and out['bullets']
+
+
+class TestTheModelCall:
+    """`_call_model` returns None on every failure rather than raising.
+
+    That is the whole contract: this feature is optional and must never be the
+    reason a menu request fails. No network is touched — `requests.post` is
+    replaced, which is also what keeps this file inside the offline boundary
+    `tests/platform/test_architecture.py` enforces for the layer below.
+    """
+
+    @staticmethod
+    def _reply(monkeypatch, **kw):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', 'test-key')
+
+        class _Resp:
+            status_code = kw.get('status', 200)
+
+            def json(self):
+                if 'raises' in kw:
+                    raise ValueError('not json')
+                return kw.get('body', {})
+
+        monkeypatch.setattr('requests.post', lambda *a, **k: _Resp())
+        return mod
+
+    def test_no_api_key_is_not_an_error(self, monkeypatch):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', '')
+        assert mod._call_model('{}') is None
+
+    def test_a_good_reply_returns_its_text(self, monkeypatch):
+        mod = self._reply(monkeypatch, body={
+            'candidates': [{'content': {'parts': [{'text': 'one '},
+                                                  {'text': 'two'}]}}]})
+        assert mod._call_model('{}') == 'one two'
+
+    def test_rate_limited_falls_back_rather_than_raising(self, monkeypatch):
+        """429 is the expected steady state on a free tier, not an incident."""
+        mod = self._reply(monkeypatch, status=429)
+        assert mod._call_model('{}') is None
+
+    @pytest.mark.parametrize('status', [400, 403, 500, 503])
+    def test_any_http_error_falls_back(self, monkeypatch, status):
+        mod = self._reply(monkeypatch, status=status)
+        assert mod._call_model('{}') is None
+
+    def test_an_empty_candidate_list_is_not_an_index_error(self, monkeypatch):
+        mod = self._reply(monkeypatch, body={'candidates': []})
+        assert mod._call_model('{}') is None
+
+    def test_a_body_that_will_not_parse_falls_back(self, monkeypatch):
+        mod = self._reply(monkeypatch, raises=True)
+        assert mod._call_model('{}') is None
+
+    def test_a_transport_failure_falls_back(self, monkeypatch):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', 'test-key')
+
+        def _boom(*a, **k):
+            raise OSError('connection reset')
+
+        monkeypatch.setattr('requests.post', _boom)
+        assert mod._call_model('{}') is None
+
+
+class TestTheCache:
+    """Caching is required here, not an optimisation.
+
+    Streamlit reruns the whole script on every widget interaction, so without a
+    cache one user moving a date picker burns the daily model quota.
+    """
+
+    def test_an_accepted_reply_is_served_from_cache_the_second_time(
+            self, pack, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        calls = []
+
+        def _once(payload):
+            calls.append(payload)
+            return json.dumps({'days': [{'date': '2026-09-10',
+                                         'prose': 'Thursday leans south.'}]})
+
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', _once)
+        first = mod.explain_plan([pack])['2026-09-10']
+        assert first['llm_used'] and first['reason'] == 'ok'
+        second = mod.explain_plan([pack])['2026-09-10']
+        assert second['reason'] == 'cache' and second['prose'] == first['prose']
+        assert len(calls) == 1, 'the model was called again for the same plan'
+
+    def test_the_cache_is_bounded(self, pack, monkeypatch):
+        """An unbounded dict here is a slow leak in a long-lived Flask worker."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'MAX_CACHE_ENTRIES', 3)
+        for i in range(6):
+            mod._cache_put(f'key{i}', {'2026-09-10': 'x'})
+        assert len(mod._cache) == 3
+        assert 'key0' not in mod._cache and 'key5' in mod._cache
+
+    def test_an_unparseable_reply_falls_back_to_bullets(self, pack, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: 'not json at all')
+        out = mod.explain_plan([pack])['2026-09-10']
+        assert out['prose'] is None and out['bullets']
+        assert 'unparseable' in out['reason']
+
+    def test_a_fenced_reply_is_still_read(self, pack, monkeypatch):
+        """Models wrap JSON in ``` fences even when told not to."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: (
+            '```json\n' + json.dumps({'days': [
+                {'date': '2026-09-10', 'prose': 'Thursday leans south.'}]})
+            + '\n```'))
+        assert mod.explain_plan([pack])['2026-09-10']['llm_used'] is True
+
+    def test_a_reply_for_an_unknown_date_is_ignored(self, pack, monkeypatch):
+        """A model inventing a date must not create a day in the response."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: json.dumps(
+            {'days': [{'date': '1999-01-01', 'prose': 'Whatever.'}]}))
+        out = mod.explain_plan([pack])
+        assert list(out) == ['2026-09-10']
+        assert out['2026-09-10']['prose'] is None
+
+    def test_no_packs_is_not_a_model_call(self, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: pytest.fail(
+            'called the model with nothing to explain'))
+        assert mod.explain_plan([]) == {}
+
+    def test_a_partial_reply_is_not_cached(self, pack, monkeypatch):
+        """Caching a plan whose days are half-accepted would serve the gap back
+        forever; only a fully accepted plan is stored."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        second = dict(pack, date='2026-09-11', weekday='Friday')
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: json.dumps(
+            {'days': [{'date': '2026-09-10', 'prose': 'Thursday leans south.'}]}))
+        out = mod.explain_plan([pack, second])
+        assert out['2026-09-10']['llm_used'] is True
+        assert out['2026-09-11']['prose'] is None
+        assert mod._cache == {}
