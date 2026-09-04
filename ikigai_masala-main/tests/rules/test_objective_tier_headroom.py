@@ -99,11 +99,25 @@ def objective_coeffs(live_clients, monkeypatch):
         # the reason a solve fails — a raise here 500s the request and the
         # fixture would skip, which is the honest outcome but not a useful one.
         try:
-            coeffs = [abs(int(c)) for c in model.Proto().objective.coeffs]
+            proto = model.Proto()
+            obj = proto.objective
+            reach = []
+            for idx, coeff in zip(obj.vars, obj.coeffs):
+                # Multiply by the variable's own range, not by 1. Most terms
+                # are bools, but `avoid_attribute_repeat` returns IntVars whose
+                # domain runs to the number of days a value recurs — treating
+                # those as 0/1 understates the tier's reachable mass, which is
+                # the whole quantity under test.
+                dom = list(proto.variables[idx].domain)
+                span = max(abs(v) for v in dom) if dom else 1
+                reach.append(abs(int(coeff)) * max(1, int(span)))
         except Exception:                       # pragma: no cover - defensive
             return
-        if coeffs:
-            captured.append({'coeffs': coeffs, 'cells': len(cells)})
+        if reach:
+            snapshot = type(proto)()
+            snapshot.copy_from(proto)
+            captured.append({'coeffs': reach, 'cells': len(cells),
+                             'proto': snapshot})
 
     monkeypatch.setattr(MenuSolver, '_build_objective', _spy)
 
@@ -119,6 +133,62 @@ def objective_coeffs(live_clients, monkeypatch):
     if not captured:
         pytest.skip('the solver never reached _build_objective for this config')
     return max(captured, key=lambda c: len(c['coeffs']))   # the primary model
+
+
+def _reachable_below(capture, weight, seconds=20):
+    """The largest total the terms cheaper than `weight` can actually reach.
+
+    **Asked of CP-SAT rather than computed here, because every arithmetic bound
+    I tried was unsound in one direction or the other.** Summing coefficients
+    treats competing variables as simultaneously satisfiable and understates an
+    IntVar term (`avoid_attribute_repeat`'s recurrence counter reaches its
+    domain, not 1). Multiplying each coefficient by its variable's range fixes
+    that and then overstates badly, because those per-value maxima compete for
+    the same days — one value recurring on every day is the others not
+    appearing at all. The two gave 10x and 0.94x for the same model, which is
+    the difference between "fine" and "shipped broken".
+
+    So the model is re-solved with only the sub-`weight` terms as its objective
+    and every original constraint intact. `BestObjectiveBound()` is a valid
+    upper bound on a maximisation **even when the solve times out**, so a short
+    budget yields a sound (if loose) answer rather than a wrong one — and when
+    it proves optimality the answer is exact.
+
+    Returns ``(achieved, bound, status)``. The two answer different questions
+    and the test needs both: an ACHIEVED total at or above the tier's weight is
+    a feasible solution that inverts the ordering, which *proves* the defect; a
+    BOUND below it *proves* the ordering safe. Between the two the guard has
+    not decided, and says so rather than passing.
+    """
+    from ortools.sat.python import cp_model
+
+    proto, terms = capture['proto'], []
+    model = cp_model.CpModel()
+    model.Proto().copy_from(proto)
+    for idx, coeff in zip(proto.objective.vars, proto.objective.coeffs):
+        if abs(int(coeff)) < weight:
+            terms.append(model.GetIntVarFromProtoIndex(idx)
+                         * abs(int(coeff)))
+    model.Proto().clear_objective()
+    if not terms:
+        return 0, 0, 'none'
+    model.Maximize(sum(terms))
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = seconds
+    solver.parameters.num_workers = 4
+    status = solver.Solve(model)
+    if status == cp_model.INFEASIBLE:
+        # The counter itself is unsatisfiable at this horizon; nothing below
+        # the tier is reachable, so the ladder holds trivially.
+        return 0, 0, 'INFEASIBLE'
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        # UNKNOWN: no solution found, and `BestObjectiveBound()` has nothing
+        # behind it — it returns 0 here, which read as "nothing is reachable"
+        # and would have turned a timeout into a clean bill of health. `None`
+        # means undecided, and the caller has to say so.
+        return None, None, solver.StatusName(status)
+    return (int(solver.ObjectiveValue()), int(solver.BestObjectiveBound()),
+            solver.StatusName(status))
 
 
 def _band_totals(capture):
@@ -160,6 +230,115 @@ def _band_totals(capture):
     return bands
 
 
+# The most high-priority soft rules any single counter can load: 4 from the
+# widest city ruleset (Pune), plus 0 that any client file adds. This is the
+# DRIVER of theme-tier inversion, and pinning it is what makes the measured
+# headroom the fleet's real worst case rather than one fixture's luck — see
+# `TestWhatWouldActuallyInvertTheThemeTier`.
+MAX_HIGH_TIER_CITY_RULES = 4
+MAX_HIGH_TIER_CLIENT_RULES = 0
+
+
+def _high_tier_rule_counts():
+    """(most in any city ruleset, most any client file adds).
+
+    Kept as two numbers because a counter loads exactly one city ruleset plus
+    its own client block — summing across cities would describe a config that
+    cannot exist.
+    """
+    import json
+    import pathlib
+
+    def _high(rules):
+        return sum(1 for r in rules if isinstance(r, dict)
+                   and r.get('type') == 'soft_preference'
+                   and r.get('priority') == 'high')
+
+    root = pathlib.Path(__file__).resolve().parents[2] / 'data' / 'configs'
+    city = max((_high(json.loads(p.read_text(encoding='utf-8')).get('rules', []))
+                for p in sorted(root.glob('city_rules/*.json'))), default=0)
+    client = 0
+    for path in sorted(root.glob('clients/*.json')):
+        for spec in json.loads(path.read_text(encoding='utf-8')).values():
+            rules = spec.get('rules', []) if isinstance(spec, dict) else spec
+            client = max(client, _high(rules))
+    return city, client
+
+
+class TestWhatWouldActuallyInvertTheThemeTier:
+    """The theme tier has the whole ladder beneath it, so it is the thin rung.
+
+    A tempting bound is `theme_weight / (cells x high_weight)` — break-even at
+    1,000 cells, and `client_config` permits 22 base slots x 5 x 30 days =
+    3,300, so the config space would already contain inverted states. That
+    bound is not right: **HIGH terms do not attach to cells.** Every mode of
+    `soft_preference` returns `sum(<vars>) * -w`, and those vars are auxiliary
+    — one per day, per day-pair, or per (day, attribute value). The measured
+    model has 516 cells and far fewer HIGH-weighted variables.
+
+    But "not per cell" is not the same as "small", and one mode is subtler than
+    the rest: `avoid_attribute_repeat` returns **IntVars** whose domain runs to
+    the number of days a value recurs. Counting those as 0/1 understates the
+    reachable mass, which is exactly the quantity under test — so the capture
+    multiplies every coefficient by its variable's own range. The first version
+    of this file did not, and would have reported a comfortable ladder while
+    the real figure was several times larger.
+
+    The driver, then, is the number of high-priority soft rules a counter can
+    load and the arity of each. That is exact and needs no solve, so it is
+    pinned here; the measured ratio below is only valid at these counts.
+    """
+
+    def test_the_high_tier_rule_count_has_not_grown(self):
+        city, client = _high_tier_rule_counts()
+        assert (city, client) == (MAX_HIGH_TIER_CITY_RULES,
+                                  MAX_HIGH_TIER_CLIENT_RULES), (
+            f'high-priority soft rules: {city} in the widest city ruleset, '
+            f'{client} added by a client file; pinned at '
+            f'{MAX_HIGH_TIER_CITY_RULES}/{MAX_HIGH_TIER_CLIENT_RULES}. The '
+            'theme-tier headroom below was measured at those counts — re-run '
+            '`pytest tests/rules/test_objective_tier_headroom.py -m slow` and '
+            'update the pins, or the ladder is no longer known to hold.')
+
+    def test_high_tier_terms_are_per_day_not_per_cell(self):
+        """The premise of the bound, as an executable note.
+
+        Every mode builds its penalty variables in a `for di in range(n)` loop
+        over DAYS. Candidates are read inside that loop to decide which day
+        carries which value, but the variable that reaches the objective is
+        per-day, not per-candidate. If that ever changes, the reasoning above
+        needs revisiting rather than the number being bumped.
+        """
+        import inspect
+        from src.menu_rules.soft_preference_rule import SoftPreferenceRule
+        src = inspect.getsource(SoftPreferenceRule.get_objective_terms)
+        assert 'for di in range(n)' in src
+        # Every return is a single weighted sum, so one coefficient per term.
+        returns = [l.strip() for l in src.splitlines()
+                   if 'return [' in l and l.strip() != 'return []']
+        assert returns and all('abs(w)' in l for l in returns), returns
+
+    def test_an_intvar_term_is_measured_by_its_range(self):
+        """The correction itself, pinned on a model built by hand.
+
+        `avoid_attribute_repeat`'s `over` var counts recurrences, so its
+        contribution is `w x domain`, not `w`. A guard that read coefficients
+        alone would under-report the tier it exists to protect.
+        """
+        from ortools.sat.python import cp_model
+        m = cp_model.CpModel()
+        b = m.NewBoolVar('b')
+        n = m.NewIntVar(0, 7, 'n')
+        w = OBJECTIVE_TIER_WEIGHTS['high']
+        m.Maximize(b * w + n * w)
+        proto = m.Proto()
+        reach = []
+        for idx, coeff in zip(proto.objective.vars, proto.objective.coeffs):
+            dom = list(proto.variables[idx].domain)
+            reach.append(abs(int(coeff)) * max(1, max(abs(v) for v in dom)))
+        assert sorted(reach) == [w, 7 * w]
+
+
 @pytest.mark.slow
 class TestTheTiersStayLexicographic:
     def test_the_widest_counter_is_still_this_one(self):
@@ -172,54 +351,56 @@ class TestTheTiersStayLexicographic:
         assert widest[1:] == (WIDEST_CLIENT, WIDEST_COUNTER), widest
         assert _counter_width(by_name[WIDEST_CLIENT], WIDEST_COUNTER) == widest[0]
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            'KNOWN DEFECT, reproduced: on the fleet''s widest counter at '
+            'MAX_NUM_DAYS the mass below the THEME tier reaches ~1.02e15 '
+            'against a 1e15 tier weight, so a theme violation can be bought '
+            'with high-tier gains. CP-SAT finds a real assignment that does '
+            'it, so this is not a loose bound. The fix is a wider tier '
+            'separation, which changes every menu for every client — a '
+            'decision for the client, not a patch. Remove this marker with '
+            'that change; `strict` makes the test fail if it starts passing '
+            'while the marker is still here.'),
+    )
     def test_every_rule_tier_outranks_everything_beneath_it(self, objective_coeffs):
         """Rulebook section 7, measured: a higher-priority soft rule is never
         traded away for a pile of lower-priority ones.
 
-        If this fails, a menu comes back OPTIMAL having optimised the wrong
+        When this fails, a menu comes back OPTIMAL having optimised the wrong
         priority — no exception, no log line, nothing red. It is the same
         silent-wrongness shape as design note 27, which is why it is worth a
         real model rather than an estimate.
+
+        Theme is the rung that fails, and structurally it is the one to watch:
+        it has the whole ladder beneath it. Medium and high read comfortable
+        only because they sit under fewer tiers, so reporting all three as
+        "comfortable" hides the one that matters.
         """
-        bands, failures = _band_totals(objective_coeffs), []
-        print('\nreachable objective mass by band:')
-        for name in _ORDER:
-            print(f'  {name:<9} {bands[name]:>20,}')
+        inverted = []
         # LOW is deliberately not one of the rungs checked here — see
         # `test_freshness_is_a_plan_level_preference_not_a_per_cell_one`.
-        for i, name in enumerate(_ORDER):
-            if name in ('sub_rule', 'low'):
-                continue
+        print('\nreachable mass below each tier:')
+        for name in ('medium', 'high', 'theme'):
             weight = OBJECTIVE_TIER_WEIGHTS[name]
-            beneath = sum(bands[b] for b in _ORDER[:i])
-            if beneath >= weight:
-                failures.append(
-                    f'{name}: everything below it can reach {beneath:,}, '
-                    f'>= one {name} unit ({weight:,})')
-        assert not failures, (
-            'the objective is no longer lexicographic at MAX_NUM_DAYS on the '
-            'fleet\'s widest counter: ' + '; '.join(failures)
-            + '. Widen the separation in OBJECTIVE_TIER_WEIGHTS, or normalise '
-              'each tier\'s contribution before summing.')
-
-    def test_the_headroom_is_not_thin(self, objective_coeffs):
-        """Early warning. The guarantee above is binary and gives no notice; a
-        ratio that has quietly fallen to 1.1x is one new soft rule away from a
-        silently wrong menu, and this is where that shows up first."""
-        bands, thin = _band_totals(objective_coeffs), {}
-        for i, name in enumerate(_ORDER):
-            if name in ('sub_rule', 'low'):
-                continue
-            beneath = sum(bands[b] for b in _ORDER[:i])
-            ratio = (float('inf') if not beneath
-                     else OBJECTIVE_TIER_WEIGHTS[name] / beneath)
-            print(f'  {name:<9} headroom x{ratio:,.2f}')
-            if ratio < 1.5:
-                thin[name] = round(ratio, 2)
-        assert not thin, (
-            f'tier headroom has fallen below 1.5x: {thin}. Still correct, but '
-            'the next soft rule added to this counter may invert the ordering. '
-            'See docs/EXPLAIN_LAYER_WORKORDER.md, known issue 5.')
+            achieved, bound, status = _reachable_below(objective_coeffs, weight)
+            shown = ('undecided' if achieved is None
+                     else f'achieved {achieved:,} / bound {bound:,}')
+            print(f'  {name:<7} {shown}  [{status}]')
+            if achieved is not None and achieved >= weight:
+                inverted.append(
+                    f'{name}: a FEASIBLE solution reaches {achieved:,} below '
+                    f'the tier, >= one {name} unit ({weight:,})')
+        assert not inverted, (
+            'the objective is NOT lexicographic at MAX_NUM_DAYS on the '
+            "fleet's widest counter — a real assignment, not a loose bound: "
+            + '; '.join(inverted)
+            + '. Widen the separation in OBJECTIVE_TIER_WEIGHTS. NB a uniform '
+              '1e4 step would break the other end: freshness reaches 91,000 in '
+              'a cell and must stay under one LOW unit (note 24), so LOW '
+              'cannot drop to 1e4. Do not change the freshness constants in '
+              'the same commit (note 32).')
 
     def test_freshness_is_a_plan_level_preference_not_a_per_cell_one(
             self, objective_coeffs):

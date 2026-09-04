@@ -50,17 +50,49 @@ class TestTheRoundTrip:
         assert body['success'] is True
         assert [d['date'] for d in body['days']] == sorted(planned['solution'])
 
-    def test_every_day_carries_bullets_and_six_checks(
+    def test_every_day_carries_bullets_and_the_calibrated_checks(
             self, client, fake_supabase, planned):
-        """Bullets are the product with the model off, which is the default."""
+        """Bullets are the product with the model off, which is the default.
+
+        Only the calibrated verdicts are rendered — an uncalibrated one spent
+        on a chef's first look at the feature is the expensive kind of wrong.
+        """
+        from src.explain.checks import CALIBRATED
+
         body = client.post('/api/v1/explain', json={
             **PLAN_BODY, 'solution': planned['solution']}).get_json()
         for day in body['days']:
             assert day['bullets'], day['date']
-            assert len(day['checks']) == 6
+            assert {c['name'] for c in day['checks']} == set(CALIBRATED)
             assert day['prose'] is None
             assert day['llm_used'] is False
         assert body['llm_used'] is False
+
+    def test_all_checks_opts_back_in_to_the_uncalibrated_ones(
+            self, client, fake_supabase, planned):
+        """The calibration path still needs the numbers it is calibrating."""
+        from src.explain.checks import ALL_CHECKS
+
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution'],
+            'all_checks': True}).get_json()
+        assert len(body['days'][0]['checks']) == len(ALL_CHECKS)
+
+    def test_colour_variety_is_judged_against_the_counter_s_own_target(
+            self, client, fake_supabase, planned):
+        """It mirrors a solver rule, so it must be handed the solver's number.
+
+        Hardcoding 4 over a different dish set made it flag days that satisfied
+        the rule which generated them — a false alarm the chef cannot act on,
+        because acting would break that rule.
+        """
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution'],
+            'all_checks': True}).get_json()
+        colour = [c for c in body['days'][0]['checks']
+                  if c['name'] == 'colour_variety'][0]
+        assert colour['evidence']['threshold'] <= colour['evidence']['configured_target']
+        assert colour['evidence']['counted_dishes'] > 0
 
     def test_the_response_is_serialisable(self, client, fake_supabase, planned):
         """The pack carries numpy scalars out of the ontology DataFrame."""
@@ -105,6 +137,19 @@ class TestRelaxationsSurvivetheRoundTrip:
             'relaxations': [{'rule': 'r', 'detail': 'capped to 1'}]}).get_json()
         assert any('relaxed: r' in line
                    for line in body['days'][0]['bullets'])
+
+    def test_the_days_a_rule_was_relaxed_on_reach_the_reader(
+            self, client, fake_supabase, planned):
+        """A bare count is not actionable; the varying half is the point."""
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution'],
+            'relaxations': [{'rule': 'r', 'detail': 'day 3 floor relaxed',
+                             'occurrences': 3,
+                             'samples': ['day 3 floor relaxed',
+                                         'day 5 floor relaxed']}]}).get_json()
+        rendered = '\n'.join(body['days'][0]['bullets'])
+        assert 'day 5 floor relaxed' in rendered
+        assert 'and 1 more like it' in rendered
 
     def test_junk_in_the_relaxations_field_is_ignored_not_fatal(
             self, client, fake_supabase, planned):

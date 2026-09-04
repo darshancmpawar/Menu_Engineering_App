@@ -63,6 +63,15 @@ def render_day(pack: Dict[str, Any], *, show_passing: bool = True) -> List[str]:
     for r in pack.get('relaxations') or []:
         rule = r.get('rule') or 'a rule'
         lines.append(f"  {_FLAG} relaxed: {rule} - {r.get('detail','')}")
+        # The count alone is not actionable — WHICH days a floor was relaxed on
+        # is the part a kitchen can do something about, so the extra renderings
+        # are listed rather than summed away. `samples[0]` is already the
+        # `detail` line above.
+        for extra in (r.get('samples') or [])[1:]:
+            lines.append(f"      also: {extra}")
+        left = int(r.get('occurrences') or 1) - len(r.get('samples') or [1])
+        if left > 0:
+            lines.append(f"      ...and {left} more like it")
 
     return lines
 

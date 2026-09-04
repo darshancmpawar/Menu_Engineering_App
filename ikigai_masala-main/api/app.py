@@ -2128,6 +2128,10 @@ def explain_menu():
         # maps and ISO-week alternation already resolved (note 9).
         pinned = {f'{d}:{s}': v for (d, s), v in
                   (getattr(inputs.cfg, 'forced_items', None) or {}).items()}
+        # `colour_variety` mirrors a rule the solver enforces, so it has to be
+        # given the same numbers or it disagrees with the menu it is describing
+        # (design note 13's clamp). Both come off the counter's own config.
+        cfg = inputs.cfg
         packs = build_plan_evidence(
             solution=solution,
             attrs=attrs_from_dataframe(inputs.df),
@@ -2137,6 +2141,12 @@ def explain_menu():
             recency=inputs.recency_by_item,
             constant_items=pinned,
             rule_notes=_rule_notes(inputs.rules),
+            colour_target=getattr(cfg, 'min_distinct_colors_per_day', None),
+            colour_slots=getattr(cfg, 'color_slots', None),
+            # Only the verdicts fit to show a chef, by default. `all_checks`
+            # opts a caller back in — that is the calibration path, which needs
+            # the uncalibrated numbers to measure them.
+            calibrated_only=not bool(data.get('all_checks')),
         )
         relaxations = data.get('relaxations')
         if isinstance(relaxations, list) and relaxations:

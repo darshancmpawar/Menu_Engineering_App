@@ -28,7 +28,9 @@ relaxing a daily floor emits 25 records differing only in the day index. A chef
 needs to be told the floor was relaxed, once, with a count — not handed
 twenty-five lines. ``record.msg`` is the *format string*, before interpolation,
 so grouping on it groups by the thing that was relaxed with no parsing of the
-rendered prose.
+rendered prose. The rendered messages are kept as ``samples`` (capped), because
+the varying half is the actionable half: "day 3 and day 5 could not fit the
+second dessert" is something a kitchen can act on, and a bare count is not.
 
 **Why it is thread-scoped.** ``@solver_gate`` runs two solves concurrently by
 design (1 active -> 9 CP-SAT workers, 2 -> 5 each) and every handler attached to
@@ -43,7 +45,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # The `extra=` key. A rule stamps its own name here, so the handler learns both
 # "this is a relaxation" and "which rule relaxed" from one field.
@@ -52,41 +54,89 @@ RELAXATION = 'menu_relaxation'
 # The logger tree every rule module sits under (`src.menu_rules.<module>`).
 RULES_LOGGER = 'src.menu_rules'
 
+# How many distinct renderings of one relaxation to keep. Enough to name the
+# days a floor was relaxed on; few enough that a 30-day plan does not turn one
+# relaxation into a paragraph.
+MAX_SAMPLES = 5
+
+
+class _Bridge(logging.Handler):
+    """Re-emit upward exactly what the parent tree would have seen anyway.
+
+    Lowering this logger's level is the only way to make an INFO relaxation
+    reach a handler at all — but on its own it also unmutes those records to
+    every ANCESTOR handler, and `api/logging_config.py` gives its stderr
+    handler no level of its own. So a deployment running at WARNING would start
+    printing every relaxation and every loader INFO for the duration of every
+    solve: a diagnostic feature making the production log worse.
+
+    Instead, propagation is switched off while capturing and this handler
+    re-does it at the original threshold. Operators see precisely what they saw
+    before — genuine WARNINGs still get through — and the extra INFO records
+    exist only for the capture handler sitting beside this one.
+    """
+
+    def __init__(self, threshold: int) -> None:
+        super().__init__(level=threshold)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        parent = logging.getLogger(RULES_LOGGER).parent
+        if parent is not None:
+            parent.handle(record)     # resumes normal propagation from there
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        """Swallow. Logging must not be why a solve fails."""
+
+
 # Guards the shared logger's level across concurrent captures — see `_enable`.
 _level_lock = threading.Lock()
 _depth = 0                        # live captures
 _saved_level = logging.NOTSET     # the level the FIRST of them found
+_saved_propagate = True
+_bridge: 'Optional[_Bridge]' = None
 
 
 def _enable() -> None:
-    """Make INFO records reachable, remembering the level the first caller saw.
+    """Make INFO records reachable, without changing what operators see.
 
     ``logger.info(...)`` is dropped before any handler runs when the effective
     level is higher, so a deployment at WARNING would capture nothing at all —
-    silently, which is the failure mode worth engineering against.
+    silently, which is the failure mode worth engineering against. The level
+    therefore has to come down; `_Bridge` is what stops that leaking into the
+    operator's log.
 
     Refcounted, with the original level held once rather than per instance: two
     overlapping captures each restoring "the level I saw on the way in" would
     leave the tree at INFO forever, because the second one saw the level the
     first had already lowered.
     """
-    global _depth, _saved_level
+    global _depth, _saved_level, _saved_propagate, _bridge
     log = logging.getLogger(RULES_LOGGER)
     with _level_lock:
         if _depth == 0:
             _saved_level = log.level
+            _saved_propagate = log.propagate
+            # What the tree WOULD have passed on, before we touch anything.
+            threshold = log.getEffectiveLevel()
             if not log.isEnabledFor(logging.INFO):
                 log.setLevel(logging.INFO)
+            _bridge = _Bridge(threshold)
+            log.propagate = False
+            log.addHandler(_bridge)
         _depth += 1
 
 
 def _disable() -> None:
-    global _depth
+    global _depth, _bridge
     log = logging.getLogger(RULES_LOGGER)
     with _level_lock:
         _depth = max(0, _depth - 1)
-        if _depth == 0:                      # last one out restores the level
+        if _depth == 0:                      # last one out puts it all back
+            if _bridge is not None:
+                log.removeHandler(_bridge)
+                _bridge = None
             log.setLevel(_saved_level)
+            log.propagate = _saved_propagate
 
 
 class RelaxationCapture(logging.Handler):
@@ -127,9 +177,17 @@ class RelaxationCapture(logging.Handler):
         entry = self._by_shape.get(key)
         if entry is None:
             self._by_shape[key] = {'rule': str(rule), 'detail': detail,
-                                   'occurrences': 1}
-        else:
-            entry['occurrences'] += 1
+                                   'occurrences': 1, 'samples': [detail]}
+            return
+        entry['occurrences'] += 1
+        # Keep the varying half. `selector_frequency` logs per day ("day 3 can
+        # place only 1 of the 2 required"), and collapsing those to a count
+        # discards the only actionable part: WHICH days could not be filled.
+        # "Tuesday and Thursday could not fit the second dessert" is something
+        # a kitchen can act on; "this happened 25 times" is not. Capped so a
+        # long horizon cannot turn one relaxation into a wall of text.
+        if detail not in entry['samples'] and len(entry['samples']) < MAX_SAMPLES:
+            entry['samples'].append(detail)
 
     def handleError(self, record: logging.LogRecord) -> None:
         """Swallow. This layer describes a menu; it must never break one."""
