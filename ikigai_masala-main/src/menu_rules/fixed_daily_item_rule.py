@@ -50,6 +50,7 @@ from .base_menu_rule import (
 )
 from .selector_frequency_rule import SelectorFrequencyRule
 from ..preprocessor.column_mapper import _norm_str
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,9 @@ class FixedDailyItemRule(BaseMenuRule):
         if not by_item:
             logger.info(
                 "%s: no candidate in %r matches the selector; rule is inert",
-                self.name, self.base_slot)
+                self.name, self.base_slot,
+                extra={RELAXATION: self.name},
+            )
             return
 
         # An item is used on every day or on none. Days on which the item has no
@@ -143,7 +146,9 @@ class FixedDailyItemRule(BaseMenuRule):
             logger.warning(
                 "%s: no item matching the selector is available on all %d day(s), "
                 "so no dish can be held fixed; the rule is inert this horizon.",
-                self.name, n_days)
+                self.name, n_days,
+                extra={RELAXATION: self.name},
+            )
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         """Report when no matching dish can be held fixed across the horizon."""

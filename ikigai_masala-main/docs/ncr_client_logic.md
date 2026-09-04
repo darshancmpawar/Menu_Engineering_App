@@ -179,7 +179,7 @@ The client's `Site_Specific_Menu_items_logic` workbook carries per-site rules fo
 five NCR sites. Sheet → client-name mapping (they differ): `Stryker Sector 59` →
 **Stryker NCR**, `Seimens` → **Siemens**, `Airtel Plot 5` → **Airtel Noida**,
 `Sinch` → **Sinch NCR**, `Junglee` → **Junglee Games**. Encoded in
-`data/configs/client_rules.json`, tested in `tests/test_ncr_client_logic.py`:
+`data/configs/clients/<slug>.json`, tested in `tests/test_ncr_client_logic.py`:
 
 | Client | Encoded (lunch) | Deferred / out of scope |
 |---|---|---|

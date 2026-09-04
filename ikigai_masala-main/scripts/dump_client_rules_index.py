@@ -147,10 +147,6 @@ def summarise(rule: Dict[str, Any]) -> str:
         return (f"{_sel(rule.get('selector'))}{_slots(rule)}: once per "
                 f"{rule.get('window_days')} days, read from saved history")
 
-    if kind == "item_frequency":
-        return f"{_sel(rule.get('selector'))}{_slots(rule)}: " + ", ".join(
-            _counts(rule) or ["no count"])
-
     if kind == "slot_day_restriction":
         days = ", ".join(rule.get("allowed_weekdays") or [])
         return f"{rule.get('base_slot')} runs only on {days} (blank otherwise)"

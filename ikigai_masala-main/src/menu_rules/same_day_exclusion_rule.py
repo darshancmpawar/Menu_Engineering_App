@@ -50,6 +50,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from .selector_frequency_rule import SelectorFrequencyRule
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class SameDayExclusionRule(BaseMenuRule):
                     "skipping the exclusion for this day rather than making the "
                     "plan INFEASIBLE",
                     self.name, di, self._sel, self._exc,
+                    extra={RELAXATION: self.name},
                 )
                 continue
             a = model.NewBoolVar(f'{self.name}_sel_{di}')
@@ -191,6 +193,7 @@ class SameDayExclusionRule(BaseMenuRule):
                 "only %s candidates, so both families are unavoidable this week; "
                 "skipping the week exclusion rather than making the plan "
                 "INFEASIBLE", self.name, self._sel, self._exc,
+                extra={RELAXATION: self.name},
             )
             return
         a = model.NewBoolVar(f'{self.name}_sel_week')

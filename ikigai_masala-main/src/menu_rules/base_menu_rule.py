@@ -57,7 +57,13 @@ class MenuRuleType(Enum):
     THEME_FALLBACK_PENALTY = "theme_fallback_penalty"
     # Per-client custom rules
     INGREDIENT_BAN = "ingredient_ban"
-    ITEM_FREQUENCY = "item_frequency"
+    # `item_frequency` was retired: it was a strictly weaker duplicate of
+    # `selector_frequency` (five selector keys against thirteen) whose
+    # `min_per_week`/`max_per_week` summed over the whole HORIZON despite their
+    # names — the same defect `nonveg_biryani_weekly` had, and it made Tekion's
+    # "one liquid rice a week" allow one in twenty-five days while a
+    # `slot_composition` forced one every Thursday. `selector_frequency` now
+    # carries both keys with ISO-week bucketing; its two configs were migrated.
     SELECTOR_FREQUENCY = "selector_frequency"
     ATTRIBUTE_GROUPING = "attribute_grouping"
     SOFT_PREFERENCE = "soft_preference"

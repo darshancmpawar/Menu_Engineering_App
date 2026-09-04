@@ -19,7 +19,7 @@ see [`pune_rulebook.md`](pune_rulebook.md) for the city rules and
 [`pune_client_logic.md`](pune_client_logic.md) for its clients.
 
 **Status is a first-pass reading of the config, not a verified outcome.** A row
-marked DONE means a matching rule exists in `data/configs/client_rules.json` (or
+marked DONE means a matching rule exists in `data/configs/clients/<slug>.json` (or
 the city baseline covers it) — it does not yet mean a generated menu was checked
 against it. Confirm against a real week per client, then promote the row.
 
@@ -35,13 +35,18 @@ against it. Confirm against a real week per client, then promote the row.
 
 ## Coverage summary
 
+Of the 44 Bangalore clients in the current export:
+
 | | Clients | Notes |
 |---|---|---|
-| Have a `client_rules.json` entry | 25 | |
-| Entry exists but is empty | 1 | Piramel Finance |
-| No entry at all | 7 | Icon, Nike, Take 2, Eli Lilly, Continental, Waters, Siemens Healthineers |
+| Have configured rules | 26 | |
+| Entry exists, but only `constant_items` / `disable` | 8 | Amadeus, Astrazeneca, H&M, Piramel Finance, Plan View, Quince, Siemens Technology, Stryker |
+| No entry at all | 10 | Cargil, Continental, Eli Lilly, Icon Blr, Nike, Odessia, Rippling, Siemens Healthineers, Take 2, Waters |
 
-**Key entries by the DB name, byte-for-byte.** `client_rules.json` is looked up by
+A client in the middle row is not unconfigured — a daily curd or a chapati pin is
+often the whole of what that client asked for.
+
+**Key entries by the DB name, byte-for-byte.** A client file is looked up by
 exact match against `clients.name` with no normalisation, and a mismatch is silent:
 every rule for that client loads as zero, `/diagnose` still reports clean, and a
 plausible plan comes back having ignored all of them. This already happened once —
@@ -54,8 +59,10 @@ from this document's spellings in ways that are easy to miss:
 | Computacenter | `Computa Centre` |
 | Kongsberg | `Konsberg` |
 
-Verified: all 28 current keys match a live client, so there is no other silently
-dead config. Re-check after adding any entry.
+Verified continuously rather than by hand: `tests/clients/test_client_disable_targets.py`
+fails if any client-file key names no live client, if a `disable` names no rule
+that client's city has, if a `use.ref` names no library component, or if any rule
+in any client file fails to build. Adding an entry is checked by the suite.
 
 The seven clients with no entry account for 30 stated requirements with nothing
 behind them. Two clients are configured far below what they ask for: Siemens
@@ -281,7 +288,7 @@ What this settles for Tessolve:
 Requirements that appear as notes in `data/raw/source_workbooks/bangalore_menu_samples_history.xlsx` rather than in
 the tracker. Transferred here so the rulebook is the single source.
 
-### Tekion — eight rules, none currently configured beyond three
+### Tekion — nine rules, five configured
 
 Tekion's sheet carries the largest rule block, and it is the only sample with
 **two consecutive weeks**, which makes it the right client to test multi-week
@@ -415,7 +422,7 @@ many clients need them.
 Counters are still solved **independently** — the planner calls `/plan` once per
 counter — but the "second pass that fixes the shared slots first and pins them
 into each counter" is now wired. A client declares a `shared_categories` list
-(base slots) in `client_rules.json`; the planner solves the primary counter
+(base slots) in the client's rules file; the planner solves the primary counter
 (index 0), extracts its dish for each shared slot per day
 (`ui.formatters.shared_items_from_solution`), and passes them as `shared_items`
 to every later counter's `/plan` call, where `_merge_shared_items` folds them
@@ -430,7 +437,7 @@ dessert, white_rice`), verified in `tests/test_dxc_client_logic.py`.
 
 `shared_categories` can be set two ways: the **multi-counter editor** (a toggle +
 a multiselect of base slots present on 2+ counters, persisted to
-`clients.shared_categories`) or `client_rules.json` (file-based, e.g. DXC). GET
+`clients.shared_categories`) or the client's rules file (file-based, e.g. DXC). GET
 `/client-config` prefers the DB value and falls back to the file, so both feed
 the same planner path.
 
@@ -760,7 +767,7 @@ window).
 | 2 more non-veg mains (one dry, one gravy); chinese dry once a week | PARTIAL | The dry/gravy pair comes from the city composition; the weekly chinese dry is not configured |
 
 ### Continental
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -780,7 +787,7 @@ logic, so those rules sit at the client level.
 | No South-cuisine flavoured rice | DONE | `dxc_no_south_flavoured_rice` (`max: 0`) |
 | Indian bread is plain chapati every day | DONE | `dxc_plain_chapati_daily` (a one-cell `slot_composition` component mandating `sub_category = plain_chapatti/phulka` — **not** `fixed_daily_item`, which only makes the dish consistent, see CLAUDE.md note 20) + `dxc_plain_chapati_repeatable` so the 2-item staple survives the cooldown into week 2 |
 | Curd side: raita Mon/Tue/Thu/Fri, plain curd Wednesday | DONE | `dxc_raita_except_wed_curd` (`slot_composition.components_by_weekday`) + base `curd_raita_logic` **disabled** (it forces raita on every biryani/pulao day, which collides with the fixed Wednesday curd) |
-| Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | DONE | `shared_categories` in `client_rules.json` — the planner pins the primary counter's dish for each shared slot into the Non Veg counter per day (Gap 1, per-day dish sync) |
+| Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | DONE | `shared_categories` in the client's rules file — the planner pins the primary counter's dish for each shared slot into the Non Veg counter per day (Gap 1, per-day dish sync) |
 
 The theme filter is **not** exempted for `rice`: biryani is already placeable on
 DXC's north/mix days, so `min: 3` is satisfiable once the weekly cap above is
@@ -788,7 +795,7 @@ lifted. Verified end-to-end in `tests/test_dxc_client_logic.py` (both counters,
 each logic, plus a week-1-save → week-2-replan proving the bread staple holds).
 
 ### Eli Lilly
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -816,7 +823,7 @@ No `client_rules.json` entry.
 | Flavoured rice to be north indian | TODO | Cuisine restriction on `rice` |
 
 ### Icon
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -868,7 +875,7 @@ No `client_rules.json` entry.
 | Indian bread, dessert, curd/raita, salad, papad, white rice identical across counters for the day | BLOCKED | Gap 1 |
 
 ### Nike
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -914,7 +921,7 @@ Entry exists but is empty.
 | Curd daily, raita on biryani day | DONE | `constant_items` curd/curd_side split |
 
 ### Siemens Healthineers
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -946,7 +953,7 @@ No `client_rules.json` entry.
 | 1 chicken gravy and 1 chicken biryani on biryani day | TODO | Composition on the biryani theme |
 
 ### Take 2
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|
@@ -1030,7 +1037,7 @@ item, which the diagnostic asks for.
 | Chinese or bisibelebath once in 10 days; flavoured rice blank otherwise | BLOCKED | Gap 4 |
 
 ### Waters
-No `client_rules.json` entry.
+No client rules file.
 
 | Requirement | Status | Mechanism |
 |---|---|---|

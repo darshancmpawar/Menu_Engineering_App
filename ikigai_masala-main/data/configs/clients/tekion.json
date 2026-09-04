@@ -38,8 +38,9 @@
         ]
       },
       {
+        "_comment": "Exactly one liquid rice per CALENDAR week. Was `item_frequency`, whose min_per_week/max_per_week summed over the whole horizon despite their names — so on a 25-day plan this allowed one liquid rice in five weeks while the Thursday khichdi composition forced one every week. `selector_frequency` buckets by ISO week.",
         "name": "tekion_liquid_rice_once",
-        "type": "item_frequency",
+        "type": "selector_frequency",
         "base_slot": "rice",
         "selector": {
           "flag": "is_liquid_rice"

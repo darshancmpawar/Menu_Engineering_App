@@ -291,7 +291,7 @@ Failures return HTTP 4xx/5xx with:
 ## Menu rules
 
 Defined in `src/menu_rules/`, wired up from `data/configs/indian_menu_rules.json`.
-Per-client overrides live in `data/configs/client_rules.json`.
+Per-client overrides live in `data/configs/clients/<slug>.json`.
 
 ### Generic rules
 
@@ -318,7 +318,7 @@ Per-client overrides live in `data/configs/client_rules.json`.
 
 ### Per-client rules
 
-Stored per client in `data/configs/client_rules.json`, loaded fresh on every request:
+Stored per client in `data/configs/clients/<slug>.json`, loaded fresh on every request:
 
 | Rule | Kind | Role |
 |---|---|---|

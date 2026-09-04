@@ -565,7 +565,7 @@ Chennai. From the client's own 13 stated rules plus a seven-day sample week (dat
 | `tekion_protein_outside_dal` | shelf component `protein_outside_dal_three_days` |  |
 | `tekion_protein_outside_dal_all_days` | shelf component `protein_outside_dal_other_days` |  |
 | `tekion_no_mushroom` | never serve: mushroom |  |
-| `tekion_liquid_rice_once` | is_liquid_rice @ rice: ≥ 1/week, ≤ 1/week |  |
+| `tekion_liquid_rice_once` | is_liquid_rice @ rice: ≥ 1/week, ≤ 1/week | Exactly one liquid rice per CALENDAR week |
 | `tekion_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on fri: is_nonveg_biryani | Non-veg gravy Monday and Wednesday, chicken biryani Friday - Friday is this counter's biryani day (client confirmed, and both sample weeks serve a veg biryani there too) |
 | `tekion_chinese_rice_tuesday` | rice must include (when the counter serves ≥1 of it): on tue: is_chinese_fried_rice or is_chinese_carb | Chinese Rice & Chinese gravy to be served on Tuesday. |
 | `tekion_chinese_gravy_tuesday` | veg_gravy must include (when the counter serves ≥1 of it): on tue: is_chinese_veg_gravy | The veg-gravy half of the same Tuesday rule. |
@@ -587,7 +587,7 @@ Chennai site. "Its rules are the same as Tekion BLR" — so this is Tekion's blo
 | `tekion_chn_protein_outside_dal_all_days` | shelf component `protein_outside_dal_other_days` |  |
 | `tekion_chn_no_chinese` | cuisine_family chinese: ≤ 0 day(s) | No Chinese in Chennai Tekion. |
 | `tekion_chn_no_mushroom` | never serve: mushroom |  |
-| `tekion_chn_liquid_rice_once` | is_liquid_rice @ rice: ≥ 1/week, ≤ 1/week | Chennai carries 13 liquid rices, so this cap and the Thursday khichdi below both have something to act on. |
+| `tekion_chn_liquid_rice_once` | is_liquid_rice @ rice: ≥ 1/week, ≤ 1/week | Exactly one liquid rice per CALENDAR week |
 | `tekion_chn_nonveg_by_weekday` | nonveg_main must include (when the counter serves ≥1 of it): on mon: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on wed: is_north_chicken_gravy or is_south_chicken_gravy (not is_egg_dish); on fri: is_nonveg_biryani | Non-veg gravy Monday and Wednesday, chicken biryani Friday, mirroring Tekion BLR |
 | `tekion_chn_paneer_gravy_wednesday` | veg_gravy must include (when the counter serves ≥1 of it): on wed: is_paneer_gravy | Paneer gravy every Wednesday |
 | `tekion_chn_khichdi_thursday` | rice must include (when the counter serves ≥1 of it): on thu: is_liquid_rice | Khichdi every Thursday |

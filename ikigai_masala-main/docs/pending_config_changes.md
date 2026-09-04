@@ -8,34 +8,27 @@ Ordered by whether a client's menu is wrong without it.
 
 ---
 
-## 1. Database values a rule depends on
+## 1. Database values a rule depends on — ALL APPLIED
 
-Each of these is a `clients` row edit. All of them are reachable from the
-**Edit Logic** editor in the app (pick the city, then the client) except
-`working_days`, which has no editor control yet and needs a SQL update.
+Nothing outstanding. Every row that was on this list is live in the current
+`clients` export, verified against `tests/client_fixtures.py`:
 
-| # | Client | Change | Why | Without it |
-|---|---|---|---|---|
-| 1.1 | **TCL** | `serve_weekends = true` | "it working on sat and sun as well" | Only Monday to Friday is planned, and the ten rules that describe the reduced Saturday and Sunday menus never fire. |
-| 1.2 | **TCL** | add `white_rice` and `papad` to the counter's categories | The sample serves steamed rice on six of the seven days and appalam on all seven | Two rows the kitchen actually plates are missing from the printed menu. |
-| 1.4 | **World Bank** | `slot_counts.nonveg_main = 4` on **Full Lunch Menu** (it is 2) | "non veg main will have chicken gravys, chicken biryani, boiled egg and Bone Salna daily" — four items, and the sample prints all four | Only the biryani pin lands. The boiled-egg and bone-salna pins name slots the counter does not have and are dropped (with a warning naming the slot count to raise). |
-| 1.5 | **Corning Chakan** | add `starter` to the counter's categories, `slot_counts.starter = 1` | "On Thursday only we will give a starter. Starter should be a chaat item" | Both starter rules are inert; `/diagnose` reports them as targeting a slot the counter does not serve. Every other Corning rule works. |
-| 1.6 | **Moengage** | fill in the counter's `slot_counts` (only `nonveg_main: 2` is set) and its empty `theme_map` | Every other slot falls back to a default of 1 and the counter inherits the app-wide theme map | Works, but the counter is not configured — a slot count the client wanted is invisible. |
-| 1.7 | **Stryker** (Bangalore) | fill in `slot_counts` (empty) and `theme_map` (empty) | Same as above | Same as above. |
+| # | Client | Change | Verified |
+|---|---|---|---|
+| 1.1 | TCL | `serve_weekends = true` | `serve_weekends: True` |
+| 1.2 | TCL | add `white_rice` + `papad` to the counter's categories | both present |
+| 1.4 | World Bank | `slot_counts.nonveg_main = 4` on Full Lunch Menu | `4` |
+| 1.5 | Corning Chakan | add `starter` to the counter's categories | present |
+| 1.6 | Moengage | fill the counter's `slot_counts` and `theme_map` | 11 slots, theme map set |
+| 1.7 | Stryker (Bangalore) | fill `slot_counts` and `theme_map` | both set |
 
-Clario (working days and the Monday biryani theme) and Booking.com
-(`slot_counts.starter = 2`) were on this list and **are now applied live** —
-the 23 Aug export carries both.
+Clario (working days, Monday biryani) and Booking.com (`slot_counts.starter = 2`)
+were applied earlier.
 
-### SQL for 1.1 and 1.4
-
-```sql
-update clients set serve_weekends = true, version = version + 1
- where name = 'TCL';
-```
-
-`slot_counts` lives inside the `counters` JSONB, so 1.4 is easiest from the
-editor: Edit Logic → Chennai → World Bank → Full Lunch Menu → non-veg count 4.
+The table is kept rather than deleted because each row names the client
+requirement the value serves — a future export that loses one should be
+recognisable as a regression rather than read as a new request. If you add an
+item here, put it back above this line.
 
 ---
 
@@ -47,7 +40,7 @@ thinner than the client asked for until the dishes exist.
 
 | Where | Today | Needed | For | Status |
 |---|---|---|---|---|
-| **`item_color`, all cities** | 1,696 blank of 8,977 | — | `MenuSolver._add_color_constraints` clamps the day's required distinct colours to the number PRESENT, so a blank colour quietly relaxes the rule rather than merely going unchecked | ⚠️ **needs you** — 744 filled from measured evidence; the rest cannot be inferred. `docs/colours_to_confirm_by_family.csv` asks **455 questions** instead of 1,696: the top 25 answers colour half the backlog, the top 100 three quarters |
+| **`item_color`, all cities** | **51 blank of 9,118**, all Hyderabad | — | `MenuSolver._add_color_constraints` clamps the day's required distinct colours to the number PRESENT, so a blank colour quietly relaxes the rule rather than merely going unchecked | ✅ **closed by you** — the enriched workbooks answered it: Bangalore, Chennai, NCR and Pune are 0% blank. The 51 left are Quest's own Hyderabad additions, which have no enriched file; `docs/colours_to_confirm_by_family.csv` is down from 455 questions to **26**. NB the client's own `chef_review` sheet flags 720 Bangalore + 354 NCR of the supplied colours as low-confidence — `docs/chef_review_queue.csv` |
 | Chennai `welcome_drink` | **0** | ~25 | TCL, World Bank and both ICON lunch counters declare the slot; three state a buttermilk rule | ✅ closed — `scripts/chennai_client_pools.py` imports 28 (10 buttermilks incl. `sambaram` and `tadka_neer_mor`, the dishes TCL's own grid names) |
 | Chennai `dal`, kootu | 0 in the dal pool | ~16 | "in dal need to give only Kootu item" — TCL, World Bank and ICON Chn, in the same words | ✅ closed — the 8 existing kootus re-filed `veg_gravy` → `dal` and 8 more imported |
 | Chennai veg biryani | 14 (4 reachable) | ~20 | TCL serves one in its first rice slot every weekday | ✅ closed — 8 imported, and `chennai` joining `FULL_POOL_CITIES` makes the other 10 reachable |
@@ -114,14 +107,33 @@ stale.
 
 ---
 
+## 3b. Three pools that run out over five weeks
+
+Found by the 25-day rolling sweep (`docs/menu_generation_25day_sweep.md`).
+Each is the same shape: a **selector inside a slot** has fewer distinct dishes
+than its own cadence needs once the 20-day cooldown has been removing them for
+two weeks. The slot itself looks healthy, which is why nothing reports it.
+
+| Where | Today | Needed | Who it stops | Status |
+|---|---:|---:|---|---|
+| NCR `is_nonveg_dry` | **11** | ~15 | Siemens — `nonveg_main_daily_pair` wants one dry dish EVERY day; its slot has 150 rows, of which 11 are dry | ⚠️ open |
+| Bangalore `is_fish_dish` | **3** | ~5 | Stripe — `stripe_fish_1x_week` wants a fish weekly; three cannot cover five weeks under a 20-day hold | ⚠️ open |
+| Chennai `curd_rice` | **2** | ~5 | ToastTab CHN — already **D4** in `data_fixes_for_client.md` | ⚠️ open |
+
+All three degrade the same way: the counter plans two weeks fine and then
+returns 500. Adding dishes is the fix in every case — none is a rule conflict,
+and no rule should be relaxed for them.
+
+---
+
 ## 4. Decisions still open
 
 | Topic | Question | Where it bites |
 |---|---|---|
-| **Colours for 1,696 dishes** | The one item that genuinely needs your input. Fill the `item_color` column in `docs/colours_to_confirm_by_family.csv` — one answer per dish family, ordered so stopping early still helps. Vocabulary: brown, red, green, yellow, white, orange, black. Your own colour legend workbook is committed at `data/raw/source_workbooks/client_food_colour_legend.xlsx`; it matched only 3 of these rows (it is a Chennai tiffin list, the blanks are Bangalore and NCR) and agrees with the existing colours 73% of the time, so it is a cross-check rather than a source. | `docs/colours_to_confirm_by_family.csv` |
+| **Colours — 26 dish families left** | Was the headline open item at 1,696 dishes; your enriched workbooks closed all but Quest's own Hyderabad additions. What remains is in `docs/colours_to_confirm_by_family.csv`, 26 questions, one per dish family. Vocabulary: brown, red, green, yellow, white, orange, black. Separately and more usefully: your files flag **720 Bangalore + 354 NCR** supplied colours as low confidence, and those are now in the city lists indistinguishable from the verified ones — `docs/chef_review_queue.csv` lists them lowest-confidence first. | `docs/chef_review_queue.csv` |
 | **Bangalore: 116 Indian dishes tagged `continental`** | Found while verifying World Bank, whose "chicken gravy daily" quietly relaxed to 3 days of 5 by week three. The mapping pipeline tagged plainly-Indian dishes `cuisine_family = continental`, and `ThemeSlotFilterRule` hides a continental dish on every non-continental day. Chennai's 31 are **fixed** (`scripts/chennai_cuisine_corrections.py`) — no Chennai client runs a continental day, so those rows were simply dead and unblocking them is pure gain. Bangalore's **116** are not, and should not be done blind: 53 `chicken_north_masala` + 52 `pakora_/_bajji` + 11 others whose `sub_category` contradicts the tag, and Bangalore clients DO run continental days (Booking.com and Stripe theme a Tuesday, Amadeus alternates). Correcting them moves dishes OFF those menus as well as onto everyone else's, so it is a menu change to review rather than a cleanup. Worth a pass of its own — say the word. **It is no longer inert.** Filling NCR's `cuisine_family` had to route around it: across the corpus `sub_category == chicken_north_masala` reads 46% north / 45% continental, not because the category is ambiguous but because 53 Bangalore rows (and 53 Hyderabad copies) are tagged continental — which was blocking 64 NCR rows whose own sub_category says "north" from being filled at all. A dedicated tier reads the sub_category directly to get past it; correcting the source would remove the need. | `scripts/chennai_cuisine_corrections.py` is the shape to copy |
 | **Bangalore files 246 of 384 dals as `sub_category: leafy_dal`** | Found while adding Hyderabad: the completion pass filled `yellow_dal`, `yellow_dal_tadka` and `mixed_yellow_dal_tadka` as `leafy_dal`, which is wrong — a yellow toor/moong tadka has no greens in it. The token vote is not at fault; it faithfully reported the majority, and the majority is itself the defect. `leafy_dal` looks like the mapping pipeline's default for the dal course rather than a description, and it has now propagated to three more rows. **Inert today** — every shipped leafy rule selects on the `is_leafy_based_dish` FLAG, not on this column, and the flag was not set on any of the three — so this is a landmine rather than a live bug, the same shape as the dessert `cuisine_family` defaults. Fixing it means deciding what the non-leafy dals should say instead (`tadka_/_fry_dal` covers 58 rows today), which is a vocabulary question for you. | `scripts/complete_ontology.py` learn_text; `sub_category` on `course_type == dal` |
-| **233 NCR dishes with no cuisine** | The second item that genuinely needs your input, and the smaller one. `cuisine_family` decides which themed day a dish can be served on, and a BLANK means "no themed day at all" — NCR was 1,000 blank, of which 767 are now filled from evidence. The rest split three ways and are listed with the reason in `docs/cuisines_to_confirm.csv`: **no evidence** (mostly `payasam_/_kheer`, which is 50/50 north/south across the whole corpus, so it is genuinely regionless rather than unknown), **carries a chinese/continental flag** (a region would be wrong and those two values are never guessed, since they make a dish appear ONLY on their own theme day — and no NCR client runs one), and **course has no agreed convention** (welcome drinks, which the corpus files 331 `drink` against 139 `north_indian`). Only 56 of the 233 are in a slot the theme filter gates, so this is much less urgent than it was. | `docs/cuisines_to_confirm.csv` |
+| ~~233 NCR dishes with no cuisine~~ | ✅ **Closed.** `cuisine_family` decides which themed day a dish can be served on, and a blank means "no themed day at all" — NCR was 1,000 blank. `scripts/fill_cuisine_family.py` filled 767 from measured evidence and your enriched workbook supplied the rest: `docs/cuisines_to_confirm.csv` is now **empty**. Kept as a line because the *reason* matters — the vote is still forbidden from ever proposing `chinese` or `continental`, since those make a dish appear ONLY on their own theme day and no NCR client runs one. | — |
 | **~1,400 dishes with no `sub_category` or `key_ingredient`** | The largest remaining gap, and the one a better heuristic cannot close — measured, not assumed. These are the two attribute columns shipped rules actually select on (8 and 12 client files), and they are 18-23% blank in Bangalore and Hyderabad, 16-19% in Chennai and Pune, 1.4% in NCR. `complete_ontology.py` already fills what the corpus agrees about; held out on a fifth of the classified rows its current corpus-wide setting scores **95.5% at 36.5% coverage** for sub_category and **96.7% at 31.5%** for key_ingredient, and a city-scoped variant — the trick that worked for `cuisine_family` — is WORSE on both counts (93.0% at 27.0%), because a cuisine is a property of the city's cooking while a sub-category is a property of the dish. What is left has genuinely unique names the ontology shares no token for: `dingri_mutter`, `kumbh_kaju_shabnam`, `mix_veg_kurchan`. Every one is listed with the column it is missing in `docs/ontology_gaps.csv`; they need a person who knows the dish. | `docs/ontology_gaps.csv` |
 | **66 biryanis with no `nonveg_biryani_region`** | Low priority, recorded so the number is not mistaken for something worse. Scoped to `nonveg_main` the column reads 94% blank, which looks alarming; it is filled ONLY on `is_nonveg_biryani` rows and never outside them, so the real gap is 30 Bangalore + 33 Hyderabad + 3 Chennai biryanis. **No shipped rule reads this column** (nor `dal_region`, `drink_type`, `drink_rule_group` or `flavoured_rice_region` — `gravy_region` likewise). Each of the 66 is derivable from the row's own now-complete `cuisine_family`; say the word and it is a one-line pass. | `complete_ontology.py` COLUMN_SCOPE |
 | **RNTBCI's logic** | On hold at your request. Its sheet in `chennai_client_structure.xlsx` is empty and `Sheet1` lists the client with no rules beside it, so nothing was configured. Its six counters plan from the Chennai city ruleset alone. Send the rules and it wires up like the other four. | `data/configs/clients/` — no file yet |

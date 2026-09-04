@@ -62,6 +62,7 @@ from ui.formatters import (
     THEME_ICONS,
 )
 from ui.planner_view import (
+    date_label,
     flatten_result,
     menu_table_html,
     download_filename,
@@ -552,6 +553,53 @@ def _pool_warnings_expander(block: dict) -> None:
                     unsafe_allow_html=True)
 
 
+def _render_explain_expander(api, block_index: int, counter_index: int,
+                             key_ns: str) -> None:
+    """Plate-balance verdicts for one plan block, fetched on demand.
+
+    Behind a button rather than fetched alongside the plan: /explain is a
+    second request and an optional one, so a user who never opens this pays
+    nothing for it, and a failure here can never cost anyone a menu.
+
+    The lines come from `src/explain/renderer.py` verbatim rather than being
+    re-laid-out here, so there is one place that decides how a verdict reads —
+    and the renderer always shows a FAILING check, which is the property worth
+    not re-implementing.
+    """
+    b = st.session_state.plan_blocks[block_index]
+    if not b.get("plan_dates") or not b.get("solution"):
+        return
+    store = st.session_state.setdefault("explanations", {})
+    cache_key = f"{st.session_state.client_name}|{key_ns}|{b['plan_dates'][0]}"
+    with st.expander("Why this menu"):
+        st.caption(
+            "Plate-balance checks read off the menu itself. A flagged check is "
+            "a suggestion; a 'relaxed' line is a rule the solver could not "
+            "fully enforce.")
+        if st.button("Explain this menu", key=f"explain_btn_{key_ns}"):
+            try:
+                store[cache_key] = api.explain(
+                    client_name=st.session_state.client_name,
+                    # plan_dates spans the horizon including days this client
+                    # does not serve, so [0] is the horizon start and the count
+                    # is its length.
+                    start_date=b["plan_dates"][0],
+                    num_days=len(b["plan_dates"]),
+                    counter_index=counter_index,
+                    solution=b.get("solution") or {},
+                    relaxations=b.get("relaxations") or None,
+                )
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.error(f"Could not explain this menu: {e}")
+        payload = store.get(cache_key)
+        if not payload:
+            return
+        for day in payload.get("days", []):
+            if day.get("prose"):
+                st.markdown(f"**{date_label(day['date'])}** — {day['prose']}")
+            st.code("\n".join(day.get("bullets") or []), language=None)
+
+
 def _render_regen_expander(api, block_index: int, counter_index: int,
                            key_ns: str) -> None:
     """Regenerate-cells panel for one plan block; mutates
@@ -973,6 +1021,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
                         b["nonveg"] = {}
                         st.rerun()
                 _render_regen_expander(client, i, i, f"c{i}")
+                _render_explain_expander(client, i, i, f"c{i}")
     else:
         b = _blocks[0]
         _pool_warnings_expander(b)
@@ -1010,6 +1059,7 @@ if _blocks and any(b.get("plan") for b in _blocks):
                 st.session_state.diagnostics_summary = None
                 st.rerun()
         _render_regen_expander(client, 0, 0, "single")
+        _render_explain_expander(client, 0, 0, "single")
 
     _render_changes_log()
 

@@ -41,6 +41,22 @@ class TestFlattenResult:
         blk = flatten_result({})
         assert blk["plan"] == {} and blk["plan_dates"] == [] and blk["nonveg"] == {}
 
+    def test_the_unflattened_solution_is_kept_for_explain(self):
+        """`plan` throws away everything but the dish name. /explain describes
+        the plate, so it needs the per-slot attributes back."""
+        blk = flatten_result({"solution": _SOLUTION})
+        assert blk["solution"] == _SOLUTION
+
+    def test_relaxations_ride_along_from_the_plan_response(self):
+        """The one thing /explain cannot recompute: which rules the solver
+        under-enforced is only observable while it runs."""
+        relax = [{"rule": "liquid_desserts_twice", "detail": "min 2 capped to 1"}]
+        blk = flatten_result({"solution": _SOLUTION, "relaxations": relax})
+        assert blk["relaxations"] == relax
+
+    def test_a_clean_plan_carries_no_relaxations(self):
+        assert flatten_result({"solution": _SOLUTION})["relaxations"] == []
+
 
 class TestDateLabel:
     def test_valid_iso(self):

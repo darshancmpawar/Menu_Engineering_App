@@ -46,7 +46,6 @@ from .nonveg_rules import (
 
 # Per-client rules
 from .ingredient_ban_rule import IngredientBanRule
-from .item_frequency_rule import ItemFrequencyRule
 from .slot_day_restriction_rule import SlotDayRestrictionRule
 
 from .menu_rule_loader import MenuRuleLoader
@@ -70,5 +69,5 @@ __all__ = [
     # nonveg
     'NonvegBiryaniWeeklyRule', 'NonvegDryPreferenceRule',
     # per-client
-    'IngredientBanRule', 'ItemFrequencyRule', 'SlotDayRestrictionRule',
+    'IngredientBanRule', 'SlotDayRestrictionRule',
 ]

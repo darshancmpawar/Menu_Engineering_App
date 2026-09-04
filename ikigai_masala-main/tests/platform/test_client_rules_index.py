@@ -89,7 +89,7 @@ class TestSummaries:
         assert 'once per 15 days' in out
 
     @pytest.mark.parametrize("kind", [
-        'selector_frequency', 'selector_history_window', 'item_frequency',
+        'selector_frequency', 'selector_history_window',
         'slot_day_restriction', 'slot_composition', 'repeatable_items',
         'fixed_daily_item', 'ingredient_ban', 'same_day_exclusion',
         'attribute_grouping', 'soft_preference', 'theme_slot_filter',

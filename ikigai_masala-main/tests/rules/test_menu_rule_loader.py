@@ -139,14 +139,14 @@ class TestLoadForClient:
         rules to 8 when its sheet-embedded requirements were configured.
         """
         from src.menu_rules.ingredient_ban_rule import IngredientBanRule
-        from src.menu_rules.item_frequency_rule import ItemFrequencyRule
+        from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
         from src.menu_rules.slot_day_restriction_rule import SlotDayRestrictionRule
         from src.menu_rules.slot_composition_rule import SlotCompositionRule
         loader = MenuRuleLoader()
         result = loader.load_for_client('Tekion', [])
         assert result, 'Tekion has a client_rules block; it must load'
         kinds = {type(r) for r in result}
-        for expected in (IngredientBanRule, ItemFrequencyRule,
+        for expected in (IngredientBanRule, SelectorFrequencyRule,
                          SlotDayRestrictionRule, SlotCompositionRule):
             assert expected in kinds, (expected.__name__, sorted(
                 k.__name__ for k in kinds))
@@ -222,12 +222,12 @@ class TestLoadForClient:
 class TestInvalidConfigLogging:
     """The loader should log *why* a rule was dropped so admins can fix it."""
 
-    def test_min_gt_max_item_frequency_logs_reason(self, caplog):
+    def test_min_gt_max_per_week_logs_reason(self, caplog):
         import logging
         caplog.set_level(logging.WARNING)
         config = {
             "rules": [{
-                "name": "bad_freq", "type": "item_frequency",
+                "name": "bad_freq", "type": "selector_frequency",
                 "selector": {"flag": "is_liquid_rice"},
                 "min_per_week": 3, "max_per_week": 1,
             }]

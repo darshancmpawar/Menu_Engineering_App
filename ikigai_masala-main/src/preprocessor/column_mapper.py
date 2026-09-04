@@ -152,27 +152,42 @@ class ColumnMapper:
             if col in df.columns:
                 df[col] = df[col].map(fn)
 
-        # Normalize flag columns
+        # Normalize flag columns. The ones the workbook already has are mapped in
+        # place; the missing ones are added in ONE concat rather than a column at
+        # a time. There are ~112 flags, so the per-column insert fragmented a
+        # 6,000-row frame badly enough that pandas warned about it on every
+        # ontology load — five times per test session, and once per city in
+        # production. Order is unchanged: the missing columns are appended in
+        # `OPTIONAL_FLAG_ALIASES` order either way.
         all_flag_cols = list(OPTIONAL_FLAG_ALIASES.keys())
-        for col in all_flag_cols:
-            if col in df.columns:
-                df[col] = df[col].map(_to_bool01)
-            else:
-                df[col] = 0
+        present = [c for c in all_flag_cols if c in df.columns]
+        missing = [c for c in all_flag_cols if c not in df.columns]
+        for col in present:
+            df[col] = df[col].map(_to_bool01)
+        if missing:
+            df = pd.concat(
+                [df, pd.DataFrame(0, index=df.index, columns=missing)], axis=1)
 
-        # Detect deep-fried starters via heuristic
-        df['is_deep_fried_starter'] = df.apply(_is_deepfried_starter_row, axis=1).astype(int)
-
-        # Detect nonveg dry via heuristic
-        df['is_nonveg_dry'] = df.apply(_is_nonveg_dry_row, axis=1).astype(int)
-
-        # Compute key_eff (effective key ingredient for uniqueness)
+        # The three derived columns, computed first and attached in one go — the
+        # same fragmentation argument as the flags above. `_compute_key_eff`
+        # reads only key_ingredient / item / cuisine_family / sub_category /
+        # course_type, none of which are the two heuristic flags, so the three
+        # are independent and the order they are attached in does not matter.
         cat_series = df['category'].map(_norm_str) if 'category' in df.columns else pd.Series(
             [''] * len(df), index=df.index
         )
-        df['key_eff'] = df.apply(
-            lambda r: _compute_key_eff(r, cat_series), axis=1
-        ).map(_norm_str)
+        derived = pd.DataFrame({
+            # Detect deep-fried starters via heuristic.
+            'is_deep_fried_starter':
+                df.apply(_is_deepfried_starter_row, axis=1).astype(int),
+            # Detect nonveg dry via heuristic.
+            'is_nonveg_dry': df.apply(_is_nonveg_dry_row, axis=1).astype(int),
+            # Effective key ingredient, for uniqueness.
+            'key_eff': df.apply(
+                lambda r: _compute_key_eff(r, cat_series), axis=1).map(_norm_str),
+        }, index=df.index)
+        df = pd.concat([df.drop(columns=derived.columns, errors='ignore'),
+                        derived], axis=1)
 
         return df
 

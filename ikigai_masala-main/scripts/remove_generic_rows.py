@@ -71,7 +71,14 @@ CITY_ITEMS = os.path.join(
 #: argument as the category-named rows below, arriving by a different route: the
 #: name describes a component of a dish rather than the dish.
 GENERIC_ROWS = {
-    'bangalore': ['curd_base'],
+    #: `chuteny` is the word "chutney" misspelled and filed as a STARTER, so a
+    #: solve serves it as the day's starter — one did. The typo is why the
+    #: category-name check missed it: `chutney` is on Chennai's list above and
+    #: this is not that string. Same shape as the `chciken`/`chivken` protein
+    #: typos in `misspelled_protein_names.py`, where the misspelling is exactly
+    #: what hid the row. Bangalore carries 10 real chutney rows; this is the
+    #: category word, not an eleventh dish.
+    'bangalore': ['curd_base', 'chuteny'],
     'chennai': [
         'brinjal', 'chutney', 'curd_base', 'darbar_soup', 'dry_sweet',
         'local_salna', 'milk_sweet', 'sweet', 'toast_salad', 'veg_gravy',
@@ -149,6 +156,23 @@ GENERIC_ROWS = {
         'non_veg_not_serving_due_to_navratri',
         # A whole-meal label rather than a dish, and four name fragments.
         'navratre_thali', 'carrat', 'crisp', 'crisps', 'date',
+        # ------------------------------------------------------------------
+        # Two more category words, both wearing a disguise the exact-name check
+        # could not see through.
+        # ------------------------------------------------------------------
+        # `samber` is "sambar" misspelled, filed `dal` with
+        # `sub_category: leafy_dal` and `key_ingredient: samber` — the mapping
+        # pipeline's first-word fingerprint. It is why `add_ncr_sambar.py` says
+        # "NCR's raw list carried NO sambar": the list did carry one, under a
+        # typo and in the wrong course. NCR now has 14 real sambar rows, so
+        # nothing is lost by removing the word.
+        'samber',
+        # `vegetable` is a bare English noun, which is how it slipped past a
+        # list of category names. It is filed `veg_gravy` AND carries
+        # `is_premium_gravy`, so a row printed as "Vegetable" was eligible to
+        # consume the week's `premium_veg_gravy_exactly_one` slot — the one
+        # dish a client is paying for as the week's showcase.
+        'vegetable',
         # DELIBERATELY NOT TAKEN from the enriched file: `veg_chowmin` and
         # `veg_avail` are real dishes misspelled (NCR carries `chowmin` and
         # `avial` too), so they were duplicates to adjudicate rather than

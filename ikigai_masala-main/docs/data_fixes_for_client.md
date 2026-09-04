@@ -145,36 +145,55 @@ put a dish called "Sweet" in the dessert slot, because no such dish exists. If y
 later supply the real names for what "Sweet" and "Dry Sweet" actually were on those
 days, we will add them back as proper dishes.
 
-## E. Still open — one item needs more data from you
+## E. Still open
 
-### D4. Five Chennai stations are too small for a five-day week
+### D4. Chennai's small stations — three of five closed
 
-| Station | Distinct dishes |
-|---|---|
-| `curd` | 1 |
-| `curd_rice` | 2 |
-| `healthy_rice` | 2 |
-| `rasam` | 2 |
-| `curd_side` | 4 |
+| Station | Was | Now | |
+|---|---:|---:|---|
+| `rasam` | 2 | **22** | ✅ closed |
+| `curd_side` | 4 | **12** | ✅ closed |
+| `healthy_rice` | 2 | **9** | ✅ closed |
+| `curd` | 1 | 3 | repeats by design |
+| `curd_rice` | 2 | 2 | repeats by design |
 
-These must repeat within a single week — arithmetic, not a tool limitation. We treat
-them as staples so the plan still generates, but if you want variety in the rasam or
-the curd rice, **the list needs more dishes.** Two rasams cannot fill three rasam
-days without one appearing twice.
+`scripts/expand_side_pools.py` and `scripts/chennai_client_pools.py` closed the
+three that mattered — a rasam station now has more distinct dishes than a
+cooldown window needs, so no rasam repeats inside a week.
+
+The two left are **not** a gap. `curd` is in `REPEATABLE_SLOTS` and `curd_rice`
+in `COOLDOWN_EXEMPT_SLOTS` (design note 11): a plain curd is a staple and is
+*meant* to be the same every day, and the curd-rice station cycles through what
+it has and then repeats. Adding dishes there would give variety if you want it,
+but nothing is under-served without them.
 
 ---
 
 ## F. Item IDs are not globally unique
 
-`MENU004360` is `ajwain_pulao` in Chennai and `aam_ras` in Pune. **151 IDs mean two
-different dishes** across those two lists, because both were allocated from
-`MENU004360` upward independently.
+`MENU004360` is `ajwain_pulao` in Chennai and `aam_ras` in Pune. **1,303 IDs now
+name two different dishes** across the five lists, because each city was
+allocated from the same range independently. The number grew from 151 because
+two more cities were added, not because anything regressed:
+
+| | clashing ids |
+|---|---:|
+| Bangalore vs NCR | 1,105 |
+| Bangalore vs Chennai | 499 |
+| Bangalore vs Pune | 379 |
+| Bangalore vs **Hyderabad** | **0** |
+
+Hyderabad is the one pair with none, which is the seeding working as intended —
+it was copied from Bangalore's list and kept every id.
 
 **Nothing is broken today** — every use of `item_id` is scoped to one city's list,
-and menu history stores dish *names*. But if you intend `item_id` to be a global
-key — for a cross-city report, a shared price list, anything that joins two cities —
-these 151 must be re-issued first. Current high-water across all three lists is
-`MENU0004558`.
+and menu history stores dish *names*, which is also why `/save` canonicalises
+them (design note 28). But if you intend `item_id` to be a global key — a
+cross-city report, a shared price list, anything joining two cities — these must
+be re-issued first. Current high-water across all five lists is `MENU006428`.
+`scripts/normalize_item_ids.py` already guarantees the format is `MENU######`
+everywhere and unique *within* each city; making it unique *across* them is the
+change that has not been made.
 
 ---
 
@@ -184,10 +203,11 @@ these 151 must be re-issued first. Current high-water across all three lists is
 |---|---|
 | **1** | Fix sections **A**, **B**, **C** and **D1-D3** in the *source* workbooks, so a re-import stops undoing them |
 | **2** | **D3** — real names for `dry_sweet` and `sweet` if you want those two live-menu rows reproducible (they are removed for now) |
-| **3** | **D4** — more dishes for `rasam`, `curd_rice`, `curd`, `healthy_rice` if you want weekly variety |
+| **3** | ~~**D4**~~ — closed for `rasam`, `curd_side` and `healthy_rice`; `curd` and `curd_rice` repeat by design |
 | **4** | **D1** — tell us if you need a true East/West dessert split (would require new `cuisine_family` values) |
 | **5** | **F** — only if `item_id` is meant to be globally unique |
 
 Everything in A, B, C and D1-D3 is already live in our copy, so plans generated
 today are correct. The ask is to stop the next re-import from reintroducing them.
-Only **D4** still blocks nothing but limits variety.
+D4 is now closed for the three stations where repetition was unintended; nothing
+in this document blocks a menu.

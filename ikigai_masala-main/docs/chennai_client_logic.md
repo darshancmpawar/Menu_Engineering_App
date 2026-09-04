@@ -11,7 +11,7 @@ named for a category, not a dish) and `data/raw/source_workbooks/chennai_sample_
 `Toasttab`. Scope is **lunch**.
 
 **Implementation:** the `"ToastTab CHN"` entry in
-`data/configs/client_rules.json`. Asserted end to end by
+`data/configs/clients/<slug>.json`. Asserted end to end by
 `tests/test_chennai_client_logic.py`; the city ruleset by
 `tests/test_chennai_rules.py`.
 

@@ -76,7 +76,6 @@ from .nonveg_rules import (
     NonvegDryPreferenceRule,
 )
 from .ingredient_ban_rule import IngredientBanRule
-from .item_frequency_rule import ItemFrequencyRule
 from .selector_frequency_rule import SelectorFrequencyRule
 from .selector_history_window_rule import SelectorHistoryWindowRule
 from .attribute_grouping_rule import AttributeGroupingRule
@@ -137,7 +136,6 @@ class MenuRuleLoader:
         'nonveg_dry_preference': NonvegDryPreferenceRule,
         'nonveg_biryani_weekly': NonvegBiryaniWeeklyRule,
         'ingredient_ban': IngredientBanRule,
-        'item_frequency': ItemFrequencyRule,
         'selector_frequency': SelectorFrequencyRule,
         'selector_history_window': SelectorHistoryWindowRule,
         'attribute_grouping': AttributeGroupingRule,

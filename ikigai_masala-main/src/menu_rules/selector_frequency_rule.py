@@ -14,6 +14,7 @@ Config::
         "base_slot": "veg_gravy",                     # optional slot scope
         "max": 1,            # horizon day-level: at most N days have a match
         "max_per_week": null,# CALENDAR-week day-level: at most N days a week
+        "min_per_week": null,# CALENDAR-week day-level: at least N days a week
         "min": 0,            # horizon day-level: at least N days
         "exact": null,       # horizon day-level: exactly N days
         "non_consecutive": false,   # matched days may not be adjacent
@@ -54,6 +55,16 @@ the client's own "once a week" and the looser reading is deliberate.
 The two may be combined: ``max_per_week`` for the recurring cadence and ``max``
 for an absolute ceiling on the plan.
 
+``min_per_week`` is its floor, and exists for the same reason: ``min`` counts
+days across the horizon, so "at least one a week" written as ``min: 1`` becomes
+"once a fortnight" on 14 days. Setting both to 1 is "exactly one per calendar
+week", which is what the retired ``item_frequency`` rule type meant to say — its
+keys were already NAMED ``min_per_week``/``max_per_week`` while summing over the
+horizon, so Tekion's "one liquid rice a week" allowed one in twenty-five days
+while a `slot_composition` forced one every Thursday. Each week's floor is
+capped to the days that week can place, so a short week at either end of the
+horizon relaxes instead of failing the plan.
+
 Counting is day-level for max/min/exact (how many days carry >= 1 match), which
 equals occurrence count for single-per-day slots. ``daily_max`` is an
 occurrence cap within a single day, and ``daily_min`` its floor — the way to say
@@ -78,6 +89,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from ..preprocessor.column_mapper import _norm_str
+from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +139,8 @@ class SelectorFrequencyRule(BaseMenuRule):
         self.max: Optional[int] = self._int_or_none(rule_config, 'max')
         self.max_per_week: Optional[int] = self._int_or_none(
             rule_config, 'max_per_week')
+        self.min_per_week: Optional[int] = self._int_or_none(
+            rule_config, 'min_per_week')
         self.min: Optional[int] = self._int_or_none(rule_config, 'min')
         self.exact: Optional[int] = self._int_or_none(rule_config, 'exact')
         self.daily_max: Optional[int] = self._int_or_none(rule_config, 'daily_max')
@@ -241,22 +255,29 @@ class SelectorFrequencyRule(BaseMenuRule):
         if not self.sel_kind:
             errs.append("selector must contain exactly one of " + ", ".join(sorted(_SELECTOR_KEYS)))
         if all(v is None for v in (self.max, self.min, self.exact, self.daily_max,
-                                   self.daily_min, self.max_per_week)) \
+                                   self.daily_min, self.max_per_week,
+                                   self.min_per_week)) \
                 and not self.non_consecutive \
                 and not self.forbidden_weekdays:
-            errs.append("at least one of max / max_per_week / min / exact / "
-                        "daily_max / non_consecutive / forbidden_weekdays is "
-                        "required")
+            errs.append("at least one of max / max_per_week / min / min_per_week "
+                        "/ exact / daily_max / non_consecutive / "
+                        "forbidden_weekdays is required")
         if self.exact is not None and self.max_per_week is not None:
             errs.append("exact cannot be combined with max_per_week")
+        if self.exact is not None and self.min_per_week is not None:
+            errs.append("exact cannot be combined with min_per_week")
         if (self.max is not None and self.max_per_week is not None
                 and self.max_per_week > self.max):
             errs.append(f"max_per_week ({self.max_per_week}) must be <= max "
                         f"({self.max})")
+        if (self.max_per_week is not None and self.min_per_week is not None
+                and self.min_per_week > self.max_per_week):
+            errs.append(f"min_per_week ({self.min_per_week}) must be <= "
+                        f"max_per_week ({self.max_per_week})")
         if self.exact is not None and (self.max is not None or self.min is not None):
             errs.append("exact cannot be combined with max/min")
         for k in ('max', 'min', 'exact', 'daily_max', 'daily_min',
-                  'max_per_week'):
+                  'max_per_week', 'min_per_week'):
             v = getattr(self, k)
             if v is not None and v < 0:
                 errs.append(f"{k} must be >= 0 (got {v})")
@@ -317,6 +338,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d (%s) is outside allowed_day_types but the "
                         "slot has nothing else to offer; ban skipped",
                         self.name, di, day_type,
+                        extra={RELAXATION: self.name},
                     )
             # Weekday ban, same degrade-rather-than-fail rule as the theme ban
             # above: a slot whose whole pool matches the selector must still be
@@ -332,6 +354,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d falls on a forbidden weekday but the slot "
                         "has nothing else to offer; ban skipped",
                         self.name, di,
+                        extra={RELAXATION: self.name},
                     )
             # Per-day occurrence cap.
             if self.daily_max is not None:
@@ -352,6 +375,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d can place only %d of the %d required "
                         "matching item(s); floor relaxed for that day",
                         self.name, di, want, self.daily_min,
+                        extra={RELAXATION: self.name},
                     )
             hv = model.NewBoolVar(f'{self.name}_day_{di}')
             link_any(model, lits, hv)
@@ -367,15 +391,34 @@ class SelectorFrequencyRule(BaseMenuRule):
         # ...and the per-CALENDAR-week cap, which is what a rule named `*_weekly`
         # actually means. One constraint per ISO week present in the horizon, so
         # the rule reads the same whether it is planned over 5 days or 25.
-        if self.max_per_week is not None and dates:
-            by_week: Dict[Any, List[Any]] = {}
+        by_week: Dict[Any, List[Any]] = {}
+        if (self.max_per_week is not None or self.min_per_week is not None) and dates:
             for di, hv in day_has:
                 if di >= len(dates):                       # pragma: no cover
                     continue
                 iso = dates[di].isocalendar()
                 by_week.setdefault((iso[0], iso[1]), []).append(hv)
+        if self.max_per_week is not None:
             for week, wv in by_week.items():
                 model.Add(sum(wv) <= self.max_per_week)
+        # The per-week FLOOR, and the reason `min` alone is not it: `min` counts
+        # days across the whole horizon, so `min: 1` is "once a fortnight" on 14
+        # days exactly as `max: 1` was. Capped per week to the days that week can
+        # actually place, so a short week at either end of the horizon relaxes
+        # instead of taking the plan down — the same degrade-rather-than-fail
+        # treatment `min` and `daily_min` already get.
+        if self.min_per_week is not None and self.min_per_week > 0:
+            for week, wv in by_week.items():
+                want = min(self.min_per_week, len(wv))
+                if want > 0:
+                    model.Add(sum(wv) >= want)
+                if want < self.min_per_week:
+                    logger.info(
+                        "%s: ISO week %s can place the selector on only %d "
+                        "day(s); weekly floor relaxed from %d for that week.",
+                        self.name, week, want, self.min_per_week,
+                        extra={RELAXATION: self.name},
+                    )
 
         # min / exact: cap to what the horizon can actually place so a thin pool
         # relaxes instead of going INFEASIBLE.
@@ -418,6 +461,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                     "Widen this client's item pools or lower the target.",
                     self.name, self.exact, tgt, len(distinct_matches),
                     len(day_has),
+                    extra={RELAXATION: self.name},
                 )
             if tgt > 0:
                 model.Add(sum(hvars) == tgt)
@@ -431,6 +475,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                     "or lower the target.",
                     self.name, self.min, tgt, len(distinct_matches),
                     len(day_has),
+                    extra={RELAXATION: self.name},
                 )
             if tgt > 0:
                 model.Add(sum(hvars) >= tgt)
@@ -623,13 +668,22 @@ class SelectorFrequencyRule(BaseMenuRule):
                 ))
                 return diags
 
-        if self.min is None and self.exact is None:
-            # min/exact shortfalls are the only remaining failure mode; a `max`
-            # that is not force-violated above only ever tightens.
+        if self.min is None and self.exact is None and self.min_per_week is None:
+            # Floor shortfalls are the only remaining failure mode; a `max` that
+            # is not force-violated above only ever tightens.
             return diags
 
         placeable, distinct = self._eligible_days(ctx)
-        target = self.exact if self.exact is not None else self.min
+        # A weekly floor is reported against the WHOLE horizon rather than
+        # per week. `apply()` relaxes each week to what that week can place, so
+        # a short week at either end is expected and not worth a line; what is
+        # worth reporting is the case the operator can act on — the selector
+        # matching nothing at all, or too few distinct dishes to go round. Left
+        # out entirely, a `min_per_week` naming a misspelled flag would be
+        # silently inert, which is the failure this whole hook exists to stop.
+        target = (self.exact if self.exact is not None
+                  else self.min if self.min is not None
+                  else self.min_per_week)
         if not target or target <= 0:
             return diags
         achievable = min(placeable, distinct) if distinct else 0

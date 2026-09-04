@@ -43,7 +43,7 @@ nothing else has to change.
 |---|---|
 | **DONE** | encoded in `pune.json` and enforced |
 | **N/A** | the dish or category the rule governs does not exist in the Pune list, so the rule is configured but has nothing to act on |
-| **CLIENT** | a per-client/per-site decision — belongs in `client_rules.json`, not the city ruleset |
+| **CLIENT** | a per-client/per-site decision — belongs in `data/configs/clients/<slug>.json`, not the city ruleset |
 | **OPS** | a kitchen/procurement/food-safety instruction with nothing for the solver to decide |
 | **GAP** | wants a capability the engine does not have; listed under "Open gaps" |
 
@@ -99,7 +99,7 @@ nothing else has to change.
 | R46 | Mocktails for events only | N/A | no mocktail items |
 | R47 | Oil-based breads monthly, for premium | N/A (no such dish) + CLIENT | `oil_based_bread_weekly` caps them per horizon; none in the list, and "for premium" is per client |
 | R48 | Omelette/egg curry only at enabled sites | N/A | no egg items |
-| R49 | Sites with selling price ≥150 may relax premium gravy frequency | CLIENT | a per-client `disable: ["premium_gravy_weekly"]` in `client_rules.json` |
+| R49 | Sites with selling price ≥150 may relax premium gravy frequency | CLIENT | a per-client `disable: ["premium_gravy_weekly"]` in its rules file |
 | R50 | All slots mandatory each day | DONE | how the solver works: every active slot gets a cell per day |
 | R51 | White rice every day | DONE | `white_rice` is a constant slot stamped `steamed rice` daily |
 | R52 | No fried items in breakfast/snacks | OPS (out of scope) | lunch only |

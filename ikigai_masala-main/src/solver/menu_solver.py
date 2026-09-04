@@ -146,6 +146,23 @@ MAX_FRESHNESS_BONUS = FRESHNESS_CAP_DAYS * FRESHNESS_UNIT  # 90_000
 REGEN_SIMILARITY_PENALTY = -3 * MAX_FRESHNESS_BONUS  # -270_000
 
 
+#: The two ways a solve ends with no plan, kept apart because they mean
+#: opposite things to whoever reads them. CP-SAT answers INFEASIBLE when the
+#: constraints genuinely cannot be met and UNKNOWN when it ran out of time
+#: before proving it either way; flattening both into the first sentence
+#: asserts a configuration conflict that may not exist, and sends an operator
+#: hunting for a rule contradiction when the fix is a longer time limit.
+INFEASIBLE_MESSAGE = (
+    'No feasible plan found: the rules configured for this counter cannot all '
+    'be satisfied over the requested horizon.'
+)
+TIMEOUT_MESSAGE = (
+    'No plan found within the time limit. The rules may still be satisfiable — '
+    'the solver ran out of time before proving it either way. Retry with a '
+    'longer time_limit before treating this as a configuration conflict.'
+)
+
+
 @dataclass
 class SolverConfig:
     """Runtime configuration for the CP-SAT menu solver."""
@@ -562,10 +579,21 @@ class MenuSolver:
                     ' filters, day restrictions), widen this client\'s'
                     ' source_pools, or reduce the slot count.'
                 )
-            raise RuntimeError(
-                'No feasible plan found: the rules configured for this counter '
-                'cannot all be satisfied over the requested horizon.' + detail
-            ) from state['last_err']
+            # Say WHICH of the two happened. `_solve_cpsat` already separates
+            # them — CP-SAT answers INFEASIBLE when the constraints genuinely
+            # cannot be met and UNKNOWN when it simply ran out of time — and
+            # this message used to flatten both into "the rules cannot all be
+            # satisfied", which asserts a configuration conflict even when the
+            # cause was the clock. That is not a cosmetic difference: it sends
+            # an operator hunting for a rule conflict that does not exist, when
+            # the fix is a longer `time_limit`. Measured on the 25-day rolling
+            # sweep — four of seven "failures" replanned fine on a quiet
+            # machine, having been timeouts reported as impossibilities.
+            timed_out = 'TIME LIMIT' in str(state['last_err'] or '')
+            head = TIMEOUT_MESSAGE if timed_out else INFEASIBLE_MESSAGE
+            # `detail` — the tightest slots — belongs on BOTH paths: it is the
+            # actionable half either way.
+            raise RuntimeError(head + detail) from state['last_err']
         finally:
             self.cfg.seed, self.cfg.time_limit_sec = orig_seed, orig_time
 

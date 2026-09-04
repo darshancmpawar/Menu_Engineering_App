@@ -305,3 +305,109 @@ class TestOperatorFacingLogsKeepOneName:
         roots = _imported_roots(os.path.join(SRC, 'log_names.py'))
         assert not (roots & INTERFACE_PACKAGES)
         assert 'src' not in roots
+
+
+class TestWeekdaySpellingsAgreeAcrossModules:
+    """A config writing "sat" must mean the same thing to every rule that
+    reads a weekday.
+
+    Two tables hold the accepted spellings and they cannot be merged, because
+    they map to different things: `menu_solver._WEEKDAY_ALIASES` resolves an
+    alias to a full weekday NAME (what `working_days` and
+    `slot_day_restriction` compare against), and
+    `selector_frequency_rule._WEEKDAY_TOKENS` resolves it to a weekday INDEX
+    (what `forbidden_weekdays` needs for `date.weekday()`).
+
+    What must not happen is the two drifting: adding "thurs" to one leaves a
+    config that works in `slot_day_restriction` and is silently ignored in
+    `forbidden_weekdays` — a weekday ban that reads as configured and bans
+    nothing. Pinned as an agreement on the KEYS, which is the only thing they
+    share and the only thing that can go wrong.
+    """
+
+    def _tables(self):
+        from src.menu_rules.selector_frequency_rule import _WEEKDAY_TOKENS
+        from src.solver.menu_solver import _WEEKDAY_ALIASES
+        return _WEEKDAY_TOKENS, _WEEKDAY_ALIASES
+
+    def test_they_accept_the_same_spellings(self):
+        tokens, aliases = self._tables()
+        assert set(tokens) == set(aliases)
+
+    def test_every_weekday_has_a_short_and_a_long_spelling(self):
+        tokens, _ = self._tables()
+        assert len(tokens) == 14, sorted(tokens)
+        assert set(tokens.values()) == set(range(7))
+
+    def test_the_two_resolve_an_alias_consistently(self):
+        """Different value types, same answer: alias -> index and alias -> name
+        must name the same day."""
+        import datetime as dt
+        tokens, aliases = self._tables()
+        # 2026-09-07 is a Monday, so index i is that weekday's name.
+        monday = dt.date(2026, 9, 7)
+        for alias, idx in tokens.items():
+            expected = (monday + dt.timedelta(days=idx)).strftime('%A').lower()
+            assert aliases[alias] == expected, (alias, idx, aliases[alias])
+
+
+class TestTheExplainLayerStaysOffline:
+    """`src/explain/` computes the verdicts an explanation may assert, and it
+    must not be able to reach the network.
+
+    That is not tidiness. The design of the feature is that Python decides
+    every claim and a model only phrases it, with a validator rejecting any
+    number or dish name that did not come from the pack
+    (`api/explain_llm.py`). If a verdict module could call out on its own, the
+    boundary that makes confabulation structurally impossible would have a hole
+    in it — and the verdicts would stop being unit-testable offline, which is
+    what lets `tests/explain/` run in a second with no solver or database.
+
+    `INTERFACE_PACKAGES` above does not cover this: `requests` is not an
+    interface package, it is a client. So it is checked separately, and only
+    for the subtree whose whole contract is being pure.
+    """
+
+    #: Anything that can open a socket or talk to a model provider.
+    NETWORK_PACKAGES = {
+        'requests', 'httpx', 'urllib', 'urllib2', 'urllib3', 'http',
+        'socket', 'aiohttp', 'openai', 'anthropic', 'google', 'genai',
+        'google_generativeai', 'vertexai', 'boto3', 'litellm',
+    }
+
+    def _explain_modules(self):
+        base = os.path.join(SRC, 'explain')
+        if not os.path.isdir(base):
+            return []
+        return [os.path.join(base, f) for f in sorted(os.listdir(base))
+                if f.endswith('.py')]
+
+    def test_the_package_exists(self):
+        """Otherwise every assertion below passes over an empty list."""
+        assert self._explain_modules(), 'src/explain/ is missing'
+
+    def test_no_explain_module_imports_a_network_client(self):
+        offenders = []
+        for path in self._explain_modules():
+            roots = _imported_roots(path)
+            hit = roots & self.NETWORK_PACKAGES
+            if hit:
+                offenders.append(f'{os.path.basename(path)} imports {sorted(hit)}')
+        assert not offenders, '; '.join(offenders)
+
+    def test_no_explain_module_imports_an_interface(self):
+        offenders = []
+        for path in self._explain_modules():
+            hit = _imported_roots(path) & INTERFACE_PACKAGES
+            if hit:
+                offenders.append(f'{os.path.basename(path)} imports {sorted(hit)}')
+        assert not offenders, '; '.join(offenders)
+
+    def test_the_prose_layer_is_the_one_allowed_to_reach_out(self):
+        """The other half — `api/explain_llm.py` SHOULD be able to, and lives
+        in `api/` precisely so that it can. If it ever moves under `src/`, the
+        checks above would start failing, which is the intended alarm."""
+        path = os.path.join(REPO, 'api', 'explain_llm.py')
+        if not os.path.isfile(path):
+            pytest.skip('the prose layer has not been added yet')
+        assert 'src.explain' in open(path, encoding='utf-8').read()
