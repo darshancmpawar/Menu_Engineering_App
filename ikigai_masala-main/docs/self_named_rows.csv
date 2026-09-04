@@ -1,0 +1,57 @@
+city,item,course_type,sub_category,key_ingredient,client
+ncr,achaarialoo,veg_gravy,mixed_veg_curry,achaarialoo,Junglee Games
+ncr,bananacake,dessert,payasam_/_kheer,bananacake,Stryker
+ncr,barfi,dessert,payasam_/_kheer,barfi,Stryker
+ncr,bhelpuri,bread,plain_chapatti/phulka,bhelpuri,"Junglee Games,Stryker"
+ncr,bhindi,veg_gravy,mixed_veg_curry,bhindi,Junglee Games
+ncr,browine,veg_gravy,mixed_veg_curry,browine,Siemens
+ncr,chana,veg_gravy,lentil_and_beans_curry,chana,Junglee Games
+ncr,chola,dal,leafy_dal,chola,Sinch
+ncr,chole,dal,leafy_dal,chole,Stryker
+ncr,cholley,dal,leafy_dal,cholley,Carelon
+ncr,chowmin,veg_gravy,mixed_veg_curry,chowmin,Stryker
+ncr,churma,veg_gravy,mixed_veg_curry,churma,Junglee Games
+ncr,custerd,dessert,custard_/_pudding,custerd,Siemens
+ncr,dalmakhani,veg_gravy,mixed_veg_curry,dalmakhani,Junglee Games
+ncr,firni,veg_gravy,mixed_veg_curry,firni,Junglee Games
+ncr,fryems,veg_gravy,mixed_veg_curry,fryems,Airtel Noida
+ncr,green,veg_gravy,mixed_veg_curry,green,Stryker
+ncr,guvava,veg_gravy,mixed_veg_curry,guvava,Corning
+ncr,halwa,dessert,halwa,halwa,"Junglee Games,Stryker"
+ncr,icecream,dessert,custard_/_pudding,icecream,Siemens
+ncr,imarthi,dessert,payasam_/_kheer,imarthi,SAEL
+ncr,kheer,dessert,payasam_/_kheer,kheer,"Junglee Games,Stryker"
+ncr,khurma,veg_gravy,mixed_veg_curry,khurma,Siemens
+ncr,kishmish,veg_gravy,mixed_veg_curry,kishmish,Junglee Games
+ncr,kokum,welcome_drink,indian_regional_drink,kokum,Corning
+ncr,kulfi,dessert,custard_/_pudding,kulfi,"Carelon,SAEL"
+ncr,ladoo,dessert,payasam_/_kheer,ladoo,Corning
+ncr,lentil,dal,leafy_dal,lentil,"Junglee Games,Stryker"
+ncr,macroni,veg_gravy,mixed_veg_curry,macroni,"Siemens,Stryker"
+ncr,manchurian,veg_gravy,manchurian_gravy,manchurian,Carelon
+ncr,mango,veg_gravy,mixed_veg_curry,mango,Corning
+ncr,mangodi,veg_gravy,mixed_veg_curry,mangodi,Junglee Games
+ncr,mangodialoo,veg_gravy,mixed_veg_curry,mangodialoo,Junglee Games
+ncr,milkcake,dessert,payasam_/_kheer,milkcake,Carelon
+ncr,mohanthal,veg_gravy,mixed_veg_curry,mohanthal,Carelon
+ncr,muffins,veg_gravy,mixed_veg_curry,muffins,"Siemens,Stryker"
+ncr,olives,veg_gravy,mixed_veg_curry,olives,Corning
+ncr,pao,bread,plain_chapatti/phulka,pao,Stryker
+ncr,papaya,veg_gravy,mixed_veg_curry,papaya,Corning
+ncr,pasta,salad,grain-based_salad,pasta,Stryker
+ncr,patisa,veg_gravy,mixed_veg_curry,patisa,Corning
+ncr,petha,dessert,payasam_/_kheer,petha,Stryker
+ncr,pineapple,veg_gravy,aloo_curry,pineapple,Corning
+ncr,pulao,rice,north_simple_veg_pulao,pulao,Stryker
+ncr,rabdi,veg_gravy,mixed_veg_curry,rabdi,Junglee Games
+ncr,rajma,dal,leafy_dal,rajma,"Carelon,Corning,Stryker"
+ncr,rasbhari,veg_gravy,mixed_veg_curry,rasbhari,"Stryker,Carelon"
+ncr,rasmadhuri,veg_gravy,mixed_veg_curry,rasmadhuri,Stryker
+ncr,roohafza,rice,north_simple_veg_pulao,roohafza,Carelon
+ncr,sauce,veg_gravy,chinese_veg_gravy,sauce,Junglee Games
+ncr,sewiyan,veg_gravy,mixed_veg_curry,sewiyan,Stryker
+ncr,special,veg_gravy,mixed_veg_curry,special,Junglee Games
+ncr,tadka,veg_gravy,mixed_veg_curry,tadka,Junglee Games
+ncr,upma,veg_dry,mixed_veg_dry,upma,Stryker
+ncr,vegjalfrezi,veg_gravy,mixed_veg_curry,vegjalfrezi,Junglee Games
+ncr,watermelon,veg_gravy,mixed_veg_curry,watermelon,"Corning,Stryker"

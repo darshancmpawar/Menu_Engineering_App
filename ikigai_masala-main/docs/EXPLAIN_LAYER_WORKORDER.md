@@ -30,15 +30,18 @@ build rather than followed:
    never solves and they exist only while the solver runs. `/plan` returns them
    and the caller passes them back in.
 
-Known issue 5 (objective tier headroom) is also done, and measured off a real
-model rather than estimated — see that section for the two corrections the
-measurement produced, one of which is an open menu-policy decision.
+Known issue 5 (objective tier headroom) is measured off a real model rather than
+estimated, and the measurement overturned the estimate — see that section.
 
-**Still open, and deliberately so:** the three calibration defects in
-`docs/explain_layer_calibration.md`. Two checks cannot fire at their shipped
-thresholds and two flag menus for obeying rules the client asked for. Per this
-document's own build order, thresholds are the chef's call — the measurement is
-ready for them, and no threshold has been moved without it.
+**The calibration defects are fixed** (they were listed here as open until a
+verified problem report re-derived them). Three false-positive classes were
+real and are corrected in `src/explain/checks.py`; the calibration report's own
+method was wrong for two more. See `docs/explain_layer_calibration.md` — its
+correction section leads now — and CLAUDE.md note 33.
+
+**Still open, and it is the client's call:** the theme tier is provably not
+lexicographic at `MAX_NUM_DAYS` (known issue 5 below). The fix is a wider tier
+separation, which changes every menu for every client.
 
 ---
 
@@ -324,28 +327,39 @@ Found while auditing the repo; unrelated to this feature but cheap to fix:
 5. **Objective tier headroom.** ~~Weights are 1e15/1e12/1e9/1e6 — 1000x separation.
    That is not a mathematical guarantee, only a "holds at current scale" property.
    At `MAX_NUM_DAYS=30` the fleet's widest counter (19 slots) yields 570 terms —
-   **1.75x headroom**.~~ **Measured** — `tests/rules/test_objective_tier_headroom.py`
-   builds the real model for Booking.com counter 0 (the fleet's widest, 19
-   expanded slots) at `MAX_NUM_DAYS=30` and reads the coefficients back off the
-   CP-SAT proto, so nothing is estimated. Two corrections to the estimate:
+   **1.75x headroom**.~~ **Measured, and the conclusion is worse than the
+   estimate.** `tests/rules/test_objective_tier_headroom.py` builds the real
+   model for Booking.com counter 0 (the fleet's widest, 19 expanded slots) at
+   `MAX_NUM_DAYS=30`.
 
-   * **The rule ladder is comfortable, not marginal** — medium **21.3x**,
-     high **45.4x**, theme **10.0x**. The 1.75x figure came from counting all
-     objective terms; most of them are per-CANDIDATE and mutually exclusive
-     (every cell has an exactly-one constraint), so the reachable mass is far
-     below the term count. The guard test asserts each rung and fails below
-     1.5x, so a future widening of `_MAX_SLOT_COUNT` or `MAX_NUM_DAYS` shows up
-     as a failing test rather than a quietly wrong menu.
-   * **The rung that does not hold is one nobody was looking at.** Freshness is
-     one bonus per cell, capped at 90,000 (design note 24), and there are 516
-     cells here — so the freshness band reaches **47 LOW units**. Note 24's
-     "any rule outranks freshness" is true *in a cell*, which is the scope it
-     claims, and false across a plan: the solver may accept several
-     low-priority violations in exchange for fresher dishes.
+   * **The theme tier IS inverted, and this is the finding.** CP-SAT finds a
+     feasible assignment where the mass below THEME reaches **1.02e15** against
+     a 1e15 tier weight — an achieved solution, not a loose bound. A theme
+     violation can be bought with high-tier gains and the solve returns OPTIMAL
+     having optimised the wrong priority. The test carries a strict `xfail`
+     naming it.
+   * **Theme is structurally the rung to watch** — it has the whole ladder
+     beneath it. Medium and high read comfortable only because they sit under
+     fewer tiers, so reporting all three as "comfortable" (an earlier draft of
+     this very section did) hides the one that matters.
+   * **Three bounds were tried and two were wrong**, which is why the guard now
+     asks CP-SAT rather than computing. Summing coefficients treats competing
+     variables as simultaneously satisfiable *and* understates an IntVar term
+     (`avoid_attribute_repeat` returns a recurrence counter that reaches its
+     domain, not 1). Multiplying each coefficient by its variable's range fixes
+     that and then overstates badly, because those per-value maxima compete for
+     the same days. The two gave **10x** and **0.94x** for the same model.
+     `cells x high_weight` is a third wrong bound: HIGH terms attach to per-day
+     auxiliary variables, not to cells — 516 cells produced ~100 HIGH units.
+   * **Separately, freshness across a plan** reaches **47 LOW units** (one bonus
+     per cell, capped at 90,000, over 516 cells). Note 24's "any rule outranks
+     freshness" is true *in a cell* — 11x clear there — and false across a plan,
+     but only for a rule binding 12+ cells; a single-cell preference is never at
+     risk. Even at full stretch the band cannot reach a MEDIUM rule.
 
-   **Open decision, not a bug to patch.** Whether freshness should outrank a
-   low-priority soft rule at plan scale is a menu-policy question, and both
-   knobs (`FRESHNESS_UNIT`, `OBJECTIVE_TIER_WEIGHTS['low']`) change every menu
-   for every client. Nothing was retuned. What is pinned is the bound that is
-   about correctness rather than taste: even at full stretch the band cannot
-   reach a MEDIUM rule (0.047 of one unit).
+   **The fix is the client's call.** A wider tier separation changes every menu
+   for every client, so nothing was retuned. NB the obvious suggestion — a
+   uniform 1e4 step — breaks the other end: freshness reaches 91,000 in a cell
+   and must stay under one LOW unit, so LOW cannot drop to 1e4. And do not move
+   the tier weights and the freshness constants in one change; you will not be
+   able to attribute the difference.

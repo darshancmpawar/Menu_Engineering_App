@@ -11,13 +11,21 @@ still returns OPTIMAL, having optimised the wrong priority, with nothing logged.
 Same shape as the failure in design note 27: the quiet outcome is the dangerous
 one.
 
-`docs/EXPLAIN_LAYER_WORKORDER.md` (known issue 5) put the headroom at 1.75x for
-the fleet's widest counter at `MAX_NUM_DAYS`, from an estimate of the term
-count. This measures it instead. The model is built by the real solver against a
-real client config and the coefficients are read back off the CP-SAT proto, so
-the number here is what CP-SAT actually sees — no assumption about how many
-bools a rule emits, which is the part an estimate has to guess and the part that
-changes whenever a rule is added.
+`docs/EXPLAIN_LAYER_WORKORDER.md` (known issue 5) put the headroom at 1.75x from
+an estimate of the term count. This measures it instead, on the model the real
+solver builds for a real client config at `MAX_NUM_DAYS`.
+
+**The measurement says the theme tier is inverted.** CP-SAT finds a feasible
+assignment where the mass below THEME reaches ~1.02e15 against a 1e15 tier
+weight, so a theme violation can be bought with high-tier gains. That is an
+achieved solution rather than a loose bound, and the guard carries a strict
+`xfail` naming it — the fix is a wider tier separation, which changes every menu
+for every client and is therefore the client's decision, not a patch.
+
+**Three bounds were tried and two were wrong**, which is why `_reachable_below`
+asks CP-SAT rather than computing. That history is kept in its docstring
+deliberately: each wrong bound looked obviously right, and the two of them
+disagreed by a factor of ten on the same model.
 """
 
 from __future__ import annotations
@@ -47,11 +55,6 @@ MONDAY = '2026-08-03'
 # arithmetic rather than a magic number.
 MAX_TIE_BREAK = 1000
 
-
-# Bands from cheapest to dearest. `sub_rule` is freshness + the tie-break,
-# which is not a rule tier at all — it sits under all of them.
-_ORDER = ['sub_rule'] + [n for n, _ in sorted(OBJECTIVE_TIER_WEIGHTS.items(),
-                                              key=lambda kv: kv[1])]
 
 
 def _counter_width(client: dict, index: int) -> int:
