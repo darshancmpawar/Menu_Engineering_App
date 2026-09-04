@@ -349,3 +349,65 @@ class TestWeekdaySpellingsAgreeAcrossModules:
         for alias, idx in tokens.items():
             expected = (monday + dt.timedelta(days=idx)).strftime('%A').lower()
             assert aliases[alias] == expected, (alias, idx, aliases[alias])
+
+
+class TestTheExplainLayerStaysOffline:
+    """`src/explain/` computes the verdicts an explanation may assert, and it
+    must not be able to reach the network.
+
+    That is not tidiness. The design of the feature is that Python decides
+    every claim and a model only phrases it, with a validator rejecting any
+    number or dish name that did not come from the pack
+    (`api/explain_llm.py`). If a verdict module could call out on its own, the
+    boundary that makes confabulation structurally impossible would have a hole
+    in it — and the verdicts would stop being unit-testable offline, which is
+    what lets `tests/explain/` run in a second with no solver or database.
+
+    `INTERFACE_PACKAGES` above does not cover this: `requests` is not an
+    interface package, it is a client. So it is checked separately, and only
+    for the subtree whose whole contract is being pure.
+    """
+
+    #: Anything that can open a socket or talk to a model provider.
+    NETWORK_PACKAGES = {
+        'requests', 'httpx', 'urllib', 'urllib2', 'urllib3', 'http',
+        'socket', 'aiohttp', 'openai', 'anthropic', 'google', 'genai',
+        'google_generativeai', 'vertexai', 'boto3', 'litellm',
+    }
+
+    def _explain_modules(self):
+        base = os.path.join(SRC, 'explain')
+        if not os.path.isdir(base):
+            return []
+        return [os.path.join(base, f) for f in sorted(os.listdir(base))
+                if f.endswith('.py')]
+
+    def test_the_package_exists(self):
+        """Otherwise every assertion below passes over an empty list."""
+        assert self._explain_modules(), 'src/explain/ is missing'
+
+    def test_no_explain_module_imports_a_network_client(self):
+        offenders = []
+        for path in self._explain_modules():
+            roots = _imported_roots(path)
+            hit = roots & self.NETWORK_PACKAGES
+            if hit:
+                offenders.append(f'{os.path.basename(path)} imports {sorted(hit)}')
+        assert not offenders, '; '.join(offenders)
+
+    def test_no_explain_module_imports_an_interface(self):
+        offenders = []
+        for path in self._explain_modules():
+            hit = _imported_roots(path) & INTERFACE_PACKAGES
+            if hit:
+                offenders.append(f'{os.path.basename(path)} imports {sorted(hit)}')
+        assert not offenders, '; '.join(offenders)
+
+    def test_the_prose_layer_is_the_one_allowed_to_reach_out(self):
+        """The other half — `api/explain_llm.py` SHOULD be able to, and lives
+        in `api/` precisely so that it can. If it ever moves under `src/`, the
+        checks above would start failing, which is the intended alarm."""
+        path = os.path.join(REPO, 'api', 'explain_llm.py')
+        if not os.path.isfile(path):
+            pytest.skip('the prose layer has not been added yet')
+        assert 'src.explain' in open(path, encoding='utf-8').read()

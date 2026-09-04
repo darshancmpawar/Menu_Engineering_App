@@ -890,8 +890,6 @@ bangalore,chow_mein,rice,sub_category,no word its siblings agree about
 bangalore,chum_chum,dessert,dessert_form,no word its siblings agree about
 bangalore,chum_chum,dessert,key_ingredient,no word its siblings agree about
 bangalore,chum_chum,dessert,sub_category,no word its siblings agree about
-bangalore,chuteny,starter,key_ingredient,no word its siblings agree about
-bangalore,chuteny,starter,sub_category,no word its siblings agree about
 bangalore,cinnamon_and_celery_detox_water,infused_water,is_* flags,no attribute or word its siblings agree about
 bangalore,cinnamon_and_celery_detox_water,infused_water,key_ingredient,no word its siblings agree about
 bangalore,cinnamon_and_celery_detox_water,infused_water,sub_category,no word its siblings agree about
@@ -5203,8 +5201,6 @@ hyderabad,chow_mein,rice,sub_category,no word its siblings agree about
 hyderabad,chum_chum,dessert,dessert_form,no word its siblings agree about
 hyderabad,chum_chum,dessert,key_ingredient,no word its siblings agree about
 hyderabad,chum_chum,dessert,sub_category,no word its siblings agree about
-hyderabad,chuteny,starter,key_ingredient,no word its siblings agree about
-hyderabad,chuteny,starter,sub_category,no word its siblings agree about
 hyderabad,cinnamon_and_celery_detox_water,infused_water,is_* flags,no attribute or word its siblings agree about
 hyderabad,cinnamon_and_celery_detox_water,infused_water,key_ingredient,no word its siblings agree about
 hyderabad,cinnamon_and_celery_detox_water,infused_water,sub_category,no word its siblings agree about
@@ -8883,7 +8879,6 @@ ncr,samak_jeera_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,samak_rice,rice,flavoured_rice_region,no word its siblings agree about
 ncr,samak_rice_khichri,rice,flavoured_rice_region,no word its siblings agree about
 ncr,samak_rice_kitchdi,rice,flavoured_rice_region,no word its siblings agree about
-ncr,samber,dal,dal_region,no word its siblings agree about
 ncr,sauce,veg_gravy,gravy_region,no word its siblings agree about
 ncr,schezwan_sauce,veg_gravy,gravy_region,no word its siblings agree about
 ncr,sewiyan,veg_gravy,gravy_region,no word its siblings agree about
@@ -8945,7 +8940,6 @@ ncr,veg_seekh_kabab,starter,sub_category,no word its siblings agree about
 ncr,veg_spring_roll,starter,key_ingredient,no word its siblings agree about
 ncr,veg_spring_roll,starter,sub_category,no word its siblings agree about
 ncr,veg_upma,veg_gravy,gravy_region,no word its siblings agree about
-ncr,vegetable,veg_gravy,gravy_region,no word its siblings agree about
 ncr,vegetable_pasta,veg_gravy,gravy_region,no word its siblings agree about
 ncr,vegetable_sindhi_kadhi,dal,dal_region,no word its siblings agree about
 ncr,vegjalfrezi,veg_gravy,gravy_region,no word its siblings agree about

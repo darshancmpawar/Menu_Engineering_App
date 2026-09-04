@@ -1,9 +1,18 @@
 """Copy 10 sambar dishes from the Bangalore ontology into the NCR ontology.
 
-NCR is North Indian and its raw list carried NO sambar (`course_type == sambar`
-was empty), so Stryker NCR's "a sambar once every 15 days in the dal/sambar
-category" had nothing to serve. The client asked for 10 sambar to be brought in
-from the Bangalore master list.
+NCR is North Indian and its raw list had no servable sambar — `course_type ==
+sambar` was empty — so Stryker NCR's "a sambar once every 15 days in the
+dal/sambar category" had nothing to serve. The client asked for 10 sambar to be
+brought in from the Bangalore master list.
+
+Strictly the list DID contain the word: a row named `samber`, filed
+`course_type: dal` with `sub_category: leafy_dal` and `key_ingredient: samber`
+— the mapping pipeline's copy-the-first-word fingerprint. It was the category
+name misspelled and misfiled, not a dish, so it could never have satisfied the
+rule and is now removed by `remove_generic_rows.py`. Recorded here because "the
+list carried no sambar" read as a fact about the cuisine when it was really a
+fact about a typo, and the next person to check would have found the row and
+doubted the import.
 
 The two workbooks share one 135-column schema, so a sambar row copies verbatim;
 only the `item_id` is reassigned to a fresh value beyond NCR's current max so it
