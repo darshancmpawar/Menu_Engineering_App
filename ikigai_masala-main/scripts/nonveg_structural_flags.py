@@ -130,10 +130,17 @@ STYLE_OVERRIDES = {
     # the non-veg pool on the next chain run, so it is deliberately absent.
     # Lesson worth keeping: a form verdict must not cite the column that decides
     # whether the dish belongs in this file at all.
-    # The green marinade is a tandoor/tikka treatment. Bangalore separately
-    # carries `hariyali_chicken_masala`, which IS the gravy version — so this
-    # row is the grill, or the two are the same dish twice.
-    "chicken_hariyali": "dry",
+    # `chicken_hariyali` was adjudicated "dry" here, reasoned as a tandoor/tikka
+    # treatment because Bangalore separately carries `hariyali_chicken_masala`,
+    # which IS the gravy version — and the note ended "or the two are the same
+    # dish twice". **The fold answered that.** `chicken_hariyali` and
+    # `hariyali_chicken` were one dish under two word orders, and the surviving
+    # row is the fully attributed one: `is_nonveg_gravy` +
+    # `is_north_chicken_gravy` + `is_rule_ready`. So it carries a form flag
+    # already and this file never touches it — a verdict here would only ever
+    # fight the row's own classification. Deliberately absent, like
+    # `gobi_keema_mutter` above, and for a related reason: an adjudication
+    # written while two rows were arguing does not survive them becoming one.
 
     # --- Bangalore: rich or thin, all of these arrive with sauce -------
     "achari_chicken": "gravy",          # pickling spices in a thick gravy

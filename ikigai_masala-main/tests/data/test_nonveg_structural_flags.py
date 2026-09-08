@@ -185,7 +185,6 @@ def test_the_mechanism_still_refuses_to_guess(frames):
     # The Bangalore rows that are genuinely not sauced.
     ("afghani_chicken", "is_nonveg_dry"),        # a malai-marinated grill
     ("egg_vepudu", "is_nonveg_dry"),             # Telugu `vepudu` = fry
-    ("chicken_hariyali", "is_nonveg_dry"),       # the tandoor/tikka treatment
     # `gobi_keema_mutter` used to be the fourth. It is minced CAULIFLOWER and
     # is now `veg_dry` (note 34) — see the removed adjudication in
     # `nonveg_structural_flags.py` for why citing its protein column was

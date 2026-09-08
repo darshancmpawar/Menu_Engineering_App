@@ -162,10 +162,15 @@ class TestWhatQuestAdded:
         seed already carried under another word order, and
         `fold_duplicate_dish_names.py` merged them — which is the import's own
         fold doing at the ontology level what it already does within one sheet.
+        Then two MORE stopped counting as additions: the seeded-city agreement
+        rule renamed `miloni_sabzi` and `yogurt_and_cucumber_salad` to match
+        Bangalore, and a row that now shares its seed's name is no longer
+        something this import ADDED.
+
         The count is what it is; the assertion exists to catch the import
         silently gaining or losing rows, so it is pinned rather than loosened.
         """
-        assert len(added) == 97
+        assert len(added) == 95
 
     def test_the_new_rows_carry_the_quest_pool_token(self, added):
         tokens = added["client"].fillna("").astype(str).str.lower()

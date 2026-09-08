@@ -549,6 +549,18 @@ ALIASES = {
     "avail": "avial",
     "veg_avail": "avial",
     "veg_chowmin": "chowmin",
+    # One left over from the duplicate fold, and it needs a whole-name alias
+    # rather than a rule. `carrot_cucumber_salad` merged into
+    # `cucumber_and_carrot_salad`, and MOengage's sheet prints the dish with
+    # "mix" in the middle — a token, so `dish_key` rightly reads it as a
+    # different ingredient set, and the similarity path had only ever matched it
+    # because the old surviving name happened to share its word order.
+    # Dropping `mix` in `dish_key` is NOT the fix: `mix_veg` is a real dish
+    # family and would fold into plain `veg`. Bangalore separately carries
+    # `radish_carrot_cucumber_salad`, `sliced_cucumber_carrot_salad` and four
+    # more, all genuinely different sets, which is why this is one name and not
+    # a pattern.
+    "carrot_cucumber_mix_salad": "cucumber_and_carrot_salad",
 }
 
 
