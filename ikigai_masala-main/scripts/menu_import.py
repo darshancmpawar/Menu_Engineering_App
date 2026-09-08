@@ -406,11 +406,31 @@ MEAL_PERIOD_WORDS = {"lunch", "luncha", "lungcha", "dinner", "breakfast",
                      "menu", "meal", "meals", "veg", "non_veg", "nonveg"}
 
 
+#: A dish name this long is not a name, it is a DESCRIPTION — a printed cell
+#: listing what is on a station rather than naming a dish. MOengage's sheet
+#: carries a whole salad BAR as one cell: "Onion Rings, Carrots Batons, Chinese
+#: Cabbage, English Cucumber, Bell Pepper, Tomato Quarters, Boiled Chana,
+#: Boiled Peanuts, Boiled Rajma, Corn, Boiled Betroot, Boiled Eggs" — 23 tokens,
+#: 160 characters, and imported straight it became a row filed `nonveg_main`
+#: (it ends in eggs), so the salad bar was a candidate for the day's meat dish.
+#: No colour, ingredient or variety rule can reason about it and a menu printing
+#: it is unreadable.
+#:
+#: 14 is measured, not guessed: with those rows removed the longest real name in
+#: any city is 10 tokens (`ghee_rice_adequate_ghee_and_authentic_fried_onion_
+#: garnish_grapes`), and the shortest bar row is 23. The threshold sits between
+#: with room either side. `tests/data/test_menu_import_guards.py` pins both ends.
+MAX_DISH_NAME_TOKENS = 14
+
+
 def is_placeholder(text: str) -> bool:
     s = str(text).strip().lower().strip(".-–— ")
     if not s or s in PLACEHOLDERS:
         return True
-    return re.sub(r"[^a-z0-9]+", "_", s).strip("_") in MEAL_PERIOD_WORDS
+    slug = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+    if slug.count("_") + 1 > MAX_DISH_NAME_TOKENS:
+        return True
+    return slug in MEAL_PERIOD_WORDS
 
 
 def norm(v) -> str:
@@ -468,6 +488,26 @@ def split_combo(text: str) -> list:
 #: own spelling, and the import stops being idempotent. Citrix did exactly that
 #: with these four.
 ALIASES = {
+    # The vegetarian-line folds (`vegnonveg_corrections.py`, note 34). Deleting
+    # or folding a row is not enough on its own — this file's own note on
+    # MEAL_PERIOD_WORDS says why, and these three proved it: re-running the
+    # imports put all of them straight back, because the clients' printed
+    # sheets still spell them this way. Booking and Citrix both print "Kori
+    # Gassi", Citrix prints "Shami Kabab" and "Hederabad Dum Biryani".
+    #
+    # `kori` is Tulu for chicken, so `kori_gassi` IS `chicken_gassi` — and this
+    # alias is what stops a Mangalorean chicken curry being minted afresh into
+    # a veg pool on the next import.
+    "kori_gassi": "chicken_gassi",
+    # A third spelling of shami kebab, and the one Citrix's sheet uses.
+    "shami_kabab": "shami_kebab",
+    # `hederabad` is Hyderabad misspelled. The row it used to mint carried no
+    # protein, sub_category or key_ingredient and was removed as a junk
+    # duplicate; Bangalore's own `hyderabad_veg_dum_biryani` is what Citrix's
+    # cell means. Aliasing to the VEG row is the safe direction: if their dish
+    # is in fact the chicken one they are under-served, where the reverse would
+    # put a chicken biryani in a vegetarian rice slot.
+    "hederabad_dum_biryani": "hyderabad_veg_dum_biryani",
     "soppu_huli": "soppu_sambar",
     "uppusaaru": "uppu_saru",
     "upsaaru": "uppu_saru",
