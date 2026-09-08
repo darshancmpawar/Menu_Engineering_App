@@ -139,6 +139,15 @@ attachments and would have been lost.
    and leaves the column blank, so every `chapati`-spelled row an import added
    arrived unflagged. It derives the flag from the NAME in both directions, so it
    must run **after** step 3 has settled on one spelling.
+8c. `scripts/vegnonveg_corrections.py` — the VEGETARIAN LINE, in both
+    directions. After the imports and the two flag passes for the same reason
+    they are: an importer adds non-veg rows and writes only what a dish name
+    supports, and a misspelled meat dish lands in a veg pool. Before the fills
+    (10-12), because `complete_ontology.py` learns its rules from the rows
+    already classified — run it after and the token vote has eleven soya keemas
+    labelled `mutton` as evidence for what "keema" means. It clears every
+    non-veg form flag on a row it moves to the veg side, so it must also run
+    after step 8, which is what sets them.
 9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
@@ -177,7 +186,7 @@ sit with the per-city corrections (step 5).
 It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
 sweets four clients' stated rules asked more of than the list held.
 
-Steps 0, 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
+Steps 0, 3, 7, 8, 8b, 8c, 10, 11 and 13 are order-sensitive for the reasons their
 docstrings give.
 
 **A removal is the one step the chain cannot undo.** Every other script fills or

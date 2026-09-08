@@ -60,6 +60,7 @@ ALL_CITY_SCRIPTS = [
     "merge_duplicate_curd",
     "misspelled_protein_names",
     "nonveg_structural_flags",
+    "vegnonveg_corrections",
 ]
 
 

@@ -122,10 +122,14 @@ STYLE_OVERRIDES = {
     # Telugu `vepudu` means fry. (`pulusu` below is its sauced opposite, which
     # is why the pair is worth reading together.)
     "egg_vepudu": "dry",
-    # A keema is minced and cooked down; with gobi and peas it is a semi-dry
-    # sabzi-style dish, not a gravy. (Its `key_ingredient` is cauliflower and
-    # its protein is chicken — a chicken keema with vegetables.)
-    "gobi_keema_mutter": "dry",
+    # `gobi_keema_mutter` used to be adjudicated "dry" here, reasoned as "a
+    # chicken keema with vegetables" because `primary_protein` said chicken.
+    # That was circular: the protein column WAS the error. Gobi keema is minced
+    # CAULIFLOWER with peas — a vegetarian dish — and `vegnonveg_corrections.py`
+    # (note 34) moves it to `veg_dry`. An adjudication here would put it back in
+    # the non-veg pool on the next chain run, so it is deliberately absent.
+    # Lesson worth keeping: a form verdict must not cite the column that decides
+    # whether the dish belongs in this file at all.
     # The green marinade is a tandoor/tikka treatment. Bangalore separately
     # carries `hariyali_chicken_masala`, which IS the gravy version — so this
     # row is the grill, or the two are the same dish twice.
