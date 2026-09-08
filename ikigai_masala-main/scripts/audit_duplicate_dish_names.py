@@ -15,24 +15,38 @@ a weekly rule counts the two names separately, so the dish runs twice.
 "Dum Aloo" on Monday and "Aloo Dum" on Thursday, which reads to a diner as a
 kitchen that is not paying attention.
 
-**Why this is a report and not a correction.** Two reasons, and the second is
-the one that matters:
+**Why this was a report and not a correction.** Two reasons, and the second is
+the one that mattered:
 
   * a merge picks a NAME, and these names print on a menu. The mechanical
     choices available here (most cities, most common word order, alphabetical)
     all produce defensible-but-odd results on some rows — `aloo_dum` over
-    `dum_aloo` for instance — and 341 of those is not a decision to make by
+    `dum_aloo` for instance — and 416 of those is not a decision to make by
     convention.
-  * **24 of the groups are not duplicates at all.** They disagree about
+  * **28 of the groups were not duplicates at all.** They disagree about
     `course_type` or `primary_protein`, which means one of the two rows is
     MISFILED and merging would bury the evidence. `chilli_baby_corn` is a
     `veg_dry` beside `baby_corn_chilli` as a `veg_gravy`; `butter_garlic_
     vegetables` is filed `healthy_rice` beside `garlic_butter_vegetables` as a
     `veg_dry`; `dal_rajma` carries `toor_dal` beside `rajma_dal` carrying
-    `kidney_bean`. Those need a verdict, not a fold.
+    `kidney_bean`. Those needed a verdict, not a fold.
 
-Current counts: **313 duplicate groups (341 rows would go) and 24 misfiles**
-across the five cities.
+**The client approved every group and every misfile got a verdict**, so
+`fold_duplicate_dish_names.py` is now the apply half: 356 duplicate groups
+folded (416 rows gone) and 28 adjudicated — 22 by naming the row that survives,
+6 by naming the dish's FORM where a dry and a gravy are both real. This audit
+therefore reports **0 and 0**, which is the check that the fold converged and
+the reason it still runs in the chain (twice: step 3b puts the column
+corrections on stable names, step 17 catches what the row-creating steps
+re-introduce). A non-zero count here means something upstream minted a
+duplicate back.
+
+The counts grew while this was being applied, and each increase was a defect in
+the predicate rather than new data: `mutter -> matar` found 17 (`matar_paneer`
+was one dish under three names), rewriting PHRASES longest-first found the
+`*_kali_mirchi` family that `kali_mirch -> pepper` had been mangling into
+`pepperi`, and dropping `and` found the pairs like `carrot_and_beans_poriyal`
+that only ever grouped by luck of word order.
 
 This is also a detection channel the other audits do not have, and it has
 already earned its place: grouping by a synonym-normalised key is what found

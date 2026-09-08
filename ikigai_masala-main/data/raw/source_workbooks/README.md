@@ -119,7 +119,8 @@ attachments and would have been lost.
 3. `scripts/canonical_dish_spellings.py` — one dish, one spelling. NB its
 3b. `scripts/fold_duplicate_dish_names.py` — one dish, one ROW. Applies what
     `audit_duplicate_dish_names.py` (step 16) reports, which the client approved
-    in full: 416 rows folded away, 22 misfiles adjudicated, and 6 groups renamed
+    in full: 356 groups folded (416 rows gone), 22 misfiles resolved by naming
+    the row that survives, and 6 more renamed
     to name their FORM because both a dry and a gravy of the dish are real.
     **It sits here, beside the spelling fold, for the same reason that one does:
     every column-correction script below selects its rows BY NAME.** Run late
