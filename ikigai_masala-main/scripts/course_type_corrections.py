@@ -159,7 +159,7 @@ CORRECTIONS = {
         'chicken_fried_rice':  ('nonveg_main', 'chicken_chinese_dry', None),
         'dhaba_chicken_curry': ('nonveg_main', 'chicken_north_masala', None),
         'egg_curry_masala':    ('nonveg_main', 'north_style_masala_curry', None),
-        'kolhapuri_chicken':   ('nonveg_main', 'chicken_north_masala', None),
+        'chicken_kolhapuri':   ('nonveg_main', 'chicken_north_masala', None),
         # `soya_keema` is minced SOYA (key_ingredient soya), not meat — the
         # `primary_protein: mutton` is a bad fuzzy match on "keema". Cleared to
         # veg below (PROTEIN_CORRECTIONS) and filed as the soya veg dry it is.

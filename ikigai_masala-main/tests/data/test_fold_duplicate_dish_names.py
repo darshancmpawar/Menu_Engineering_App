@@ -350,6 +350,67 @@ class TestTheFoldSurvivesTheNextImport:
         assert _same_dish_by_meaning('kuttu_ka_dosa_with_samak',
                                      sorted(_names(blr))) is None
 
+    @pytest.mark.parametrize('printed,expected', [
+        ('Butter Garlic Vegetables', 'garlic_butter_vegetables'),
+        ('Chana Lauki', 'lauki_chana'),
+        ('Achari Tandoori Aloo', 'tandoori_achari_aloo'),
+    ])
+    def test_a_misfile_resolves_ACROSS_courses(self, blr, printed, expected):
+        """The half a course-scoped lookup structurally cannot do.
+
+        `build` scopes `_existing_twin`'s similarity search to the candidate's
+        own `course_type`, which is right for similarity — a cross-course
+        near-match is how `greek_salad` folds into `green_salad`. But a MISFILE
+        is by definition filed under the wrong course: an importer takes the
+        course from where a dish sits on a printed sheet, and the verdict for
+        these three rows was precisely that the sheet was wrong.
+        `butter_garlic_vegetables` printed under a rice heading found nothing
+        among the rices and was minted back — re-creating the misfile the
+        verdict had just removed, and breaking three importers' idempotence.
+        """
+        from menu_import import _existing_twin
+        names = sorted(_names(blr))
+        candidate = to_item(printed)
+        assert candidate not in names
+        assert _existing_twin(candidate, [], vocab_from(blr),
+                              all_names=names) == expected
+        # ...and scoped to the wrong course alone it finds nothing, which is
+        # the behaviour that caused the breakage.
+        assert _existing_twin(candidate, [], vocab_from(blr)) is None
+
+
+class TestTheCitiesDoNotDriftApart:
+    def test_a_seeded_city_agrees_with_its_seed_on_names(self, frames):
+        """Hyderabad is a copy of Bangalore plus Quest's dishes, so the two must
+        not spell one dish two ways — and the FOLD can create exactly that.
+        Hyderabad carried `miloni_sabzi` beside `sabzi_miloni` where Bangalore
+        had only the latter, so `propose()`, ranking two equal-length names
+        alphabetically, kept `miloni_sabzi` in one city and `sabzi_miloni` in
+        the other. One dish, two names, which is worse than the duplicate it
+        removed: a `name_contains` selector or a shared `constant_items` pin
+        now matches in one city and not the other.
+        """
+        blr, hyd = _names(frames['bangalore']), _names(frames['hyderabad'])
+        blr_keys = {dish_key(n): n for n in blr}
+        disagree = sorted(
+            (blr_keys[dish_key(n)], n) for n in hyd
+            if dish_key(n) in blr_keys and blr_keys[dish_key(n)] != n)
+        assert not disagree, disagree[:8]
+
+    def test_hyderabad_is_still_a_strict_superset(self, frames):
+        """What the drift broke, asserted here too because it is the property
+        the seeding promises and the reason the agreement rule exists."""
+        assert _names(frames['hyderabad']) > _names(frames['bangalore'])
+
+    def test_a_city_that_is_not_seeded_keeps_its_own_names(self, frames):
+        """Restricted to `_SEEDED_FROM` on purpose. NCR names the dish
+        `dum_aloo` where Bangalore says `aloo_dum`, and that is its own list's
+        business — forcing agreement there would rewrite a North Indian city's
+        menu to match a South Indian one's word order."""
+        assert 'dum_aloo' in _names(frames['ncr'])
+        assert 'aloo_dum' in _names(frames['bangalore'])
+        assert 'ncr' not in _SEEDED_FROM
+
 
 class TestTheProposedNameIsNeverAFoldedAwaySpelling:
     def test_the_canonical_alternative_wins_when_the_group_holds_one(self):

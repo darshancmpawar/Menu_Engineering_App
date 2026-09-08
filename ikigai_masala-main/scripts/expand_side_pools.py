@@ -167,7 +167,15 @@ NEW_DISHES = {
         ("mint_millet_pulao", "green", "north_indian", 0),
         ("carrot_peas_brown_rice", "orange", "north_indian", 0),
         ("tamarind_millet_rice", "brown", "south_indian", 0),
-        ("curd_millet_rice", "white", "south_indian", 0),
+        # Was `curd_millet_rice`, which `audit_duplicate_dish_names.py`
+        # showed duplicates Bangalore's existing `millet_curd_rice` — the
+        # same dish, the other word order. This curated set skips by NAME,
+        # so it had been adding a second copy on every fresh chain run
+        # without ever noticing, and the misfile verdict for that pair
+        # (the `is_curd_rice` row is the one that reaches the curd-rice
+        # station) then removed it again, leaving the two scripts fighting.
+        # A genuinely absent dish keeps the pool depth without the clash.
+        ("foxtail_millet_lemon_rice", "yellow", "south_indian", 0),
         ("spinach_brown_rice", "green", "north_indian", 0),
     ],
     "dessert": [

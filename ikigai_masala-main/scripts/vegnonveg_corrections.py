@@ -107,7 +107,7 @@ VEG_CORRECTIONS = {
         # its own in `course_type_corrections.py` — this is that fix finished.
         'bhuna_soya_keema':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'bhuna_soya_keema_masala': ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
-        'mutter_soya_keema':       ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
+        'soya_matar_keema':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'pudhina_soya_keema':      ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'soya_matar_keema':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         # "Nutri" / "nutrela" / "nutree" is the soya-granule brand used as the
@@ -121,7 +121,7 @@ VEG_CORRECTIONS = {
         # siblings it arrived beside, and is listed in the report as the one
         # value here chosen by family rather than by the dish's own name.
         'veg_keema_matar':         ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
-        'veg_keema_mutter':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
+        'veg_keema_matar':         ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         # `bhurji` is "scrambled", not "egg". All three came in under the source
         # bank's `egg_items` heading, which is where the egg protein came from.
         'paneer_bhurji':           ('veg_gravy', 'paneer_curry', 'paneer', 'paneer'),
@@ -326,14 +326,28 @@ PROTEIN_ONLY = {
         # Telugu `kodi guddu` is "chicken EGG" — the bird qualifies the egg, it
         # is not a second ingredient. Both rows were chicken, and both carried
         # `is_north_chicken_gravy`, so an egg dish was satisfying chicken rules.
-        'kodi_guddu_masala':    ('egg', ('is_egg_dish',),
+        # `kodi_guddu_masala` folded into `egg_masala`
+        # (`fold_duplicate_dish_names.py`, chain step 3b — PHRASES reads
+        # `kodi_guddu` as egg, so the two names were one dish). The
+        # verdict moves to the surviving name rather than being deleted:
+        # the fold picks its survivor by attribution, so this file must
+        # not assume which of the two rows lived, and re-asserting values
+        # that are already right is idempotent and costs nothing.
+        'egg_masala':           ('egg', ('is_egg_dish',),
                                  ('is_north_chicken_gravy',)),
         'kothimeera_kodiguddu': ('egg', ('is_egg_dish',),
                                  ('is_north_chicken_gravy',)),
     },
     'hyderabad': {
         'kosha_mangsho': ('mutton', (), ()),
-        'kodi_guddu_masala':    ('egg', ('is_egg_dish',),
+        # `kodi_guddu_masala` folded into `egg_masala`
+        # (`fold_duplicate_dish_names.py`, chain step 3b — PHRASES reads
+        # `kodi_guddu` as egg, so the two names were one dish). The
+        # verdict moves to the surviving name rather than being deleted:
+        # the fold picks its survivor by attribution, so this file must
+        # not assume which of the two rows lived, and re-asserting values
+        # that are already right is idempotent and costs nothing.
+        'egg_masala':           ('egg', ('is_egg_dish',),
                                  ('is_north_chicken_gravy',)),
         'kothimeera_kodiguddu': ('egg', ('is_egg_dish',),
                                  ('is_north_chicken_gravy',)),

@@ -169,11 +169,22 @@ def test_the_adjudicated_duplicates_are_gone(frames, city):
     string had to be both gone and present. What a merge actually promises is
     that the dish is there exactly once.
     """
+    from scripts.audit_duplicate_dish_names import dish_key
+
     names = list(frames[city]["item"].astype(str).str.strip().str.lower())
+    # A LATER step may rename this merge's survivor again and be right to:
+    # `fold_duplicate_dish_names.py` (chain step 3b, and again at 17) merged
+    # `murgh_kolhapuri` — the survivor here — into `chicken_kolhapuri`, one dish
+    # written two ways. So the promise is that the dish is present exactly once,
+    # under whatever name the chain settled on, not that this string survived.
+    by_key: dict = {}
+    for n in names:
+        by_key.setdefault(dish_key(n), []).append(n)
     for dropped, kept in DUPLICATES[city].items():
         survivor = canonical_name(kept)
-        assert survivor in names, f"{kept} was lost"
-        assert names.count(survivor) == 1, f"{survivor} is duplicated"
+        here = by_key.get(dish_key(survivor), [])
+        assert here, f"{kept} was lost"
+        assert len(here) == 1, f"{survivor} is duplicated as {here}"
         if canonical_name(dropped) != survivor:
             assert dropped not in names, f"{dropped} is back"
 

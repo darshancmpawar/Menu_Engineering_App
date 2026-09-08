@@ -93,7 +93,9 @@ CONTINENTAL_TOKENS = {
 
 #: Explicit whole-name continental cases the token set misses (`ice_cream` splits
 #: into two common tokens, so match the dish name instead).
-CONTINENTAL_NAMES = {'ice_cream', 'mango_ice_cream', 'vanilla_ice_cream_cup'}
+# Post-fold spellings: `fold_duplicate_dish_names.py` (chain step 3b) runs
+# before this and merged `vanilla_ice_cream_cup` into `vanilla_cup_ice_cream`.
+CONTINENTAL_NAMES = {'ice_cream', 'mango_ice_cream', 'vanilla_cup_ice_cream'}
 
 #: Indian sweets that carry a continental token but are not continental. `cake`
 #: here is Alwar/Ajmeri *milk cake*, a mawa sweet.

@@ -18,10 +18,38 @@ from scripts.city_list import CITIES
 
 
 class TestTheGroupingKey:
+    def test_a_phrase_that_prefixes_another_is_rewritten_first(self):
+        """PHRASES are substring replacements and one is a PREFIX of another:
+        `kali_mirch -> pepper` fired inside `kali_mirchi` and left `pepperi`,
+        so every `*_kali_mirchi` row silently failed to group with its
+        `kali_mirch` twin. A missed fold rather than a wrong one, which is why
+        it went unnoticed — and the importer then minted the variant back as a
+        new row."""
+        assert dish_key('paneer_kali_mirchi') == dish_key('paneer_kali_mirch')
+        assert dish_key('paneer_kali_mirchi') == dish_key('paneer_pepper')
+        assert 'pepperi' not in dish_key('paneer_kali_mirchi')[0]
+
+    def test_a_connector_word_is_not_part_of_the_dish(self):
+        """`and` joins two ingredients and says nothing about the dish. The
+        ontology writes both forms, and the importer's similarity path caught
+        the pair only while the word order happened to line up — once the fold
+        reordered the surviving name, similarity fell below its cutoff and
+        `carrot_and_beans_poriyal` was minted back beside
+        `beans_carrot_poriyal`."""
+        assert dish_key('carrot_and_beans_poriyal') == dish_key('beans_carrot_poriyal')
+        assert dish_key('potato_and_leek_soup') == dish_key('potato_leek_soup')
+        assert 'and' not in dish_key('cucumber_and_lemon_water')[0].split('|')
+
     @pytest.mark.parametrize('a,b', [
         # word order
         ('aloo_dum', 'dum_aloo'),
         ('achari_bhindi', 'bhindi_achari'),
+        # peas, transliterated two ways in one city — the split left NCR
+        # holding four rows of methi malai peas
+        ('methi_malai_mutter', 'matar_methi_malai'),
+        # garlic, four ways, all in the dal slot
+        ('dal_lasooni', 'dal_lehsooni'),
+        ('lehsuni_dal_tadka', 'lasooni_dal_tadka'),
         # a synonym in another language
         ('bhuna_chicken_masala', 'bhuna_murgh_masala'),
         ('chicken_gassi', 'kori_gassi'),

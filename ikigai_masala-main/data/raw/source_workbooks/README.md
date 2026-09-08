@@ -117,6 +117,22 @@ attachments and would have been lost.
 1. `scripts/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
 2. `scripts/misspelled_protein_names.py` — meat-named rows left in veg pools
 3. `scripts/canonical_dish_spellings.py` — one dish, one spelling. NB its
+3b. `scripts/fold_duplicate_dish_names.py` — one dish, one ROW. Applies what
+    `audit_duplicate_dish_names.py` (step 16) reports, which the client approved
+    in full: 416 rows folded away, 22 misfiles adjudicated, and 6 groups renamed
+    to name their FORM because both a dry and a gravy of the dish are real.
+    **It sits here, beside the spelling fold, for the same reason that one does:
+    every column-correction script below selects its rows BY NAME.** Run late
+    instead and each of them has already keyed its verdicts to a name the fold
+    is about to rename — twelve scripts' dicts became dead entries that still
+    read as live decisions, and worse, a verdict applied to only one row of a
+    pair can be undone when the fold keeps the other. Order is the fix, not a
+    reconciliation pass. Two things make running it this early safe: the audit
+    at step 16 still verifies nothing downstream re-introduced a duplicate (it
+    must report 0 groups), and `menu_import._existing_twin` is taught the same
+    `dish_key` lookup, so the imports at step 7 resolve a printed `Dum Aloo` to
+    `aloo_dum` instead of minting it back. One predicate, imported rather than
+    restated, so the fold and the importer cannot drift.
    duplicate fold **folds the merged rows' pool tokens together**, and the
    promotion to `common` at 6 tokens is switched off for a city that has no
    `common` pool (`_has_common_pool`, read from the frame before any merge).
@@ -184,16 +200,19 @@ attachments and would have been lost.
     reads the names the whole chain has finished settling, and running it
     earlier would propose folding rows that step 3 or step 8c is about to fold
     anyway. `--check` fails if `docs/duplicate_dish_names.csv` is stale.
-17. `scripts/fold_duplicate_dish_names.py` — applies step 16's report (the
-    client approved all 330 groups): 386 rows folded away, the 26 misfiles
-    adjudicated, and 6 groups renamed to name their FORM because both a dry and
-    a gravy of the dish are real. It runs after the audit because it consumes
-    its grouping predicate, and **before step 7** on any subsequent chain run:
-    each dropped name is still what some client's sheet prints, so an import
-    that ran first would mint it back. What stops that is not a list but
-    `menu_import._existing_twin`, taught the same `dish_key` lookup — one
-    predicate, so the fold and the importer cannot drift. After it, step 16
-    reports 0 groups, which is the check that it converged.
+    (`fold_duplicate_dish_names.py` is **step 3b**, immediately below, and runs
+    a SECOND time as step 17.)
+17. `scripts/fold_duplicate_dish_names.py` **again**. It is idempotent, so a
+    second invocation costs nothing when there is nothing to do — and there
+    usually is something, because three of the steps above CREATE rows and two
+    of them create duplicates. `ncr_fuzzy_unmerge.py` (step 5) reverts a bad
+    fuzzy match by renaming `paneer_mutter` back to `paneer_butter`, and NCR
+    already carries `butter_paneer`: the same dish, the other word order. So the
+    fold at 3b puts the column corrections on stable names and the fold here
+    catches what the row-creating steps re-introduced, exactly as
+    `fill_item_colours.py` and `complete_ontology.py` run to a fixed point for
+    the same reason. Step 16's report is then the proof it converged — it must
+    say 0 groups.
 
 `scripts/chennai_client_pools.py` and `scripts/chennai_cuisine_corrections.py`
 sit with the per-city corrections (step 5).

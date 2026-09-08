@@ -160,7 +160,7 @@ class TestTheProteinOnlyFixes:
         on Tuesday" come back as an egg kurma."""
         for city in ('bangalore', 'hyderabad'):
             df = cities[city]
-            for item in ('kodi_guddu_masala', 'kothimeera_kodiguddu'):
+            for item in ('egg_masala', 'kothimeera_kodiguddu'):
                 r = _row(df, item)
                 assert pd.to_numeric(pd.Series([r['is_egg_dish']]),
                                      errors='coerce').fillna(0)[0] == 1

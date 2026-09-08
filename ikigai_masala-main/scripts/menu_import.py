@@ -755,19 +755,37 @@ def _same_dish_by_meaning(candidate: str, existing_names: Sequence[str]):
 
 
 def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
-                   cutoff: float = 0.90):
+                   cutoff: float = 0.90,
+                   all_names: Optional[Sequence[str]] = None):
     """The ontology dish *candidate* is a spelling of, or None.
 
     Same evidence as `fold_similar`: a one-token difference where the
     candidate's token is unknown vocabulary (a typo or a variant) folds into the
     dish already present; two real words are different dishes and are kept.
+
+    *existing_names* is scoped to the candidate's own `course_type` by the
+    caller, which is right for the SIMILARITY path — a cross-course near-match
+    is how `greek_salad` folds into `green_salad`. *all_names* is the whole
+    city list and is used only by `_same_dish_by_meaning`, because a
+    course-scoped lookup structurally cannot resolve a MISFILE and that is the
+    case it most needs to: an importer takes a dish's course from where it sits
+    on a printed sheet, and `fold_duplicate_dish_names.py`'s verdict for these
+    rows was precisely that the sheet's course was wrong.
+    `butter_garlic_vegetables` printed under a rice heading resolves to the
+    `veg_dry` it actually is, where scoped to rice it found nothing and was
+    minted back — re-creating the misfile the verdict had just removed. Safe
+    because a `dish_key` match is far stronger evidence than similarity, and
+    because a matched twin only ever gains the importing client's pool token:
+    nothing re-files it, so the verdict stands.
     """
     if candidate in existing_names:
         return None                                 # it IS the dish
     # Word order and language first — see `_same_dish_by_meaning`. Ahead of
     # similarity because it is the stronger signal and because the folds it
     # protects were applied on exactly this predicate.
-    twin = _same_dish_by_meaning(candidate, existing_names)
+    twin = _same_dish_by_meaning(candidate,
+                                 all_names if all_names is not None
+                                 else existing_names)
     if twin is not None:
         return twin
     # A whole-token difference scores far below the similarity cutoff —
@@ -1268,6 +1286,10 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
     for _, r in frame.iterrows():
         existing_by_course[str(r["course_type"]).strip().lower()].add(
             str(r["item"]).strip().lower())
+    # The whole city list, for the word-order/synonym lookup only — see
+    # `_existing_twin`. A misfile is by definition filed under the wrong course,
+    # so resolving one cannot be done from inside that course.
+    all_names = sorted(existing)
     fold_log: dict = {}
     rows, report, retag = [], {}, 0
     for course in ordered:
@@ -1288,7 +1310,7 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
             if i in existing:
                 seen.append(i)
                 continue
-            twin = _existing_twin(i, here, vocab)
+            twin = _existing_twin(i, here, vocab, all_names=all_names)
             if twin:
                 seen.append(twin)
                 fold_log.setdefault("matched_existing", []).append((twin, i))

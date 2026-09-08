@@ -45,16 +45,32 @@ Two rows break that mechanical test and are argued individually instead, in
 their own `reason` below: `chana_lauki`, whose `leafy_dal` is wrong on its face,
 and Chennai's `vada_sambar`, which contradicts twelve unanimous siblings.
 
-Runs after `canonical_dish_spellings.py` (which folds two spellings of one WORD)
-and before the client menu imports, which re-mint a dropped name unless
-`menu_import` can resolve it — see `_existing_twin`, taught the same `dish_key`
-lookup this script folds on. Idempotent: a second pass finds no groups left.
+**Chain position: step 3b, immediately after `canonical_dish_spellings.py`** —
+which folds two spellings of one WORD where this folds two names for one DISH.
+It belongs there for the reason that one does: every column-correction script
+below selects its rows BY NAME. Run it last instead (which is where it started,
+next to the audit it consumes) and each of those scripts has already keyed its
+verdicts to a name this is about to rename. Twelve of them ended up holding dead
+entries that still read as live decisions — `nonveg_structural_flags.ADJUDICATED`
+naming `murgh_nizami` after it became `chicken_nizami` — and worse, a verdict
+applied to only ONE row of a pair can be silently undone when the fold keeps the
+other. Ordering is the fix; a reconciliation pass afterwards is not.
+
+Two things keep it safe this early. The audit still runs at step 16 and must
+report 0 groups, which is what catches a later step re-introducing a duplicate.
+And the client menu imports at step 7 would otherwise re-mint every dropped
+name — each one is still what some client's sheet PRINTS — so
+`menu_import._existing_twin` is taught the same `dish_key` lookup, imported from
+the audit rather than restated so the fold and the importer cannot drift.
+
+Idempotent: a second pass finds no groups left.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -100,6 +116,12 @@ _MISFILES: dict[str, dict[str, tuple]] = {
         'veg_kolhapuri': (None, (
             'veg kolhapuri is a spicy gravy; the `veg_dry` row is a bare stub '
             'carrying only the course mirror.')),
+        'lasooni_chana_dal': (None, (
+            'the dish is named for chana DAL — the split lentil — and both '
+            'rows carry `key_ingredient: chana_dal`, so the other row\'s '
+            '`primary_protein: chickpea` (the whole legume) contradicts its '
+            'own ingredient column. The mirror image of `lauki_chana`, where '
+            'the protein said `chickpea` and nothing said dal.')),
         'aloo_mutter_masala': ('aloo_matar_masala', (
             'the `veg_dry` row is a bare stub — no key_ingredient, no '
             '`is_rule_ready`. Renamed because the surviving row is the one '
@@ -276,8 +298,23 @@ def _merge_clients(rows: pd.DataFrame, allow_common: bool) -> str:
     return ','.join(tokens)
 
 
-def apply_city(df: pd.DataFrame, city: str) -> tuple[pd.DataFrame, list[str]]:
-    """Fold *df* in place-ish; returns the new frame and a log of what changed."""
+def apply_city(df: pd.DataFrame, city: str,
+               settled: Optional[dict] = None) -> tuple[pd.DataFrame, list[str]]:
+    """Fold *df* in place-ish; returns the new frame and a log of what changed.
+
+    *settled* is `{dish_key: name}` from the cities already folded, and it keeps
+    the city lists from drifting apart. Hyderabad is SEEDED from Bangalore and
+    `tests/cities/test_hyderabad_ontology.py` requires it to stay a strict
+    superset — but the two lists do not always hold the same duplicates, so the
+    fold can legitimately face a group in one city and a single row in the
+    other. Hyderabad carried `miloni_sabzi` beside `sabzi_miloni` where
+    Bangalore had only the latter, and `propose()`, ranking two equal-length
+    names alphabetically, kept `miloni_sabzi`: one dish, two names, one per
+    city. That is worse than the duplicate it removed — a `name_contains`
+    selector or a shared `constant_items` pin now matches in one city and not
+    the other. So a name another city has already settled on wins, whenever it
+    is one of the candidates here.
+    """
     log: list[str] = []
     flag_cols = [c for c in df.columns if c.startswith('is_')]
     allow_common = _has_common_pool(df)
@@ -324,9 +361,12 @@ def apply_city(df: pd.DataFrame, city: str) -> tuple[pd.DataFrame, list[str]]:
                 # it stays split and stays in the report.
                 continue
             # The fullest row survives, under the canonical NAME whichever row
-            # happened to carry it.
+            # happened to carry it — unless another city has already settled
+            # this dish on one of these names, in which case the cities agreeing
+            # matters more than the ranking.
             survivor_name = None
-            rename_to = propose(names)
+            already = (settled or {}).get(key)
+            rename_to = already if already in names else propose(names)
 
         rows = df.loc[idxs]
         if survivor_name is not None:
@@ -344,8 +384,24 @@ def apply_city(df: pd.DataFrame, city: str) -> tuple[pd.DataFrame, list[str]]:
     if drop:
         df = df.drop(index=drop).reset_index(drop=True)
 
-    # 3. The few column fixes the verdicts named.
+    # 3. A SEEDED city agrees with its seed on names, even where there was no
+    #    group to fold. Hyderabad is a copy of Bangalore plus Quest's dishes, so
+    #    a dish the two spell differently is a divergence rather than a regional
+    #    preference — and it only takes one city having the duplicate for the
+    #    fold itself to create one. Restricted to `_SEEDED_FROM` on purpose:
+    #    NCR names the dish `dum_aloo` where Bangalore says `aloo_dum` and that
+    #    is its own list's business, not a drift to correct.
     lower = df['item'].astype(str).str.lower().str.strip()
+    if city in _SEEDED_FROM and settled:
+        for idx, name in lower.items():
+            agreed = settled.get(dish_key(name))
+            if not agreed or agreed == name or agreed in set(lower):
+                continue
+            df.at[idx, 'item'] = agreed
+            log.append(f'agreed with {_SEEDED_FROM[city]}: {name} -> {agreed}')
+        lower = df['item'].astype(str).str.lower().str.strip()
+
+    # 4. The few column fixes the verdicts named.
     for item, fields in sorted(_for_city(_FIXES, city).items()):
         hit = lower == item
         if not hit.any():
@@ -359,6 +415,9 @@ def apply_city(df: pd.DataFrame, city: str) -> tuple[pd.DataFrame, list[str]]:
 
 def main() -> None:
     total = 0
+    # `CITIES` puts the reference city first, which is what makes this work:
+    # Bangalore settles a name and Hyderabad, seeded from it, then agrees.
+    settled: dict = {}
     for city in CITIES:
         path = _ITEMS / f'{city}.xlsx'
         if not path.exists():
@@ -366,7 +425,9 @@ def main() -> None:
         df = pd.read_excel(path)
         df.columns = [c.strip() for c in df.columns]
         before = len(df)
-        df, log = apply_city(df, city)
+        df, log = apply_city(df, city, settled)
+        for name in df['item'].astype(str).str.lower().str.strip():
+            settled.setdefault(dish_key(name), name)
         if not log:
             print(f'{city}: already folded')
             continue

@@ -99,6 +99,13 @@ SYNONYMS = {
     'chattinad': 'chettinad', 'chettined': 'chettinad',
     'chettiand': 'chettinad', 'makhni': 'makhani', 'makkhani': 'makhani',
     'roghan': 'rogan', 'kadhai': 'kadai',
+    # Garlic, four ways, all in the dal slot. The fold made the split visible
+    # rather than creating it: Bangalore carried `dal_lasooni`, `dal_lehsooni`
+    # and `dal_lehsuni` as three separate pairs, so merging each pair left
+    # three rows of one dish — and Citrix's sheet prints a fourth spelling,
+    # which the importer then minted as a fifth.
+    'lehsooni': 'lasooni', 'lehsuni': 'lasooni', 'lahsoni': 'lasooni',
+    'lasuni': 'lasooni', 'lahsuni': 'lasooni',
     # Peas, transliterated two ways in the same city. Bangalore carries 41
     # `matar` names beside 120 `mutter`, NCR 66 beside 24, and the split is what
     # left NCR holding FOUR rows of methi malai peas — `matar_methi_malai`,
@@ -120,6 +127,14 @@ FORM_WORDS = frozenset({
     'biryani', 'pulao', 'rice', 'tikka', 'kebab', 'kabab', 'soup', 'salad',
 })
 
+# Connectors that join two ingredients and say nothing about the dish. Dropped
+# from the key, so `carrot_and_beans_poriyal` and `beans_carrot_poriyal` are one
+# dish — which the ontology already writes both ways, and which the importer's
+# similarity path used to catch only because the word order happened to line up.
+# Once the fold reordered the surviving name, similarity fell below its cutoff
+# and the `and` spelling was minted back as a new row.
+CONNECTORS = frozenset({'and'})
+
 
 def _norm(v) -> str:
     """Lowercased text, with pandas' blank markers read AS blank.
@@ -140,9 +155,15 @@ def dish_key(name: str) -> tuple[str, str]:
     keeps it out of that group.
     """
     text = _norm(name)
-    for phrase, canon in PHRASES.items():
-        text = text.replace(phrase, canon)
-    tokens = [SYNONYMS.get(t, t) for t in text.split('_') if t]
+    # LONGEST FIRST, because these are substring replacements and one phrase is
+    # a prefix of another: `kali_mirch` -> `pepper` fired inside `kali_mirchi`
+    # and left `pepperi`, so every `*_kali_mirchi` row silently failed to group
+    # with its `kali_mirch` twin. A missed fold rather than a wrong one, which
+    # is why it went unnoticed — and the importer then minted the variant back.
+    for phrase in sorted(PHRASES, key=len, reverse=True):
+        text = text.replace(phrase, PHRASES[phrase])
+    tokens = [SYNONYMS.get(t, t) for t in text.split('_')
+              if t and t not in CONNECTORS]
     core = sorted(t for t in tokens if t not in FORM_WORDS)
     form = sorted(t for t in tokens if t in FORM_WORDS)
     return '|'.join(core), '|'.join(form)

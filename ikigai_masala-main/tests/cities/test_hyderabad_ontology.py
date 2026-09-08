@@ -158,7 +158,14 @@ class TestWhatQuestAdded:
         assert _names(hyd) > _names(blr)
 
     def test_the_count_is_the_import_s_own(self, added):
-        assert len(added) == 101
+        """Was 101. Four of Quest's dishes turned out to be dishes Bangalore's
+        seed already carried under another word order, and
+        `fold_duplicate_dish_names.py` merged them — which is the import's own
+        fold doing at the ontology level what it already does within one sheet.
+        The count is what it is; the assertion exists to catch the import
+        silently gaining or losing rows, so it is pinned rather than loosened.
+        """
+        assert len(added) == 97
 
     def test_the_new_rows_carry_the_quest_pool_token(self, added):
         tokens = added["client"].fillna("").astype(str).str.lower()
