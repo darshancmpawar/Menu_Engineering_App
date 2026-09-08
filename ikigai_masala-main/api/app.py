@@ -2203,6 +2203,9 @@ def explain_menu():
                 'dishes': pack['dishes'],
                 'plate_profile': pack['plate_profile'],
                 'checks': pack['checks'],
+                # Which dishes complement each other and what the plate lacks —
+                # the meal-level answer the per-dish `provenance` cannot give.
+                'pairings': pack['pairings'],
                 'provenance': pack['provenance'],
                 'relaxations': pack['relaxations'],
                 'bullets': extra.get('bullets') or [],

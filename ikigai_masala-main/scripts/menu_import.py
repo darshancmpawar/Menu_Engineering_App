@@ -31,12 +31,19 @@ from __future__ import annotations
 
 import difflib
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional, Sequence, Set
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+# The grouping predicate `fold_duplicate_dish_names.py` merged 386 rows on. It
+# is imported rather than restated so the fold and the importer cannot drift:
+# the day they disagree is the day a re-import silently un-folds a merge.
+from audit_duplicate_dish_names import dish_key  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +350,15 @@ CANONICAL_SPELLINGS = {
     # buttermilk EVERY day, so these two names go on a printed menu weekly.
     "malasa": "masala",
     "tempared": "tempered",
+    # Same class, found by rendering the explanation layer against a real plan
+    # and reading "handi biryani is rich at 4 of 5 — dosa with chuteny at 1 cuts
+    # through it" back. Three spellings of chutney across two cities
+    # (`dosa_with_chuteny`, `lemon_rice_with_chuteny`,
+    # `lachha_onion_mint_chatney`), each of which PRINTS on a menu, and none of
+    # them a transliteration anyone defends.
+    "chuteny": "chutney",
+    "chatney": "chutney",
+    "chutny": "chutney",
     # `raitha` -> `raita`, and it has to live HERE rather than only in
     # `canonical_dish_spellings.DUPLICATES`, because the fold alone breaks
     # import stability: Stryker's printed menu writes "Raitha", so dropping the
@@ -709,6 +725,35 @@ def fold_similar(names: Iterable[str], vocab: Optional[dict] = None,
 NOISE_MODIFIERS = {"plain", "simple", "regular", "normal", "home_style"}
 
 
+def _same_dish_by_meaning(candidate: str, existing_names: Sequence[str]):
+    """The ontology dish *candidate* MEANS, found by word order and language.
+
+    `fold_duplicate_dish_names.py` folded 386 rows where one dish was written
+    twice — `dum_aloo` into `aloo_dum`, `murgh_nizami` into `chicken_nizami`,
+    `mutter_paneer` into `matar_paneer`. Every one of those names is still what
+    some client's sheet PRINTS, so without this the next import of that sheet
+    mints the row straight back and the fold quietly comes undone. That is not
+    hypothetical: it is what `ALIASES` above exists to patch, one name at a time,
+    and 386 is past where a hand-written list is honest.
+
+    So the same predicate that justified each merge decides the lookup:
+    `dish_key` normalises word order, folds the language synonyms (murgh, kozhi,
+    kori, anda, guddu) and holds `FORM_WORDS` apart, so `pepper_chicken_dry`
+    never resolves to the gravy. It is stronger evidence than string similarity,
+    which scored `kori_gassi` against `chicken_gassi` at ~0.5.
+
+    Returns None when the key matches **more than one** existing dish rather
+    than picking: two rows sharing a key is exactly the state the audit reports
+    for a verdict, and guessing between them is how a client's gravy gets
+    imported onto their dry row.
+    """
+    key = dish_key(candidate)
+    if not key[0]:                                  # nothing but form words
+        return None
+    hits = sorted({n for n in existing_names if dish_key(n) == key})
+    return hits[0] if len(hits) == 1 else None
+
+
 def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
                    cutoff: float = 0.90):
     """The ontology dish *candidate* is a spelling of, or None.
@@ -717,6 +762,14 @@ def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
     candidate's token is unknown vocabulary (a typo or a variant) folds into the
     dish already present; two real words are different dishes and are kept.
     """
+    if candidate in existing_names:
+        return None                                 # it IS the dish
+    # Word order and language first — see `_same_dish_by_meaning`. Ahead of
+    # similarity because it is the stronger signal and because the folds it
+    # protects were applied on exactly this predicate.
+    twin = _same_dish_by_meaning(candidate, existing_names)
+    if twin is not None:
+        return twin
     # A whole-token difference scores far below the similarity cutoff —
     # "plain_chapati" vs "chapati" is 0.70 — so difflib never offers the pair.
     # Strip a leading serving-style word and look the dish up directly.

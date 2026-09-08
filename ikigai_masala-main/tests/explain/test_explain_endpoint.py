@@ -110,6 +110,40 @@ class TestTheRoundTrip:
             assert dish['name']
             assert dish['slot'] == slot
 
+    def test_every_day_says_what_complements_what(
+            self, client, fake_supabase, planned):
+        """The meal-level answer, which the per-dish `provenance` cannot give.
+
+        Not gated by `calibrated_only`: a pairing is a statement about two
+        recorded attribute values rather than a threshold verdict, so there is
+        no threshold to be wrong about — and `gaps` is the honest half, which
+        is exactly what must not be filtered away with the uncalibrated checks.
+        """
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution']}).get_json()
+        for day in body['days']:
+            pairings = day['pairings']
+            assert pairings['summary'], day['date']
+            assert isinstance(pairings['pairings'], list)
+            assert isinstance(pairings['gaps'], list)
+            on_plate = {d['name'] for d in day['dishes'].values()}
+            for pair in pairings['pairings']:
+                # Every dish named must be on this day's plate — that is what
+                # lets the prose validator accept a paraphrase of these lines.
+                assert set(pair['dishes']) <= on_plate, pair
+                assert set(pair['slots']) <= set(day['dishes']), pair
+                assert pair['detail'] and pair['kind']
+
+    def test_the_pairings_reach_the_rendered_bullets(
+            self, client, fake_supabase, planned):
+        """The renderer is the permanent fallback with the model off, so a
+        pairing that only exists in the JSON reaches nobody."""
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution']}).get_json()
+        day = next(d for d in body['days'] if d['pairings']['pairings'])
+        rendered = '\n'.join(day['bullets'])
+        assert day['pairings']['pairings'][0]['detail'] in rendered
+
     def test_the_response_is_serialisable(self, client, fake_supabase, planned):
         """The pack carries numpy scalars out of the ontology DataFrame."""
         body = client.post('/api/v1/explain', json={

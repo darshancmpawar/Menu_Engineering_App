@@ -7,11 +7,14 @@ under-merges is the hand-written list it exists to replace.
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from scripts.audit_duplicate_dish_names import (
-    FORM_WORDS, PHRASES, SYNONYMS, collect, dish_key, propose, write_report,
+    FORM_WORDS, PHRASES, SYNONYMS, _ITEMS, collect, dish_key, propose,
+    write_report,
 )
+from scripts.city_list import CITIES
 
 
 class TestTheGroupingKey:
@@ -94,11 +97,27 @@ def report():
 
 
 class TestWhatItFinds:
-    def test_it_finds_the_duplicates_that_are_known_to_be_there(self, report):
-        dupes, _ = report
-        names = {n for d in dupes for n in d['names'].split(' | ')}
-        for known in ('dum_aloo', 'bhuna_murgh_masala', 'murgh_razeela'):
-            assert known in names, known
+    def test_the_names_it_was_written_for_are_no_longer_in_any_city(self, report):
+        """This used to assert the report FOUND `dum_aloo` and
+        `murgh_razeela`. `fold_duplicate_dish_names.py` has since merged all
+        330 groups, so the premise inverted: the report is empty and these
+        names are gone. The predicate that grouped them is pinned above, on
+        synthetic names, where folding the data cannot make it pass vacuously.
+        """
+        dupes, misfiles = report
+        assert dupes == [] and misfiles == []
+        # Scoped to the cities that HELD the pair, because the fold is
+        # per-city and a name is only a duplicate where its twin lives. NCR
+        # keeps `dum_aloo` and is right to: it has no `aloo_dum`.
+        for city in ('bangalore', 'hyderabad'):
+            names = set(pd.read_excel(_ITEMS / f'{city}.xlsx')['item']
+                        .astype(str).str.lower().str.strip())
+            for folded in ('dum_aloo', 'bhuna_murgh_masala', 'murgh_razeela',
+                           'mutter_paneer', 'kadhai_paneer'):
+                assert folded not in names, (city, folded)
+            for kept in ('aloo_dum', 'bhuna_chicken_masala', 'chicken_razala',
+                         'matar_paneer', 'kadai_paneer'):
+                assert kept in names, (city, kept)
 
     def test_a_group_never_mixes_two_courses(self, report):
         """That is the misfile bucket's job. A duplicate group whose rows
@@ -130,11 +149,31 @@ class TestWhatItFinds:
         for entry in dupes + misfiles:
             assert len(entry['names'].split(' | ')) >= 2
 
-    def test_it_is_finding_a_real_amount(self, report):
-        """A key that matched nothing would pass every test above."""
+    def test_an_empty_report_means_folded_and_not_broken(self, report):
+        """The vacuity guard, restated for a world where 0 is the right answer.
+
+        It used to be `len(dupes) > 200` — a key that matched nothing would
+        otherwise pass every test in this file. Now that the fold has run, a
+        `dish_key` broken to return a constant, or one broken to return
+        something unique per row, BOTH report zero groups and look like
+        success. So the guard is that the predicate still does its job on rows
+        the workbooks really hold: two names that must group, two that must
+        not, and a real corpus underneath.
+        """
         dupes, misfiles = report
-        assert len(dupes) > 200
-        assert len(misfiles) > 5
+        assert dupes == [] and misfiles == []
+
+        rows = 0
+        for city in CITIES:
+            path = _ITEMS / f'{city}.xlsx'
+            if path.exists():
+                rows += len(pd.read_excel(path))
+        assert rows > 5000, 'collect() is reading almost nothing'
+
+        # not a constant key...
+        assert dish_key('aloo_dum') != dish_key('paneer_butter_masala')
+        # ...and not a unique-per-name one.
+        assert dish_key('aloo_dum') == dish_key('dum_aloo')
 
     def test_the_committed_csv_is_current(self, report, project_root_path):
         """A stale report proposes merging rows that have since been folded."""

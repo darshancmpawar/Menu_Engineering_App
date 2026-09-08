@@ -75,6 +75,9 @@ RULES — a reply breaking any of these is discarded:
 4. Never claim a check passed or failed unless it says so in the facts.
 5. If a relaxation is listed, say so plainly in that day's paragraph.
 6. 2-3 sentences per day. Plain language. No marketing adjectives.
+7. Say which dishes work together, using the reasons in `pairings`. If
+   `pairings.gaps` is non-empty, say what the plate is missing — do not call a
+   plate balanced when a gap is listed.
 
 OUTPUT: strict JSON, no markdown fences:
 {"days": [{"date": "YYYY-MM-DD", "prose": "..."}]}"""
@@ -192,13 +195,46 @@ also only still while which that there here menu counter theme today course main
 """.split())
 
 
+def _sourced_phrase(phrase: str, names: set, words: set) -> bool:
+    """Is *phrase* a pack phrase, or does it contain one, on word boundaries?
+
+    Both directions, because a model may write "Boondi Raita" where the pack
+    says `boondi_raita` and may also write "Chicken Chettinad Curry" where the
+    pack says `chicken_chettinad`.
+
+    **Word-aligned, which is the whole point.** A plain `cand in phrase` passes
+    on any substring, and the pack legitimately contains one-letter words — the
+    pairing summary "2 pairing(s) hold this plate together" harvests `s`, and
+    `s` is inside `masala`, so "Paneer Butter Masala" was accepted as sourced.
+    Padding both sides with spaces before comparing is what makes containment
+    mean "these whole words".
+    """
+    padded = f' {phrase} '
+    for cand in names | words:
+        boxed = f' {cand} '
+        if boxed in padded or padded in boxed:
+            return True
+    return False
+
+
 def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
     """Return (ok, reason). A rejected reply is discarded whole, not patched.
 
-    **What this guarantees, and what it does not.** Every NUMBER and every
-    snake_case WORD in the reply must appear somewhere in the pack. That makes
-    a fabricated statistic or an invented dish structurally impossible, which
-    is the failure this feature would otherwise have.
+    **What this guarantees, and what it does not.** Every NUMBER, every
+    snake_case WORD and every Title-Case PHRASE in the reply must appear
+    somewhere in the pack. That makes a fabricated statistic or an invented
+    dish structurally impossible, which is the failure this feature would
+    otherwise have.
+
+    The Title-Case half was missing and the guarantee was overstated without
+    it: the snake_case check lowercases the prose and then looks for
+    underscores, so it could never fire on "Paneer Butter Masala" — a wholly
+    invented dish, written in the form the prompt's own examples use, passed
+    validation. A single capitalised word is still not checked (it is usually a
+    sentence opener) and neither is an all-lowercase phrase, which is
+    undecidable: "the paneer gravy" may be referring to a dish the pack does
+    carry. So dish invention is now caught in the form a model actually
+    produces it, not in every conceivable form.
 
     It does NOT police judgement. "Only 3 textures appear, so the plate is a
     little soft" passes: the 3 is sourced, and *soft* is an opinion no rule can
@@ -226,6 +262,33 @@ def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
         if tok in names or spaced in names or tok in words or spaced in words:
             continue
         return False, f'unknown dish {tok!r}'
+
+    # ...and the way a model ACTUALLY writes a dish name: capitalised, with
+    # spaces. The check above lowercases the prose and then looks for
+    # underscores, so it can never fire on "Paneer Butter Masala" — a whole
+    # invented dish, in the form the prompt's own examples use, walked straight
+    # through the guarantee. Title-Case runs of two or more words are therefore
+    # matched against the pack as a phrase.
+    #
+    # Two or more, and capitalised, because that is where the signal is: a
+    # single capitalised word is usually a sentence opener, and an all-lowercase
+    # phrase is undecidable — "the paneer gravy" may well be referring to a
+    # dish the pack does carry. So this narrows a real hole rather than
+    # closing the category; `_COMMON_WORDS` keeps ordinary sentence starts and
+    # weekday names out of it.
+    for run in re.findall(r'\b(?:[A-Z][a-z]+(?:\s+|[.,;:!?)]|$)){2,}', prose):
+        phrase = ' '.join(re.split(r'[^A-Za-z]+', run)).strip().lower()
+        parts = [p for p in phrase.split() if p]
+        if not parts or all(p in _COMMON_WORDS for p in parts):
+            continue
+        if _sourced_phrase(phrase, names, words):
+            continue
+        # A trailing sentence word ("Chicken Chettinad Is Hot") should not sink
+        # an otherwise sourced name, so retry without the ordinary words.
+        trimmed = ' '.join(p for p in parts if p not in _COMMON_WORDS)
+        if trimmed != phrase and _sourced_phrase(trimmed, names, words):
+            continue
+        return False, f'unknown dish {phrase!r}'
 
     return True, 'ok'
 
@@ -284,6 +347,11 @@ def _slim(pack: Dict[str, Any]) -> Dict[str, Any]:
         'plate_profile': pack.get('plate_profile'),
         'checks': [{'name': c['name'], 'passed': c['passed'], 'detail': c['detail']}
                    for c in (pack.get('checks') or [])],
+        # The pairings are what makes a paragraph about the MEAL possible rather
+        # than a recital of the day's counts, so they go in the prompt whole —
+        # `gaps` included, since rule 7 asks the model to say when the plate is
+        # missing something and it cannot follow that from a summary alone.
+        'pairings': pack.get('pairings'),
         'provenance': pack.get('provenance'),
         'relaxations': pack.get('relaxations'),
     }

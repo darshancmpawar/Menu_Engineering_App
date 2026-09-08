@@ -65,6 +65,12 @@ _REPORT = _ROOT / 'docs' / 'duplicate_dish_names.csv'
 # Multi-word forms are rewritten first, because a token rule gets them wrong:
 # `kodi` alone is Telugu for chicken but `kodi_guddu` is its EGG, and folding
 # the phrase to `chicken` would have called two egg dishes chicken.
+#
+# These targets are GROUPING KEYS, not spellings anybody should serve — `hotsour`
+# is not a word — so `propose()` deliberately does not read them. See its
+# docstring: PHRASES says two names mean one dish, SYNONYMS says which of two
+# words to write, and conflating the two elected `paneer_dopyaza` over
+# `paneer_do_pyaza` and `pepper_rasam` over `kali_mirch_rasam`.
 PHRASES = {
     'kodi_guddu': 'egg', 'kodiguddu': 'egg',
     'kali_mirch': 'pepper', 'kali_mirchi': 'pepper',
@@ -93,6 +99,16 @@ SYNONYMS = {
     'chattinad': 'chettinad', 'chettined': 'chettinad',
     'chettiand': 'chettinad', 'makhni': 'makhani', 'makkhani': 'makhani',
     'roghan': 'rogan', 'kadhai': 'kadai',
+    # Peas, transliterated two ways in the same city. Bangalore carries 41
+    # `matar` names beside 120 `mutter`, NCR 66 beside 24, and the split is what
+    # left NCR holding FOUR rows of methi malai peas — `matar_methi_malai`,
+    # `methi_matar_malai`, `methi_malai_mutter`, `mutter_methi_malai`. `matar`
+    # is the direction because NCR, the North Indian list, prefers it 3:1 for a
+    # Hindi word. NB this is a GROUPING fold: it renames a row only where one
+    # is already a duplicate of another, so the ~250 rows carrying either
+    # spelling are otherwise untouched (that wider vocabulary fold belongs to
+    # `canonical_dish_spellings.py`, where a collision gets reviewed one by one).
+    'mutter': 'matar',
 }
 
 # Words that name the FORM of a dish, kept apart from the core so a dry and a
@@ -132,18 +148,61 @@ def dish_key(name: str) -> tuple[str, str]:
     return '|'.join(core), '|'.join(form)
 
 
+def _folded_away(name: str) -> int:
+    """How many of this name's words SYNONYMS has already canonicalised away.
+
+    The first tiebreak, and the only one that is about correctness rather than
+    taste: electing `kadhai_chicken` over `kadai_chicken` would re-instate a
+    spelling `canonical_dish_spellings.py` has already folded, so this audit
+    would be undoing a committed correction one row at a time. Six of the 313
+    proposals did exactly that (`kadhai` x4, `harayali` x2).
+
+    Only SYNONYMS counts. PHRASES is a grouping device whose targets are
+    artificial — reading it too picked `paneer_dopyaza` over `paneer_do_pyaza`
+    and `chicken_kalimirch` over `chicken_kali_mirch`, i.e. it started deciding
+    spellings on the strength of a table that has no opinion about them.
+    """
+    return sum(1 for t in name.split('_') if t in SYNONYMS)
+
+
+def canonical_spelling(name: str) -> str:
+    """Every word of *name* written the way SYNONYMS says to write it."""
+    return '_'.join(SYNONYMS.get(t, t) for t in name.split('_') if t)
+
+
 def propose(names: list[str]) -> str:
     """The canonical name to suggest, chosen by a stated rule so it is stable.
 
-    Prefer a name that spells its protein the English way (the word every other
-    row and every menu reader uses), then the longest — a longer name carries
-    more of the dish — then alphabetically, purely so two runs agree.
+    In order: fewest words the project has already spelled another way, then a
+    name that spells its protein the English way (the word every other row and
+    every menu reader uses), then the LONGEST, then alphabetically so two runs
+    agree.
+
+    Longest looks odd until you notice that every name in a group carries the
+    same words — that is what grouped them — so a length difference is a
+    difference in SPELLING, never in content. It is what keeps `egg_do_pyaza`
+    over the truncated `egg_do_pyaz` and `bhuna_chicken_masala` over
+    `chicken_bhuna`.
+
+    **When EVERY name in the group misspells a word, the winner is written out
+    properly rather than elected as-is** — so `aloo_gobi_mutter | gobi_aloo_
+    mutter` yields `aloo_gobi_matar` and the five-way `chicken_rezalla | murgh_
+    razeela | ...` yields `chicken_razala`. Otherwise a group with no clean
+    candidate keeps a spelling the project has already standardised away, which
+    is the whole defect `_folded_away` exists to prevent; the ranking would just
+    be picking the least-bad of five.
+
+    This is the one case where the answer is not one of the input names, and it
+    cannot collide with a row outside the group: canonicalising a word does not
+    change `dish_key`, so any row already holding this name would be IN this
+    group — and would then have won on `_folded_away` without minting anything.
     """
     def rank(n: str) -> tuple:
         english = any(w in n.split('_') for w in
                       ('chicken', 'egg', 'mutton', 'fish', 'prawn'))
-        return (not english, -len(n), n)
-    return sorted(names, key=rank)[0]
+        return (_folded_away(n), not english, -len(n), n)
+    best = sorted(names, key=rank)[0]
+    return canonical_spelling(best) if _folded_away(best) else best
 
 
 def collect() -> tuple[list[dict], list[dict]]:

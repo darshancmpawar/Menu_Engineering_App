@@ -184,14 +184,24 @@ attachments and would have been lost.
     reads the names the whole chain has finished settling, and running it
     earlier would propose folding rows that step 3 or step 8c is about to fold
     anyway. `--check` fails if `docs/duplicate_dish_names.csv` is stale.
+17. `scripts/fold_duplicate_dish_names.py` — applies step 16's report (the
+    client approved all 330 groups): 386 rows folded away, the 26 misfiles
+    adjudicated, and 6 groups renamed to name their FORM because both a dry and
+    a gravy of the dish are real. It runs after the audit because it consumes
+    its grouping predicate, and **before step 7** on any subsequent chain run:
+    each dropped name is still what some client's sheet prints, so an import
+    that ran first would mint it back. What stops that is not a list but
+    `menu_import._existing_twin`, taught the same `dish_key` lookup — one
+    predicate, so the fold and the importer cannot drift. After it, step 16
+    reports 0 groups, which is the check that it converged.
 
 `scripts/chennai_client_pools.py` and `scripts/chennai_cuisine_corrections.py`
 sit with the per-city corrections (step 5).
 It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
 sweets four clients' stated rules asked more of than the list held.
 
-Steps 0, 3, 7, 8, 8b, 8c, 10, 11 and 13 are order-sensitive for the reasons their
-docstrings give.
+Steps 0, 3, 7, 8, 8b, 8c, 10, 11, 13 and 17 are order-sensitive for the reasons
+their docstrings give.
 
 **A removal is the one step the chain cannot undo.** Every other script fills or
 corrects a cell and re-running it converges; `remove_generic_rows.py` deletes

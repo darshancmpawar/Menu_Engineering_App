@@ -683,7 +683,25 @@ def _render_explain_day(day: dict) -> None:
     else:
         st.caption("The plate is not itemised in this response.")
 
-    st.markdown("**2 · How it balances**")
+    # Step 2 is the question a chef asks first — not "how many textures" but
+    # "does this meal work". It sits above the checks because a pairing names
+    # two dishes and a reason, which is actionable on its own, where "4 colours
+    # across 7 dishes" still has to be interpreted.
+    pairings = day.get("pairings") or {}
+    st.markdown("**2 · What works together**")
+    if pairings.get("summary"):
+        st.caption(html.escape(str(pairings["summary"])))
+    for pair in pairings.get("pairings") or []:
+        st.markdown(f"- 🤝 {html.escape(str(pair.get('detail','')))}")
+    # Gaps are never hidden or folded into the summary line. A plate with a hot
+    # curry and no yogurt is the one thing here a kitchen can fix this morning,
+    # and an explanation that only ever reports good news gets ignored.
+    for gap in pairings.get("gaps") or []:
+        st.markdown(f"- &#9888; {html.escape(str(gap))}")
+    if not (pairings.get("pairings") or pairings.get("gaps")):
+        st.caption("No pairing could be argued from the recorded attributes.")
+
+    st.markdown("**3 · How it balances**")
     for check in day.get("checks") or []:
         icon = "&#9989;" if check.get("passed") else "&#9888;"
         name = str(check.get("name", "")).replace("_", " ")
@@ -692,7 +710,7 @@ def _render_explain_day(day: dict) -> None:
 
     provenance = day.get("provenance") or []
     if provenance:
-        st.markdown("**3 · Why these dishes**")
+        st.markdown("**4 · Why these dishes**")
         for p in provenance:
             st.markdown(
                 f"- **{format_item_for_ui(p.get('dish'))}** — "

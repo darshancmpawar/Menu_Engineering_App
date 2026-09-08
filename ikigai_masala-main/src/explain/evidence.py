@@ -25,6 +25,7 @@ import datetime as dt
 import logging
 
 from .checks import Check, base_slot, plate_profile, run_checks
+from .pairings import build_pairings
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,12 @@ def build_evidence(*,
         'dishes': dishes,
         'plate_profile': plate_profile(dishes),
         'checks': [c.to_dict() for c in checks],
+        # Which dishes complement each other, and what the plate lacks. Not
+        # gated by `calibrated_only`: a pairing is not a threshold verdict but a
+        # statement about two recorded attribute values, so there is no
+        # threshold to be wrong about — and `gaps` is the honest half, which is
+        # exactly what must not be filtered out.
+        'pairings': build_pairings(dishes),
         'provenance': build_provenance(dishes, recency, theme,
                                        constant_items, rule_notes),
         'relaxations': [dict(r) for r in (relaxations or [])],

@@ -155,6 +155,54 @@ class TestValidator:
         from api.explain_llm import validate
         return validate(prose, pack)
 
+    def test_an_invented_dish_written_the_way_a_model_writes_one(self, pack):
+        """The hole the guarantee was overstated across: the snake_case check
+        lowercases the prose and then looks for underscores, so it could never
+        fire on a Title-Case name with spaces — which is the form the prompt's
+        own examples use. Three wholly invented dishes passed validation."""
+        for invented in ('Paneer Butter Masala is served alongside.',
+                         'We have added Gulab Jamun for dessert.',
+                         'Try the Hyderabadi Dum Biryani today.'):
+            ok, why = self._v(invented, pack)
+            assert not ok, invented
+            assert 'unknown dish' in why, why
+
+    def test_a_real_dish_in_title_case_is_still_accepted(self, pack):
+        """The check must not chew the sentences it exists to permit. A model
+        writes "Boondi Raita", not `boondi_raita`."""
+        names = [d['name'] for d in pack['dishes'].values()]
+        titled = ' '.join(w.capitalize() for w in names[0].split('_'))
+        if ' ' not in titled:
+            pytest.skip('this fixture has no multi-word dish name')
+        ok, why = self._v(f'{titled} is on the plate today.', pack)
+        assert ok, why
+
+    def test_a_pack_name_with_a_word_added_is_accepted(self, pack):
+        """"Chicken Chettinad Curry" where the pack says `chicken_chettinad` is
+        a paraphrase, not an invention — containment counts in both
+        directions."""
+        names = [d['name'] for d in pack['dishes'].values()]
+        titled = ' '.join(w.capitalize() for w in names[0].split('_'))
+        ok, why = self._v(f'{titled} Curry anchors the day.', pack)
+        assert ok, why
+
+    def test_an_ordinary_capitalised_sentence_is_not_a_dish(self, pack):
+        """`_COMMON_WORDS` is what keeps this from rejecting English."""
+        for fine in ('The Plate Is Balanced today.',
+                     'This Is The Main Course.'):
+            ok, why = self._v(fine, pack)
+            assert ok, (fine, why)
+
+    def test_containment_is_word_aligned(self, pack):
+        """A plain substring test passes on anything, because the pack really
+        does carry one-letter words: the pairing summary "2 pairing(s) hold
+        this plate together" harvests `s`, and `s` is inside `masala`, which is
+        exactly how "Paneer Butter Masala" was read as sourced."""
+        from api.explain_llm import _allowed_tokens, _sourced_phrase
+        _numbers, names, words = _allowed_tokens(pack)
+        assert 's' in words or True          # harvesting is not the claim here
+        assert not _sourced_phrase('paneer butter masala', names, words)
+
     def test_grounded_prose_is_accepted(self, pack):
         ok, why = self._v('Thursday leans south with jowar_roti alongside '
                           'veg_kurma. The plate carries 2 textures.', pack)

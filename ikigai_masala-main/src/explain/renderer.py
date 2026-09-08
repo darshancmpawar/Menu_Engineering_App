@@ -57,6 +57,15 @@ def render_day(pack: Dict[str, Any], *, show_passing: bool = True) -> List[str]:
         label = str(c.get('name', '')).replace('_', ' ')
         lines.append(f"  {mark} {label:<20} {c.get('detail','')}")
 
+    # What works WITH what, and what the plate lacks. Before provenance: "why
+    # this dish" is per-dish, this is about the meal, and the meal is the
+    # question a chef asked first.
+    pairings = pack.get('pairings') or {}
+    for p in pairings.get('pairings') or []:
+        lines.append(f"  + {str(p.get('kind','')):<10} {p.get('detail','')}")
+    for gap in pairings.get('gaps') or []:
+        lines.append(f"  {_FLAG} {'gap':<10} {gap}")
+
     for p in pack.get('provenance') or []:
         lines.append(f"  - {p.get('dish',''):<28} {p.get('detail','')}")
 
