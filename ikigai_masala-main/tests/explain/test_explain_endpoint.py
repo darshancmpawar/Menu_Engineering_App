@@ -94,6 +94,22 @@ class TestTheRoundTrip:
         assert colour['evidence']['threshold'] <= colour['evidence']['configured_target']
         assert colour['evidence']['counted_dishes'] > 0
 
+    def test_each_day_carries_the_plate_with_its_attributes(
+            self, client, fake_supabase, planned):
+        """The rendered menu table already has the dish NAMES. What the
+        explanation adds is the colour and texture behind each verdict, so a
+        reader can see why `texture_contrast` said what it said rather than
+        taking it on trust — the UI's step 1 is empty without this."""
+        body = client.post('/api/v1/explain', json={
+            **PLAN_BODY, 'solution': planned['solution']}).get_json()
+        day = body['days'][0]
+        assert day['dishes'], 'no plate in the response'
+        described = [d for d in day['dishes'].values() if d.get('item_color')]
+        assert described, 'no dish carries an attribute'
+        for slot, dish in day['dishes'].items():
+            assert dish['name']
+            assert dish['slot'] == slot
+
     def test_the_response_is_serialisable(self, client, fake_supabase, planned):
         """The pack carries numpy scalars out of the ontology DataFrame."""
         body = client.post('/api/v1/explain', json={
@@ -215,6 +231,46 @@ class TestRuleNotes:
         class _B:
             config = {'base_slot': 'bread', '_comment': 'second'}
         assert _rule_notes([_A(), _B()])['bread'] == 'first'
+
+    def test_a_long_developer_comment_is_cut_to_a_sentence(self):
+        """`_comment` is not one kind of text. For `bread` it is the client's
+        own sentence; for `nonveg_biryani_one_per_day` it is 400 characters of
+        rationale about counting days versus dishes — true, useful to whoever
+        edits the rule, and unreadable as the answer to "why is this biryani
+        here". Cut on a sentence boundary so what a chef reads is a whole
+        thought, and marked so nobody mistakes it for the full note."""
+        from api.app import _NOTE_CHARS
+
+        long = ('counts biryani DAYS rather than dishes, so a counter with two '
+                'or more nonveg slots could otherwise satisfy the weekly cap by '
+                'stacking two biryanis onto a single day and leaving the rest '
+                'of the week without one at all. This caps the dishes per day. '
+                'A third sentence nobody needs.')
+
+        class _R:
+            config = {'base_slot': 'nonveg_main', '_comment': long,
+                      'name': 'nonveg_biryani_one_per_day'}
+        note = _rule_notes([_R()])['nonveg_main']
+        assert len(note) <= _NOTE_CHARS + 40      # + the rule-name prefix
+        assert 'A third sentence' not in note
+        assert note.endswith('…')
+
+    def test_the_rule_name_leads_the_note(self):
+        """Something short and identifiable first. "Biryani — nonveg biryani
+        one per day" is actionable on its own; the rationale alone is not."""
+        class _R:
+            config = {'base_slot': 'bread', 'name': 'bread_chapati_only',
+                      '_comment': 'client asks for chapati only'}
+        assert _rule_notes([_R()])['bread'] == (
+            'bread chapati only — client asks for chapati only')
+
+    def test_a_short_client_sentence_is_left_whole(self):
+        """The truncation must not chew the case it was written to protect."""
+        class _R:
+            config = {'base_slot': 'bread',
+                      '_comment': 'client asks for a millet bread on south days'}
+        assert (_rule_notes([_R()])['bread']
+                == 'client asks for a millet bread on south days')
 
     def test_a_rule_stub_without_a_config_is_survivable(self):
         class _R:

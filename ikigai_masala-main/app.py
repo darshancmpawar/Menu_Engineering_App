@@ -69,6 +69,7 @@ from ui.planner_view import (
     plan_xlsx,
     XLSX_MIME,
 )
+from src.explain.checks import MAIN_COURSES, base_slot
 from ui.styles import STYLES
 from ui.branding import favicon as _favicon, logo_img_tag
 from ui.backend_probe import health_check, pick_backend_port
@@ -555,16 +556,29 @@ def _pool_warnings_expander(block: dict) -> None:
 
 def _render_explain_expander(api, block_index: int, counter_index: int,
                              key_ns: str) -> None:
-    """Plate-balance verdicts for one plan block, fetched on demand.
+    """"Why this menu" for one plan block — a stepped read, not a text dump.
 
     Behind a button rather than fetched alongside the plan: /explain is a
     second request and an optional one, so a user who never opens this pays
     nothing for it, and a failure here can never cost anyone a menu.
 
-    The lines come from `src/explain/renderer.py` verbatim rather than being
-    re-laid-out here, so there is one place that decides how a verdict reads —
-    and the renderer always shows a FAILING check, which is the property worth
-    not re-implementing.
+    **The order is the argument.** A chef opening this wants four things in this
+    sequence and gets lost if they arrive mixed together, which is what the
+    first version did — one monospaced block with the plate, the verdicts, the
+    reasons and the relaxations interleaved:
+
+      1. what is on the plate
+      2. how it balances (only the verdicts fit to be judged — `CALIBRATED`)
+      3. why THESE dishes
+      4. what the solver could not fully enforce
+
+    Step 4 is last and is never hidden. It is the honest half: a rule that bent
+    is the one thing here the kitchen can act on, and burying it under three
+    green ticks is how a diagnostic becomes decoration.
+
+    The numbers are still the renderer's — `src/explain/renderer.py` remains the
+    single place that decides how a verdict READS, and the raw bullet text stays
+    available under each day for anyone who wants to copy it.
     """
     b = st.session_state.plan_blocks[block_index]
     if not b.get("plan_dates") or not b.get("solution"):
@@ -573,10 +587,11 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
     cache_key = f"{st.session_state.client_name}|{key_ns}|{b['plan_dates'][0]}"
     with st.expander("Why this menu"):
         st.caption(
-            "Plate-balance checks read off the menu itself. A flagged check is "
-            "a suggestion; a 'relaxed' line is a rule the solver could not "
-            "fully enforce.")
-        if st.button("Explain this menu", key=f"explain_btn_{key_ns}"):
+            "Plate-balance checks read off the menu itself, the reason each "
+            "dish is there, and any rule the solver could not fully enforce. "
+            "A flagged check is a suggestion; a relaxed rule is a fact.")
+        if st.button("Explain this menu", key=f"explain_btn_{key_ns}",
+                     use_container_width=True):
             try:
                 store[cache_key] = api.explain(
                     client_name=st.session_state.client_name,
@@ -594,10 +609,98 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
         payload = store.get(cache_key)
         if not payload:
             return
-        for day in payload.get("days", []):
-            if day.get("prose"):
-                st.markdown(f"**{date_label(day['date'])}** — {day['prose']}")
-            st.code("\n".join(day.get("bullets") or []), language=None)
+
+        days = payload.get("days") or []
+        if not days:
+            st.info("No served day in this plan has a plate to describe.")
+            return
+
+        # A relaxation is plan-wide, so it is stated ONCE at the top rather than
+        # repeated under every day — twenty identical warnings read as noise and
+        # the reader stops seeing them.
+        relaxed = days[0].get("relaxations") or []
+        if relaxed:
+            st.warning(
+                "**Rules the solver could not fully enforce for this counter**")
+            for r in relaxed:
+                rule = str(r.get("rule") or "a rule").replace("_", " ")
+                st.markdown(f"- **{rule}** — {html.escape(str(r.get('detail','')))}")
+                for extra in (r.get("samples") or [])[1:]:
+                    st.caption(f"　also: {html.escape(str(extra))}")
+        if payload.get("llm_used"):
+            st.caption("Prose written by the optional model and checked against "
+                       "the facts below; the numbers are computed, not written.")
+
+        tabs = st.tabs([date_label(d["date"]) for d in days])
+        for tab, day in zip(tabs, days):
+            with tab:
+                _render_explain_day(day)
+
+
+def _render_explain_day(day: dict) -> None:
+    """One day of the explanation, in the four steps above."""
+    profile = day.get("plate_profile") or {}
+    theme = day.get("theme")
+    if theme:
+        st.markdown(f"**{date_label(day['date'])}** &nbsp; · &nbsp; "
+                    f"{str(theme).replace('_', ' ').title()} day",
+                    unsafe_allow_html=True)
+    if day.get("prose"):
+        st.info(day["prose"])
+
+    cols = st.columns(4)
+    for col, (label, value) in zip(cols, (
+        ("Main dishes", profile.get("main_dish_count") or 0),
+        ("Colours", len(profile.get("colour_spread") or {})),
+        ("Textures", len(profile.get("texture_spread") or {})),
+        ("Avg richness", profile.get("mean_richness")),
+    )):
+        with col:
+            st.metric(label, "—" if value is None else value)
+
+    st.markdown("**1 · The plate**")
+    dishes = day.get("dishes") or {}
+    if dishes:
+        # The checks score MAIN courses only — a welcome drink's colour says
+        # nothing about whether lunch works, and counting white_rice would put
+        # a white dish on every day and flatten the colour verdict into noise.
+        # So the plate lists everything and MARKS what was counted: without the
+        # marker a reader sees fourteen dishes above "Main dishes 7" and has no
+        # way to tell which seven, which makes every number below it look wrong.
+        counted = {s for s in dishes if base_slot(s) in MAIN_COURSES}
+        for slot, dish in sorted(dishes.items(), key=lambda kv: slot_sort_key(kv[0])):
+            traits = " · ".join(
+                str(dish[k]) for k in ("item_color", "texture")
+                if dish.get(k)) or "no attributes recorded"
+            mark = "●" if slot in counted else "○"
+            st.markdown(
+                f"- {mark} `{display_label_for_slot_id(slot)}` &nbsp; "
+                f"**{format_item_for_ui(dish.get('name'))}** &nbsp; "
+                f"<span style='opacity:.65'>{html.escape(traits)}</span>",
+                unsafe_allow_html=True)
+        st.caption("● counted by the checks below  ·  ○ condiment, drink or "
+                   "staple — not scored")
+    else:
+        st.caption("The plate is not itemised in this response.")
+
+    st.markdown("**2 · How it balances**")
+    for check in day.get("checks") or []:
+        icon = "&#9989;" if check.get("passed") else "&#9888;"
+        name = str(check.get("name", "")).replace("_", " ")
+        st.markdown(f"{icon} **{name}** — {html.escape(str(check.get('detail','')))}",
+                    unsafe_allow_html=True)
+
+    provenance = day.get("provenance") or []
+    if provenance:
+        st.markdown("**3 · Why these dishes**")
+        for p in provenance:
+            st.markdown(
+                f"- **{format_item_for_ui(p.get('dish'))}** — "
+                f"{html.escape(str(p.get('detail','')))}")
+
+    if day.get("bullets"):
+        with st.expander("Plain text (copy)"):
+            st.code("\n".join(day["bullets"]), language=None)
 
 
 def _render_regen_expander(api, block_index: int, counter_index: int,

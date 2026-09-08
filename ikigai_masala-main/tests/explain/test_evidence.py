@@ -176,6 +176,47 @@ class TestValidator:
         ok, why = self._v('Served with fresh paneer_tikka on the side.', pack)
         assert not ok and 'paneer_tikka' in why
 
+    @pytest.mark.parametrize('prose', [
+        # `primary_protein`, `cuisine_family`, `key_ingredient` and the slot
+        # names are all IN the pack. The underscored-token rule read every
+        # snake_case word as dish-shaped and threw the whole reply away, so a
+        # model quoting the pack correctly was punished for it — the rule is
+        # "anything the pack did not say", and the pack said these.
+        'Curd carries yogurt as its primary_protein.',
+        'The gravy is south_indian and so is the bread.',
+        'veg_kurma is the veg_gravy and jowar_roti the bread.',
+        'Its key_ingredient is mixed_veg.',
+    ])
+    def test_a_pack_value_that_is_not_a_dish_name_is_still_quotable(
+            self, prose, pack):
+        ok, why = self._v(prose, pack)
+        assert ok, why
+
+    def test_widening_that_did_not_widen_the_guarantee(self, pack):
+        """The point of the fix was to stop rejecting TRUE sentences, not to
+        start accepting invented ones. A dish-shaped token the pack does not
+        carry anywhere is still refused."""
+        for invented in ('gobi_manchurian', 'aloo_gobi', 'paneer_tikka'):
+            ok, why = self._v(f'The plate also carries {invented}.', pack)
+            assert not ok and invented in why
+        # `chicken_65` is refused too, but by the NUMBER rule rather than the
+        # dish rule — whichever fires first is enough, and asserting the
+        # message would pin the order for no reason.
+        assert not self._v('The plate also carries chicken_65.', pack)[0]
+
+    def test_judgement_is_not_policed_and_that_is_documented(self, pack):
+        """The boundary, asserted so it is not mistaken for a bug later.
+
+        "3 textures" is sourced; "a little soft" is an opinion, and no validator
+        can decide whether it agrees with `texture_contrast: passed`. Rule 4 of
+        the system prompt forbids contradicting a verdict and nothing enforces
+        it — which is exactly why the BULLETS are the primary surface and are
+        gated on `checks.CALIBRATED`, with prose additive on top.
+        """
+        ok, _why = self._v('The plate carries 2 textures, so it is a little '
+                           'soft.', pack)
+        assert ok
+
     @pytest.mark.parametrize('bad', [
         'A healthy plate with balanced nutrition.',
         'Around 600 calories per serving.',

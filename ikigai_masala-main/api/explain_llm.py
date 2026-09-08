@@ -116,14 +116,35 @@ def reset_cache_for_tests() -> None:
 
 # --- validator -------------------------------------------------------------
 
-def _allowed_tokens(pack: Dict[str, Any]) -> Tuple[set, set]:
-    """Every number and every dish name this day's prose may legally contain."""
+def _allowed_tokens(pack: Dict[str, Any]) -> Tuple[set, set, set]:
+    """`(numbers, dish_names, other_pack_words)` the prose may legally contain.
+
+    The third set is the fix for a false rejection that made the guarantee
+    stricter than it claims to be. The rule is "anything the pack did not say,
+    the prose may not say" — but the underscored-token check treated EVERY
+    snake_case word as dish-shaped, so a model quoting an ingredient, a cuisine
+    or a slot the pack does carry had its whole reply discarded:
+
+        "Carrot palya carries green_peas, so the plate is not relying on tovve
+         alone for protein."   -> rejected, "unknown dish 'green_peas'"
+
+    `green_peas` is in that pack, as the dish's `primary_protein`. So are
+    `mixed_veg`, `south_indian`, `veg_gravy` and every other attribute value.
+    Rejecting a true, sourced sentence is not caution — it spends the model's
+    output for nothing and pushes the feature to bullets on its best replies.
+
+    Every string value anywhere in the pack is therefore quotable. Dish names
+    stay a separate set purely so the rejection message can still say "unknown
+    dish" for the case that matters.
+    """
     numbers: set = set()
+    words: set = set()
     names: set = set()
 
     def harvest(obj: Any) -> None:
         if isinstance(obj, dict):
-            for v in obj.values():
+            for k, v in obj.items():
+                harvest(k)
                 harvest(v)
         elif isinstance(obj, (list, tuple)):
             for v in obj:
@@ -135,6 +156,15 @@ def _allowed_tokens(pack: Dict[str, Any]) -> Tuple[set, set]:
         elif isinstance(obj, str):
             for m in _NUMBER_RE.findall(obj):
                 numbers.add(_fmt_num(float(m)))
+            low = obj.strip().lower()
+            if low:
+                words.add(low)
+                words.add(low.replace('_', ' '))
+                # A multi-word value's own words, so "not served for 26 days"
+                # does not have to be quoted whole to be quotable.
+                for part in re.split(r'[^a-z0-9_]+', low):
+                    if part:
+                        words.add(part)
 
     harvest(pack)
     for d in (pack.get('dishes') or {}).values():
@@ -145,7 +175,7 @@ def _allowed_tokens(pack: Dict[str, Any]) -> Tuple[set, set]:
     # The date's own components are legitimately quotable.
     for m in _NUMBER_RE.findall(str(pack.get('date') or '')):
         numbers.add(_fmt_num(float(m)))
-    return numbers, names
+    return numbers, names, words
 
 
 def _fmt_num(v: float) -> str:
@@ -163,22 +193,39 @@ also only still while which that there here menu counter theme today course main
 
 
 def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
-    """Return (ok, reason). A rejected reply is discarded whole, not patched."""
+    """Return (ok, reason). A rejected reply is discarded whole, not patched.
+
+    **What this guarantees, and what it does not.** Every NUMBER and every
+    snake_case WORD in the reply must appear somewhere in the pack. That makes
+    a fabricated statistic or an invented dish structurally impossible, which
+    is the failure this feature would otherwise have.
+
+    It does NOT police judgement. "Only 3 textures appear, so the plate is a
+    little soft" passes: the 3 is sourced, and *soft* is an opinion no rule can
+    check. Rule 4 of `SYSTEM_PROMPT` forbids contradicting a check's verdict and
+    nothing here enforces it — a validator cannot decide whether free text
+    agrees with `texture_contrast: passed`. That boundary is why the BULLETS are
+    the primary surface and are gated on `checks.CALIBRATED`, and prose is
+    additive: the numbers a chef acts on come from Python either way.
+    """
     if not prose or not prose.strip():
         return False, 'empty'
     if _BANNED_RE.search(prose):
         return False, f'banned topic: {_BANNED_RE.search(prose).group(0)!r}'
 
-    numbers, names = _allowed_tokens(pack)
+    numbers, names, words = _allowed_tokens(pack)
 
     for raw in _NUMBER_RE.findall(prose):
         if _fmt_num(float(raw)) not in numbers:
             return False, f'number {raw!r} is not in the evidence'
 
-    # Underscored tokens are dish-shaped; anything not in the pack is invented.
+    # Underscored tokens are dish-shaped; anything the pack does not carry
+    # anywhere — as a dish, an ingredient, a cuisine or a slot — is invented.
     for tok in re.findall(r'\b[a-z]+(?:_[a-z]+)+\b', prose.lower()):
-        if tok not in names and tok.replace('_', ' ') not in names:
-            return False, f'unknown dish {tok!r}'
+        spaced = tok.replace('_', ' ')
+        if tok in names or spaced in names or tok in words or spaced in words:
+            continue
+        return False, f'unknown dish {tok!r}'
 
     return True, 'ok'
 

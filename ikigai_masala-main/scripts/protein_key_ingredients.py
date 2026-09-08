@@ -64,6 +64,12 @@ FOLD = {
     "soppu_moong": "green_moong",
     "allesande": "black_eyed_pea",
     "kofta_made_from_lentil": "toor_dal",
+    # `rajma` IS the kidney bean, and `kidney_bean` is the value the other four
+    # cities and the client's own protein list use. NCR spelled it the Hindi
+    # way on its one row, which made that dish invisible to a
+    # `key_ingredient: kidney_bean` selector — the exact cost this table
+    # exists to remove.
+    "rajma": "kidney_bean",
 }
 
 #: The canonical protein-source vocabulary, i.e. the client's list expressed in
