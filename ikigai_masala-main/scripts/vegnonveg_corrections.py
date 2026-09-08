@@ -25,10 +25,16 @@ gets them wrong in both directions, and the two traps sit next to each other:
     granules, sold as "nutri nuggets" / "meal maker") and gobi keema are
     standard vegetarian North Indian dishes — minced soya or cauliflower
     standing in for mince. Eleven NCR rows and one in Bangalore/Hyderabad.
-  * `matar` / `mutter` does NOT imply vegetarian. **Keema Matar is the meat
-    dish** — the peas are what is added to the mince, not what replaces it. So
-    `mutter_keema` is left alone while `soya_matar_keema` is corrected, and a
-    rule keyed on either word would have flipped exactly the wrong one.
+  * `matar` / `mutter` does NOT imply vegetarian either. **Keema Matar is the
+    meat dish** — the peas are what is added to the mince, not what replaces
+    it. So the word settles nothing in either direction, and a rule keyed on it
+    would have flipped rows at random. `mutter_keema` was held back as
+    non-veg on exactly that reasoning and then resolved by the CLIENT, who
+    confirmed their dish is peas keema; the soya rows were resolved by the
+    ontology contradicting itself.
+
+That is the shape of the whole exercise: the name narrows the question and
+never answers it.
 
 Same shape for `bhurji`, which means *scrambled* and not *egg*: paneer, palak-
 chana and mooli bhurji are vegetarian, and NCR filed all three under the
@@ -125,6 +131,14 @@ VEG_CORRECTIONS = {
         # blank — the value a veg dish of roots legitimately has.
         'banarasi_baby_aloo_muli_ki_bhurji': ('veg_dry', 'aloo_root_veg_dry',
                                               '', 'potato'),
+        # Client verdict: this is MATAR keema — peas keema — not the Mughlai
+        # mutton dish the name also describes. It was the one row the dish name
+        # could not settle (the peas in "Keema Matar" are added to the mince,
+        # not substituted for it), so it was left non-veg and reported; the
+        # kitchen has now said which dish it makes. Filed with `gobi_keema_
+        # mutter`, the other minced-vegetable keema, rather than with the soya
+        # family — the peas are the dish, not a soya stand-in.
+        'mutter_keema': ('veg_dry', 'mixed_veg_dry', 'green_peas', 'green_peas'),
     },
     'bangalore': {
         # Minced cauliflower with peas — vegan, and nothing about it is chicken.
@@ -166,10 +180,134 @@ NONVEG_CORRECTIONS = {
         # dish correctly filed in the same city.
         'kolkata_chic_curry': ('nonveg_main', 'chicken_north_masala',
                                'chicken', 'is_nonveg_gravy'),
+        # Client verdict: chicken, non-veg DRY. Kastoori Kebab is a kasoori-
+        # methi chicken kebab, and `kasturia_kebab` is the same dish already
+        # filed chicken in this city — this row's `key_ingredient: besan` and
+        # `sub_category: pakora_/_bajji` were the mapping pipeline reading it as
+        # a gram-flour fritter, which is what kept it in the veg starter pool.
+        # Mangalorean CHICKEN curry — in Tulu `kori` is chicken and `gassi` is
+        # curry. It sat in `veg_gravy` with no protein beside `chicken_gassi`,
+        # which is the same dish correctly filed. Neither of the other two
+        # detection channels could reach it: its name shares no letters with
+        # `chicken_gassi`, so string similarity scored ~0.5, and `kori` is not a
+        # word any English/Hindi meat list carries. What found it was grouping
+        # dishes by a SYNONYM-normalised key — `kori|gassi` and `chicken|gassi`
+        # collapse to one dish — which is worth keeping as a channel.
+        'kori_gassi': ('nonveg_main', 'chicken_south_coastal',
+                       'chicken', 'is_nonveg_gravy'),
+        'kasturi_kebab': ('nonveg_main', 'chicken_spicy_fry',
+                          'chicken', 'is_nonveg_dry'),
+        # Client verdict: both are non-veg. Awadhi minced-meat kebabs, and the
+        # protein is `mutton` because that is what both dishes ARE — shami is
+        # minced beef/lamb/mutton with ground chana dal, galouti (Tunday) is
+        # minced mutton. Flagged in the report rather than silently chosen:
+        # `mutton` puts them in a 2-dish pool that Stripe's mutton window and
+        # cap select on, where `chicken` would put them in a 498-dish one. One
+        # line to flip if the kitchen makes them with chicken.
+        'shami_kebab':   ('nonveg_main', 'chicken_spicy_fry',
+                          'mutton', 'is_nonveg_dry'),
+        'gauloti_kebab': ('nonveg_main', 'chicken_spicy_fry',
+                          'mutton', 'is_nonveg_dry'),
     },
     'hyderabad': {
         'kolkata_chic_curry': ('nonveg_main', 'chicken_north_masala',
                                'chicken', 'is_nonveg_gravy'),
+        'kasturi_kebab': ('nonveg_main', 'chicken_spicy_fry',
+                          'chicken', 'is_nonveg_dry'),
+        'kori_gassi':    ('nonveg_main', 'chicken_south_coastal',
+                          'chicken', 'is_nonveg_gravy'),
+        'shami_kebab':   ('nonveg_main', 'chicken_spicy_fry',
+                          'mutton', 'is_nonveg_dry'),
+        'gauloti_kebab': ('nonveg_main', 'chicken_spicy_fry',
+                          'mutton', 'is_nonveg_dry'),
+    },
+}
+
+# --------------------------------------------------------------------------
+# 2b. Rows the client asked to be removed.
+#     A removal is the one step the correction chain cannot undo, so nothing
+#     lands here without the client saying so — these two did.
+# --------------------------------------------------------------------------
+_SALAD_BAR = ('onion_rings_carrots_batons_chinese_cabbage_english_cucumber_'
+              'bell_pepper_tomato_quarters_boiled_chana_boiled_peanuts_'
+              'boiled_rajma_corn_boiled_betroot_')
+
+# --------------------------------------------------------------------------
+# 2c. One dish, one name — for the duplicates THIS work uncovered.
+#
+# `canonical_dish_spellings.py` is the usual home for "one dish, one spelling"
+# and these are deliberately not there. It runs at chain step 3 and this runs at
+# 8c, and the winner of each fold below can only be chosen once the veg verdict
+# is known: folding `kori_gassi` into `chicken_gassi` at step 3 means picking
+# between two rows without yet knowing that one of them is on the wrong side of
+# the vegetarian line. Every pair here is the same dish under a synonym, a
+# truncation or a typo — not two spellings of one word, which is what that
+# script's word-level `CANONICAL_SPELLINGS` handles.
+#
+# `FOLD_DROPS` maps loser -> winner; the loser's `client` pool tokens are folded
+# into the winner first, so no client silently loses a dish it makes.
+# `FOLD_RENAMES` is for the survivor whose own spelling is the minority one.
+# --------------------------------------------------------------------------
+FOLD_DROPS = {
+    'bangalore': {
+        # `kasturia_kebab` is the corruption; Kastoori/Kasturi is the dish. The
+        # surviving row is the one this script just corrected, so it is also the
+        # better-attributed of the two (`kasturia_kebab` has no sub_category).
+        'kasturia_kebab': 'kasturi_kebab',
+        # `kori` is Tulu for chicken, so `kori_gassi` and `chicken_gassi` are
+        # one dish. The English protein word wins the name — it is the one a
+        # reader of the menu and every other row in the file uses.
+        'kori_gassi': 'chicken_gassi',
+        # "chic" is `chicken` truncated by whatever wrote the row.
+        'kolkata_chic_curry': 'kolkata_chicken_curry',
+    },
+    'hyderabad': {
+        'kasturia_kebab': 'kasturi_kebab',
+        'kori_gassi': 'chicken_gassi',
+        'kolkata_chic_curry': 'kolkata_chicken_curry',
+    },
+    'ncr': {
+        # Four spellings of chilli chicken. `chilly_chicken` is the attributed
+        # one and survives (renamed below); the typo goes. `chilli_chicken_fry`
+        # and `chilli_chicken_gravy` are NOT folded in — a dry and a gravy are
+        # different dishes, which is the distinction the whole exercise turns on.
+        'chilli_chiken': 'chilly_chicken',
+        # Two spellings of one dish and no correctly-spelled twin in NCR, so one
+        # survives and is renamed below.
+        'honey_chilli_chiciken': 'honey_chilli_checken',
+    },
+}
+
+FOLD_RENAMES = {
+    'ncr': {
+        'chilly_chicken': 'chilli_chicken',
+        'honey_chilli_checken': 'honey_chilli_chicken',
+        # NCR carries `tandoori_chicken_masala` and
+        # `tandoori_chicken_seekh_masala` but no plain tandoori chicken, so this
+        # is a rename rather than a fold — the dish is not a duplicate of either.
+        'tandoori_chcien': 'tandoori_chicken',
+    },
+}
+
+REMOVALS = {
+    'bangalore': {
+        # Not a dish: a whole salad BAR written as one row, 160 characters of
+        # components. Two of them — one ending `boiled_eggs` (filed
+        # `nonveg_main`, so the bar was a candidate for the day's meat dish)
+        # and one ending `paneer_cubes`. A menu printing either is unreadable
+        # and no colour, ingredient or variety rule can reason about it.
+        _SALAD_BAR + 'boiled_eggs': 'a salad bar, not a dish',
+        _SALAD_BAR + 'paneer_cubes': 'a salad bar, not a dish',
+        # No protein, no sub_category, no key_ingredient, and both cities
+        # already list explicit veg biryanis while Hyderabad lists the chicken
+        # one. A misspelling of "hyderabadi dum biryani" carrying nothing that
+        # says which it is.
+        'hederabad_dum_biryani': 'junk duplicate of hyderabadi_dum_biryani',
+    },
+    'hyderabad': {
+        _SALAD_BAR + 'boiled_eggs': 'a salad bar, not a dish',
+        _SALAD_BAR + 'paneer_cubes': 'a salad bar, not a dish',
+        'hederabad_dum_biryani': 'junk duplicate of hyderabadi_dum_biryani',
     },
 }
 
@@ -209,54 +347,43 @@ PROTEIN_ONLY = {
 #    (cities, what the row says now, the question)
 # --------------------------------------------------------------------------
 NEEDS_CLIENT_DECISION = [
-    ('mutter_keema', 'ncr', 'nonveg_main / mutton',
-     'LEFT NON-VEG. "Keema Matar" is the meat dish - the peas are added to the '
-     'mince, not substituted for it - so the name reads non-veg even though it '
-     'arrived beside eleven veg keemas that were all wrong. Kept as mutton '
-     'because withholding a veg dish is cheaper than serving meat by mistake. '
-     'Confirm whether NCR intends a second mutton dish beside mutton_curry.'),
-    ('kasturi_kebab', 'bangalore,hyderabad', 'starter / no protein / ki=besan',
-     'LEFT VEG. Kastoori/Kasturi Kebab is a kasoori-methi CHICKEN kebab, and '
-     '`kasturia_kebab` is filed chicken in the same two cities. But this row '
-     'says key_ingredient=besan and sub_category=pakora, i.e. a gram-flour '
-     'fritter. Either it is a veg namesake (keep) or a duplicate of '
-     'kasturia_kebab in the veg starter pool (re-file or remove).'),
-    ('shami_kebab', 'bangalore,hyderabad', 'starter / no protein',
-     'LEFT VEG. Traditionally minced meat; the vegetarian chana-dal version is '
-     'equally standard and is what a veg starter slot would mean. Sitting '
-     'beside hara_bhara_kebab and dahi_ke_kebab, which are unambiguously veg.'),
-    ('gauloti_kebab', 'bangalore,hyderabad', 'starter / no protein',
-     'LEFT VEG. Same question as shami: galouti is a Lucknawi minced-mutton '
-     'kebab, and rajma/veg galouti is a common vegetarian version.'),
-    ('hederabad_dum_biryani', 'bangalore,hyderabad', 'rice / no protein',
-     'LEFT VEG. Misspelling of "hyderabadi dum biryani", which exists in both '
-     'chicken and vegetable forms; the row carries no protein, sub_category or '
-     'key_ingredient to settle it, and both cities already list explicit veg '
-     'biryanis. Likely a junk duplicate - confirm remove.'),
-    ('veg_keema_matar / veg_keema_mutter', 'ncr', 'corrected to soy',
-     'APPLIED as soy. A "veg keema" may be soya, paneer, mushroom or lentil; '
-     'soy follows the eleven siblings it arrived with rather than the dish name. '
-     'Confirm the ingredient if the kitchen makes it another way.'),
-    ('onion_rings_...boiled_eggs', 'bangalore,hyderabad',
-     'nonveg_main / egg',
-     'LEFT AS IS. Not a dish - a whole salad BAR written as one row, ending in '
-     '"boiled eggs". Correctly non-veg, wrongly a nonveg_main. Belongs with the '
-     'self-named-row cleanup, not here.'),
+    ('mutter_keema', 'ncr', 'RESOLVED -> veg (peas keema)',
+     'The client confirmed it is MATAR keema - peas keema - not the Mughlai '
+     'mutton dish the name also describes. Now veg_dry / green_peas.'),
+    ('kasturi_kebab', 'bangalore,hyderabad', 'RESOLVED -> chicken, non-veg dry',
+     'Confirmed chicken. It duplicates kasturia_kebab, already filed chicken in '
+     'both cities - the name fold is in canonical_dish_spellings.py.'),
+    ('shami_kebab', 'bangalore,hyderabad', 'RESOLVED -> non-veg, protein=mutton',
+     'Confirmed non-veg. Protein set to mutton, which is what the dish is '
+     '(minced beef/lamb/mutton with ground chana dal). NOTE: this takes '
+     "Bangalore's mutton pool from 2 dishes to 4, and Stripe's mutton window "
+     'and weekly cap select on that pool. One line to flip to chicken if the '
+     'kitchen makes it that way.'),
+    ('gauloti_kebab', 'bangalore,hyderabad', 'RESOLVED -> non-veg, protein=mutton',
+     'Confirmed non-veg. Galouti (Tunday) is a Lucknawi minced-MUTTON kebab. '
+     "Same pool note as shami_kebab."),
+    ('veg_keema_matar / veg_keema_mutter', 'ncr', 'RESOLVED -> veg, soya',
+     'Client confirmed vegetarian and soya-based, which is what was applied.'),
+    ('hederabad_dum_biryani', 'bangalore,hyderabad', 'RESOLVED -> removed',
+     'Confirmed junk duplicate of hyderabadi_dum_biryani.'),
+    ('onion_rings_...boiled_eggs / ...paneer_cubes', 'bangalore,hyderabad',
+     'RESOLVED -> removed',
+     'Confirmed: a salad BAR written as one 160-character row, not a dish. '
+     'Both variants removed; the boiled-eggs one was filed nonveg_main, so the '
+     'bar was a candidate for the day\'s meat dish.'),
     ('honey_chilli_checken + honey_chilli_chiciken', 'ncr',
-     'both re-filed to chicken',
-     'APPLIED. Two spellings of ONE dish, and NCR has no correctly-spelled '
-     'twin. Both are now non-veg, so neither can be plated to a vegetarian, but '
-     'the duplicate remains - confirm which spelling to keep.'),
-    ('chilli_chiken', 'ncr', 're-filed to chicken',
-     'APPLIED. NCR already lists chilly_chicken, chilli_chicken_fry and '
-     'chilli_chicken_gravy - this is a fourth spelling. Confirm remove.'),
-    ('tandoori_chcien', 'ncr', 're-filed to chicken',
-     'APPLIED. NCR lists tandoori_chicken_masala and '
-     'tandoori_chicken_seekh_masala; plain tandoori chicken is arguably a '
-     'distinct dish. Confirm keep-and-rename or remove.'),
-    ('kolkata_chic_curry', 'bangalore,hyderabad', 're-filed to chicken',
-     'APPLIED. kolkata_chicken_curry is the same dish correctly filed in both '
-     'cities. Confirm remove.'),
+     'non-veg; name fold pending',
+     'Both are now chicken, so neither can reach a vegetarian. They are two '
+     'spellings of one dish with no correctly-spelled twin in NCR - the fold to '
+     'a single canonical name is handled by canonical_dish_spellings.py.'),
+    ('chilli_chiken', 'ncr', 'non-veg; name fold pending',
+     'Now chicken. NCR also lists chilly_chicken, chilli_chicken_fry and '
+     'chilli_chicken_gravy; the spelling fold is in canonical_dish_spellings.py.'),
+    ('tandoori_chcien', 'ncr', 'non-veg; name fold pending',
+     'Now chicken. Folds to tandoori_chicken.'),
+    ('kolkata_chic_curry', 'bangalore,hyderabad', 'non-veg; name fold pending',
+     'Now chicken. Folds to kolkata_chicken_curry, the same dish already '
+     'correctly filed in both cities.'),
 ]
 
 
@@ -327,6 +454,46 @@ def apply_city(df: pd.DataFrame, city: str) -> tuple[pd.DataFrame, list[str]]:
             if flag in df.columns:
                 df.at[i, flag] = 0
         changes.append(f'{item}: protein -> {prot}')
+
+    # Folds next, now that both rows of each pair are on the right side of the
+    # line. Client tokens move to the winner before the loser goes.
+    folds = FOLD_DROPS.get(city, {})
+    if folds:
+        lower = df['item'].map(_norm)
+        by_name = {v: i for i, v in lower.items()}
+        drop_idx = []
+        for loser, winner in folds.items():
+            if loser not in by_name or winner not in by_name:
+                continue
+            li, wi = by_name[loser], by_name[winner]
+            if 'client' in df.columns:
+                tokens = set()
+                for side in (df.at[wi, 'client'], df.at[li, 'client']):
+                    tokens |= {t.strip() for t in str(side or '').split(',')
+                               if t.strip() and t.strip().lower() != 'nan'}
+                df.at[wi, 'client'] = ','.join(sorted(tokens))
+            drop_idx.append(li)
+            changes.append(f'{loser}: FOLDED into {winner}')
+        if drop_idx:
+            df = df.drop(index=drop_idx).reset_index(drop=True)
+
+    lower = df['item'].map(_norm)
+    for old, new in FOLD_RENAMES.get(city, {}).items():
+        hit = df.index[lower == old]
+        if not len(hit) or (lower == new).any():
+            continue
+        df.at[hit[0], 'item'] = new
+        changes.append(f'{old}: RENAMED to {new}')
+
+    # Removals last, so a row cannot be corrected and then dropped in one pass
+    # — the changes list would report a fix that is not in the file.
+    drop = REMOVALS.get(city, {})
+    if drop:
+        gone = df.index[df['item'].map(_norm).isin(drop)]
+        for i in gone:
+            changes.append(f'{_norm(df.at[i, "item"])}: REMOVED '
+                           f'({drop[_norm(df.at[i, "item"])]})')
+        df = df.drop(index=gone).reset_index(drop=True)
 
     return df, changes
 

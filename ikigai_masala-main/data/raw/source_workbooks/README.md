@@ -180,6 +180,10 @@ attachments and would have been lost.
     is for readability, not correctness.
 14. `scripts/drop_dead_columns.py` — schema only, so order does not matter
 15. `scripts/build_pool_token_map.py`
+16. `scripts/audit_duplicate_dish_names.py` — a REPORT, so it runs last: it
+    reads the names the whole chain has finished settling, and running it
+    earlier would propose folding rows that step 3 or step 8c is about to fold
+    anyway. `--check` fails if `docs/duplicate_dish_names.csv` is stale.
 
 `scripts/chennai_client_pools.py` and `scripts/chennai_cuisine_corrections.py`
 sit with the per-city corrections (step 5).

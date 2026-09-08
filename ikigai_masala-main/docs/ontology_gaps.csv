@@ -837,7 +837,6 @@ bangalore,chili_chicken,nonveg_main,nonveg_biryani_region,no word its siblings a
 bangalore,chili_chicken,nonveg_main,sub_category,no word its siblings agree about
 bangalore,chilli_chicken,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,chilli_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-bangalore,chilli_chicken,nonveg_main,sub_category,no word its siblings agree about
 bangalore,chilli_chicken_dry,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,chilli_chicken_dry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,chilli_chicken_dry,nonveg_main,sub_category,no word its siblings agree about
@@ -1382,6 +1381,8 @@ bangalore,garlic_tempered_grilled_pepper_and_yellow_pumpkin,healthy_rice,sub_cat
 bangalore,gasagase_payasam,dessert,key_ingredient,no word its siblings agree about
 bangalore,gatta_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,gatta_pulao,rice,sub_category,no word its siblings agree about
+bangalore,gauloti_kebab,nonveg_main,gravy_region,no word its siblings agree about
+bangalore,gauloti_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,gavar_ki_sabzi,veg_dry,key_ingredient,no word its siblings agree about
 bangalore,gavar_ki_sabzi,veg_dry,sub_category,no word its siblings agree about
 bangalore,gawarphalli_ki_sabzi,veg_dry,key_ingredient,no word its siblings agree about
@@ -1584,8 +1585,6 @@ bangalore,haryali_chicken_masala,nonveg_main,nonveg_biryani_region,no word its s
 bangalore,hasiru_kalu_usili,veg_dry,key_ingredient,no word its siblings agree about
 bangalore,hawaiian_salad,salad,key_ingredient,no word its siblings agree about
 bangalore,hawaiian_salad,salad,sub_category,no word its siblings agree about
-bangalore,hederabad_dum_biryani,rice,key_ingredient,no word its siblings agree about
-bangalore,hederabad_dum_biryani,rice,sub_category,no word its siblings agree about
 bangalore,heerekaayi_sambar,sambar,key_ingredient,no word its siblings agree about
 bangalore,heerekaayi_stir_fry,veg_dry,key_ingredient,no word its siblings agree about
 bangalore,heerekaayi_stir_fry,veg_dry,sub_category,no word its siblings agree about
@@ -1876,9 +1875,8 @@ bangalore,kasta_gajak,dessert,sub_category,no word its siblings agree about
 bangalore,kasta_khaja,dessert,dessert_form,no word its siblings agree about
 bangalore,kasta_khaja,dessert,key_ingredient,no word its siblings agree about
 bangalore,kasta_khaja,dessert,sub_category,no word its siblings agree about
-bangalore,kasturia_kebab,nonveg_main,gravy_region,no word its siblings agree about
-bangalore,kasturia_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-bangalore,kasturia_kebab,nonveg_main,sub_category,no word its siblings agree about
+bangalore,kasturi_kebab,nonveg_main,gravy_region,no word its siblings agree about
+bangalore,kasturi_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,kathal_biryani,rice,flavoured_rice_region,no word its siblings agree about
 bangalore,kathal_chana_dal_curry,veg_gravy,gravy_region,no word its siblings agree about
 bangalore,kathal_chana_dal_curry,veg_gravy,sub_category,no word its siblings agree about
@@ -1930,7 +1928,6 @@ bangalore,kolhapuri_egg_masala,nonveg_main,sub_category,no word its siblings agr
 bangalore,kolhapuri_veg,veg_dry,key_ingredient,no word its siblings agree about
 bangalore,kolhapuri_veg,veg_dry,sub_category,no word its siblings agree about
 bangalore,kolkata_aloo_biryani,rice,sub_category,no word its siblings agree about
-bangalore,kolkata_chic_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,kolkata_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,kolkata_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,kolkata_dal,dal,key_ingredient,no word its siblings agree about
@@ -2713,8 +2710,6 @@ bangalore,onion_egg_roast_semi_gravy,nonveg_main,nonveg_biryani_region,no word i
 bangalore,onion_lemon_and_cucumber_salad,salad,key_ingredient,no word its siblings agree about
 bangalore,onion_lemon_and_cucumber_salad,salad,sub_category,no word its siblings agree about
 bangalore,onion_pakora,starter,key_ingredient,no word its siblings agree about
-bangalore,onion_rings_carrots_batons_chinese_cabbage_english_cucumber_bell_pepper_tomato_quarters_boiled_chana_boiled_peanuts_boiled_rajma_corn_boiled_betroot_boiled_eggs,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-bangalore,onion_rings_carrots_batons_chinese_cabbage_english_cucumber_bell_pepper_tomato_quarters_boiled_chana_boiled_peanuts_boiled_rajma_corn_boiled_betroot_boiled_eggs,nonveg_main,sub_category,no word its siblings agree about
 bangalore,onion_samosa,starter,key_ingredient,no word its siblings agree about
 bangalore,onion_vegetable_sambar,sambar,key_ingredient,no word its siblings agree about
 bangalore,orange_and_basil,infused_water,is_* flags,no attribute or word its siblings agree about
@@ -3247,6 +3242,8 @@ bangalore,shahi_veg_korma,veg_gravy,key_ingredient,no word its siblings agree ab
 bangalore,shahi_veg_korma,veg_gravy,sub_category,no word its siblings agree about
 bangalore,shahi_veg_pulao,rice,key_ingredient,no word its siblings agree about
 bangalore,shahi_veg_pulao,rice,sub_category,no word its siblings agree about
+bangalore,shami_kebab,nonveg_main,gravy_region,no word its siblings agree about
+bangalore,shami_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,sharbath_sherbat,welcome_drink,drink_rule_group,no word its siblings agree about
 bangalore,sharbath_sherbat,welcome_drink,drink_type,no word its siblings agree about
 bangalore,sharbath_sherbat,welcome_drink,key_ingredient,no word its siblings agree about
@@ -3434,7 +3431,6 @@ bangalore,tamilnadu_sambar,sambar,key_ingredient,no word its siblings agree abou
 bangalore,tandoori_achari_aloo,veg_dry,key_ingredient,no word its siblings agree about
 bangalore,tandoori_chicken,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,tandoori_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-bangalore,tandoori_chicken,nonveg_main,sub_category,no word its siblings agree about
 bangalore,tandoori_chicken_tikka_masala,nonveg_main,gravy_region,no word its siblings agree about
 bangalore,tandoori_chicken_tikka_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 bangalore,tandoori_murgh_lababdar,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -5143,7 +5139,6 @@ hyderabad,chili_chicken,nonveg_main,nonveg_biryani_region,no word its siblings a
 hyderabad,chili_chicken,nonveg_main,sub_category,no word its siblings agree about
 hyderabad,chilli_chicken,nonveg_main,gravy_region,no word its siblings agree about
 hyderabad,chilli_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-hyderabad,chilli_chicken,nonveg_main,sub_category,no word its siblings agree about
 hyderabad,chilli_chicken_dry,nonveg_main,gravy_region,no word its siblings agree about
 hyderabad,chilli_chicken_dry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,chilli_chicken_dry,nonveg_main,sub_category,no word its siblings agree about
@@ -5718,6 +5713,8 @@ hyderabad,garlic_tempered_grilled_pepper_and_yellow_pumpkin,healthy_rice,sub_cat
 hyderabad,gasagase_payasam,dessert,key_ingredient,no word its siblings agree about
 hyderabad,gatta_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,gatta_pulao,rice,sub_category,no word its siblings agree about
+hyderabad,gauloti_kebab,nonveg_main,gravy_region,no word its siblings agree about
+hyderabad,gauloti_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,gavar_ki_sabzi,veg_dry,key_ingredient,no word its siblings agree about
 hyderabad,gavar_ki_sabzi,veg_dry,sub_category,no word its siblings agree about
 hyderabad,gawarphalli_ki_sabzi,veg_dry,key_ingredient,no word its siblings agree about
@@ -5929,8 +5926,6 @@ hyderabad,haryali_chicken_masala,nonveg_main,nonveg_biryani_region,no word its s
 hyderabad,hasiru_kalu_usili,veg_dry,key_ingredient,no word its siblings agree about
 hyderabad,hawaiian_salad,salad,key_ingredient,no word its siblings agree about
 hyderabad,hawaiian_salad,salad,sub_category,no word its siblings agree about
-hyderabad,hederabad_dum_biryani,rice,key_ingredient,no word its siblings agree about
-hyderabad,hederabad_dum_biryani,rice,sub_category,no word its siblings agree about
 hyderabad,heerekaayi_sambar,sambar,key_ingredient,no word its siblings agree about
 hyderabad,heerekaayi_stir_fry,veg_dry,key_ingredient,no word its siblings agree about
 hyderabad,heerekaayi_stir_fry,veg_dry,sub_category,no word its siblings agree about
@@ -6242,9 +6237,8 @@ hyderabad,kasta_gajak,dessert,sub_category,no word its siblings agree about
 hyderabad,kasta_khaja,dessert,dessert_form,no word its siblings agree about
 hyderabad,kasta_khaja,dessert,key_ingredient,no word its siblings agree about
 hyderabad,kasta_khaja,dessert,sub_category,no word its siblings agree about
-hyderabad,kasturia_kebab,nonveg_main,gravy_region,no word its siblings agree about
-hyderabad,kasturia_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-hyderabad,kasturia_kebab,nonveg_main,sub_category,no word its siblings agree about
+hyderabad,kasturi_kebab,nonveg_main,gravy_region,no word its siblings agree about
+hyderabad,kasturi_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,kathal_biryani,rice,flavoured_rice_region,no word its siblings agree about
 hyderabad,kathal_chana_dal_curry,veg_gravy,gravy_region,no word its siblings agree about
 hyderabad,kathal_chana_dal_curry,veg_gravy,sub_category,no word its siblings agree about
@@ -6309,7 +6303,6 @@ hyderabad,kolhapuri_veg,veg_dry,sub_category,no word its siblings agree about
 hyderabad,kolhapuri_veg_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,kolhapuri_veg_pulao,rice,sub_category,no word its siblings agree about
 hyderabad,kolkata_aloo_biryani,rice,sub_category,no word its siblings agree about
-hyderabad,kolkata_chic_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,kolkata_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
 hyderabad,kolkata_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,kolkata_dal,dal,key_ingredient,no word its siblings agree about
@@ -7122,8 +7115,6 @@ hyderabad,onion_egg_roast_semi_gravy,nonveg_main,nonveg_biryani_region,no word i
 hyderabad,onion_lemon_and_cucumber_salad,salad,key_ingredient,no word its siblings agree about
 hyderabad,onion_lemon_and_cucumber_salad,salad,sub_category,no word its siblings agree about
 hyderabad,onion_pakora,starter,key_ingredient,no word its siblings agree about
-hyderabad,onion_rings_carrots_batons_chinese_cabbage_english_cucumber_bell_pepper_tomato_quarters_boiled_chana_boiled_peanuts_boiled_rajma_corn_boiled_betroot_boiled_eggs,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-hyderabad,onion_rings_carrots_batons_chinese_cabbage_english_cucumber_bell_pepper_tomato_quarters_boiled_chana_boiled_peanuts_boiled_rajma_corn_boiled_betroot_boiled_eggs,nonveg_main,sub_category,no word its siblings agree about
 hyderabad,onion_samosa,starter,key_ingredient,no word its siblings agree about
 hyderabad,onion_vegetable_sambar,sambar,key_ingredient,no word its siblings agree about
 hyderabad,orange_and_basil,infused_water,is_* flags,no attribute or word its siblings agree about
@@ -7695,6 +7686,8 @@ hyderabad,shahi_veg_korma,veg_gravy,key_ingredient,no word its siblings agree ab
 hyderabad,shahi_veg_korma,veg_gravy,sub_category,no word its siblings agree about
 hyderabad,shahi_veg_pulao,rice,key_ingredient,no word its siblings agree about
 hyderabad,shahi_veg_pulao,rice,sub_category,no word its siblings agree about
+hyderabad,shami_kebab,nonveg_main,gravy_region,no word its siblings agree about
+hyderabad,shami_kebab,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,sharbath_sherbat,welcome_drink,drink_rule_group,no word its siblings agree about
 hyderabad,sharbath_sherbat,welcome_drink,drink_type,no word its siblings agree about
 hyderabad,sharbath_sherbat,welcome_drink,key_ingredient,no word its siblings agree about
@@ -7887,7 +7880,6 @@ hyderabad,tamilnadu_sambar,sambar,key_ingredient,no word its siblings agree abou
 hyderabad,tandoori_achari_aloo,veg_dry,key_ingredient,no word its siblings agree about
 hyderabad,tandoori_chicken,nonveg_main,gravy_region,no word its siblings agree about
 hyderabad,tandoori_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-hyderabad,tandoori_chicken,nonveg_main,sub_category,no word its siblings agree about
 hyderabad,tandoori_chicken_tikka_masala,nonveg_main,gravy_region,no word its siblings agree about
 hyderabad,tandoori_chicken_tikka_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 hyderabad,tandoori_murgh,nonveg_main,gravy_region,no word its siblings agree about
@@ -8539,13 +8531,11 @@ ncr,chicken_tikka,nonveg_main,gravy_region,no word its siblings agree about
 ncr,chicken_tikka,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,chicken_tikka_masala,nonveg_main,gravy_region,no word its siblings agree about
 ncr,chicken_tikka_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+ncr,chilli_chicken,nonveg_main,gravy_region,no word its siblings agree about
+ncr,chilli_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,chilli_chicken_fry,nonveg_main,gravy_region,no word its siblings agree about
 ncr,chilli_chicken_fry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,chilli_chicken_gravy,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-ncr,chilli_chiken,nonveg_main,gravy_region,no word its siblings agree about
-ncr,chilli_chiken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-ncr,chilly_chicken,nonveg_main,gravy_region,no word its siblings agree about
-ncr,chilly_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,chinese_veg_in_sweet_n_sour,veg_gravy,gravy_region,no word its siblings agree about
 ncr,chocklet_brownie,dessert,dessert_form,no word its siblings agree about
 ncr,choco_brownie,dessert,dessert_form,no word its siblings agree about
@@ -8654,10 +8644,7 @@ ncr,haryali_chicken,nonveg_main,gravy_region,no word its siblings agree about
 ncr,haryali_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,home_style_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,homestyle_chole,dal,dal_region,no word its siblings agree about
-ncr,honey_chilli_checken,nonveg_main,gravy_region,no word its siblings agree about
-ncr,honey_chilli_checken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
-ncr,honey_chilli_chiciken,nonveg_main,gravy_region,no word its siblings agree about
-ncr,honey_chilli_chiciken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+ncr,honey_chilli_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,hot_sour_veg,dal,dal_region,no word its siblings agree about
 ncr,hyderabadi_chicken_biryani,nonveg_main,gravy_region,no word its siblings agree about
 ncr,hyderabadi_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
@@ -8778,8 +8765,6 @@ ncr,mughlai_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree
 ncr,mumbai_chicken_curry,nonveg_main,gravy_region,no word its siblings agree about
 ncr,mumbai_chicken_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,musk_melon,veg_gravy,gravy_region,no word its siblings agree about
-ncr,mutter_keema,nonveg_main,gravy_region,no word its siblings agree about
-ncr,mutter_keema,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,mutton_curry,nonveg_main,gravy_region,no word its siblings agree about
 ncr,mutton_curry,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,neutrela_rice,rice,flavoured_rice_region,no word its siblings agree about
@@ -8883,8 +8868,8 @@ ncr,sweetlime_water,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tadka,veg_gravy,gravy_region,no word its siblings agree about
 ncr,tamarind_millet_rice,healthy_rice,key_ingredient,no word its siblings agree about
 ncr,tamarind_millet_rice,healthy_rice,sub_category,no word its siblings agree about
-ncr,tandoori_chcien,nonveg_main,gravy_region,no word its siblings agree about
-ncr,tandoori_chcien,nonveg_main,nonveg_biryani_region,no word its siblings agree about
+ncr,tandoori_chicken,nonveg_main,gravy_region,no word its siblings agree about
+ncr,tandoori_chicken,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,tandoori_chicken_masala,nonveg_main,gravy_region,no word its siblings agree about
 ncr,tandoori_chicken_masala,nonveg_main,nonveg_biryani_region,no word its siblings agree about
 ncr,tandoori_chicken_seekh_masala,nonveg_main,gravy_region,no word its siblings agree about

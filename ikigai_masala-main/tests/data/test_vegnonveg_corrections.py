@@ -20,8 +20,8 @@ import pytest
 
 from scripts.city_list import CITIES
 from scripts.vegnonveg_corrections import (
-    NEEDS_CLIENT_DECISION, NONVEG_CORRECTIONS, NONVEG_FLAGS, PROTEIN_ONLY,
-    VEG_CORRECTIONS, apply_city,
+    FOLD_DROPS, FOLD_RENAMES, NEEDS_CLIENT_DECISION, NONVEG_CORRECTIONS,
+    NONVEG_FLAGS, PROTEIN_ONLY, REMOVALS, VEG_CORRECTIONS, apply_city,
 )
 from src.constants import NONVEG_PROTEINS, NONVEG_SLOTS
 from src.preprocessor.pool_builder import _nonveg_mask
@@ -96,12 +96,26 @@ class TestTheVegetarianDishesAreBackInVegPools:
                 assert _norm(_row(df, item)['key_ingredient'])
 
 
+def _surviving_name(city, item):
+    """The row a correction ends up in.
+
+    A few of these are corrected and then FOLDED into their correctly-spelled
+    twin in the same pass, so the name the correction is keyed on is gone from
+    the file. The correction still has to happen — it is what establishes which
+    of the two rows is on the right side of the line, and it is the fallback if
+    the fold's winner is ever missing — so the assertion follows the survivor
+    rather than dropping the case.
+    """
+    item = FOLD_DROPS.get(city, {}).get(item, item)
+    return FOLD_RENAMES.get(city, {}).get(item, item)
+
+
 class TestTheMeatDishesAreOutOfVegPools:
     def test_every_corrected_row_reads_non_veg(self, cities):
         for city, items in NONVEG_CORRECTIONS.items():
             df = cities[city]
             for item in items:
-                r = _row(df, item)
+                r = _row(df, _surviving_name(city, item))
                 assert bool(_nonveg_mask(df.loc[[r.name]]).iloc[0]), \
                     f'{city}/{item} still reads vegetarian'
                 assert _norm(r['course_type']) in NONVEG_SLOTS
@@ -113,7 +127,7 @@ class TestTheMeatDishesAreOutOfVegPools:
         for city, items in NONVEG_CORRECTIONS.items():
             df = cities[city]
             for item in items:
-                r = _row(df, item)
+                r = _row(df, _surviving_name(city, item))
                 for flag in ('is_chinese_veg_gravy', 'is_paneer_gravy', 'is_paneer_fry'):
                     if flag in df.columns:
                         val = pd.to_numeric(pd.Series([r[flag]]), errors='coerce').fillna(0)[0]
@@ -127,7 +141,7 @@ class TestTheMeatDishesAreOutOfVegPools:
         for city, items in NONVEG_CORRECTIONS.items():
             df = cities[city]
             for item in items:
-                r = _row(df, item)
+                r = _row(df, _surviving_name(city, item))
                 on = [f for f in forms if f in df.columns
                       and pd.to_numeric(pd.Series([r[f]]), errors='coerce').fillna(0)[0] == 1]
                 assert on, f'{city}/{item} has no form flag'
@@ -161,13 +175,20 @@ class TestTheProteinOnlyFixes:
 
 
 class TestWhatWasDeliberatelyNotChanged:
-    def test_keema_matar_is_left_non_veg(self, cities):
-        """The trap that makes a name rule wrong in the other direction: Keema
-        Matar is the MEAT dish — the peas are added to the mince, not
-        substituted for it. A rule keyed on `matar` flips exactly this one."""
+    def test_keema_matar_was_held_back_and_then_resolved_by_the_client(self, cities):
+        """The row the dish name could not settle, in either direction.
+
+        "Keema Matar" is the MEAT dish — the peas are added to the mince, not
+        substituted for it — so `matar` is no more evidence of vegetarian than
+        `keema` is of meat. It was therefore held as non-veg and reported rather
+        than guessed, and the CLIENT confirmed their dish is peas keema. That is
+        the whole method in one row: the name narrows the question, the kitchen
+        answers it.
+        """
         r = _row(cities['ncr'], 'mutter_keema')
-        assert _norm(r['primary_protein']) == 'mutton'
-        assert _norm(r['course_type']) in NONVEG_SLOTS
+        assert _norm(r['primary_protein']) == 'green_peas'
+        assert _norm(r['course_type']) == 'veg_dry'
+        assert not bool(_nonveg_mask(cities['ncr'].loc[[r.name]]).iloc[0])
 
     def test_the_open_questions_are_reported(self, project_root_path):
         report = project_root_path / 'docs' / 'vegnonveg_to_confirm.csv'
@@ -179,12 +200,16 @@ class TestWhatWasDeliberatelyNotChanged:
     def test_every_reported_row_still_exists(self, cities):
         """A question about a row since renamed away is noise the reader has to
         re-derive. Composite entries name a family, so only single ones check."""
-        for item, city_csv, _state, _q in NEEDS_CLIENT_DECISION:
+        for item, city_csv, state, _q in NEEDS_CLIENT_DECISION:
             if any(c in item for c in ('/', '+', '...')):
                 continue
+            if 'removed' in state:
+                continue        # the client asked for it to go
             for city in city_csv.split(','):
-                df = cities[city.strip()]
-                assert (df['item'].map(_norm) == item).any(), f'{city}/{item} gone'
+                city = city.strip()
+                name = _surviving_name(city, item)
+                assert (cities[city]['item'].map(_norm) == name).any(), \
+                    f'{city}/{item} gone'
 
 
 class TestTheGuardCannotPassVacuously:
@@ -200,14 +225,46 @@ class TestTheGuardCannotPassVacuously:
         assert _norm(r['course_type']) == 'veg_dry'
         assert any('bhuna_soya_keema' in c for c in changes)
 
-    def test_a_planted_meat_dish_marked_veg_is_corrected(self, cities):
+    def test_a_planted_meat_dish_marked_veg_is_corrected_and_renamed(self, cities):
+        """Plants the defect back on the row that has since been fixed AND
+        renamed, so the whole path is exercised: the veg-side row is put back
+        under its misspelled name, and one pass has to make it non-veg and give
+        it the canonical spelling again."""
         df = cities['ncr'].copy()
-        i = df.index[df['item'].map(_norm) == 'tandoori_chcien'][0]
+        i = df.index[df['item'].map(_norm) == 'tandoori_chicken'][0]
+        df.at[i, 'item'] = 'tandoori_chcien'
         df.at[i, 'primary_protein'] = ''
         df.at[i, 'course_type'] = 'veg_gravy'
-        out, _ = apply_city(df, 'ncr')
-        assert _norm(out.loc[i, 'primary_protein']) == 'chicken'
-        assert _norm(out.loc[i, 'course_type']) == 'nonveg_main'
+        df.at[i, 'is_nonveg_dry'] = 0
+        out, changes = apply_city(df, 'ncr')
+        r = out.loc[out['item'].map(_norm) == 'tandoori_chicken']
+        assert len(r) == 1, 'the rename did not happen'
+        assert _norm(r.iloc[0]['primary_protein']) == 'chicken'
+        assert _norm(r.iloc[0]['course_type']) == 'nonveg_main'
+        assert not (out['item'].map(_norm) == 'tandoori_chcien').any()
+        assert any('RENAMED' in c for c in changes)
+
+    def test_a_fold_moves_the_client_tokens_before_dropping_the_row(self, cities):
+        """A dropped duplicate must not take a client's dish with it — if a
+        site's pool token lived only on the loser, that site silently loses the
+        dish. Planted, because the live rows may already share their tokens."""
+        df = cities['bangalore'].copy()
+        w = df.index[df['item'].map(_norm) == 'kasturi_kebab'][0]
+        df.at[w, 'client'] = 'alpha'
+        loser = df.loc[[w]].copy()
+        loser.at[w, 'item'] = 'kasturia_kebab'
+        loser.at[w, 'client'] = 'beta'
+        df = pd.concat([df, loser], ignore_index=True)
+        out, _ = apply_city(df, 'bangalore')
+        survivor = out[out['item'].map(_norm) == 'kasturi_kebab'].iloc[0]
+        assert set(str(survivor['client']).split(',')) == {'alpha', 'beta'}
+        assert not (out['item'].map(_norm) == 'kasturia_kebab').any()
+
+    def test_the_removals_are_gone_and_stay_gone(self, cities):
+        for city, items in REMOVALS.items():
+            names = cities[city]['item'].map(_norm)
+            for item in items:
+                assert not (names == item).any(), f'{city}/{item} is back'
 
     def test_a_second_pass_changes_nothing(self, cities):
         for city in CITIES:
