@@ -150,6 +150,47 @@ class TestTheMisfileVerdicts:
         assert row['course_type'] == 'salad'
         assert str(row['key_ingredient']) == 'onion'
 
+    def test_the_verdicts_are_written_somewhere_a_person_can_read(self):
+        """An approval needs something to be an approval OF.
+
+        `audit_duplicate_dish_names.py`'s CSV was the review surface for these
+        groups, and once they are applied it is EMPTY — correctly, since that
+        emptiness is the check that the fold converged. But it leaves every
+        verdict readable only as a Python dict in the fold script, which is
+        not a thing anyone audits.
+        """
+        import subprocess
+        r = subprocess.run(
+            [sys.executable, str(_SCRIPTS / 'fold_duplicate_dish_names.py'),
+             '--check'], capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_the_report_covers_every_verdict_and_carries_its_reason(self):
+        import csv as _csv
+        path = _SCRIPTS.parent / 'docs' / 'duplicate_dish_misfile_verdicts.csv'
+        rows = list(_csv.DictReader(path.open(encoding='utf-8')))
+        expected = sum(len(_for_city(t, c)) for t in (_MISFILES, _FORM_RENAMES)
+                       for c in CITIES)
+        assert len(rows) == expected, (len(rows), expected)
+        for row in rows:
+            assert row['surviving_row'] and row['course_it_sits_in'], row
+            # The reason is the point — a verdict with no argument behind it is
+            # the thing this whole file exists to prevent.
+            assert len(row['reason']) > 40, row
+
+    def test_a_check_run_does_not_touch_the_workbooks(self, frames):
+        """This script WRITES workbooks, so a `--check` that folds is not a
+        check. Asserted by size+mtime, since the fold is idempotent and a
+        content comparison would pass even if it had rewritten them."""
+        import subprocess
+        before = {c: (_ITEMS / f'{c}.xlsx').stat().st_mtime_ns for c in CITIES
+                  if (_ITEMS / f'{c}.xlsx').exists()}
+        subprocess.run([sys.executable,
+                        str(_SCRIPTS / 'fold_duplicate_dish_names.py'),
+                        '--check'], capture_output=True, text=True)
+        after = {c: (_ITEMS / f'{c}.xlsx').stat().st_mtime_ns for c in before}
+        assert before == after
+
     def test_every_verdict_still_names_a_live_row(self, frames):
         """A verdict whose row has since been renamed away is dead code that
         reads as a live decision."""

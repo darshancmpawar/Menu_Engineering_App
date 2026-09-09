@@ -68,6 +68,8 @@ Idempotent: a second pass finds no groups left.
 
 from __future__ import annotations
 
+import csv
+import io
 import sys
 from pathlib import Path
 from typing import Optional
@@ -81,6 +83,9 @@ from city_list import CITIES  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ITEMS = _ROOT / 'data' / 'raw' / 'city_items'
+#: The adjudicated groups, written out so an approval has something to be
+#: an approval OF. The audit's own CSV is empty once these are applied.
+_VERDICTS = _ROOT / 'docs' / 'duplicate_dish_misfile_verdicts.csv'
 
 #: `(city -> {surviving item: (rename_to | None, reason)})`. The survivor is the
 #: correctly-filed row; everything else in its group is dropped. `rename_to` is
@@ -413,7 +418,87 @@ def apply_city(df: pd.DataFrame, city: str,
     return df, log
 
 
+def verdict_rows() -> list[dict]:
+    """Every adjudicated group, as a row a person can read and check.
+
+    The audit CSV was the review surface for these, and once they are applied
+    it is EMPTY — which is the point of it, but it leaves the decisions
+    readable only as Python dicts in this file. So they are written out
+    separately: a verdict nobody can audit without opening the source is a
+    verdict nobody audits.
+
+    Each row states what the group was, which row lives, where that row now
+    sits, and why — the last from the same string the dict carries, so the
+    report cannot drift from the decision it describes. The surviving row's
+    course is read from the WORKBOOK rather than restated here, so a row that
+    someone later re-files shows up in the report as having moved.
+    """
+    rows: list[dict] = []
+    frames: dict[str, pd.DataFrame] = {}
+    for city in CITIES:
+        path = _ITEMS / f'{city}.xlsx'
+        if not path.exists():
+            continue
+        df = pd.read_excel(path)
+        df.columns = [c.strip() for c in df.columns]
+        frames[city] = df
+
+    def _course(city: str, item: str) -> str:
+        df = frames.get(city)
+        if df is None:
+            return ''
+        hit = df[df['item'].astype(str).str.lower().str.strip() == item]
+        return '' if hit.empty else _norm(hit.iloc[0]['course_type'])
+
+    for city in CITIES:
+        for item, (rename_to, reason) in sorted(
+                _for_city(_MISFILES, city).items()):
+            survivor = rename_to or item
+            rows.append({
+                'verdict': 'MISFILE - the correctly filed row survives',
+                'city': city,
+                'surviving_row': survivor,
+                'renamed_from': item if rename_to else '',
+                'course_it_sits_in': _course(city, survivor),
+                'reason': ' '.join(str(reason).split()),
+            })
+        for old, (course, new, reason) in sorted(
+                _for_city(_FORM_RENAMES, city).items()):
+            rows.append({
+                'verdict': 'TWO DISHES - the form is named',
+                'city': city,
+                'surviving_row': new,
+                'renamed_from': f'{old} ({course})',
+                'course_it_sits_in': _course(city, new),
+                'reason': ' '.join(str(reason).split()),
+            })
+    return rows
+
+
+def write_verdict_report(rows: list[dict]) -> str:
+    cols = ['verdict', 'city', 'surviving_row', 'renamed_from',
+            'course_it_sits_in', 'reason']
+    sio = io.StringIO()
+    writer = csv.writer(sio, lineterminator='\n')   # see the audit's note
+    writer.writerow(cols)
+    writer.writerows([[str(r.get(c, '')) for c in cols] for r in rows])
+    return sio.getvalue()
+
+
 def main() -> None:
+    if '--check' in sys.argv:
+        # Verifies the report WITHOUT folding: this script writes workbooks,
+        # and a check that mutates them is not a check.
+        text = write_verdict_report(verdict_rows())
+        current = (_VERDICTS.read_text(encoding='utf-8')
+                   if _VERDICTS.exists() else '')
+        if current != text:
+            raise SystemExit(
+                f'{_VERDICTS.relative_to(_ROOT)} is stale — re-run '
+                f'`python scripts/{Path(__file__).name}`')
+        print(f'{_VERDICTS.relative_to(_ROOT)} is current')
+        return
+
     total = 0
     # `CITIES` puts the reference city first, which is what makes this work:
     # Bangalore settles a name and Hyderabad, seeded from it, then agrees.
@@ -439,6 +524,13 @@ def main() -> None:
         if len(log) > 6:
             print(f'    ... and {len(log) - 6} more')
     print(f'\n{total} duplicate row(s) folded away')
+
+    rows = verdict_rows()
+    _VERDICTS.parent.mkdir(parents=True, exist_ok=True)
+    _VERDICTS.write_text(write_verdict_report(rows), encoding='utf-8')
+    misfiles = sum(1 for r in rows if r['verdict'].startswith('MISFILE'))
+    print(f"{misfiles} misfile verdict(s) + {len(rows) - misfiles} form "
+          f"rename(s) -> {_VERDICTS.relative_to(_ROOT)}")
 
 
 if __name__ == '__main__':
