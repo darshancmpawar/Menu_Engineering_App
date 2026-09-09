@@ -223,7 +223,6 @@ def _band_totals(capture):
 
     coeffs, n_cells = capture['coeffs'], capture['cells']
     weights = sorted(OBJECTIVE_TIER_WEIGHTS.values())        # low .. theme
-    low = weights[0]
     per_cell = MAX_FRESHNESS_BONUS + MAX_TIE_BREAK
     bands = {'sub_rule': n_cells * per_cell}
     for name, w in OBJECTIVE_TIER_WEIGHTS.items():

@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from src.solver.menu_solver import (
-    INFEASIBLE_MESSAGE, MAX_FRESHNESS_BONUS, MenuSolver, TIMEOUT_MESSAGE,
+    INFEASIBLE_MESSAGE, MenuSolver, TIMEOUT_MESSAGE,
 )
 
 

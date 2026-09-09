@@ -100,8 +100,14 @@ NONVEG_FLAGS = (
 # --------------------------------------------------------------------------
 VEG_CORRECTIONS = {
     'ncr': {
-        # Minced SOYA, not meat. `primary_protein: mutton` on all eleven is one
-        # bad fuzzy match on "keema", propagated across the family. The target
+        # Minced SOYA, not meat. `primary_protein: mutton` on all NINE is one
+        # bad fuzzy match on "keema", propagated across the family. Was
+        # eleven: `fold_duplicate_dish_names.py` (chain step 3b) merged
+        # `mutter_soya_keema` into `soya_matar_keema` and `veg_keema_mutter`
+        # into `veg_keema_matar` — one dish written twice, in each case.
+        # Renaming the keys without deleting the survivors' twins left two
+        # duplicate dict literals here, which Python resolves silently by
+        # keeping the last; `ruff --select=F` (F601) is what caught it. The target
         # values are NCR's own: `soya_keema` and `soya_keema_mutter` are already
         # veg_dry / chole_and_soya_dry / soy, and `soya_keema` was corrected on
         # its own in `course_type_corrections.py` — this is that fix finished.
@@ -109,7 +115,6 @@ VEG_CORRECTIONS = {
         'bhuna_soya_keema_masala': ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'soya_matar_keema':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'pudhina_soya_keema':      ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
-        'soya_matar_keema':        ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         # "Nutri" / "nutrela" / "nutree" is the soya-granule brand used as the
         # generic word for the ingredient, the way "meal maker" is.
         'nutri_keema':             ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
@@ -117,10 +122,9 @@ VEG_CORRECTIONS = {
         'nutri_keema_veg':         ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'nutree_keema_matar':      ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         # `veg_keema_*` names its own side. A veg keema is soya, paneer,
-        # mushroom or lentil depending on the kitchen; `soy` follows the eleven
+        # mushroom or lentil depending on the kitchen; `soy` follows the eight
         # siblings it arrived beside, and is listed in the report as the one
         # value here chosen by family rather than by the dish's own name.
-        'veg_keema_matar':         ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         'veg_keema_matar':         ('veg_dry', 'chole_and_soya_dry', 'soy', 'soya'),
         # `bhurji` is "scrambled", not "egg". All three came in under the source
         # bank's `egg_items` heading, which is where the egg protein came from.
