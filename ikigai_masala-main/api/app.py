@@ -2079,8 +2079,42 @@ def _rule_notes(rules) -> Dict[str, str]:
         slot = cfg.get('base_slot')
         if not comment or not slot or isinstance(slot, (list, tuple, set)):
             continue
-        notes.setdefault(str(slot), str(comment))
+        # The RULE NAME leads. `_comment` is not reliably a client-facing
+        # sentence — for `bread` it is the client's own words, for
+        # `nonveg_biryani_one_per_day` it is 400 characters of rationale about
+        # counting days versus dishes — so the reader gets something short and
+        # identifiable first and the prose second. "Dindigul Thalappakatti
+        # Biryani — nonveg biryani one per day" is actionable on its own; the
+        # rationale alone is not.
+        name = str(cfg.get('name') or '').replace('_', ' ').strip()
+        note = _first_sentence(str(comment))
+        notes.setdefault(str(slot),
+                         f'{name} — {note}' if name else note)
     return notes
+
+
+#: How much of a `_comment` a reader gets. `_comment` is not one kind of text:
+#: in some configs it IS the client's own sentence ("client asks for a millet
+#: bread on south days") and in others it is developer rationale explaining why
+#: the rule is written the way it is. `nonveg_biryani_one_per_day`'s runs to 400
+#: characters about counting DAYS versus dishes — true, useful to whoever edits
+#: the rule, and unreadable as the answer to "why is this biryani here".
+_NOTE_CHARS = 160
+
+
+def _first_sentence(text: str) -> str:
+    """The lead sentence of a rule comment, capped — see `_NOTE_CHARS`.
+
+    The first sentence is where the client's own words are when they are there
+    at all; the rationale that follows is for the person editing the rule. Cut
+    on a sentence boundary rather than mid-word so what a chef reads is a whole
+    thought, and mark a truncation so nobody mistakes it for the full note.
+    """
+    clean = ' '.join(str(text).split())
+    head = re.split(r'(?<=[.!?])\s+', clean)[0] if clean else ''
+    if len(head) <= _NOTE_CHARS:
+        return head
+    return head[:_NOTE_CHARS].rsplit(' ', 1)[0] + '…'
 
 
 @app.route('/api/v1/explain', methods=['POST'])
@@ -2101,9 +2135,10 @@ def explain_menu():
     Response::
 
         {"success": true,
-         "days": [{date, weekday, theme, bullets: [...], prose: str|null,
-                   checks: [...], provenance: [...], plate_profile: {...},
-                   relaxations: [...], llm_used: bool, reason: str}],
+         "days": [{date, weekday, theme, dishes: {slot: {...}},
+                   plate_profile: {...}, checks: [...], provenance: [...],
+                   relaxations: [...], bullets: [...], prose: str|null,
+                   llm_used: bool, reason: str}],
          "llm_used": bool}
 
     ``prose`` is null whenever the model is off (the default), unreachable, or
@@ -2128,6 +2163,10 @@ def explain_menu():
         # maps and ISO-week alternation already resolved (note 9).
         pinned = {f'{d}:{s}': v for (d, s), v in
                   (getattr(inputs.cfg, 'forced_items', None) or {}).items()}
+        # `colour_variety` mirrors a rule the solver enforces, so it has to be
+        # given the same numbers or it disagrees with the menu it is describing
+        # (design note 13's clamp). Both come off the counter's own config.
+        cfg = inputs.cfg
         packs = build_plan_evidence(
             solution=solution,
             attrs=attrs_from_dataframe(inputs.df),
@@ -2137,6 +2176,12 @@ def explain_menu():
             recency=inputs.recency_by_item,
             constant_items=pinned,
             rule_notes=_rule_notes(inputs.rules),
+            colour_target=getattr(cfg, 'min_distinct_colors_per_day', None),
+            colour_slots=getattr(cfg, 'color_slots', None),
+            # Only the verdicts fit to show a chef, by default. `all_checks`
+            # opts a caller back in — that is the calibration path, which needs
+            # the uncalibrated numbers to measure them.
+            calibrated_only=not bool(data.get('all_checks')),
         )
         relaxations = data.get('relaxations')
         if isinstance(relaxations, list) and relaxations:
@@ -2150,8 +2195,17 @@ def explain_menu():
                 'date': pack['date'],
                 'weekday': pack['weekday'],
                 'theme': pack['theme'],
+                # The per-slot dishes with their attributes. The rendered menu
+                # table already has the NAMES; what the explanation needs on top
+                # is the colour and texture behind each verdict, so a reader can
+                # see why `texture_contrast` said what it said instead of taking
+                # it on trust.
+                'dishes': pack['dishes'],
                 'plate_profile': pack['plate_profile'],
                 'checks': pack['checks'],
+                # Which dishes complement each other and what the plate lacks —
+                # the meal-level answer the per-dish `provenance` cannot give.
+                'pairings': pack['pairings'],
                 'provenance': pack['provenance'],
                 'relaxations': pack['relaxations'],
                 'bullets': extra.get('bullets') or [],

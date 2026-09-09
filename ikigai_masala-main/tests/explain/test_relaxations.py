@@ -58,7 +58,8 @@ class TestWhatCounts:
                      extra={RELAXATION: 'my_rule'})
         assert cap.records == [{'rule': 'my_rule',
                                 'detail': 'floor relaxed for day 3',
-                                'occurrences': 1}]
+                                'occurrences': 1,
+                                'samples': ['floor relaxed for day 3']}]
 
     def test_the_rule_name_is_not_printed_twice(self, log):
         """Messages read "<rule>: <what happened>" and the name is its own
@@ -100,6 +101,36 @@ class TestTheDedup:
             log.info('%s: floor relaxed', 'r', extra={RELAXATION: 'r'})
             log.info('%s: ban skipped', 'r', extra={RELAXATION: 'r'})
         assert len(cap.records) == 2
+
+    def test_the_varying_half_is_kept_not_collapsed(self, log):
+        """The count alone is not actionable. `selector_frequency` logs per
+        day, so which days could not be filled is the whole point — "Tuesday
+        and Thursday could not fit the second dessert" is something a kitchen
+        acts on, "this happened 25 times" is not."""
+        with RelaxationCapture() as cap:
+            for day in (3, 5, 9):
+                log.info('%s: day %d floor relaxed', 'r', day,
+                         extra={RELAXATION: 'r'})
+        rec = cap.records[0]
+        assert rec['occurrences'] == 3
+        assert rec['samples'] == ['day 3 floor relaxed', 'day 5 floor relaxed',
+                                  'day 9 floor relaxed']
+
+    def test_samples_are_capped_so_a_long_plan_is_not_a_wall_of_text(self, log):
+        from src.menu_rules.relaxations import MAX_SAMPLES
+        with RelaxationCapture() as cap:
+            for day in range(30):
+                log.info('%s: day %d floor relaxed', 'r', day,
+                         extra={RELAXATION: 'r'})
+        rec = cap.records[0]
+        assert rec['occurrences'] == 30
+        assert len(rec['samples']) == MAX_SAMPLES
+
+    def test_identical_renderings_are_not_listed_twice(self, log):
+        with RelaxationCapture() as cap:
+            for _ in range(4):
+                log.info('%s: capped to %d', 'r', 1, extra={RELAXATION: 'r'})
+        assert cap.records[0]['samples'] == ['capped to 1']
 
     def test_grouping_is_on_the_format_string_not_the_prose(self, log):
         """`record.msg` is pre-interpolation, so the grouping key is the thing
@@ -164,6 +195,72 @@ class TestTheSilentFailureModes:
             assert tree.level == logging.WARNING, 'left lowered'
         finally:
             tree.setLevel(logging.NOTSET)
+
+    def test_capturing_does_not_flood_the_operator_s_log(self, log):
+        """The cost of lowering the level, and why `_Bridge` exists.
+
+        `api/logging_config.py` gives its stderr handler no level of its own,
+        so a deployment at WARNING has an ancestor handler that emits whatever
+        reaches it. Lowering this tree to INFO without care would print every
+        relaxation and every loader INFO for the duration of every solve — a
+        diagnostic feature making the production log worse.
+        """
+        seen = []
+
+        class _Sink(logging.Handler):
+            def emit(self, record):
+                seen.append((record.levelno, record.getMessage()))
+
+        root = logging.getLogger()
+        sink = _Sink()                      # NOTSET, like the real stderr one
+        root.addHandler(sink)
+        tree = logging.getLogger(RULES_LOGGER)
+        tree.setLevel(logging.WARNING)
+        try:
+            with RelaxationCapture() as cap:
+                log.info('%s: relaxed', 'r', extra={RELAXATION: 'r'})
+                log.info('Loaded %d menu rule(s)', 57)
+                log.warning('Skipping invalid rule')
+            assert len(cap.records) == 1, 'the capture went deaf'
+            levels = [lv for lv, _ in seen]
+            assert logging.INFO not in levels, (
+                f'INFO leaked to an ancestor handler: {seen}')
+            assert logging.WARNING in levels, (
+                'a genuine WARNING stopped reaching the operator')
+        finally:
+            root.removeHandler(sink)
+            tree.setLevel(logging.NOTSET)
+
+    def test_an_already_verbose_deployment_is_unchanged(self, log):
+        """At INFO the operator was already seeing these lines; the bridge must
+        not start hiding them."""
+        seen = []
+
+        class _Sink(logging.Handler):
+            def emit(self, record):
+                seen.append(record.getMessage())
+
+        root = logging.getLogger()
+        sink = _Sink()
+        root.addHandler(sink)
+        tree = logging.getLogger(RULES_LOGGER)
+        tree.setLevel(logging.INFO)
+        try:
+            with RelaxationCapture():
+                log.info('%s: relaxed', 'r', extra={RELAXATION: 'r'})
+            assert any('relaxed' in m for m in seen), seen
+        finally:
+            root.removeHandler(sink)
+            tree.setLevel(logging.NOTSET)
+
+    def test_propagation_is_restored_afterwards(self, log):
+        tree = logging.getLogger(RULES_LOGGER)
+        before = tree.propagate
+        with RelaxationCapture():
+            pass
+        assert tree.propagate == before
+        assert not [h for h in tree.handlers
+                    if type(h).__name__ == '_Bridge'], 'bridge left attached'
 
     def test_a_concurrent_solve_does_not_leak_into_this_one(self, log):
         """`@solver_gate` runs two solves at once by design, and every handler
@@ -262,12 +359,35 @@ def _logger_calls():
             yield path.name, node.lineno, first.value, stamped
 
 
+# Every degradation site in the rule layer, pinned. This is the STRUCTURAL
+# half of the guard and the one that cannot be fooled by phrasing: adding or
+# removing a site fails the test and forces a deliberate update here, whatever
+# words the new message happens to use.
+#
+# The lexical scan below is a second net for the specific mistake of writing a
+# new relaxation and forgetting the stamp — it would leave this count
+# unchanged, because an unstamped site is invisible to a structural count. The
+# two catch different errors and neither replaces the other.
+STAMPED_SITES = 16
+
+
 class TestEveryRelaxationIsStamped:
+    def test_the_number_of_stamped_sites_is_pinned(self):
+        """Structural, not lexical. A new degradation site changes this number
+        whatever it is worded like, so it cannot slip past a vocabulary gap —
+        the way `chuteny` slipped past `remove_generic_rows.py` by not being
+        spelled like the word it searched for."""
+        stamped = [f'{n}:{l}' for n, l, _m, s in _logger_calls() if s]
+        assert len(stamped) == STAMPED_SITES, (
+            f'{len(stamped)} stamped relaxation sites, expected '
+            f'{STAMPED_SITES}. If you added or removed one deliberately, '
+            f'update STAMPED_SITES. Sites: {stamped}')
+
     def test_the_scan_finds_the_known_sites(self):
         """Guard the guard: a regex that matches nothing would pass the test
         below without checking anything."""
         found = [c for c in _logger_calls() if RELAXATION_WORDS.search(c[2])]
-        assert len(found) >= 16, [f'{c[0]}:{c[1]}' for c in found]
+        assert len(found) >= STAMPED_SITES, [f'{c[0]}:{c[1]}' for c in found]
 
     def test_no_relaxation_shaped_line_is_missing_its_stamp(self):
         missing = [

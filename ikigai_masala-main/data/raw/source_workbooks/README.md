@@ -117,6 +117,23 @@ attachments and would have been lost.
 1. `scripts/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
 2. `scripts/misspelled_protein_names.py` — meat-named rows left in veg pools
 3. `scripts/canonical_dish_spellings.py` — one dish, one spelling. NB its
+3b. `scripts/fold_duplicate_dish_names.py` — one dish, one ROW. Applies what
+    `audit_duplicate_dish_names.py` (step 16) reports, which the client approved
+    in full: 356 groups folded (416 rows gone), 22 misfiles resolved by naming
+    the row that survives, and 6 more renamed
+    to name their FORM because both a dry and a gravy of the dish are real.
+    **It sits here, beside the spelling fold, for the same reason that one does:
+    every column-correction script below selects its rows BY NAME.** Run late
+    instead and each of them has already keyed its verdicts to a name the fold
+    is about to rename — twelve scripts' dicts became dead entries that still
+    read as live decisions, and worse, a verdict applied to only one row of a
+    pair can be undone when the fold keeps the other. Order is the fix, not a
+    reconciliation pass. Two things make running it this early safe: the audit
+    at step 16 still verifies nothing downstream re-introduced a duplicate (it
+    must report 0 groups), and `menu_import._existing_twin` is taught the same
+    `dish_key` lookup, so the imports at step 7 resolve a printed `Dum Aloo` to
+    `aloo_dum` instead of minting it back. One predicate, imported rather than
+    restated, so the fold and the importer cannot drift.
    duplicate fold **folds the merged rows' pool tokens together**, and the
    promotion to `common` at 6 tokens is switched off for a city that has no
    `common` pool (`_has_common_pool`, read from the frame before any merge).
@@ -139,6 +156,15 @@ attachments and would have been lost.
    and leaves the column blank, so every `chapati`-spelled row an import added
    arrived unflagged. It derives the flag from the NAME in both directions, so it
    must run **after** step 3 has settled on one spelling.
+8c. `scripts/vegnonveg_corrections.py` — the VEGETARIAN LINE, in both
+    directions. After the imports and the two flag passes for the same reason
+    they are: an importer adds non-veg rows and writes only what a dish name
+    supports, and a misspelled meat dish lands in a veg pool. Before the fills
+    (10-12), because `complete_ontology.py` learns its rules from the rows
+    already classified — run it after and the token vote has eleven soya keemas
+    labelled `mutton` as evidence for what "keema" means. It clears every
+    non-veg form flag on a row it moves to the veg side, so it must also run
+    after step 8, which is what sets them.
 9. `scripts/seafood_taxonomy.py` again if an import added a fish dish
 10. `scripts/marathi_ingredient_names.py` — a dictionary, so it runs BEFORE
     `complete_ontology.py`: the `key_ingredient` values it writes are what that
@@ -171,14 +197,31 @@ attachments and would have been lost.
     is for readability, not correctness.
 14. `scripts/drop_dead_columns.py` — schema only, so order does not matter
 15. `scripts/build_pool_token_map.py`
+16. `scripts/audit_duplicate_dish_names.py` — a REPORT, so it runs last: it
+    reads the names the whole chain has finished settling, and running it
+    earlier would propose folding rows that step 3 or step 8c is about to fold
+    anyway. `--check` fails if `docs/duplicate_dish_names.csv` is stale.
+    (`fold_duplicate_dish_names.py` is **step 3b**, immediately below, and runs
+    a SECOND time as step 17.)
+17. `scripts/fold_duplicate_dish_names.py` **again**. It is idempotent, so a
+    second invocation costs nothing when there is nothing to do — and there
+    usually is something, because three of the steps above CREATE rows and two
+    of them create duplicates. `ncr_fuzzy_unmerge.py` (step 5) reverts a bad
+    fuzzy match by renaming `paneer_mutter` back to `paneer_butter`, and NCR
+    already carries `butter_paneer`: the same dish, the other word order. So the
+    fold at 3b puts the column corrections on stable names and the fold here
+    catches what the row-creating steps re-introduced, exactly as
+    `fill_item_colours.py` and `complete_ontology.py` run to a fixed point for
+    the same reason. Step 16's report is then the proof it converged — it must
+    say 0 groups.
 
 `scripts/chennai_client_pools.py` and `scripts/chennai_cuisine_corrections.py`
 sit with the per-city corrections (step 5).
 It re-files Chennai's kootus into `dal` and imports the drinks, biryanis and
 sweets four clients' stated rules asked more of than the list held.
 
-Steps 0, 3, 7, 8, 8b, 10, 11 and 13 are order-sensitive for the reasons their
-docstrings give.
+Steps 0, 3, 7, 8, 8b, 8c, 10, 11, 13 and 17 are order-sensitive for the reasons
+their docstrings give.
 
 **A removal is the one step the chain cannot undo.** Every other script fills or
 corrects a cell and re-running it converges; `remove_generic_rows.py` deletes

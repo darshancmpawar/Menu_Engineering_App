@@ -147,7 +147,7 @@ class TestKuzhambuIsTheSalad:
         by_item = chn.set_index(chn["item"].astype(str).str.strip().str.lower())
         for dish, course in (("chicken_kuzhambu", "nonveg_main"),
                              ("fish_kuzhambu", "nonveg_main"),
-                             ("kozhi_kuzhambu", "nonveg_main"),
+                             ("chicken_kuzhambu", "nonveg_main"),   # was `kozhi_kuzhambu`; kozhi is chicken
                              ("kolambu_sadam", "rice"),
                              ("vatha_kuzhambu_rice", "rice"),
                              ("mor_kolambu_vada", "starter")):

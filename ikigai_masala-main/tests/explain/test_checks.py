@@ -142,6 +142,118 @@ class TestRichness:
         assert check_richness_balance(d).passed is expected
 
 
+class TestTheFalsePositiveClasses:
+    """The three defects the verified problem report found, pinned.
+
+    Each was a check flagging something the menu was right to do. That is the
+    expensive kind of wrong: a chef who opens this and sees it complain about
+    the system's own correct output closes it and does not open it again.
+    """
+
+    def test_a_non_veg_plate_is_not_protein_thin(self):
+        """`non_dal_protein` read only the vegetarian half of the column, so a
+        day serving chicken and egg beside a toor dal came back "dal is the
+        only vegetarian protein" — true as written, useless as a verdict. 59 of
+        the fleet's 85 counters run a nonveg_main, so this was the majority
+        configuration flagging for nothing."""
+        from src.explain.checks import check_non_dal_protein
+        d = {k: dict(v, primary_protein='toor_dal') for k, v in BALANCED.items()}
+        d['nonveg_main__1'] = dish('chicken_masala', 'red', 'saucy', 2, 3,
+                                   'chicken', 'chicken')
+        c = check_non_dal_protein(d)
+        assert c.passed
+        assert c.evidence['skipped'] is True
+        assert 'chicken' in c.evidence['nonveg_proteins']
+
+    def test_a_pure_veg_plate_is_still_asked_the_question(self):
+        """The check is still right where it was always the right question."""
+        from src.explain.checks import check_non_dal_protein
+        d = {k: dict(v, primary_protein='toor_dal') for k, v in BALANCED.items()}
+        d.pop('nonveg_main__1')
+        c = check_non_dal_protein(d)
+        assert not c.passed and c.evidence['skipped'] is False
+
+    def test_a_sentinel_ingredient_abstains_rather_than_flagging(self):
+        """`mixed_vegetables` is 375 Bangalore rows and names no ingredient.
+        Two dishes sharing it is a gap in the data, not an echo on the plate —
+        and counting it as a pass would hide the gap just as badly."""
+        from src.explain.checks import check_no_ingredient_echo
+        d = dict(BALANCED)
+        d['veg_gravy'] = dish('mix_veg_kurma', 'green', 'saucy', 1, 3,
+                              'mixed_vegetables', 'coconut')
+        d['veg_dry__1'] = dish('mix_veg_poriyal', 'orange', 'dry', 1, 2,
+                               'mixed_vegetables', 'green_peas')
+        c = check_no_ingredient_echo(d)
+        assert c.passed
+        assert 'mixed_vegetables' not in c.evidence['repeats']
+        assert 'mixed_vegetables' in c.evidence['unknown']
+
+    def test_a_real_echo_still_flags_beside_a_sentinel(self):
+        """The abstain must not become a way to hide a genuine repeat."""
+        from src.explain.checks import check_no_ingredient_echo
+        d = dict(BALANCED)
+        d['veg_gravy'] = dish('paneer_butter_masala', 'red', 'saucy', 1, 4,
+                              'paneer', 'paneer')
+        d['veg_dry__1'] = dish('paneer_tikka_dry', 'green', 'dry', 2, 3,
+                               'paneer', 'paneer')
+        d['dal'] = dish('mix_veg_dal', 'yellow', 'saucy', 0, 2,
+                        'mixed_vegetables', 'toor_dal')
+        d['starter'] = dish('mix_veg_cutlet', 'brown', 'crisp', 1, 3,
+                            'mixed_vegetables', 'potato')
+        c = check_no_ingredient_echo(d)
+        assert not c.passed and c.evidence['repeats'] == {'paneer': 2}
+
+    def test_colour_variety_uses_the_target_it_is_given(self):
+        """A counter with three colour slots is legitimately asked for three.
+        Judging it against a hardcoded 4 flags a day for obeying the rule that
+        generated it — the one class of false alarm a chef cannot act on."""
+        d = {'rice': BALANCED['rice'], 'dal': BALANCED['dal'],
+             'veg_gravy': BALANCED['veg_gravy']}      # yellow, yellow, green
+        assert not check_colour_variety(d).passed              # default 4
+        assert check_colour_variety(d, target=2).passed
+
+    def test_colour_variety_counts_the_slots_the_solver_counts(self):
+        """`MAIN_COURSES` and `cfg.color_slots` are different sets — the solver
+        counts `dessert` and not `bread`. Two questions under one name."""
+        d = dict(BALANCED)
+        d['dessert'] = dish('gulab_jamun', 'red', 'soft', 0, 5, 'milk', None)
+        wide = check_colour_variety(d, slots={'rice', 'dal', 'dessert'})
+        assert wide.evidence['counted_dishes'] == 3
+        assert 'red' in wide.evidence['spread']        # dessert counted
+        assert 'brown' not in wide.evidence['spread']  # bread not counted
+
+    def test_the_target_is_clamped_to_the_dishes_actually_served(self):
+        """The solver clamps to the colour cells the day has (design note 13).
+        A two-dish day asked for four colours is unsatisfiable by arithmetic."""
+        d = {'rice': BALANCED['rice'], 'dal': BALANCED['dal']}
+        c = check_colour_variety(d, target=4)
+        assert c.evidence['threshold'] == 2
+        assert c.evidence['configured_target'] == 4
+
+
+class TestTheCalibrationGate:
+    def test_only_calibrated_verdicts_are_returned_when_gated(self):
+        from src.explain.checks import CALIBRATED
+        got = {c.name for c in run_checks(BALANCED, calibrated_only=True)}
+        assert got == set(CALIBRATED)
+
+    def test_the_gate_is_off_by_default(self):
+        assert len(run_checks(BALANCED)) == 6
+
+    def test_every_calibrated_name_is_a_real_check(self):
+        """A typo here silently drops a verdict from the UI."""
+        from src.explain.checks import CALIBRATED
+        assert CALIBRATED <= {c.name for c in run_checks(BALANCED)}
+
+    def test_the_two_checks_that_cannot_earn_a_line_are_excluded(self):
+        """`spice_arc` and `richness_balance` fire on under 6% of days at these
+        thresholds (49 observed, zero events, rule of three). Too loose to earn
+        a line — see docs/explain_layer_calibration.md."""
+        from src.explain.checks import CALIBRATED
+        assert 'spice_arc' not in CALIBRATED
+        assert 'richness_balance' not in CALIBRATED
+
+
 class TestRunner:
     def test_returns_all_six(self):
         out = run_checks(BALANCED)

@@ -209,7 +209,15 @@ class TestTheTwoTiersThatBeatTheVote:
         # monotone, so it left them — `chicken_chettinad` really is south
         # Indian, which makes its sub_category the wrong half of that row.
         assert int(_norm(d["cuisine_family"])[m].eq("").sum()) == 0
-        assert int(_norm(d["cuisine_family"])[m].eq("north_indian").sum()) >= 90
+        # Stated as a share of the population rather than an absolute count.
+        # The count was `>= 90` and became 84 the moment
+        # `vegnonveg_corrections.py` moved eleven soya keemas OUT of
+        # `chicken_north_masala` — they were never chicken, so the sub_category
+        # was the wrong half of those rows too. An absolute floor here measures
+        # how many rows are mis-filed as much as it measures the tier working.
+        region = _norm(d["cuisine_family"])[m]
+        assert int(region.eq("north_indian").sum()) / int(m.sum()) >= 0.95
+        assert set(region.unique()) <= {"north_indian", "south_indian"}
 
     def test_a_citys_own_convention_is_stronger_than_the_corpus(self, frames):
         """`mixed_veg_curry` reads 77% north across the corpus and is correctly

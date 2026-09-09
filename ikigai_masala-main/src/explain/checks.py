@@ -49,6 +49,24 @@ VEG_PROTEINS = frozenset({
     'yogurt', 'mushroom', 'kidney_bean', 'tofu', 'sprouts', 'cottage_cheese',
 }) | DAL_PROTEINS
 
+# `non_dal_protein` asks a question that only makes sense on a vegetarian
+# plate. A day carrying chicken and egg is not protein-thin, and 59 of the
+# fleet's 85 counters (69%) run a `nonveg_main` slot — so reading only the
+# vegetarian half made the majority configuration flag for nothing.
+NONVEG_PROTEINS = frozenset({
+    'chicken', 'mutton', 'fish', 'egg', 'prawn', 'seafood', 'lamb', 'crab',
+})
+
+# `key_ingredient` values that name no ingredient. `mixed_vegetables` is 375
+# Bangalore rows — CLAUDE.md records it as the de-facto default for a mixed
+# salad — so two dishes "sharing" it is a gap in the data, not an echo on the
+# plate. Reported as unknown rather than counted either way: calling it a pass
+# would be as wrong as calling it a repeat.
+GENERIC_INGREDIENTS = frozenset({
+    'mixed_vegetables', 'mixed_veg', 'assorted', 'vegetable', 'vegetables',
+    'mixed', 'other', 'seasonal_vegetables',
+})
+
 # --- thresholds -------------------------------------------------------------
 # Tune these against a chef's judgement, not against intuition. Twenty days of
 # rendered bullets in front of someone who plans menus for a living will move
@@ -122,17 +140,45 @@ def _numbers(dishes: Dict[str, Dict[str, Any]], key: str) -> List[float]:
 # the six checks
 # --------------------------------------------------------------------------
 
-def check_colour_variety(dishes) -> Check:
-    m = main_dishes(dishes)
-    c = _counter(m, 'item_color')
+def check_colour_variety(dishes, target: Optional[int] = None,
+                         slots: Optional[Any] = None) -> Check:
+    """Distinct colours on the plate, against the target the SOLVER used.
+
+    This check mirrors a rule the solver already enforces, and for a while it
+    mirrored it wrongly — in both halves.
+
+    *The dish set.* `MAIN_COURSES` is a fixed seven courses; the solver counts
+    `cfg.color_slots`, which includes `dessert` and excludes `bread`. Two
+    different questions under one name. Pass `slots` and this counts what the
+    solver counted.
+
+    *The target.* Hardcoding 4 ignores the solver's clamp (design note 13):
+    `min(configured, colour-slots-configured, colour-cells-today,
+    colours-present)`. A counter with three colour slots is legitimately asked
+    for three, satisfies that, and was then flagged for not reaching four — a
+    false alarm the chef cannot act on, because acting would break the rule
+    that generated the menu. The 31% flag rate in the calibration run is mostly
+    this. Given `target` (the counter's configured minimum), the day-level part
+    of the clamp is reproduced here, since the number of colour dishes actually
+    served is visible on the plate.
+
+    With neither argument this keeps the old fixed behaviour, so a caller that
+    has no `SolverConfig` in scope is unchanged.
+    """
+    counted = (main_dishes(dishes) if slots is None else
+               {s: d for s, d in dishes.items() if base_slot(s) in set(slots)})
+    c = _counter(counted, 'item_color')
     n = len(c)
+    want = MIN_DISTINCT_COLOURS if target is None else int(target)
+    # The solver clamps to the cells it actually has that day; so do we.
+    effective = max(1, min(want, len(counted)))
     return Check(
         name='colour_variety',
-        passed=n >= MIN_DISTINCT_COLOURS,
-        detail=(f"{n} distinct colours across {sum(c.values())} main dishes"
-                f" (target {MIN_DISTINCT_COLOURS}+)"),
-        evidence={'distinct': n, 'spread': dict(c),
-                  'threshold': MIN_DISTINCT_COLOURS},
+        passed=n >= effective,
+        detail=(f"{n} distinct colours across {sum(c.values())} dishes"
+                f" (target {effective}+)"),
+        evidence={'distinct': n, 'spread': dict(c), 'threshold': effective,
+                  'configured_target': want, 'counted_dishes': len(counted)},
     )
 
 
@@ -186,17 +232,34 @@ def check_non_dal_protein(dishes) -> Check:
 
     A day whose only veg protein is toor dal is technically fed and practically
     thin, and it is invisible to every existing rule.
+
+    **Only asked of a vegetarian plate.** The first version read only the
+    vegetarian half of `primary_protein`, so a day serving chicken and egg
+    beside a toor dal came back "dal is the only vegetarian protein" — true as
+    written, and useless as a verdict, because the plate is not protein-thin.
+    59 of the fleet's 85 counters run a `nonveg_main`, so that was the majority
+    configuration flagging for nothing. A day with a non-veg main now skips.
     """
     m = main_dishes(dishes)
     prots = set(_counter(m, 'primary_protein'))
+    nonveg = sorted(prots & NONVEG_PROTEINS)
     veg = sorted(p for p in prots if p in VEG_PROTEINS)
     non_dal = sorted(p for p in veg if p not in DAL_PROTEINS)
+    if nonveg:
+        return Check(
+            name='non_dal_protein',
+            passed=True,
+            detail=f"the plate carries a non-vegetarian main ({', '.join(nonveg)})",
+            evidence={'veg_proteins': veg, 'non_dal': non_dal,
+                      'nonveg_proteins': nonveg, 'skipped': True},
+        )
     return Check(
         name='non_dal_protein',
         passed=bool(non_dal),
         detail=(f"vegetarian protein: {', '.join(non_dal)}" if non_dal
                 else 'dal is the only vegetarian protein on the plate'),
-        evidence={'veg_proteins': veg, 'non_dal': non_dal},
+        evidence={'veg_proteins': veg, 'non_dal': non_dal,
+                  'nonveg_proteins': [], 'skipped': False},
     )
 
 
@@ -205,16 +268,36 @@ def check_no_ingredient_echo(dishes) -> Check:
 
     Legal today: a paneer gravy and a paneer dry differ in course_type, colour
     and texture, so nothing stops the solver taking both.
+
+    **Sentinel values abstain.** `mixed_vegetables` is 375 Bangalore rows and
+    names no ingredient, so two dishes carrying it tells you the ontology has a
+    gap, not that the plate echoes. Counting it as a repeat is a false flag;
+    counting it as a pass hides the gap. It is reported separately as
+    `unknown`.
+
+    This check was written off as the weakest of the six on a 64% false-
+    positive rate. That number came from attributing the repeats to nearby
+    rules rather than checking whether the solver had a choice — see the note
+    at the top of `docs/explain_layer_calibration.md`. Measured against pool
+    availability, the chicken repeats had 32 non-chicken dry dishes available
+    (25% of the pool) and the wheat repeats had 210 non-wheat breads (63%).
+    They are avoidable repeats, and this is the strongest check in the set.
     """
     m = main_dishes(dishes)
     c = _counter(m, 'key_ingredient')
-    repeats = {k: v for k, v in c.items() if v > 1}
+    unknown = sorted(k for k in c if k in GENERIC_INGREDIENTS)
+    repeats = {k: v for k, v in c.items()
+               if v > 1 and k not in GENERIC_INGREDIENTS}
+    detail = ('no ingredient repeats' if not repeats else
+              'repeated: ' + ', '.join(f'{k} x{v}'
+                                       for k, v in sorted(repeats.items())))
+    if unknown:
+        detail += f" ({len(unknown)} dish group(s) carry no named ingredient)"
     return Check(
         name='no_ingredient_echo',
         passed=not repeats,
-        detail=('no ingredient repeats' if not repeats else
-                'repeated: ' + ', '.join(f'{k} x{v}' for k, v in sorted(repeats.items()))),
-        evidence={'repeats': repeats, 'distinct': len(c)},
+        detail=detail,
+        evidence={'repeats': repeats, 'distinct': len(c), 'unknown': unknown},
     )
 
 
@@ -234,7 +317,7 @@ def check_richness_balance(dishes) -> Check:
     )
 
 
-ALL_CHECKS: List[Callable[[Dict[str, Dict[str, Any]]], Check]] = [
+ALL_CHECKS: List[Callable[..., Check]] = [
     check_colour_variety,
     check_texture_contrast,
     check_spice_arc,
@@ -243,22 +326,58 @@ ALL_CHECKS: List[Callable[[Dict[str, Dict[str, Any]]], Check]] = [
     check_richness_balance,
 ]
 
+# Which verdicts are fit to put in front of a chef. Everything else still runs
+# and still appears in the API response — this gates only what the UI renders
+# as a judgement, so a known-wrong verdict is not spent on someone's first and
+# only look at the feature.
+#
+#   texture_contrast   — measures something no rule enforces, on a column that
+#                        is 99.2% populated. Its 16% flag rate has NOT been
+#                        re-derived against pool availability; it is here
+#                        because nothing contradicts it, not because it is
+#                        proven.
+#   no_ingredient_echo — re-derived against pool availability: the solver had
+#                        32 non-chicken dry dishes and 210 non-wheat breads and
+#                        repeated anyway. Sentinels now abstain.
+#   non_dal_protein    — the non-veg false-positive class is fixed; the
+#                        question is now only asked of a vegetarian plate.
+#
+# Deliberately absent: `colour_variety` (mirrors a solver rule and its flag
+# rate has not been re-measured since the target was corrected), `spice_arc`
+# and `richness_balance` (thresholds too loose to earn a line — see
+# `docs/explain_layer_calibration.md`). Widen this set as each is measured.
+CALIBRATED = frozenset({
+    'texture_contrast', 'no_ingredient_echo', 'non_dal_protein',
+})
+
 
 def run_checks(dishes: Dict[str, Dict[str, Any]],
-               only: Optional[List[str]] = None) -> List[Check]:
+               only: Optional[List[str]] = None,
+               calibrated_only: bool = False,
+               colour_target: Optional[int] = None,
+               colour_slots: Optional[Any] = None) -> List[Check]:
     """Run every check over one day's `{slot: attrs}`.
 
     A check that raises is skipped rather than taking the request down — this
     describes a menu, it must never be the reason one fails to render.
+
+    `calibrated_only` keeps the uncalibrated verdicts out of a rendered
+    judgement without removing them from the response, so the numbers stay
+    available to whoever is calibrating them.
     """
+    extra = {check_colour_variety: {'target': colour_target,
+                                    'slots': colour_slots}}
     out: List[Check] = []
     for fn in ALL_CHECKS:
         try:
-            c = fn(dishes)
+            c = fn(dishes, **extra.get(fn, {}))
         except Exception:  # pragma: no cover - defensive
             continue
-        if only is None or c.name in only:
-            out.append(c)
+        if only is not None and c.name not in only:
+            continue
+        if calibrated_only and c.name not in CALIBRATED:
+            continue
+        out.append(c)
     return out
 
 

@@ -31,12 +31,19 @@ from __future__ import annotations
 
 import difflib
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional, Sequence, Set
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
+# The grouping predicate `fold_duplicate_dish_names.py` merged 386 rows on. It
+# is imported rather than restated so the fold and the importer cannot drift:
+# the day they disagree is the day a re-import silently un-folds a merge.
+from audit_duplicate_dish_names import dish_key  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -343,6 +350,15 @@ CANONICAL_SPELLINGS = {
     # buttermilk EVERY day, so these two names go on a printed menu weekly.
     "malasa": "masala",
     "tempared": "tempered",
+    # Same class, found by rendering the explanation layer against a real plan
+    # and reading "handi biryani is rich at 4 of 5 — dosa with chuteny at 1 cuts
+    # through it" back. Three spellings of chutney across two cities
+    # (`dosa_with_chuteny`, `lemon_rice_with_chuteny`,
+    # `lachha_onion_mint_chatney`), each of which PRINTS on a menu, and none of
+    # them a transliteration anyone defends.
+    "chuteny": "chutney",
+    "chatney": "chutney",
+    "chutny": "chutney",
     # `raitha` -> `raita`, and it has to live HERE rather than only in
     # `canonical_dish_spellings.DUPLICATES`, because the fold alone breaks
     # import stability: Stryker's printed menu writes "Raitha", so dropping the
@@ -406,11 +422,31 @@ MEAL_PERIOD_WORDS = {"lunch", "luncha", "lungcha", "dinner", "breakfast",
                      "menu", "meal", "meals", "veg", "non_veg", "nonveg"}
 
 
+#: A dish name this long is not a name, it is a DESCRIPTION — a printed cell
+#: listing what is on a station rather than naming a dish. MOengage's sheet
+#: carries a whole salad BAR as one cell: "Onion Rings, Carrots Batons, Chinese
+#: Cabbage, English Cucumber, Bell Pepper, Tomato Quarters, Boiled Chana,
+#: Boiled Peanuts, Boiled Rajma, Corn, Boiled Betroot, Boiled Eggs" — 23 tokens,
+#: 160 characters, and imported straight it became a row filed `nonveg_main`
+#: (it ends in eggs), so the salad bar was a candidate for the day's meat dish.
+#: No colour, ingredient or variety rule can reason about it and a menu printing
+#: it is unreadable.
+#:
+#: 14 is measured, not guessed: with those rows removed the longest real name in
+#: any city is 10 tokens (`ghee_rice_adequate_ghee_and_authentic_fried_onion_
+#: garnish_grapes`), and the shortest bar row is 23. The threshold sits between
+#: with room either side. `tests/data/test_menu_import_guards.py` pins both ends.
+MAX_DISH_NAME_TOKENS = 14
+
+
 def is_placeholder(text: str) -> bool:
     s = str(text).strip().lower().strip(".-–— ")
     if not s or s in PLACEHOLDERS:
         return True
-    return re.sub(r"[^a-z0-9]+", "_", s).strip("_") in MEAL_PERIOD_WORDS
+    slug = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+    if slug.count("_") + 1 > MAX_DISH_NAME_TOKENS:
+        return True
+    return slug in MEAL_PERIOD_WORDS
 
 
 def norm(v) -> str:
@@ -468,6 +504,26 @@ def split_combo(text: str) -> list:
 #: own spelling, and the import stops being idempotent. Citrix did exactly that
 #: with these four.
 ALIASES = {
+    # The vegetarian-line folds (`vegnonveg_corrections.py`, note 34). Deleting
+    # or folding a row is not enough on its own — this file's own note on
+    # MEAL_PERIOD_WORDS says why, and these three proved it: re-running the
+    # imports put all of them straight back, because the clients' printed
+    # sheets still spell them this way. Booking and Citrix both print "Kori
+    # Gassi", Citrix prints "Shami Kabab" and "Hederabad Dum Biryani".
+    #
+    # `kori` is Tulu for chicken, so `kori_gassi` IS `chicken_gassi` — and this
+    # alias is what stops a Mangalorean chicken curry being minted afresh into
+    # a veg pool on the next import.
+    "kori_gassi": "chicken_gassi",
+    # A third spelling of shami kebab, and the one Citrix's sheet uses.
+    "shami_kabab": "shami_kebab",
+    # `hederabad` is Hyderabad misspelled. The row it used to mint carried no
+    # protein, sub_category or key_ingredient and was removed as a junk
+    # duplicate; Bangalore's own `hyderabad_veg_dum_biryani` is what Citrix's
+    # cell means. Aliasing to the VEG row is the safe direction: if their dish
+    # is in fact the chicken one they are under-served, where the reverse would
+    # put a chicken biryani in a vegetarian rice slot.
+    "hederabad_dum_biryani": "hyderabad_veg_dum_biryani",
     "soppu_huli": "soppu_sambar",
     "uppusaaru": "uppu_saru",
     "upsaaru": "uppu_saru",
@@ -493,6 +549,18 @@ ALIASES = {
     "avail": "avial",
     "veg_avail": "avial",
     "veg_chowmin": "chowmin",
+    # One left over from the duplicate fold, and it needs a whole-name alias
+    # rather than a rule. `carrot_cucumber_salad` merged into
+    # `cucumber_and_carrot_salad`, and MOengage's sheet prints the dish with
+    # "mix" in the middle — a token, so `dish_key` rightly reads it as a
+    # different ingredient set, and the similarity path had only ever matched it
+    # because the old surviving name happened to share its word order.
+    # Dropping `mix` in `dish_key` is NOT the fix: `mix_veg` is a real dish
+    # family and would fold into plain `veg`. Bangalore separately carries
+    # `radish_carrot_cucumber_salad`, `sliced_cucumber_carrot_salad` and four
+    # more, all genuinely different sets, which is why this is one name and not
+    # a pattern.
+    "carrot_cucumber_mix_salad": "cucumber_and_carrot_salad",
 }
 
 
@@ -669,14 +737,69 @@ def fold_similar(names: Iterable[str], vocab: Optional[dict] = None,
 NOISE_MODIFIERS = {"plain", "simple", "regular", "normal", "home_style"}
 
 
+def _same_dish_by_meaning(candidate: str, existing_names: Sequence[str]):
+    """The ontology dish *candidate* MEANS, found by word order and language.
+
+    `fold_duplicate_dish_names.py` folded 386 rows where one dish was written
+    twice — `dum_aloo` into `aloo_dum`, `murgh_nizami` into `chicken_nizami`,
+    `mutter_paneer` into `matar_paneer`. Every one of those names is still what
+    some client's sheet PRINTS, so without this the next import of that sheet
+    mints the row straight back and the fold quietly comes undone. That is not
+    hypothetical: it is what `ALIASES` above exists to patch, one name at a time,
+    and 386 is past where a hand-written list is honest.
+
+    So the same predicate that justified each merge decides the lookup:
+    `dish_key` normalises word order, folds the language synonyms (murgh, kozhi,
+    kori, anda, guddu) and holds `FORM_WORDS` apart, so `pepper_chicken_dry`
+    never resolves to the gravy. It is stronger evidence than string similarity,
+    which scored `kori_gassi` against `chicken_gassi` at ~0.5.
+
+    Returns None when the key matches **more than one** existing dish rather
+    than picking: two rows sharing a key is exactly the state the audit reports
+    for a verdict, and guessing between them is how a client's gravy gets
+    imported onto their dry row.
+    """
+    key = dish_key(candidate)
+    if not key[0]:                                  # nothing but form words
+        return None
+    hits = sorted({n for n in existing_names if dish_key(n) == key})
+    return hits[0] if len(hits) == 1 else None
+
+
 def _existing_twin(candidate: str, existing_names: Sequence[str], vocab: dict,
-                   cutoff: float = 0.90):
+                   cutoff: float = 0.90,
+                   all_names: Optional[Sequence[str]] = None):
     """The ontology dish *candidate* is a spelling of, or None.
 
     Same evidence as `fold_similar`: a one-token difference where the
     candidate's token is unknown vocabulary (a typo or a variant) folds into the
     dish already present; two real words are different dishes and are kept.
+
+    *existing_names* is scoped to the candidate's own `course_type` by the
+    caller, which is right for the SIMILARITY path — a cross-course near-match
+    is how `greek_salad` folds into `green_salad`. *all_names* is the whole
+    city list and is used only by `_same_dish_by_meaning`, because a
+    course-scoped lookup structurally cannot resolve a MISFILE and that is the
+    case it most needs to: an importer takes a dish's course from where it sits
+    on a printed sheet, and `fold_duplicate_dish_names.py`'s verdict for these
+    rows was precisely that the sheet's course was wrong.
+    `butter_garlic_vegetables` printed under a rice heading resolves to the
+    `veg_dry` it actually is, where scoped to rice it found nothing and was
+    minted back — re-creating the misfile the verdict had just removed. Safe
+    because a `dish_key` match is far stronger evidence than similarity, and
+    because a matched twin only ever gains the importing client's pool token:
+    nothing re-files it, so the verdict stands.
     """
+    if candidate in existing_names:
+        return None                                 # it IS the dish
+    # Word order and language first — see `_same_dish_by_meaning`. Ahead of
+    # similarity because it is the stronger signal and because the folds it
+    # protects were applied on exactly this predicate.
+    twin = _same_dish_by_meaning(candidate,
+                                 all_names if all_names is not None
+                                 else existing_names)
+    if twin is not None:
+        return twin
     # A whole-token difference scores far below the similarity cutoff —
     # "plain_chapati" vs "chapati" is 0.70 — so difflib never offers the pair.
     # Strip a leading serving-style word and look the dish up directly.
@@ -1175,6 +1298,10 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
     for _, r in frame.iterrows():
         existing_by_course[str(r["course_type"]).strip().lower()].add(
             str(r["item"]).strip().lower())
+    # The whole city list, for the word-order/synonym lookup only — see
+    # `_existing_twin`. A misfile is by definition filed under the wrong course,
+    # so resolving one cannot be done from inside that course.
+    all_names = sorted(existing)
     fold_log: dict = {}
     rows, report, retag = [], {}, 0
     for course in ordered:
@@ -1195,7 +1322,7 @@ def build(frame: pd.DataFrame, raw: Dict[str, list], spec: ImportSpec):
             if i in existing:
                 seen.append(i)
                 continue
-            twin = _existing_twin(i, here, vocab)
+            twin = _existing_twin(i, here, vocab, all_names=all_names)
             if twin:
                 seen.append(twin)
                 fold_log.setdefault("matched_existing", []).append((twin, i))

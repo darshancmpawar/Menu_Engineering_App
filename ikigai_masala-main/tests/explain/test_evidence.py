@@ -155,6 +155,54 @@ class TestValidator:
         from api.explain_llm import validate
         return validate(prose, pack)
 
+    def test_an_invented_dish_written_the_way_a_model_writes_one(self, pack):
+        """The hole the guarantee was overstated across: the snake_case check
+        lowercases the prose and then looks for underscores, so it could never
+        fire on a Title-Case name with spaces — which is the form the prompt's
+        own examples use. Three wholly invented dishes passed validation."""
+        for invented in ('Paneer Butter Masala is served alongside.',
+                         'We have added Gulab Jamun for dessert.',
+                         'Try the Hyderabadi Dum Biryani today.'):
+            ok, why = self._v(invented, pack)
+            assert not ok, invented
+            assert 'unknown dish' in why, why
+
+    def test_a_real_dish_in_title_case_is_still_accepted(self, pack):
+        """The check must not chew the sentences it exists to permit. A model
+        writes "Boondi Raita", not `boondi_raita`."""
+        names = [d['name'] for d in pack['dishes'].values()]
+        titled = ' '.join(w.capitalize() for w in names[0].split('_'))
+        if ' ' not in titled:
+            pytest.skip('this fixture has no multi-word dish name')
+        ok, why = self._v(f'{titled} is on the plate today.', pack)
+        assert ok, why
+
+    def test_a_pack_name_with_a_word_added_is_accepted(self, pack):
+        """"Chicken Chettinad Curry" where the pack says `chicken_chettinad` is
+        a paraphrase, not an invention — containment counts in both
+        directions."""
+        names = [d['name'] for d in pack['dishes'].values()]
+        titled = ' '.join(w.capitalize() for w in names[0].split('_'))
+        ok, why = self._v(f'{titled} Curry anchors the day.', pack)
+        assert ok, why
+
+    def test_an_ordinary_capitalised_sentence_is_not_a_dish(self, pack):
+        """`_COMMON_WORDS` is what keeps this from rejecting English."""
+        for fine in ('The Plate Is Balanced today.',
+                     'This Is The Main Course.'):
+            ok, why = self._v(fine, pack)
+            assert ok, (fine, why)
+
+    def test_containment_is_word_aligned(self, pack):
+        """A plain substring test passes on anything, because the pack really
+        does carry one-letter words: the pairing summary "2 pairing(s) hold
+        this plate together" harvests `s`, and `s` is inside `masala`, which is
+        exactly how "Paneer Butter Masala" was read as sourced."""
+        from api.explain_llm import _allowed_tokens, _sourced_phrase
+        _numbers, names, words = _allowed_tokens(pack)
+        assert 's' in words or True          # harvesting is not the claim here
+        assert not _sourced_phrase('paneer butter masala', names, words)
+
     def test_grounded_prose_is_accepted(self, pack):
         ok, why = self._v('Thursday leans south with jowar_roti alongside '
                           'veg_kurma. The plate carries 2 textures.', pack)
@@ -175,6 +223,47 @@ class TestValidator:
     def test_invented_dish_is_rejected(self, pack):
         ok, why = self._v('Served with fresh paneer_tikka on the side.', pack)
         assert not ok and 'paneer_tikka' in why
+
+    @pytest.mark.parametrize('prose', [
+        # `primary_protein`, `cuisine_family`, `key_ingredient` and the slot
+        # names are all IN the pack. The underscored-token rule read every
+        # snake_case word as dish-shaped and threw the whole reply away, so a
+        # model quoting the pack correctly was punished for it — the rule is
+        # "anything the pack did not say", and the pack said these.
+        'Curd carries yogurt as its primary_protein.',
+        'The gravy is south_indian and so is the bread.',
+        'veg_kurma is the veg_gravy and jowar_roti the bread.',
+        'Its key_ingredient is mixed_veg.',
+    ])
+    def test_a_pack_value_that_is_not_a_dish_name_is_still_quotable(
+            self, prose, pack):
+        ok, why = self._v(prose, pack)
+        assert ok, why
+
+    def test_widening_that_did_not_widen_the_guarantee(self, pack):
+        """The point of the fix was to stop rejecting TRUE sentences, not to
+        start accepting invented ones. A dish-shaped token the pack does not
+        carry anywhere is still refused."""
+        for invented in ('gobi_manchurian', 'aloo_gobi', 'paneer_tikka'):
+            ok, why = self._v(f'The plate also carries {invented}.', pack)
+            assert not ok and invented in why
+        # `chicken_65` is refused too, but by the NUMBER rule rather than the
+        # dish rule — whichever fires first is enough, and asserting the
+        # message would pin the order for no reason.
+        assert not self._v('The plate also carries chicken_65.', pack)[0]
+
+    def test_judgement_is_not_policed_and_that_is_documented(self, pack):
+        """The boundary, asserted so it is not mistaken for a bug later.
+
+        "3 textures" is sourced; "a little soft" is an opinion, and no validator
+        can decide whether it agrees with `texture_contrast: passed`. Rule 4 of
+        the system prompt forbids contradicting a verdict and nothing enforces
+        it — which is exactly why the BULLETS are the primary surface and are
+        gated on `checks.CALIBRATED`, with prose additive on top.
+        """
+        ok, _why = self._v('The plate carries 2 textures, so it is a little '
+                           'soft.', pack)
+        assert ok
 
     @pytest.mark.parametrize('bad', [
         'A healthy plate with balanced nutrition.',
@@ -226,3 +315,158 @@ class TestValidator:
         mod.reset_cache_for_tests()
         out = mod.explain_plan([pack])['2026-09-10']
         assert out['llm_used'] is False and out['bullets']
+
+
+class TestTheModelCall:
+    """`_call_model` returns None on every failure rather than raising.
+
+    That is the whole contract: this feature is optional and must never be the
+    reason a menu request fails. No network is touched — `requests.post` is
+    replaced, which is also what keeps this file inside the offline boundary
+    `tests/platform/test_architecture.py` enforces for the layer below.
+    """
+
+    @staticmethod
+    def _reply(monkeypatch, **kw):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', 'test-key')
+
+        class _Resp:
+            status_code = kw.get('status', 200)
+
+            def json(self):
+                if 'raises' in kw:
+                    raise ValueError('not json')
+                return kw.get('body', {})
+
+        monkeypatch.setattr('requests.post', lambda *a, **k: _Resp())
+        return mod
+
+    def test_no_api_key_is_not_an_error(self, monkeypatch):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', '')
+        assert mod._call_model('{}') is None
+
+    def test_a_good_reply_returns_its_text(self, monkeypatch):
+        mod = self._reply(monkeypatch, body={
+            'candidates': [{'content': {'parts': [{'text': 'one '},
+                                                  {'text': 'two'}]}}]})
+        assert mod._call_model('{}') == 'one two'
+
+    def test_rate_limited_falls_back_rather_than_raising(self, monkeypatch):
+        """429 is the expected steady state on a free tier, not an incident."""
+        mod = self._reply(monkeypatch, status=429)
+        assert mod._call_model('{}') is None
+
+    @pytest.mark.parametrize('status', [400, 403, 500, 503])
+    def test_any_http_error_falls_back(self, monkeypatch, status):
+        mod = self._reply(monkeypatch, status=status)
+        assert mod._call_model('{}') is None
+
+    def test_an_empty_candidate_list_is_not_an_index_error(self, monkeypatch):
+        mod = self._reply(monkeypatch, body={'candidates': []})
+        assert mod._call_model('{}') is None
+
+    def test_a_body_that_will_not_parse_falls_back(self, monkeypatch):
+        mod = self._reply(monkeypatch, raises=True)
+        assert mod._call_model('{}') is None
+
+    def test_a_transport_failure_falls_back(self, monkeypatch):
+        import api.explain_llm as mod
+        monkeypatch.setattr(mod, 'API_KEY', 'test-key')
+
+        def _boom(*a, **k):
+            raise OSError('connection reset')
+
+        monkeypatch.setattr('requests.post', _boom)
+        assert mod._call_model('{}') is None
+
+
+class TestTheCache:
+    """Caching is required here, not an optimisation.
+
+    Streamlit reruns the whole script on every widget interaction, so without a
+    cache one user moving a date picker burns the daily model quota.
+    """
+
+    def test_an_accepted_reply_is_served_from_cache_the_second_time(
+            self, pack, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        calls = []
+
+        def _once(payload):
+            calls.append(payload)
+            return json.dumps({'days': [{'date': '2026-09-10',
+                                         'prose': 'Thursday leans south.'}]})
+
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', _once)
+        first = mod.explain_plan([pack])['2026-09-10']
+        assert first['llm_used'] and first['reason'] == 'ok'
+        second = mod.explain_plan([pack])['2026-09-10']
+        assert second['reason'] == 'cache' and second['prose'] == first['prose']
+        assert len(calls) == 1, 'the model was called again for the same plan'
+
+    def test_the_cache_is_bounded(self, pack, monkeypatch):
+        """An unbounded dict here is a slow leak in a long-lived Flask worker."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'MAX_CACHE_ENTRIES', 3)
+        for i in range(6):
+            mod._cache_put(f'key{i}', {'2026-09-10': 'x'})
+        assert len(mod._cache) == 3
+        assert 'key0' not in mod._cache and 'key5' in mod._cache
+
+    def test_an_unparseable_reply_falls_back_to_bullets(self, pack, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: 'not json at all')
+        out = mod.explain_plan([pack])['2026-09-10']
+        assert out['prose'] is None and out['bullets']
+        assert 'unparseable' in out['reason']
+
+    def test_a_fenced_reply_is_still_read(self, pack, monkeypatch):
+        """Models wrap JSON in ``` fences even when told not to."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: (
+            '```json\n' + json.dumps({'days': [
+                {'date': '2026-09-10', 'prose': 'Thursday leans south.'}]})
+            + '\n```'))
+        assert mod.explain_plan([pack])['2026-09-10']['llm_used'] is True
+
+    def test_a_reply_for_an_unknown_date_is_ignored(self, pack, monkeypatch):
+        """A model inventing a date must not create a day in the response."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: json.dumps(
+            {'days': [{'date': '1999-01-01', 'prose': 'Whatever.'}]}))
+        out = mod.explain_plan([pack])
+        assert list(out) == ['2026-09-10']
+        assert out['2026-09-10']['prose'] is None
+
+    def test_no_packs_is_not_a_model_call(self, monkeypatch):
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: pytest.fail(
+            'called the model with nothing to explain'))
+        assert mod.explain_plan([]) == {}
+
+    def test_a_partial_reply_is_not_cached(self, pack, monkeypatch):
+        """Caching a plan whose days are half-accepted would serve the gap back
+        forever; only a fully accepted plan is stored."""
+        import api.explain_llm as mod
+        mod.reset_cache_for_tests()
+        second = dict(pack, date='2026-09-11', weekday='Friday')
+        monkeypatch.setattr(mod, 'ENABLED', True)
+        monkeypatch.setattr(mod, '_call_model', lambda payload: json.dumps(
+            {'days': [{'date': '2026-09-10', 'prose': 'Thursday leans south.'}]}))
+        out = mod.explain_plan([pack, second])
+        assert out['2026-09-10']['llm_used'] is True
+        assert out['2026-09-11']['prose'] is None
+        assert mod._cache == {}

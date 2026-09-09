@@ -118,8 +118,18 @@ KNOWN_SPLITS = {
 #:
 #: The dropped row's `client` tokens are merged into the survivor, so no client
 #: silently loses a dish it makes.
+#: `dal_rajma` / `rajma_dal` is the first group actioned out of
+#: `docs/duplicate_dish_names.csv`, and it is the shape that audit exists to
+#: find: the same dish written in two word orders, and the two rows DISAGREED
+#: about what is in it — `dal_rajma` carried `primary_protein: toor_dal` while
+#: `rajma_dal` carried `kidney_bean`. The client settled it ("its rajma"), so
+#: the toor-dal row is the wrong one and goes. That disagreement is also why
+#: the audit reported this group as a MISFILE rather than proposing a merge:
+#: folding it blind would have picked a survivor by name and had a one-in-two
+#: chance of keeping the wrong protein.
 DUPLICATES = {
     "bangalore": {"black_channa_pulao": "black_chana_pulao",
+                  "dal_rajma": "rajma_dal",
                   "subz_nawabi_hundi": "subz_nawabi_handi",
                   # both bread, north_indian; the `lacha` row is the Booking
                   # import's bare stub, the `laccha` row is `common` and
@@ -203,7 +213,13 @@ DUPLICATES = {
     "pune": {  # same pair, same direction: the `drink`-filed row wins.
                "butter_milk": "buttermilk"},
     "chennai": {"raitha": "raita", "mint_raitha": "mint_raita"},
-    "ncr": {"palak_kadi": "palak_kadhi",
+    "ncr": {# The same rajma pair as Bangalore's, folding the other way: NCR
+            # names its row `rajma` rather than `rajma_dal`, and that row is
+            # the one carrying `kidney_bean`. Left named `rajma` — a bare
+            # `rajma` is a real dish name and cross-city naming differences are
+            # legitimate, unlike the two spellings inside one city.
+            "dal_rajma": "rajma",
+            "palak_kadi": "palak_kadhi",
             "kadi_pakdoa": "kadi_pakoda",
             # The three `remove_generic_rows.py` recorded as "real dishes
             # misspelled — duplicates to adjudicate rather than scaffolding to

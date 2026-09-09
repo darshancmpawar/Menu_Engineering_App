@@ -12,6 +12,43 @@ matter of taste, and those are separated below from the ones that need a chef.
 
 ---
 
+## ⚠ Correction — the method below was wrong for two of the checks
+
+**Rule adjacency was used as a proxy for rule compulsion.** The method was: see
+a flag, find a rule that touches that slot, conclude the solver was forced. That
+reasoning is unfalsifiable — in a system with 57 city rules and 175 client
+rules there is always a rule nearby — and it produced a confident 64%
+false-positive rate for something closer to 14%.
+
+`no_ingredient_echo`'s chicken repeats were attributed to
+`nonveg_main_daily_pair`. Reading the rule (`bangalore.json`) shows only its
+*gravy* component is pinned to chicken; the dry component selects on
+`is_nonveg_dry`, which says nothing about protein. Measured against the pool the
+solver actually had:
+
+| flagged repeat | pool | alternatives | verdict |
+|---|---:|---|---|
+| `chicken` x2 | `is_nonveg_dry` = 127 | 32 non-chicken (25%) — egg 30, fish 2 | **true** |
+| `wheat` x2 | `bread` = 335 | 210 non-wheat (63%) — ragi 42, rice 25, maida 23 | **true** |
+| `mixed_vegetables` x2 | sentinel, 375 rows | ingredient unknown | **abstain** |
+
+The solver had a way out and repeated anyway. `no_ingredient_echo` is the
+**strongest** check in the set, not the weakest, and the arithmetic in the
+original table was also wrong (5 + 4 + 2 = 11, not 9).
+
+**The rule to apply from here on:** a verdict about solver behaviour must be
+tested against *pool availability*, not rule adjacency. "Could the solver have
+done otherwise?" is always answerable from `pre_filter_pool()`, and it is the
+only question a false-positive claim rests on.
+
+**Two checks below were calibrated by the same flawed method and have not been
+re-derived**: `colour_variety` (31%, and §2 explains why its number is wrong
+anyway) and `texture_contrast` (16%, never checked against whether the pool
+offered a different texture). `texture_contrast` is still the one to take to a
+chef; that it is unre-derived is a reason to ask, not a reason to trust.
+
+---
+
 ## How often each check fires
 
 | check | flagged | rate | verdict |
@@ -38,15 +75,26 @@ matter of taste, and those are separated below from the ones that need a chef.
 
 ## The three defects
 
-### 1. `spice_arc` and `richness_balance` cannot fail
+### 1. `spice_arc` and `richness_balance` fire on under 6% of days
 
 `spice_arc` passes at `>= 2` distinct spice levels. The observed **minimum is
 2**. `richness_balance` passes on a mean inside `1.5-3.5`; the observed range is
 **2.0 to 3.5**, entirely inside the window and touching the top edge once.
 
-Neither has failed in 49 days and neither can, at these thresholds, on this
-data. A check that always prints `[ok]` is not reassurance — it teaches the
-reader to skim the list, which costs the four checks that do carry information.
+An earlier draft of this file said they "cannot fire". That is wrong twice over
+and the phrasing would have been read as settled a year later. Both *can*:
+`spice_level` has four distinct values with 45.7% of dishes at level 1, so an
+all-level-1 plate is possible; `richness_score` has six values and the seven
+richest dishes mean 5.0 against a 3.5 ceiling the observed data already grazes,
+so a day at 3.51 fires. And zero events in 49 trials bounds the rate at about
+**6%** (rule of three), not at zero.
+
+The action is unchanged — 6% is still too loose to earn a line — but the reason
+is "too rare to be worth a reader's attention", not "impossible". Either narrow
+richness to roughly 1.8-3.2 and re-measure, or drop both and keep the raw
+numbers in `plate_profile`, which already carries them. A check that almost
+always prints `[ok]` teaches the reader to skim the list, which costs the checks
+that do carry information.
 
 Either the threshold moves (`spice_arc` at `>= 3` would bite the observed
 floor; `richness_balance` needs a window narrower than the data's own range) or
@@ -114,10 +162,21 @@ ontology.
 
 ## What to take to the chef
 
-Only one check is ready to be judged on taste: **`texture_contrast`**, firing on
-16% of days, measuring something no rule enforces, on a column that is 99.2%
-populated. That is the one to ask about.
+**Three checks, and they are what `src/explain/checks.py::CALIBRATED` now
+gates the UI to** — the rest still ride in the `/explain` response for whoever
+is measuring them, but they are not rendered as a judgement.
 
-The other five need the defects above fixed first. Asking a chef whether a
-verdict is right, when the verdict is flagging a rule the client themselves
-asked for, wastes the calibration.
+| check | why it is ready |
+|---|---|
+| `texture_contrast` | measures something no rule enforces, on a column 99.2% populated. Its 16% has NOT been re-derived against pool availability — ask, do not assume |
+| `no_ingredient_echo` | re-derived above: the solver had 32 non-chicken dry dishes and 210 non-wheat breads and repeated anyway. Sentinels now abstain |
+| `non_dal_protein` | the non-veg false-positive class is fixed — 59 of 85 counters run a `nonveg_main`, and every one of them was flagging for nothing |
+
+One check is not enough to justify a chef's hour, and a broken one costs their
+attention permanently — which is why the gate exists and why it starts at three
+rather than at one or at six.
+
+`colour_variety` is now handed the counter's own target instead of a fixed 4,
+so it no longer contradicts the rule that generated the menu; it stays out of
+the gate until its flag rate is re-measured against the corrected target.
+`spice_arc` and `richness_balance` stay out until their thresholds are narrowed.

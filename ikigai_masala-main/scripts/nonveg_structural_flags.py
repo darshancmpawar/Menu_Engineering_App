@@ -122,14 +122,25 @@ STYLE_OVERRIDES = {
     # Telugu `vepudu` means fry. (`pulusu` below is its sauced opposite, which
     # is why the pair is worth reading together.)
     "egg_vepudu": "dry",
-    # A keema is minced and cooked down; with gobi and peas it is a semi-dry
-    # sabzi-style dish, not a gravy. (Its `key_ingredient` is cauliflower and
-    # its protein is chicken — a chicken keema with vegetables.)
-    "gobi_keema_mutter": "dry",
-    # The green marinade is a tandoor/tikka treatment. Bangalore separately
-    # carries `hariyali_chicken_masala`, which IS the gravy version — so this
-    # row is the grill, or the two are the same dish twice.
-    "hariyali_chicken": "dry",
+    # `gobi_keema_mutter` used to be adjudicated "dry" here, reasoned as "a
+    # chicken keema with vegetables" because `primary_protein` said chicken.
+    # That was circular: the protein column WAS the error. Gobi keema is minced
+    # CAULIFLOWER with peas — a vegetarian dish — and `vegnonveg_corrections.py`
+    # (note 34) moves it to `veg_dry`. An adjudication here would put it back in
+    # the non-veg pool on the next chain run, so it is deliberately absent.
+    # Lesson worth keeping: a form verdict must not cite the column that decides
+    # whether the dish belongs in this file at all.
+    # `chicken_hariyali` was adjudicated "dry" here, reasoned as a tandoor/tikka
+    # treatment because Bangalore separately carries `hariyali_chicken_masala`,
+    # which IS the gravy version — and the note ended "or the two are the same
+    # dish twice". **The fold answered that.** `chicken_hariyali` and
+    # `hariyali_chicken` were one dish under two word orders, and the surviving
+    # row is the fully attributed one: `is_nonveg_gravy` +
+    # `is_north_chicken_gravy` + `is_rule_ready`. So it carries a form flag
+    # already and this file never touches it — a verdict here would only ever
+    # fight the row's own classification. Deliberately absent, like
+    # `gobi_keema_mutter` above, and for a related reason: an adjudication
+    # written while two rows were arguing does not survive them becoming one.
 
     # --- Bangalore: rich or thin, all of these arrive with sauce -------
     "achari_chicken": "gravy",          # pickling spices in a thick gravy
@@ -144,28 +155,30 @@ STYLE_OVERRIDES = {
     "chicken_kosha": "gravy",           # Bengali `kosha` = slow-cooked thick gravy
     "chicken_paprikash": "gravy",       # paprika + sour cream sauce
     "chicken_patiyala": "gravy",        # Patiala-style rich gravy
-    "chicken_rezalla": "gravy",         # Bengali rezala, a white gravy
+    "chicken_razala": "gravy",          # Bengali rezala, a white gravy
     "chicken_saag": "gravy",            # spinach gravy
     "chicken_saagwala": "gravy",        # the same, spelled the other way
-    "dhaba_murgh": "gravy",             # dhaba chicken curry
+    "dhaba_chicken": "gravy",           # dhaba chicken curry
     "dhaba_style_chicken": "gravy",     # the same
-    "dum_ka_murgh": "gravy",            # Hyderabadi dum ka murgh, thick gravy
-    "egg_kadhai": "gravy",              # kadai masala is a thick gravy
+    "dum_ka_chicken": "gravy",          # Hyderabadi dum ka murgh, thick gravy
+    "egg_kadai": "gravy",               # kadai masala is a thick gravy
     "egg_pulusu": "gravy",              # Andhra `pulusu` = tangy stew
-    "kadhai_chicken": "gravy",          # as above, with chicken
+    "kadai_chicken": "gravy",           # as above, with chicken
     "kothimeera_kodiguddu": "gravy",    # Telugu coriander-egg curry
     "kundapura_chicken": "gravy",       # Kundapura koli saaru, a coastal gravy
     "madras_chicken": "gravy",          # Madras chicken curry
     "methi_chicken": "gravy",           # fenugreek gravy
-    "murgh_kolhapuri": "gravy",         # Kolhapuri, a fiery gravy
+    "chicken_kolhapuri": "gravy",       # Kolhapuri, a fiery gravy. Was
+                                        # `murgh_kolhapuri` here and
+                                        # `kolhapuri_chicken` under NCR: one
+                                        # dish, one row, one verdict now.
     "murgh_lalmaas": "gravy",           # laal maas, a Rajasthani gravy
     "murgh_lazzez": "gravy",            # rich gravy
-    "murgh_nizami": "gravy",            # Nizami, a rich Hyderabadi gravy
+    "chicken_nizami": "gravy",          # Nizami, a rich Hyderabadi gravy
     "murgh_pasanda": "gravy",           # pasanda, a creamy gravy
     "murgh_patiala": "gravy",           # Patiala, as above
     "murgh_shahjahani": "gravy",        # shahjahani, a rich white gravy
     "nati_style_kozhi_saru": "gravy",   # `saru` is a thin gravy by definition
-    "nizami_murgh": "gravy",            # `murgh_nizami` written the other way
     "palak_chicken": "gravy",           # spinach gravy
 
     # --- Chennai: every one of these is a snack, roast or stir-fry -----
@@ -187,9 +200,6 @@ STYLE_OVERRIDES = {
     "egg_dosa": "dry",
     "kal_egg_dosa": "dry",
 
-    # --- NCR ------------------------------------------------------------
-    # Same dish as Bangalore's `murgh_kolhapuri`, so the same verdict.
-    "kolhapuri_chicken": "gravy",
 }
 
 

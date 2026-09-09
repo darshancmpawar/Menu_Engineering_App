@@ -25,6 +25,7 @@ import datetime as dt
 import logging
 
 from .checks import Check, base_slot, plate_profile, run_checks
+from .pairings import build_pairings
 
 logger = logging.getLogger(__name__)
 
@@ -163,10 +164,21 @@ def build_evidence(*,
                    constant_items: Optional[Dict[str, Any]] = None,
                    rule_notes: Optional[Dict[str, str]] = None,
                    relaxations: Optional[Sequence[Dict[str, str]]] = None,
+                   colour_target: Optional[int] = None,
+                   colour_slots: Optional[Any] = None,
+                   calibrated_only: bool = False,
                    ) -> Dict[str, Any]:
-    """Assemble one day's pack. This dict is the model's entire world."""
+    """Assemble one day's pack. This dict is the model's entire world.
+
+    `colour_target` / `colour_slots` come from the counter's `SolverConfig` so
+    `colour_variety` compares against the target the solver actually used
+    rather than a fixed 4 over a different dish set — see that check.
+    `calibrated_only` drops the verdicts not yet fit to show a chef.
+    """
     dishes = build_dishes(day_items, attrs)
-    checks: List[Check] = run_checks(dishes)
+    checks: List[Check] = run_checks(dishes, calibrated_only=calibrated_only,
+                                     colour_target=colour_target,
+                                     colour_slots=colour_slots)
 
     if isinstance(date, (dt.date, dt.datetime)):
         date_str = date.strftime('%Y-%m-%d')
@@ -189,6 +201,12 @@ def build_evidence(*,
         'dishes': dishes,
         'plate_profile': plate_profile(dishes),
         'checks': [c.to_dict() for c in checks],
+        # Which dishes complement each other, and what the plate lacks. Not
+        # gated by `calibrated_only`: a pairing is not a threshold verdict but a
+        # statement about two recorded attribute values, so there is no
+        # threshold to be wrong about — and `gaps` is the honest half, which is
+        # exactly what must not be filtered out.
+        'pairings': build_pairings(dishes),
         'provenance': build_provenance(dishes, recency, theme,
                                        constant_items, rule_notes),
         'relaxations': [dict(r) for r in (relaxations or [])],

@@ -67,7 +67,7 @@ def _flagged(df, idx, cols):
     ("fish_finger", "fish", "north_indian", {"is_nonveg_dry"}),
     ("railway_chicken_curry", "chicken", "north_indian",
      {"is_nonveg_gravy", "is_north_chicken_gravy"}),
-    ("andhra_kodi_curry", "chicken", "south_indian",
+    ("andhra_chicken_curry", "chicken", "south_indian",
      {"is_nonveg_gravy", "is_south_chicken_gravy"}),
     # not chicken -> a gravy, but not a CHICKEN gravy
     ("mutton_curry", "mutton", "north_indian", {"is_nonveg_gravy"}),
@@ -79,7 +79,7 @@ def _flagged(df, idx, cols):
      {"is_nonveg_gravy", "is_north_chicken_gravy"}),
     # a place plus a protein says nothing about form
     ("afghani_chicken", "chicken", "north_indian", set()),
-    ("kolhapuri_chicken", "chicken", "north_indian", set()),
+    ("chicken_kolhapuri", "chicken", "north_indian", set()),
 ])
 def test_the_name_decides(item, protein, cuisine, expected):
     assert nonveg_structural_flags(item, protein, cuisine) == expected
@@ -182,15 +182,17 @@ def test_the_mechanism_still_refuses_to_guess(frames):
 
 
 @pytest.mark.parametrize("dish,flag", [
-    # The four Bangalore rows that are genuinely not sauced.
+    # The Bangalore rows that are genuinely not sauced.
     ("afghani_chicken", "is_nonveg_dry"),        # a malai-marinated grill
     ("egg_vepudu", "is_nonveg_dry"),             # Telugu `vepudu` = fry
-    ("gobi_keema_mutter", "is_nonveg_dry"),      # a minced semi-dry sabzi
-    ("hariyali_chicken", "is_nonveg_dry"),       # the tandoor/tikka treatment
+    # `gobi_keema_mutter` used to be the fourth. It is minced CAULIFLOWER and
+    # is now `veg_dry` (note 34) — see the removed adjudication in
+    # `nonveg_structural_flags.py` for why citing its protein column was
+    # circular. `test_vegnonveg_corrections.py` pins it on the veg side.
     # …against its sauced opposite, which shares three of its four letters.
     ("egg_pulusu", "is_nonveg_gravy"),           # Andhra `pulusu` = tangy stew
     ("nati_style_kozhi_saru", "is_nonveg_gravy"),  # `saru` IS a thin gravy
-    ("murgh_kolhapuri", "is_nonveg_gravy"),
+    ("chicken_kolhapuri", "is_nonveg_gravy"),
 ])
 def test_the_adjudicated_verdicts_are_applied(frames, dish, flag):
     df = frames["bangalore"]

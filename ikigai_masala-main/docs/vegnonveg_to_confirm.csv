@@ -1,0 +1,12 @@
+item,cities,current_state,question
+mutter_keema,ncr,RESOLVED -> veg (peas keema),The client confirmed it is MATAR keema - peas keema - not the Mughlai mutton dish the name also describes. Now veg_dry / green_peas.
+kasturi_kebab,"bangalore,hyderabad","RESOLVED -> chicken, non-veg dry","Confirmed chicken. It duplicates kasturia_kebab, already filed chicken in both cities - the name fold is in canonical_dish_spellings.py."
+shami_kebab,"bangalore,hyderabad","RESOLVED -> non-veg, protein=mutton","Confirmed non-veg. Protein set to mutton, which is what the dish is (minced beef/lamb/mutton with ground chana dal). NOTE: this takes Bangalore's mutton pool from 2 dishes to 4, and Stripe's mutton window and weekly cap select on that pool. One line to flip to chicken if the kitchen makes it that way."
+gauloti_kebab,"bangalore,hyderabad","RESOLVED -> non-veg, protein=mutton",Confirmed non-veg. Galouti (Tunday) is a Lucknawi minced-MUTTON kebab. Same pool note as shami_kebab.
+veg_keema_matar / veg_keema_mutter,ncr,"RESOLVED -> veg, soya","Client confirmed vegetarian and soya-based, which is what was applied."
+hederabad_dum_biryani,"bangalore,hyderabad",RESOLVED -> removed,Confirmed junk duplicate of hyderabadi_dum_biryani.
+onion_rings_...boiled_eggs / ...paneer_cubes,"bangalore,hyderabad",RESOLVED -> removed,"Confirmed: a salad BAR written as one 160-character row, not a dish. Both variants removed; the boiled-eggs one was filed nonveg_main, so the bar was a candidate for the day's meat dish."
+honey_chilli_checken + honey_chilli_chiciken,ncr,non-veg; name fold pending,"Both are now chicken, so neither can reach a vegetarian. They are two spellings of one dish with no correctly-spelled twin in NCR - the fold to a single canonical name is handled by canonical_dish_spellings.py."
+chilli_chiken,ncr,non-veg; name fold pending,"Now chicken. NCR also lists chilly_chicken, chilli_chicken_fry and chilli_chicken_gravy; the spelling fold is in canonical_dish_spellings.py."
+tandoori_chcien,ncr,non-veg; name fold pending,Now chicken. Folds to tandoori_chicken.
+kolkata_chic_curry,"bangalore,hyderabad",non-veg; name fold pending,"Now chicken. Folds to kolkata_chicken_curry, the same dish already correctly filed in both cities."
