@@ -333,7 +333,7 @@ Found while auditing the repo; unrelated to this feature but cheap to fix:
    `MAX_NUM_DAYS=30`.
 
    * **The theme tier IS inverted, and this is the finding.** CP-SAT finds a
-     feasible assignment where the mass below THEME reaches **1.02e15** against
+     feasible assignment where the mass below THEME reaches **1.86e15** against
      a 1e15 tier weight — an achieved solution, not a loose bound. A theme
      violation can be bought with high-tier gains and the solve returns OPTIMAL
      having optimised the wrong priority. The test carries a strict `xfail`

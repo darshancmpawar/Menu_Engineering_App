@@ -16,11 +16,20 @@ an estimate of the term count. This measures it instead, on the model the real
 solver builds for a real client config at `MAX_NUM_DAYS`.
 
 **The measurement says the theme tier is inverted.** CP-SAT finds a feasible
-assignment where the mass below THEME reaches ~1.02e15 against a 1e15 tier
+assignment where the mass below THEME reaches ~1.86e15 against a 1e15 tier
 weight, so a theme violation can be bought with high-tier gains. That is an
-achieved solution rather than a loose bound, and the guard carries a strict
-`xfail` naming it — the fix is a wider tier separation, which changes every menu
-for every client and is therefore the client's decision, not a patch.
+achieved solution rather than a loose bound. The fix is a wider tier separation,
+which changes every menu for every client and is therefore the client's
+decision, not a patch — so the guard ASSERTS the inversion is still there, and
+failing is how that decision announces itself once it is taken.
+
+It used to carry a strict `xfail` instead, which was worse in a way worth
+recording: `xfail` swallows every cause alike, so a run where CP-SAT simply ran
+out of budget was indistinguishable from the known defect. Under CPU contention
+all three rungs came back UNKNOWN, nothing was found to be inverted, the
+assertion held vacuously, and only the strictness of the marker — reporting that
+XPASS as a failure — made it visible. The rung now has to DECIDE before its
+verdict counts.
 
 **Three bounds were tried and two were wrong**, which is why `_reachable_below`
 asks CP-SAT rather than computing. That history is kept in its docstring
@@ -223,7 +232,6 @@ def _band_totals(capture):
 
     coeffs, n_cells = capture['coeffs'], capture['cells']
     weights = sorted(OBJECTIVE_TIER_WEIGHTS.values())        # low .. theme
-    low = weights[0]
     per_cell = MAX_FRESHNESS_BONUS + MAX_TIE_BREAK
     bands = {'sub_rule': n_cells * per_cell}
     for name, w in OBJECTIVE_TIER_WEIGHTS.items():
@@ -354,56 +362,81 @@ class TestTheTiersStayLexicographic:
         assert widest[1:] == (WIDEST_CLIENT, WIDEST_COUNTER), widest
         assert _counter_width(by_name[WIDEST_CLIENT], WIDEST_COUNTER) == widest[0]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            'KNOWN DEFECT, reproduced: on the fleet''s widest counter at '
-            'MAX_NUM_DAYS the mass below the THEME tier reaches ~1.02e15 '
-            'against a 1e15 tier weight, so a theme violation can be bought '
-            'with high-tier gains. CP-SAT finds a real assignment that does '
-            'it, so this is not a loose bound. The fix is a wider tier '
-            'separation, which changes every menu for every client — a '
-            'decision for the client, not a patch. Remove this marker with '
-            'that change; `strict` makes the test fail if it starts passing '
-            'while the marker is still here.'),
-    )
-    def test_every_rule_tier_outranks_everything_beneath_it(self, objective_coeffs):
-        """Rulebook section 7, measured: a higher-priority soft rule is never
-        traded away for a pile of lower-priority ones.
+    def test_the_theme_tier_is_still_inverted_at_max_num_days(
+            self, objective_coeffs):
+        """Rulebook section 7, measured — and it does NOT hold at the top rung.
 
-        When this fails, a menu comes back OPTIMAL having optimised the wrong
-        priority — no exception, no log line, nothing red. It is the same
-        silent-wrongness shape as design note 27, which is why it is worth a
-        real model rather than an estimate.
+        A higher-priority soft rule is supposed never to be traded away for a
+        pile of lower-priority ones. On the fleet's widest counter at
+        `MAX_NUM_DAYS`, CP-SAT finds a real assignment where the mass below
+        THEME exceeds one theme unit, so a theme violation can be bought with
+        high-tier gains. When that happens a menu comes back OPTIMAL having
+        optimised the wrong priority — no exception, no log line, nothing red,
+        the same silent-wrongness shape as design note 27.
 
-        Theme is the rung that fails, and structurally it is the one to watch:
-        it has the whole ladder beneath it. Medium and high read comfortable
-        only because they sit under fewer tiers, so reporting all three as
-        "comfortable" hides the one that matters.
+        **This asserts the defect is STILL THERE, rather than carrying an
+        `xfail`.** The marker was `xfail(strict=True)`, which reads well and
+        failed in two ways that matter:
+
+        * `xfail` swallows every cause alike, so a run where CP-SAT simply gave
+          up was indistinguishable from the known inversion. Under CPU
+          contention all three rungs came back UNKNOWN, `achieved is None` for
+          each, nothing was appended to `inverted`, `assert not inverted` held
+          — and the test passed **having measured nothing**. The strict marker
+          then reported that XPASS as a failure, which is the only reason it
+          was noticed at all.
+        * `medium` and `high` are undecided at this budget even on an idle
+          machine, so the vacuity is not hypothetical; only THEME reliably
+          decides, and THEME is the rung that matters (it has the whole ladder
+          beneath it, while the other two read comfortable merely by sitting
+          under fewer tiers).
+
+        So the measurement is made a precondition: the theme rung must DECIDE,
+        or the guard is blind and says so. Fixing the tiers is still the
+        client's call — it changes every menu for every client — and this test
+        failing is exactly how that decision announces itself: when the
+        separation is widened, come here, flip the assertion, and delete this
+        paragraph.
         """
-        inverted = []
         # LOW is deliberately not one of the rungs checked here — see
         # `test_freshness_is_a_plan_level_preference_not_a_per_cell_one`.
         print('\nreachable mass below each tier:')
+        measured = {}
         for name in ('medium', 'high', 'theme'):
             weight = OBJECTIVE_TIER_WEIGHTS[name]
             achieved, bound, status = _reachable_below(objective_coeffs, weight)
             shown = ('undecided' if achieved is None
                      else f'achieved {achieved:,} / bound {bound:,}')
             print(f'  {name:<7} {shown}  [{status}]')
-            if achieved is not None and achieved >= weight:
-                inverted.append(
-                    f'{name}: a FEASIBLE solution reaches {achieved:,} below '
-                    f'the tier, >= one {name} unit ({weight:,})')
-        assert not inverted, (
-            'the objective is NOT lexicographic at MAX_NUM_DAYS on the '
-            "fleet's widest counter — a real assignment, not a loose bound: "
-            + '; '.join(inverted)
-            + '. Widen the separation in OBJECTIVE_TIER_WEIGHTS. NB a uniform '
-              '1e4 step would break the other end: freshness reaches 91,000 in '
-              'a cell and must stay under one LOW unit (note 24), so LOW '
-              'cannot drop to 1e4. Do not change the freshness constants in '
-              'the same commit (note 32).')
+            measured[name] = achieved
+
+        theme = OBJECTIVE_TIER_WEIGHTS['theme']
+        assert measured['theme'] is not None, (
+            'the theme rung came back UNDECIDED, so this test measured '
+            'NOTHING — it is not evidence that the ladder holds. CP-SAT ran '
+            f'out of its {_reachable_below.__defaults__[0]}s budget without a '
+            'solution or a bound. Re-run it on an idle machine (contention is '
+            'the usual cause) or raise the budget; do not read a silent pass '
+            'here as a clean bill of health.')
+        assert measured['theme'] >= theme, (
+            'the theme tier is no longer inverted — the mass below it now '
+            f'reaches only {measured["theme"]:,} against one theme unit '
+            f'({theme:,}). That is GOOD NEWS and this test is now wrong: if '
+            'OBJECTIVE_TIER_WEIGHTS was deliberately widened, flip this '
+            'assertion to `< theme` and update design note 32. NB a uniform '
+            '1e4 step would break the other end: freshness reaches 91,000 in '
+            'a cell and must stay under one LOW unit (note 24), so LOW cannot '
+            'drop to 1e4. Do not change the freshness constants in the same '
+            'commit (note 32).')
+
+        # Where the other two rungs DID decide, they must still be clean —
+        # theme being broken is not a licence to stop watching them.
+        for name in ('medium', 'high'):
+            if measured[name] is not None:
+                assert measured[name] < OBJECTIVE_TIER_WEIGHTS[name], (
+                    f'{name} is inverted too: a real assignment reaches '
+                    f'{measured[name]:,} below a {OBJECTIVE_TIER_WEIGHTS[name]:,} '
+                    'tier. That is a WIDER failure than note 32 records.')
 
     def test_freshness_is_a_plan_level_preference_not_a_per_cell_one(
             self, objective_coeffs):
