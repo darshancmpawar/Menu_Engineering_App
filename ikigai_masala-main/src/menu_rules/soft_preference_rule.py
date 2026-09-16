@@ -64,6 +64,7 @@ _SCOPES = frozenset({'horizon', 'week', 'day'})
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
     'prefer_day_types', 'prefer_daily', 'match_attribute',
+    'prefer_attribute_spread',
 })
 
 
@@ -112,6 +113,13 @@ class SoftPreferenceRule(BaseMenuRule):
         # 'horizon' (default, unchanged), 'week' (ISO calendar week) or 'day'
         # (two CELLS of one plate). See get_objective_terms.
         self.scope: str = str(rule_config.get('scope', 'horizon')).lower()
+        # prefer_attribute_spread — the plate's shape in one attribute.
+        # `min_distinct` is how many different values it should carry;
+        # `max_share` is the fraction of the plate any one value may occupy.
+        md = rule_config.get('min_distinct')
+        self.min_distinct: Optional[int] = int(md) if md is not None else None
+        ms = rule_config.get('max_share')
+        self.max_share: Optional[float] = float(ms) if ms is not None else None
         # match_attribute — the attribute values this rule is about. Required:
         # comparing every value present would read a themed day's own cuisine as
         # a violation (see the module docstring).
@@ -148,6 +156,18 @@ class SoftPreferenceRule(BaseMenuRule):
             errs.append("avoid_consecutive requires selector")
         if self.mode == 'avoid_attribute_repeat' and not self.group_by:
             errs.append("avoid_attribute_repeat requires group_by")
+        if self.mode == 'prefer_attribute_spread':
+            if not self.group_by:
+                errs.append("prefer_attribute_spread requires group_by")
+            if self.min_distinct is None and self.max_share is None:
+                errs.append("prefer_attribute_spread requires min_distinct "
+                            "and/or max_share")
+            if self.min_distinct is not None and self.min_distinct < 2:
+                errs.append("min_distinct must be >= 2 (got "
+                            f"{self.min_distinct}); 1 is always satisfied")
+            if self.max_share is not None and not 0 < self.max_share < 1:
+                errs.append("max_share must be between 0 and 1 exclusive "
+                            f"(got {self.max_share}); 1 can never be exceeded")
         if self.scope not in _SCOPES:
             errs.append(f"scope must be one of {sorted(_SCOPES)} (got {self.scope!r})")
         if self.mode == 'prefer_day_types':
@@ -260,6 +280,63 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(both <= b)
                 both_bools.append(both)
             return [sum(both_bools) * (-abs(w))] if both_bools else []
+
+        if self.mode == 'prefer_attribute_spread':
+            # "the plate should carry at least N different textures, and no one
+            # texture should be more than X of it."
+            #
+            # NOT `avoid_attribute_repeat`, which penalises every repeat: there
+            # are only SEVEN texture values against a plate of six to nine main
+            # dishes, so "all different" is unreachable and a flat repeat
+            # penalty would be a constant the solver cannot act on. What a diner
+            # notices is a plate that is five-sixths saucy, and that is a
+            # threshold, not a count.
+            #
+            # The denominator is the day's CELL COUNT, known when the model is
+            # built, so the share cap is a plain integer bound rather than a
+            # ratio the solver has to reason about.
+            terms = []
+            for di in range(n):
+                dcells = [c for c in cells
+                          if c.d_idx == di and (self.base_slots is None
+                                                or c.base_slot in self.base_slots)]
+                if len(dcells) < 2:
+                    continue
+                groups = defaultdict(list)
+                for c in dcells:
+                    for v, r in zip(c.x_vars, c.cand_rows):
+                        val = _norm_str(str(r.get(self.group_by, '')))
+                        if val:
+                            groups[val].append(v)
+                if not groups:
+                    continue
+                n_cells = len(dcells)
+
+                if self.max_share is not None:
+                    cap = max(1, int(self.max_share * n_cells))
+                    for vi, (val, lits) in enumerate(sorted(groups.items())):
+                        if len(lits) <= cap:
+                            continue        # cannot exceed the cap anyway
+                        over = model.NewIntVar(0, len(lits),
+                                               f'{self.name}_share_{di}_{vi}')
+                        model.Add(over >= sum(lits) - cap)
+                        terms.append(over)
+
+                if self.min_distinct is not None:
+                    # A day with fewer values available than the target is
+                    # skipped: penalising it is a constant, not a preference.
+                    if len(groups) < self.min_distinct:
+                        continue
+                    present = []
+                    for vi, (val, lits) in enumerate(sorted(groups.items())):
+                        y = model.NewBoolVar(f'{self.name}_has_{di}_{vi}')
+                        link_any(model, lits, y)
+                        present.append(y)
+                    short = model.NewIntVar(0, self.min_distinct,
+                                            f'{self.name}_short_{di}')
+                    model.Add(short >= self.min_distinct - sum(present))
+                    terms.append(short)
+            return [sum(terms) * (-abs(w))] if terms else []
 
         if self.mode == 'match_attribute':
             # "slot A serves value v, and slot B serves nothing of value v" —

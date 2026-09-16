@@ -283,6 +283,25 @@
       "group_by": "key_ingredient"
     },
     {
+      "_comment": "The plate should not be all one texture. Five saucy dishes out of six satisfies every other rule in the system and every diner notices it is mushy, and nothing in the solver looked at texture at all. Thresholds and slot set MIRROR src/explain/checks.py::check_texture_contrast (MIN_DISTINCT_TEXTURES, MAX_ONE_TEXTURE_SHARE, MAIN_COURSES) on purpose: that check is the regression test for this rule, and two copies of a threshold are two things that can disagree. Measured achievable before it was written — across all 80 counters the best reachable dominant share is a median of 20% (worst 33%) against this 60% cap, and every counter can reach three distinct textures, so the flags this answers are avoidable rather than forced (the pool-availability test of note 33, which this check had never been put through). SOFT because texture is largely a property of the SLOT, not a free choice: veg_gravy is 98% saucy, starter 89% crisp, dal 88% saucy. A counter serving gravy + dal + non-veg is structurally saucy-heavy, and a hard cap there would trade the day's gravy for a texture score.",
+      "name": "plate_texture_spread",
+      "type": "soft_preference",
+      "mode": "prefer_attribute_spread",
+      "priority": "medium",
+      "group_by": "texture",
+      "base_slot": [
+        "bread",
+        "dal",
+        "nonveg_main",
+        "rice",
+        "starter",
+        "veg_dry",
+        "veg_gravy"
+      ],
+      "min_distinct": 3,
+      "max_share": 0.6
+    },
+    {
       "_comment": "Don't run South Indian chicken gravies on consecutive days (10 rows) — soft, so it yields when the non-veg pool for a themed day leaves nothing else. Was 11 until fish_kuzhambu stopped being flagged is_south_chicken_gravy: it is a fish, and scripts/seafood_taxonomy.py cleared the chicken flags off the 8 seafood rows.",
       "name": "avoid_consecutive_south_chicken",
       "type": "soft_preference",

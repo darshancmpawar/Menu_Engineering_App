@@ -432,6 +432,119 @@ class TestTheSoftPlateEcho:
             'group_by': 'key_ingredient'}).scope == 'horizon'
 
 
+class TestTheTextureOfThePlate:
+    """`prefer_attribute_spread` — at least N values, none over X of the plate.
+
+    Deliberately not `avoid_attribute_repeat`: there are only SEVEN texture
+    values in the ontology against a plate of six to nine main dishes, so "all
+    different" is unreachable and a flat repeat penalty is a constant the
+    solver cannot act on. What a diner notices is a plate that is five-sixths
+    saucy, and that is a threshold.
+    """
+
+    def _rule(self, **kw):
+        from src.menu_rules.soft_preference_rule import SoftPreferenceRule
+        cfg = {'name': 'texture_spread', 'mode': 'prefer_attribute_spread',
+               'group_by': 'texture', 'weight': 1000}
+        cfg.update(kw)
+        return SoftPreferenceRule(cfg)
+
+    def _cell_tex(self, model, di, base_slot, textures, tag=''):
+        rows = [pd.Series({'item': f'{base_slot}{tag}_{di}_{i}', 'texture': t})
+                for i, t in enumerate(textures)]
+        xs = [model.NewBoolVar(f'tx_{di}_{base_slot}{tag}_{i}')
+              for i in range(len(textures))]
+        model.Add(sum(xs) == 1)
+        return _FakeCell(di, base_slot, rows, xs)
+
+    def _maximise(self, model, terms):
+        model.Maximize(sum(terms))
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5
+        solver.parameters.num_search_workers = 1
+        return solver, solver.Solve(model)
+
+    def _picked(self, solver, cells):
+        out = []
+        for c in cells:
+            for var, row in zip(c.x_vars, c.cand_rows):
+                if solver.Value(var):
+                    out.append(row['texture'])
+        return out
+
+    def test_max_share_breaks_up_an_all_saucy_plate(self):
+        model = cp_model.CpModel()
+        cells = [self._cell_tex(model, 0, s, ['saucy', 'crisp'], tag=s)
+                 for s in ('veg_gravy', 'dal', 'nonveg_main', 'rice')]
+        terms = self._rule(max_share=0.6).get_objective_terms(model, _ctx(cells, 1))
+        solver, status = self._maximise(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        picked = self._picked(solver, cells)
+        assert picked.count('saucy') <= 2, picked      # cap = int(0.6 * 4) = 2
+
+    def test_min_distinct_pulls_a_third_texture_onto_the_plate(self):
+        model = cp_model.CpModel()
+        cells = [
+            self._cell_tex(model, 0, 'veg_gravy', ['saucy'], tag='g'),
+            self._cell_tex(model, 0, 'dal', ['saucy', 'dry'], tag='d'),
+            self._cell_tex(model, 0, 'rice', ['saucy', 'grainy'], tag='r'),
+        ]
+        terms = self._rule(min_distinct=3).get_objective_terms(model, _ctx(cells, 1))
+        solver, status = self._maximise(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert len(set(self._picked(solver, cells))) == 3
+
+    def test_a_day_that_cannot_reach_the_target_is_skipped(self):
+        # Penalising a day whose pool holds only two textures is a constant the
+        # solver cannot act on — it would just add cost and tilt nothing.
+        model = cp_model.CpModel()
+        cells = [self._cell_tex(model, 0, s, ['saucy', 'dry'], tag=s)
+                 for s in ('veg_gravy', 'dal')]
+        terms = self._rule(min_distinct=3).get_objective_terms(model, _ctx(cells, 1))
+        assert not terms
+
+    def test_it_stays_soft_and_can_be_outbid(self):
+        # veg_gravy is 98% saucy in the real ontology; a texture preference must
+        # never be the reason a plate loses its gravy.
+        model = cp_model.CpModel()
+        cells = [self._cell_tex(model, 0, s, ['saucy', 'crisp'], tag=s)
+                 for s in ('veg_gravy', 'dal', 'nonveg_main', 'rice')]
+        terms = list(self._rule(max_share=0.6).get_objective_terms(model, _ctx(cells, 1)))
+        terms += [c.x_vars[0] * 100_000 for c in cells]   # something wants saucy
+        solver, status = self._maximise(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert self._picked(solver, cells).count('saucy') == 4
+
+    def test_base_slot_scopes_the_denominator(self):
+        # The share is a fraction of the PLATE, and the explain-layer check it
+        # mirrors counts main courses only. A condiment must not enlarge the
+        # denominator and dilute the cap.
+        model = cp_model.CpModel()
+        mains = [self._cell_tex(model, 0, s, ['saucy', 'crisp'], tag=s)
+                 for s in ('veg_gravy', 'dal')]
+        side = self._cell_tex(model, 0, 'curd_side', ['saucy'], tag='c')
+        rule = self._rule(max_share=0.6, base_slot=['veg_gravy', 'dal'])
+        terms = rule.get_objective_terms(model, _ctx(mains + [side], 1))
+        solver, status = self._maximise(model, terms)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        assert self._picked(solver, mains).count('saucy') <= 1   # int(0.6*2)=1
+
+    def test_a_blank_texture_is_not_a_value(self):
+        model = cp_model.CpModel()
+        cells = [self._cell_tex(model, 0, s, [''], tag=s) for s in ('dal', 'rice')]
+        assert not self._rule(max_share=0.6).get_objective_terms(model, _ctx(cells, 1))
+
+    def test_validation(self):
+        assert self._rule(min_distinct=3, max_share=0.6).validate_config()
+        assert not self._rule().validate_config()                 # neither set
+        assert not self._rule(min_distinct=1).validate_config()   # always true
+        assert not self._rule(max_share=1).validate_config()      # never exceeded
+        assert not self._rule(max_share=0).validate_config()
+        r = self._rule(min_distinct=3, group_by=None)
+        assert not r.validate_config()
+        assert any('group_by' in e for e in r.validation_errors())
+
+
 class TestConfigValidation:
     def test_max_cells_per_day_stands_alone(self):
         r = AttributeGroupingRule({
