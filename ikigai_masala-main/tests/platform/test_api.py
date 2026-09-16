@@ -1154,29 +1154,80 @@ class TestCounterClientEndpoints:
         # Version bumped by the PUT.
         assert updated['version'] == version + 1
 
-    def test_put_single_mode_keeps_only_primary_counter(
+    def test_the_counters_list_wins_over_counter_mode(
         self, client, auth_headers, fake_supabase,
     ):
+        """A mode that disagrees with the list no longer DELETES counters.
+
+        This reverses a previously pinned behaviour, deliberately. The old
+        contract was "counter_mode=single truncates to the first counter", and
+        the cost of it was silent data loss on a 200 response: `counter_mode`
+        defaults to 'single' in the API layer, so any caller that sent two
+        counters and omitted the field lost the second one and was told the
+        config had been updated. The visible symptom appeared somewhere else
+        entirely — cross-counter shared categories "stopped working", because
+        the client no longer had a second counter to share with.
+
+        The mode is DERIVED in this schema (single <=> 1 counter, multi <=> 2+),
+        so the list is the more specific statement and there is nothing for the
+        flag to win over. Collapsing a client is still possible and is what
+        sending a one-entry list means — see the test below.
+        """
         cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
         resp = client.put('/api/v1/client-config/Rippling', json={
             'version': cfg['version'],
             'counter_mode': 'single',
             'counters': [
                 {'name': 'Only', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
-                {'name': 'Dropped', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'Kept', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
             ],
         }, headers=auth_headers)
         assert resp.status_code == 200
         updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
-        assert updated['counter_mode'] == 'single'
-        assert len(updated['counters']) == 1
-        # Single mode drops the extra counter and keeps only the primary,
-        # read back from the legacy tables (categories preserved; the single
-        # counter's name is cosmetic and not persisted separately).
-        assert updated['counters'][0]['categories'] == ['rice']
-        # Single mode stores exactly one counter in clients.counters.
+        assert [c['name'] for c in updated['counters']] == ['Only', 'Kept']
+        assert updated['counter_mode'] == 'multi'   # derived from the list
         rip = [r for r in fake_supabase.rows('clients') if r['name'] == 'Rippling'][0]
-        assert len(rip['counters']) == 1
+        assert len(rip['counters']) == 2
+
+    def test_omitting_counter_mode_does_not_lose_a_counter(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """The exact shape of the reported bug: no `counter_mode` in the body."""
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        resp = client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'],
+            'counters': [
+                {'name': 'A', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'B', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert [c['name'] for c in updated['counters']] == ['A', 'B']
+
+    def test_a_one_entry_list_still_collapses_the_client(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """Collapsing has to stay possible — it is what the editor's Reset does."""
+        cfg = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg['version'], 'counter_mode': 'multi',
+            'counters': [
+                {'name': 'A', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
+                {'name': 'B', 'categories': ['dal'], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        cfg2 = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        resp = client.put('/api/v1/client-config/Rippling', json={
+            'version': cfg2['version'], 'counter_mode': 'single',
+            'counters': [
+                {'name': 'Only', 'categories': ['rice'], 'slot_counts': {}, 'theme_map': {}},
+            ],
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        updated = client.get('/api/v1/client-config/Rippling', headers=auth_headers).get_json()
+        assert len(updated['counters']) == 1
+        assert updated['counter_mode'] == 'single'
 
 
 class TestTwoServicesADay:

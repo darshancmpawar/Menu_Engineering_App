@@ -848,14 +848,34 @@ class ClientConfigLoader:
         counter_mode: str,
         counters: List[Dict] | None,
     ) -> List[Dict]:
-        """Normalise create/update inputs into the canonical counters list."""
+        """Normalise create/update inputs into the canonical counters list.
+
+        **An explicit ``counters`` list is the mode.** It used to be truncated
+        to one entry whenever ``counter_mode`` was not ``'multi'``, which made a
+        separate field able to contradict the list and win — and the mode is
+        DERIVED in this schema (single ⇔ 1 counter, multi ⇔ 2+), so there is
+        nothing for it to win over. A caller that sent two counters and omitted
+        ``counter_mode`` (it defaults to ``'single'`` in the API layer) had its
+        second counter deleted and got ``200 Config updated`` back. The visible
+        symptom was elsewhere and looked unrelated: cross-counter shared
+        categories "stopped working", because the client no longer had a second
+        counter to share with.
+
+        Collapsing a multi-counter client is still possible — it is what
+        sending a one-entry list means. The mode no longer does it silently.
+        """
         if counters:
             norm = [normalize_counter(c, i) for i, c in enumerate(counters)]
+            if counter_mode != 'multi' and len(norm) > 1:
+                logger.warning(
+                    "counter_mode=%r was sent with %d counters; honouring the "
+                    "counters list, which is the source of truth. Send a "
+                    "one-entry list to collapse a client to a single counter.",
+                    counter_mode, len(norm),
+                )
         else:
             cats = active_slots if active_slots is not None else list(_TOGGLEABLE_BASE_SLOTS)
             norm = [normalize_counter({'name': 'Counter 1', 'categories': cats}, 0)]
-        if counter_mode != 'multi':
-            norm = norm[:1]
         self._validate_counters(norm)
         return norm
 
