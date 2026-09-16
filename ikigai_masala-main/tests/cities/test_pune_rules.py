@@ -114,20 +114,36 @@ class TestPuneRulesBiteOnPuneData:
         )
 
     def test_attribute_grouping_columns_are_populated(self, pune_rules, pune_pools):
+        """A grouping rule must have a column it can actually group on.
+
+        Two ways to satisfy that, and a rule has to pick one. Either the column
+        is populated for every candidate — the original requirement, still what
+        `item_color` meets — or the rule declares `require_value`, which drops
+        the blanks from the pool itself. The second exists because
+        `key_ingredient` is blank on 23% of the Pune list and a blank is
+        *unconstrained*: without the drop the solver escapes a variety rule by
+        serving exactly the dishes nobody has classified.
+        """
         _df, pools = pune_pools
         for rule in pune_rules:
             if rule.rule_type.value != 'attribute_grouping':
                 continue
-            pool = pools[rule.base_slot]
-            values = pool[rule.group_by].dropna()
-            assert len(values) == len(pool), (
-                f"{rule.name}: {rule.group_by} is unset for "
-                f"{len(pool) - len(values)} of {len(pool)} {rule.base_slot} items"
-            )
-            assert values.nunique() >= 2, (
-                f"{rule.name}: only one distinct {rule.group_by}, so "
-                f"non_consecutive can never be satisfied"
-            )
+            slots = sorted(rule.base_slots or pools)
+            for slot in slots:
+                pool = pools.get(slot)
+                if pool is None or pool.empty:
+                    continue
+                values = pool[rule.group_by].dropna()
+                if not rule.require_value:
+                    assert len(values) == len(pool), (
+                        f"{rule.name}: {rule.group_by} is unset for "
+                        f"{len(pool) - len(values)} of {len(pool)} {slot} items, "
+                        f"and the rule does not declare require_value"
+                    )
+                assert values.nunique() >= 2, (
+                    f"{rule.name}: only one distinct {rule.group_by} in {slot}, "
+                    f"so the gap can never be satisfied"
+                )
 
     def test_yellow_dal_floor_is_achievable(self, pune_rules, pune_pools):
         """min targets auto-cap to what is placeable, so an over-ambitious floor

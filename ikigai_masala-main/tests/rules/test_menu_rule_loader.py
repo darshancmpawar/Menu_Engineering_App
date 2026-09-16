@@ -21,7 +21,7 @@ def _write_client(directory, slug, client_name, block):
 
 # Number of rules in the reference (bangalore) ruleset. Asserted rather than
 # hard-coded per test so adding a city rule is a one-line update here.
-_CITY_RULE_COUNT = 57
+_CITY_RULE_COUNT = 60
 
 
 class TestMenuRuleLoader:

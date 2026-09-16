@@ -404,6 +404,41 @@
       "mode": "avoid_attribute_repeat",
       "priority": "high",
       "base_slot": "veg_gravy",
+      "group_by": "key_ingredient",
+      "scope": "week"
+    },
+    {
+      "_comment": "The veg plate must not echo itself. veg_gravy and veg_dry together may not serve the same key ingredient on one day — a paneer gravy beside a paneer dry is legal under every other rule (different course_type, different colour, different texture) and reads as one dish served twice. HARD, and measured as feasible on all 78 counters that run either slot before it was written: every one can give each veg cell a distinct named key ingredient. Scoped to these two slots on purpose. Plate-wide is the reading that sounds right and cannot be built — `nonveg_main` carries six distinct key ingredients in the whole ontology against a mandated daily chicken gravy, `dal`'s value is literally `dal` on all 59 counters, `bread`'s is `wheat` on 64 and `rice`'s is `mixed_vegetables` on 61. In those slots the key ingredient is the slot's identity, not a variety dimension. `require_value` keeps blank-key_ingredient dishes out of these two pools, without which the rule is worse than nothing: a blank is unconstrained, so the solver would escape it by serving exactly the dishes nobody has classified.",
+      "name": "veg_plate_distinct_key_ingredient",
+      "type": "attribute_grouping",
+      "base_slot": [
+        "veg_gravy",
+        "veg_dry"
+      ],
+      "group_by": "key_ingredient",
+      "max_cells_per_day": 1,
+      "require_value": true
+    },
+    {
+      "_comment": "And it must not come straight back: three CLEAR days before a key ingredient returns to the same slot, so a carrot gravy on Monday means no carrot gravy until Friday. `per_base_slot` keeps the gravy answering to other gravies and the dry to other dries — pooling them would be the plate-wide ban above, which cannot be built. Auto-relaxes per slot when the pool cannot supply a distinct value for every cell in the window, so a thin slot degrades and reports instead of taking the plan down.",
+      "name": "veg_key_ingredient_three_day_gap",
+      "type": "attribute_grouping",
+      "base_slot": [
+        "veg_gravy",
+        "veg_dry"
+      ],
+      "group_by": "key_ingredient",
+      "per_base_slot": true,
+      "min_days_between": 3,
+      "require_value": true
+    },
+    {
+      "_comment": "The rest of the plate, softly. Any key ingredient appearing on two cells of ONE day is penalised across every slot — a paneer gravy beside a paneer starter, or carrot in the gravy and the salad. SOFT rather than hard because the slots this reaches include the ones whose ingredient IS their identity: chicken must be able to outbid it on a non-veg counter, and wheat on a bread slot. `scope: day` is what makes it see a plate at all; the default horizon scope collapses a value to one bool per day and structurally cannot.",
+      "name": "plate_key_ingredient_echo",
+      "type": "soft_preference",
+      "mode": "avoid_attribute_repeat",
+      "scope": "day",
+      "priority": "medium",
       "group_by": "key_ingredient"
     },
     {
