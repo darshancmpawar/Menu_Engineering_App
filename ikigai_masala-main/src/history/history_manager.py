@@ -16,6 +16,27 @@ import pandas as pd
 from ..preprocessor.column_mapper import _norm_str
 
 
+#: The services a client can run in one day. ``lunch`` is the default
+#: everywhere, so a single-service client is byte-for-byte unchanged by the
+#: arrival of dinner: the column defaults to it, every save that does not name
+#: a meal writes it, and every read that does not name one finds it.
+LUNCH = 'lunch'
+DINNER = 'dinner'
+DEFAULT_MEAL = LUNCH
+MEALS = (LUNCH, DINNER)
+
+
+def normalize_meal(value) -> str:
+    """Coerce a meal input to one of :data:`MEALS`, defaulting to lunch.
+
+    Unknown input falls back rather than raising: a meal is a label on a menu,
+    and refusing to save a generated plan over a bad label would lose the plan
+    (the same argument `/save` makes about an unrecognised dish name).
+    """
+    v = str(value or '').strip().lower()
+    return v if v in MEALS else DEFAULT_MEAL
+
+
 class HistoryManager:
     """Encapsulates menu history for cooldown and signature operations."""
 
@@ -221,20 +242,28 @@ class HistoryManager:
         week_signature: str,
         supabase_client,
         strip_color_fn=None,
+        meal: str = DEFAULT_MEAL,
     ):
         """Persist a completed week plan to Supabase with **overwrite**
         semantics.
 
-        Storage: one row per (client, service_date) in ``menu_history``,
+        Storage: one row per (client, service_date, meal) in ``menu_history``,
         with the day's whole menu in a ``menu`` JSONB column
         (``{slot: item_base}``) — not one row per dish. Re-saving a plan
-        for the same (client, dates) replaces those day rows (DELETE then
-        INSERT, since the primary key is ``(client_name, service_date)``).
+        for the same (client, dates, meal) replaces those day rows (DELETE then
+        INSERT, since that triple is the primary key).
         The ``week_signatures`` row is overwritten the same way, keyed by
-        ``(client_name, week_start)``.
+        ``(client_name, week_start, meal)``.
+
+        ``meal`` defaults to ``'lunch'``, so a single-service client saves
+        exactly what it always did. It is part of BOTH delete keys because it
+        is part of the identity of what is being replaced: without it the
+        dinner save deletes the lunch rows for the same dates and the day comes
+        back holding one menu instead of two, silently and with no error.
         """
         if supabase_client is None:
             raise ValueError("supabase_client is required to save history.")
+        meal = normalize_meal(meal)
 
         # One JSONB row per date. Empty days are skipped so "partially
         # saved" ranges stay distinguishable from fully-saved ones.
@@ -251,6 +280,7 @@ class HistoryManager:
                 day_rows.append({
                     'client_name': client_name,
                     'service_date': d.isoformat(),
+                    'meal': meal,
                     'menu': menu,
                 })
 
@@ -260,6 +290,7 @@ class HistoryManager:
                 supabase_client.table('menu_history')
                 .delete()
                 .eq('client_name', client_name)
+                .eq('meal', meal)
                 .in_('service_date', date_isos)
                 .execute()
             )
@@ -271,6 +302,7 @@ class HistoryManager:
             supabase_client.table('week_signatures')
             .delete()
             .eq('client_name', client_name)
+            .eq('meal', meal)
             .eq('week_start', week_start.isoformat())
             .execute()
         )
@@ -278,6 +310,7 @@ class HistoryManager:
             'week_start': week_start.isoformat(),
             'week_signature': week_signature,
             'client_name': client_name,
+            'meal': meal,
         }).execute()
 
     def save_counters(
@@ -289,16 +322,18 @@ class HistoryManager:
         week_signature: str,
         supabase_client,
         strip_color_fn=None,
+        meal: str = DEFAULT_MEAL,
     ):
-        """Persist a multi-cuisine week: one ``menu_history`` row per day with
-        a **nested** menu ``{counter_name: {slot: item_base}}``.
+        """Persist a multi-cuisine week: one ``menu_history`` row per
+        (day, meal) with a **nested** menu ``{counter_name: {slot: item_base}}``.
 
         ``counter_plans`` is a list of ``(counter_name, week_plan)`` where each
-        ``week_plan`` is ``{date: {slot: item}}``. Overwrite semantics + the
-        single week-signature row match :meth:`save`.
+        ``week_plan`` is ``{date: {slot: item}}``. Overwrite semantics, the
+        meal key and the single week-signature row all match :meth:`save`.
         """
         if supabase_client is None:
             raise ValueError("supabase_client is required to save history.")
+        meal = normalize_meal(meal)
 
         day_rows = []
         for d in dates:
@@ -315,6 +350,7 @@ class HistoryManager:
             if day_menu:
                 day_rows.append({
                     'client_name': client_name,
+                    'meal': meal,
                     'service_date': d.isoformat(),
                     'menu': day_menu,
                 })
@@ -325,6 +361,7 @@ class HistoryManager:
                 supabase_client.table('menu_history')
                 .delete()
                 .eq('client_name', client_name)
+                .eq('meal', meal)
                 .in_('service_date', date_isos)
                 .execute()
             )
@@ -335,6 +372,7 @@ class HistoryManager:
             supabase_client.table('week_signatures')
             .delete()
             .eq('client_name', client_name)
+            .eq('meal', meal)
             .eq('week_start', week_start.isoformat())
             .execute()
         )
@@ -342,6 +380,7 @@ class HistoryManager:
             'week_start': week_start.isoformat(),
             'week_signature': week_signature,
             'client_name': client_name,
+            'meal': meal,
         }).execute()
 
     # ----- Load saved plan -----
@@ -351,12 +390,16 @@ class HistoryManager:
         supabase_client,
         client_name: str,
         dates: List[dt.date],
+        meal: str = DEFAULT_MEAL,
     ) -> Dict[dt.date, Dict[str, str]]:
         """Return the saved menu for *client_name* across *dates*.
 
         Result shape: ``{date: {slot_id: item_base}}``, read straight from
-        the ``menu`` JSONB column (one row per day, PK on
-        ``(client_name, service_date)``). Only dates with a non-empty menu
+        the ``menu`` JSONB column (one row per (day, meal), PK on
+        ``(client_name, service_date, meal)``). The meal filter is not
+        optional in effect: the result is keyed by DATE, so reading both
+        services would silently return whichever row came back last. Only
+        dates with a non-empty menu
         are present, so callers distinguish "fully saved" (all requested
         dates present) from "partial" / "not saved".
 
@@ -371,18 +414,29 @@ class HistoryManager:
         date_isos = [d.isoformat() for d in dates]
         resp = (
             supabase_client.table('menu_history')
-            .select('service_date, menu')
+            .select('service_date, meal, menu')
             .eq('client_name', client_name)
             .in_('service_date', date_isos)
             .execute()
         )
         rows = resp.data or []
 
+        # The meal is matched HERE rather than with a `.eq('meal', …)` on the
+        # query, for two reasons. A database that has not run the migration has
+        # no such column, and a server-side filter on it is an error rather than
+        # an empty result — this way an un-migrated deployment keeps working and
+        # simply sees every row as lunch. And a row written before the column
+        # existed carries no meal at all, which is lunch by definition, not a
+        # row to hide. The cost is at most two meals' rows for the same dates.
+        want = normalize_meal(meal)
+
         out: Dict[dt.date, Dict[str, str]] = {}
         for r in rows:
             iso = r.get('service_date')
             menu = r.get('menu')
             if not iso or not isinstance(menu, dict) or not menu:
+                continue
+            if normalize_meal(r.get('meal')) != want:
                 continue
             try:
                 d = dt.date.fromisoformat(iso)

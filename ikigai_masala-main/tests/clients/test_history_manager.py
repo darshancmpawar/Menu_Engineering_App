@@ -317,3 +317,132 @@ class TestExplodeHistoryRows:
         hm = HistoryManager().load_from_dataframes(df)
         bans = hm.banned_items_by_date([dt.date(2026, 3, 10)], cooldown_days=20)
         assert 'jeera rice' in bans[dt.date(2026, 3, 10)]
+
+
+class TestTheMealDimension:
+    """Two services a day, keyed so the second does not erase the first.
+
+    `menu_history` was keyed (client, date). A site serving lunch AND dinner
+    has two menus for one date, so without `meal` in the key the dinner save
+    deletes the lunch rows for those dates — no error, no warning, and the
+    cooldown then reads half the history. Every assertion here is about that
+    one failure mode, plus the migration path for rows written before the
+    column existed.
+    """
+
+    def _fake(self, rows=None):
+        from tests.fake_supabase import FakeSupabase
+        return FakeSupabase(seed={'menu_history': rows or [],
+                                  'week_signatures': []})
+
+    def _save(self, fake, meal, item, dates=None):
+        dates = dates or [dt.date(2026, 3, 16)]
+        HistoryManager().save(
+            week_plan={d: {'rice': item} for d in dates},
+            dates=dates, client_name='Rippling',
+            week_start=dates[0], week_signature=f'sig-{meal}',
+            supabase_client=fake, meal=meal,
+        )
+
+    def test_normalize_meal(self):
+        from src.history.history_manager import normalize_meal
+        assert normalize_meal('dinner') == 'dinner'
+        assert normalize_meal('DINNER') == 'dinner'
+        assert normalize_meal(' Lunch ') == 'lunch'
+        # Unknown falls back rather than raising: refusing to save a generated
+        # plan over a bad label would lose the plan.
+        assert normalize_meal('brunch') == 'lunch'
+        assert normalize_meal(None) == 'lunch'
+        assert normalize_meal('') == 'lunch'
+
+    def test_saving_dinner_does_not_erase_lunch(self):
+        fake = self._fake()
+        self._save(fake, 'lunch', 'jeera_rice')
+        self._save(fake, 'dinner', 'lemon_rice')
+        rows = fake.rows('menu_history')
+        assert len(rows) == 2, rows
+        assert {r['meal'] for r in rows} == {'lunch', 'dinner'}
+
+    def test_each_meal_reads_back_its_own_menu(self):
+        fake = self._fake()
+        self._save(fake, 'lunch', 'jeera_rice')
+        self._save(fake, 'dinner', 'lemon_rice')
+        d = dt.date(2026, 3, 16)
+        assert HistoryManager.load_saved_plan(
+            fake, 'Rippling', [d], meal='lunch')[d] == {'rice': 'jeera_rice'}
+        assert HistoryManager.load_saved_plan(
+            fake, 'Rippling', [d], meal='dinner')[d] == {'rice': 'lemon_rice'}
+
+    def test_resaving_one_meal_replaces_only_that_meal(self):
+        fake = self._fake()
+        self._save(fake, 'lunch', 'jeera_rice')
+        self._save(fake, 'dinner', 'lemon_rice')
+        self._save(fake, 'dinner', 'curd_rice')
+        rows = {r['meal']: r['menu']['rice'] for r in fake.rows('menu_history')}
+        assert rows == {'lunch': 'jeera_rice', 'dinner': 'curd_rice'}
+
+    def test_the_week_signature_is_per_meal_too(self):
+        # Same defect one table over: week_signatures is deleted by
+        # (client, week_start) and re-inserted, so a dinner save dropped
+        # lunch's signature and the week-level cooldown lost half its memory.
+        fake = self._fake()
+        self._save(fake, 'lunch', 'jeera_rice')
+        self._save(fake, 'dinner', 'lemon_rice')
+        sigs = fake.rows('week_signatures')
+        assert len(sigs) == 2, sigs
+        assert {s['meal'] for s in sigs} == {'lunch', 'dinner'}
+
+    def test_a_row_with_no_meal_reads_as_lunch(self):
+        # Rows written before the column existed carry no meal at all. That is
+        # lunch by definition, not a row to hide — and an un-migrated database
+        # would ERROR on a server-side .eq('meal', …) rather than return empty,
+        # which is why the match happens in Python.
+        d = dt.date(2026, 3, 16)
+        fake = self._fake([{'client_name': 'Rippling',
+                            'service_date': '2026-03-16',
+                            'menu': {'rice': 'jeera_rice'}}])
+        assert HistoryManager.load_saved_plan(
+            fake, 'Rippling', [d])[d] == {'rice': 'jeera_rice'}
+        assert HistoryManager.load_saved_plan(
+            fake, 'Rippling', [d], meal='dinner') == {}
+
+    def test_a_save_with_no_meal_is_unchanged(self):
+        # The whole fleet saves this way today; the row must look as it always
+        # did apart from carrying the default.
+        fake = self._fake()
+        dates = [dt.date(2026, 3, 16)]
+        HistoryManager().save(
+            week_plan={dates[0]: {'rice': 'jeera_rice'}}, dates=dates,
+            client_name='Rippling', week_start=dates[0],
+            week_signature='sig', supabase_client=fake,
+        )
+        row = fake.rows('menu_history')[0]
+        assert row['meal'] == 'lunch'
+        assert row['menu'] == {'rice': 'jeera_rice'}
+
+    def test_multi_counter_save_is_meal_keyed_as_well(self):
+        fake = self._fake()
+        dates = [dt.date(2026, 3, 16)]
+        for meal, item in (('lunch', 'jeera_rice'), ('dinner', 'lemon_rice')):
+            HistoryManager().save_counters(
+                counter_plans=[('Main', {dates[0]: {'rice': item}})],
+                dates=dates, client_name='Rippling', week_start=dates[0],
+                week_signature=f'sig-{meal}', supabase_client=fake, meal=meal,
+            )
+        rows = {r['meal']: r['menu'] for r in fake.rows('menu_history')}
+        assert rows == {'lunch': {'Main': {'rice': 'jeera_rice'}},
+                        'dinner': {'Main': {'rice': 'lemon_rice'}}}
+
+    def test_the_cooldown_sees_both_meals(self):
+        # A dish served at dinner must still be banned at lunch the next day,
+        # so the history READ is deliberately not meal-filtered.
+        rows = [
+            {'client_name': 'Rippling', 'service_date': '2026-03-16',
+             'meal': 'lunch', 'menu': {'rice': 'jeera_rice'}},
+            {'client_name': 'Rippling', 'service_date': '2026-03-16',
+             'meal': 'dinner', 'menu': {'rice': 'lemon_rice'}},
+        ]
+        long_df = HistoryManager.explode_history_rows(rows)
+        hm = HistoryManager().load_from_dataframes(long_df, None)
+        banned = hm.banned_items_by_date([dt.date(2026, 3, 17)], cooldown_days=20)
+        assert banned[dt.date(2026, 3, 17)] == {'jeera_rice', 'lemon_rice'}
