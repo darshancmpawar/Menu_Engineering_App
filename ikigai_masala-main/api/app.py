@@ -69,7 +69,7 @@ from src.client.client_config import (  # noqa: F401 — surfaced in editor-meta
     DEFAULT_ITEM_COOLDOWN_DAYS,
     MAX_COUNTERS,
 )
-from src.history import HistoryManager
+from src.history import HistoryManager, normalize_meal, DEFAULT_MEAL
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules import (
     DiagnoseContext,
@@ -770,6 +770,41 @@ def _merge_shared_items(forced_items, shared_items, dates):
     return merged
 
 
+def _merge_excluded_items(banned, exclude_items, dates):
+    """Fold caller-supplied per-date dish bans into the cooldown's ban map.
+
+    *exclude_items* is ``{iso_date: [item, …]}`` — the dishes an EARLIER
+    service on the same day has already committed. Dinner is solved after
+    lunch and must not reprint lunch's dishes, and "this dish is already on
+    today's menu" is exactly what ``banned_by_date`` means, so it goes in there
+    rather than into a mechanism of its own: every rule and the whole
+    pre-flight already respect that map.
+
+    Banned for the DAY, not per slot, because the same dish in a different slot
+    is still the same dish appearing twice on one date.
+
+    Malformed input is skipped rather than raised on: a dinner solve must not
+    fail because the lunch payload had a bad date in it.
+    """
+    if not exclude_items or not isinstance(exclude_items, dict):
+        return banned
+    merged = {d: set(v) for d, v in (banned or {}).items()}
+    date_set = set(dates or ())
+    for date_str, items in exclude_items.items():
+        try:
+            d = dt.date.fromisoformat(str(date_str))
+        except (ValueError, TypeError):
+            continue
+        if d not in date_set:
+            continue
+        names = {
+            str(i).strip().lower() for i in (items or []) if str(i).strip()
+        }
+        if names:
+            merged.setdefault(d, set()).update(names)
+    return merged
+
+
 def _prepare_solver_inputs(
     data: Dict[str, Any], client_cfg: Any = None,
 ) -> SolverInputs:
@@ -838,6 +873,10 @@ def _prepare_solver_inputs(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,
     )
+    # A second service on the same dates: the dishes lunch has already taken
+    # are banned for dinner. Not read from history — lunch is usually not saved
+    # yet when dinner is solved, so the caller passes them.
+    banned = _merge_excluded_items(banned, data.get('exclude_items'), weekday_dates)
     cfg = _build_solver_config(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
@@ -1082,6 +1121,10 @@ def plan_menu():
             'counter_count': counter_count,
             'counter_index': counter_index,
             'counter_name': counter_name,
+            # Which service this plan is. Echoed so the planner can label the
+            # set and hand the same value back to /save — the response is the
+            # only place the caller learns what the server normalised it to.
+            'meal': normalize_meal(data.get('meal')),
         }
         if len(plans) > 1:
             # Ranked best-first; the primary is already in `solution`.
@@ -1217,10 +1260,14 @@ def regenerate_cells():
 _SINGLE_COUNTER = 'plan'
 
 
-def _saved_response(unknown):
+def _saved_response(unknown, meal=None):
     """The /save body. `unknown_items` appears only when there is something to
-    say, so a clean save is byte-for-byte what it always was."""
+    say, and `meal` only when it is not the default, so a clean single-service
+    save is byte-for-byte what it always was."""
     body = {'success': True, 'message': 'Plan saved to history'}
+    if meal and meal != DEFAULT_MEAL:
+        body['meal'] = meal
+        body['message'] = f'{meal.capitalize()} plan saved to history'
     if unknown:
         body['unknown_items'] = unknown
         body['warning'] = (
@@ -1361,6 +1408,10 @@ def save_plan():
         if not week_start_str:
             return jsonify({'success': False, 'error': 'week_start is required'}), 400
         week_start = dt.date.fromisoformat(week_start_str)
+        # Which service this plan is. Part of the storage key, so a dinner save
+        # replaces only the dinner rows for these dates; without it the second
+        # save of a day silently deletes the first.
+        meal = normalize_meal(data.get('meal'))
 
         from src.db import get_supabase
         sb = get_supabase()
@@ -1392,8 +1443,9 @@ def save_plan():
                 strip_color_fn=strip_color_suffix,
             )
             hm.save_counters(counter_plans, all_dates, client_name, week_start, sig,
-                             supabase_client=sb, strip_color_fn=strip_color_suffix)
-            return jsonify(_saved_response(unknown))
+                             supabase_client=sb, strip_color_fn=strip_color_suffix,
+                             meal=meal)
+            return jsonify(_saved_response(unknown, meal=meal))
 
         # Single-cuisine (classic) path.
         week_plan_raw = data.get('week_plan', {})
@@ -1412,9 +1464,9 @@ def save_plan():
             strip_color_fn=strip_color_suffix,
         )
         hm.save(week_plan, dates, client_name, week_start, sig,
-                supabase_client=sb, strip_color_fn=strip_color_suffix)
+                supabase_client=sb, strip_color_fn=strip_color_suffix, meal=meal)
 
-        return jsonify(_saved_response(unknown))
+        return jsonify(_saved_response(unknown, meal=meal))
 
     except (ValueError, KeyError) as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -1440,6 +1492,9 @@ def saved_plan():
             APP_TZ.
         num_days    (optional): number of weekdays from start_date;
             defaults to 5. Sat/Sun are skipped, mirroring /plan.
+        meal        (optional): 'lunch' (default) or 'dinner'. A site running
+            both has two menus per date, and the result is keyed by date, so
+            one has to be chosen.
 
     Response shape mirrors /plan so the UI can use one code path:
         {
@@ -1489,6 +1544,7 @@ def saved_plan():
         # too — a saved plan and a fresh one must have the same shape.
         raw_saved = HistoryManager.load_saved_plan(
             sb, client_name, weekday_dates,
+            meal=normalize_meal(request.args.get('meal')),
         )
 
         # Enrich with color suffix so the UI's renderer matches /plan — from the

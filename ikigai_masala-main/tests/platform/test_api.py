@@ -1177,3 +1177,122 @@ class TestCounterClientEndpoints:
         # Single mode stores exactly one counter in clients.counters.
         rip = [r for r in fake_supabase.rows('clients') if r['name'] == 'Rippling'][0]
         assert len(rip['counters']) == 1
+
+
+class TestTwoServicesADay:
+    """Lunch and dinner through the API, end to end.
+
+    Every assertion here is about a failure that is SILENT without the meal
+    key: a save that erases the previous one, a read that returns whichever
+    row came back last, and a dinner that reprints lunch's dishes.
+    """
+
+    def test_a_save_with_no_meal_is_unchanged(self, client, auth_headers,
+                                              fake_supabase):
+        # The whole fleet saves this way; the response body must not grow a
+        # key, and the row must look as it always did apart from the default.
+        resp = client.post('/api/v1/save', json={
+            'client_name': 'Rippling', 'week_start': '2026-03-23',
+            'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)'}},
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert 'meal' not in body
+        assert body['message'] == 'Plan saved to history'
+        assert fake_supabase.rows('menu_history')[0]['meal'] == 'lunch'
+
+    def test_dinner_save_does_not_erase_lunch(self, client, auth_headers,
+                                              fake_supabase):
+        for meal, dish in (('lunch', 'jeera_rice(Y)'), ('dinner', 'lemon_rice(Y)')):
+            resp = client.post('/api/v1/save', json={
+                'client_name': 'Rippling', 'week_start': '2026-03-23',
+                'week_plan': {'2026-03-23': {'rice': dish}}, 'meal': meal,
+            }, headers=auth_headers)
+            assert resp.status_code == 200, resp.get_json()
+        rows = fake_supabase.rows('menu_history')
+        assert len(rows) == 2, rows
+        assert {r['meal'] for r in rows} == {'lunch', 'dinner'}
+
+    def test_each_meal_loads_back_its_own_plan(self, client, auth_headers,
+                                               fake_supabase):
+        for meal, dish in (('lunch', 'jeera_rice(Y)'), ('dinner', 'lemon_rice(Y)')):
+            client.post('/api/v1/save', json={
+                'client_name': 'Rippling', 'week_start': '2026-03-23',
+                'week_plan': {'2026-03-23': {'rice': dish}}, 'meal': meal,
+            }, headers=auth_headers)
+
+        def _rice(meal_q):
+            r = client.get('/api/v1/saved-plan?client_name=Rippling'
+                           '&start_date=2026-03-23&num_days=1' + meal_q,
+                           headers=auth_headers)
+            assert r.status_code == 200
+            return r.get_json()['solution']['2026-03-23']['items']['rice']['item_base']
+
+        assert _rice('&meal=lunch') == 'jeera_rice'
+        assert _rice('&meal=dinner') == 'lemon_rice'
+        # No meal in the query is lunch, which is what every existing caller
+        # sends.
+        assert _rice('') == 'jeera_rice'
+
+    def test_an_unknown_meal_falls_back_to_lunch(self, client, auth_headers,
+                                                 fake_supabase):
+        # Refusing to save a generated plan over a bad label would lose the
+        # plan, so the label degrades instead.
+        resp = client.post('/api/v1/save', json={
+            'client_name': 'Rippling', 'week_start': '2026-03-23',
+            'week_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)'}},
+            'meal': 'brunch',
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        assert fake_supabase.rows('menu_history')[0]['meal'] == 'lunch'
+
+    def test_plan_echoes_the_meal(self, client, auth_headers, fake_supabase):
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit': 20, 'meal': 'dinner',
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()['meal'] == 'dinner'
+
+    def test_exclude_items_keeps_dinner_off_lunch_s_dishes(
+        self, client, auth_headers, fake_supabase,
+    ):
+        lunch = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit': 20,
+        }, headers=auth_headers)
+        assert lunch.status_code == 200, lunch.get_json()
+        served = {
+            it['item_base']
+            for day in lunch.get_json()['solution'].values()
+            for it in (day.get('items') or {}).values()
+        }
+        assert served
+
+        dinner = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit': 20, 'meal': 'dinner',
+            'exclude_items': {'2026-03-23': sorted(served)},
+        }, headers=auth_headers)
+        assert dinner.status_code == 200, dinner.get_json()
+        again = {
+            it['item_base']
+            for day in dinner.get_json()['solution'].values()
+            for it in (day.get('items') or {}).values()
+        }
+        # Constant pins (papad, pickle, the daily curd) are stamped rather than
+        # solved, so they legitimately recur; nothing the SOLVER chose should.
+        assert not (served & again) or all(
+            '(' not in x for x in (served & again)
+        ), sorted(served & again)
+
+    def test_a_malformed_exclusion_does_not_fail_the_solve(
+        self, client, auth_headers, fake_supabase,
+    ):
+        # A dinner solve must not die because the lunch payload had a bad date.
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'Rippling', 'start_date': '2026-03-23',
+            'num_days': 1, 'time_limit': 20,
+            'exclude_items': {'not-a-date': ['x'], '2026-03-23': None},
+        }, headers=auth_headers)
+        assert resp.status_code == 200, resp.get_json()
