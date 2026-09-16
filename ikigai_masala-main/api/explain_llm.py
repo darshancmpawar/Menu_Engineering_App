@@ -68,6 +68,10 @@ cafeteria menu to the chef who will cook it.
 
 You will receive JSON facts. Those facts are the ONLY things you know.
 
+You are not selling this menu. The chef already has it and is going to cook \
+it; what they need is an accurate reading of it, including what is weak. A \
+paragraph that only reports good news is worthless to them and is discarded.
+
 RULES — a reply breaking any of these is discarded:
 1. Never state a number that does not appear in the facts.
 2. Never name a dish that does not appear in the facts.
@@ -78,6 +82,15 @@ RULES — a reply breaking any of these is discarded:
 7. Say which dishes work together, using the reasons in `pairings`. If
    `pairings.gaps` is non-empty, say what the plate is missing — do not call a
    plate balanced when a gap is listed.
+8. If ANY check failed, or a gap is listed, or a rule was relaxed, that is the
+   most important thing about the day and the paragraph must say it. Do not
+   bury it after the praise and do not soften it into a suggestion.
+9. Say what is distinctive about the day, using `theme` and `provenance` — a
+   dish that has not been served for a long time, a themed day, a dish the
+   client pins. If nothing in the facts makes the day distinctive, say the day
+   is routine. Do not manufacture an occasion.
+10. A good plate should be called good, briefly. Honesty is not pessimism, and
+    hedging a clean day is as inaccurate as flattering a poor one.
 
 OUTPUT: strict JSON, no markdown fences:
 {"days": [{"date": "YYYY-MM-DD", "prose": "..."}]}"""
@@ -290,7 +303,72 @@ def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
             continue
         return False, f'unknown dish {phrase!r}'
 
+    ok, why = _reports_the_bad_news(prose, pack)
+    if not ok:
+        return False, why
+
     return True, 'ok'
+
+
+def _bad_news(pack: Dict[str, Any]) -> List[str]:
+    """Everything about this plate a chef would want said out loud.
+
+    Failing CALIBRATED checks only. The uncalibrated ones ride in the response
+    for whoever is measuring them (note 33), and requiring the prose to repeat
+    a verdict we do not yet trust would be the opposite of honesty.
+    """
+    from src.explain.checks import CALIBRATED
+
+    out: List[str] = []
+    for c in (pack.get('checks') or []):
+        name = str(c.get('name') or '')
+        if not c.get('passed') and name in CALIBRATED:
+            out.append(name)
+    for g in ((pack.get('pairings') or {}).get('gaps') or []):
+        text = g if isinstance(g, str) else (g.get('text') or g.get('reason') or '')
+        if text:
+            out.append(str(text))
+    for r in (pack.get('relaxations') or []):
+        rule = str(r.get('rule') or '')
+        if rule:
+            out.append(rule)
+    return out
+
+
+def _reports_the_bad_news(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
+    """Reject a reply that stays silent about a plate's problems.
+
+    Rules 4, 5 and 7 of ``SYSTEM_PROMPT`` tell the model to name a failing
+    check, a relaxed rule and a missing pairing. Nothing enforced them, and an
+    unenforced instruction against flattery is worth very little: the cheapest
+    reply a model can write is the one that says everything is lovely, and it
+    would have passed every other rule here — each of which only catches
+    INVENTION, never omission.
+
+    This cannot check that the prose is *right*. It checks that when the pack
+    carries bad news the prose is at least ABOUT it: one content word from one
+    of the problems has to appear. A model that lists the day's failing check
+    passes; a model that writes "a well-balanced plate with lovely contrast"
+    over a plate with a gap does not, and the deterministic bullets — which
+    already lead with failures — stand instead.
+
+    A clean plate constrains nothing, which is correct: there is no bad news to
+    demand, and requiring hedging on a good day would be its own dishonesty.
+    """
+    problems = _bad_news(pack)
+    if not problems:
+        return True, 'ok'
+    low = prose.lower()
+    for problem in problems:
+        for word in re.split(r'[^a-z]+', problem.lower()):
+            # `_COMMON_WORDS` would let "the"/"is" satisfy this trivially, and a
+            # two-letter fragment matches almost anything.
+            if len(word) > 3 and word not in _COMMON_WORDS and word in low:
+                return True, 'ok'
+    return False, (
+        'says nothing about ' + '; '.join(problems[:3])
+        + ' — a reply that only reports good news is discarded'
+    )
 
 
 # --- model call ------------------------------------------------------------

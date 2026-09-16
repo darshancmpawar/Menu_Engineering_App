@@ -368,7 +368,12 @@ def _logger_calls():
 # new relaxation and forgetting the stamp — it would leave this count
 # unchanged, because an unstamped site is invisible to a structural count. The
 # two catch different errors and neither replaces the other.
-STAMPED_SITES = 16
+# 16 -> 17: `attribute_grouping` gained a `require_value` stand-down. Dropping
+# blank-key_ingredient candidates would EMPTY some slots outright (Booking.com's
+# nonveg_soup and infused_water are 100% blank), so the drop gives way there —
+# and a variety rule that quietly stops governing a slot is exactly what this
+# channel exists to say out loud.
+STAMPED_SITES = 17
 
 
 class TestEveryRelaxationIsStamped:
