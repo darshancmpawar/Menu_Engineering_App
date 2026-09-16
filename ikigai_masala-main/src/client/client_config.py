@@ -639,6 +639,48 @@ class ClientConfigLoader:
                 ) from exc
             raise
 
+    def get_client_serve_dinner(self, name: str) -> bool:
+        """Return whether the client runs a DINNER service as well as lunch.
+
+        Degrades to ``False`` when the ``clients.serve_dinner`` column is
+        missing (pre-migration database), so an un-migrated deployment keeps
+        generating exactly one menu per day.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('serve_dinner')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return False
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return bool(row.data.get('serve_dinner'))
+
+    def set_client_serve_dinner(self, name: str, value: bool) -> None:
+        """Update a client's dinner-service flag."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'serve_dinner': bool(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.serve_dinner column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save dinner setting: the clients.serve_dinner "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     def get_client_is_launch_site(self, name: str) -> bool:
         """Return whether the client is a launch site (F: launch view).
 
@@ -1118,7 +1160,7 @@ class ClientConfigLoader:
     # Config columns that live directly on the ``clients`` row. Read together so
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
-        'counters', 'city', 'serve_weekends', 'working_days',
+        'counters', 'city', 'serve_weekends', 'serve_dinner', 'working_days',
         'item_cooldown_days', 'source_pools', 'is_launch_site',
         'shared_categories', 'version',
     )
@@ -1153,6 +1195,7 @@ class ClientConfigLoader:
                     'counters': self._counters_list(name),
                     'city': self.get_client_city(name),
                     'serve_weekends': self.get_client_serve_weekends(name),
+                    'serve_dinner': self.get_client_serve_dinner(name),
                     'working_days': self.get_client_working_days(name),
                     'item_cooldown_days': self.get_client_item_cooldown_days(name),
                     'source_pools': self.get_client_source_pools(name),
@@ -1168,6 +1211,7 @@ class ClientConfigLoader:
             'counters': self._normalize_counters_value(name, data.get('counters')),
             'city': normalize_city(data.get('city')),
             'serve_weekends': bool(data.get('serve_weekends')),
+            'serve_dinner': bool(data.get('serve_dinner')),
             'working_days': self._normalize_working_days_value(
                 data.get('working_days')),
             'item_cooldown_days': normalize_item_cooldown_days(
