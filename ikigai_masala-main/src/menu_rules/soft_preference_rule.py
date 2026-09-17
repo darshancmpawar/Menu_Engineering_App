@@ -55,7 +55,7 @@ from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 from .selector_frequency_rule import SelectorFrequencyRule
 from ..constants import OBJECTIVE_TIER_WEIGHTS
-from ..preprocessor.column_mapper import _norm_str
+from ..preprocessor.column_mapper import _norm_cell, _norm_str
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ class SoftPreferenceRule(BaseMenuRule):
             if allowed is not None and c.base_slot not in allowed:
                 continue
             for v, r in zip(c.x_vars, c.cand_rows):
-                if _norm_str(str(r.get(self.group_by, ''))) != value:
+                if _norm_cell(r.get(self.group_by, '')) != value:
                     continue
                 if matcher is not None and not SelectorFrequencyRule._matches(r, matcher):
                     continue
@@ -305,7 +305,7 @@ class SoftPreferenceRule(BaseMenuRule):
                 groups = defaultdict(list)
                 for c in dcells:
                     for v, r in zip(c.x_vars, c.cand_rows):
-                        val = _norm_str(str(r.get(self.group_by, '')))
+                        val = _norm_cell(r.get(self.group_by, ''))
                         if val:
                             groups[val].append(v)
                 if not groups:
@@ -477,7 +477,7 @@ class SoftPreferenceRule(BaseMenuRule):
                 groups = defaultdict(list)
                 for c in dcells:
                     for v, r in zip(c.x_vars, c.cand_rows):
-                        val = _norm_str(str(r.get(self.group_by, '')))
+                        val = _norm_cell(r.get(self.group_by, ''))
                         if val:
                             groups[val].append(v)
                 for vi, (val, lits) in enumerate(sorted(groups.items())):
@@ -491,7 +491,7 @@ class SoftPreferenceRule(BaseMenuRule):
             groups = defaultdict(list)
             for c in day_cells.get(di, ()):
                 for v, r in zip(c.x_vars, c.cand_rows):
-                    val = _norm_str(str(r.get(self.group_by, '')))
+                    val = _norm_cell(r.get(self.group_by, ''))
                     if val:
                         groups[val].append(v)
             for val, lits in groups.items():

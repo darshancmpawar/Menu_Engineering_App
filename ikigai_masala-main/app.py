@@ -663,7 +663,11 @@ def _render_explain_day(day: dict) -> None:
     # is the working — the itemised plate, the pairings one per line, the
     # verdicts — for a reader who wants to check it. Most readers do not: they
     # want to know whether today's combination works, which is a paragraph.
-    overview = (day.get("prose") or day.get("overview") or "").strip()
+    # `overview` is already the model's paragraph when one was configured and
+    # its reply passed the validator, and the rendered fallback otherwise —
+    # the API picks, so this does not repeat that decision. `prose` is still
+    # read as a fallback for an API that predates `overview_source`.
+    overview = (day.get("overview") or day.get("prose") or "").strip()
     if overview:
         st.markdown(
             f"<div style='padding:.6rem .8rem;border-left:3px solid #4c8bf5;"

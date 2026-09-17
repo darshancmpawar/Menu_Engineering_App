@@ -271,3 +271,195 @@ class TestEveryLineEarnsItsPlace:
         out = build_pairings({'veg_gravy': Exploding(name='x')})
         assert out['pairings'] == []
         assert out['summary']
+
+
+# ---------------------------------------------------------------------------
+# The rules added for "more pairs": protein backbone, mild relief, and the
+# dessert against the meal it follows. Each was added because the plate was
+# carrying a fact the overview never mentioned; each is also a new chance to
+# overclaim, which is what these pin.
+# ---------------------------------------------------------------------------
+
+from src.explain.pairings import (  # noqa: E402
+    HEAVY_MEAL_MEAN, LIGHT_MEAL_MEAN, pair_mild_relief, pair_protein_backbone,
+    pair_sweet_finish,
+)
+
+
+class TestProteinBackbone:
+    def test_two_sources_are_both_named(self):
+        p = pair_protein_backbone(plate(
+            veg_gravy={'name': 'paneer_butter_masala', 'primary_protein': 'paneer'},
+            veg_dry={'name': 'soya_keema', 'primary_protein': 'soy'},
+        ))
+        assert p is not None and p.kind == 'protein'
+        assert p.evidence['distinct_proteins'] == 2
+        assert 'paneer butter masala' in p.detail
+        assert 'soya keema' in p.detail
+
+    def test_the_count_never_exceeds_the_dishes_it_names(self):
+        """A sentence naming two dishes and claiming three sources reads as if
+        the two WERE the three, and a reader counting them finds the number
+        wrong. Up to three are named; beyond that the remainder is stated as a
+        remainder rather than folded into the same clause."""
+        p = pair_protein_backbone(plate(
+            veg_gravy={'name': 'a_gravy', 'primary_protein': 'paneer'},
+            veg_dry={'name': 'b_dry', 'primary_protein': 'soy'},
+            dal={'name': 'c_dal', 'primary_protein': 'toor_dal'},
+            rice={'name': 'd_rice', 'primary_protein': 'green_peas'},
+        ))
+        assert p is not None
+        named = sum(1 for n in ('a gravy', 'b dry', 'c dal', 'd rice')
+                    if n in p.detail)
+        assert named == len(p.dishes) == 3
+        assert 'more protein source' in p.detail
+
+    def test_one_source_is_stated_as_a_fact_not_a_compliment(self):
+        p = pair_protein_backbone(plate(
+            veg_dry={'name': 'soya_palya', 'primary_protein': 'soy'},
+            bread={'name': 'plain_chapati'},
+        ))
+        assert p is not None
+        assert p.evidence['distinct_proteins'] == 1
+        assert 'only protein' in p.detail
+
+    def test_yogurt_is_not_the_days_protein(self):
+        """A raita is the cooling side and `pair_cooling` speaks for it.
+        Counting it here would let a plate with no protein at all claim one."""
+        assert pair_protein_backbone(plate(
+            curd_side=RAITA, bread=CHAPATI)) is None
+
+    def test_a_blank_protein_is_not_a_protein(self):
+        assert pair_protein_backbone(plate(
+            veg_dry={'name': 'aloo_jeera', 'primary_protein': None},
+            veg_gravy={'name': 'mixed_veg', 'primary_protein': 'nan'},
+        )) is None
+
+
+class TestMildRelief:
+    HOT = {'name': 'gobi_65', 'spice_level': 3, 'course_type': 'starter'}
+    MILD = {'name': 'aloo_jeera', 'spice_level': 0, 'course_type': 'veg_dry'}
+
+    def test_a_hot_dish_and_the_mild_one_to_fall_back_on(self):
+        p = pair_mild_relief(plate(starter=self.HOT, veg_dry=self.MILD))
+        assert p is not None and p.kind == 'relief'
+        assert p.dishes == ['gobi_65', 'aloo_jeera']
+        assert 'no curd' in p.detail
+
+    def test_it_stands_down_when_there_is_a_cooling_dish(self):
+        """`pair_cooling` is the better answer and runs first. Without this
+        gate a plate with a raita gets two sentences about one dish's heat —
+        the shared-slot guard cannot catch it, because the second line does
+        introduce a new dish."""
+        assert pair_mild_relief(plate(
+            starter=self.HOT, veg_dry=self.MILD, curd_side=RAITA)) is None
+
+    def test_it_needs_an_actual_gap_in_heat(self):
+        assert pair_mild_relief(plate(
+            starter=self.HOT,
+            veg_dry={'name': 'chilli_paneer', 'spice_level': 3},
+        )) is None
+
+    def test_nothing_hot_means_nothing_to_relieve(self):
+        assert pair_mild_relief(plate(veg_dry=self.MILD, bread=CHAPATI)) is None
+
+
+class TestSweetFinish:
+    """Desserts are richness 4 or 5 on 365 of 367 Bangalore rows.
+
+    So the dessert's own score carries almost no information and the rule has
+    to speak about the MAINS or stay silent. A line printed every single day is
+    a line nobody reads, and it crowds out one that would have been read.
+    """
+    SWEET = {'name': 'gulab_jamun', 'richness_score': 5, 'course_type': 'dessert'}
+
+    def test_silent_on_an_ordinary_plate(self):
+        mid = (HEAVY_MEAL_MEAN + LIGHT_MEAL_MEAN) / 2
+        assert pair_sweet_finish(plate(
+            dessert=self.SWEET,
+            veg_gravy={'name': 'aloo_matar', 'richness_score': mid},
+        )) is None
+
+    def test_speaks_when_the_meal_is_already_heavy(self):
+        p = pair_sweet_finish(plate(
+            dessert=self.SWEET,
+            veg_gravy={'name': 'paneer_butter_masala', 'richness_score': 5},
+            nonveg_main={'name': 'butter_chicken', 'richness_score': 5},
+        ))
+        assert p is not None and 'heavy lunch' in p.detail
+
+    def test_speaks_when_it_is_the_only_rich_thing(self):
+        p = pair_sweet_finish(plate(
+            dessert=self.SWEET,
+            veg_dry={'name': 'beans_poriyal', 'richness_score': 1},
+            dal={'name': 'thin_rasam', 'richness_score': 1},
+        ))
+        assert p is not None and 'one rich thing' in p.detail
+
+    def test_no_dessert_no_claim(self):
+        assert pair_sweet_finish(plate(veg_dry=DRY_VEG, bread=CHAPATI)) is None
+
+
+class TestTheLightenerPrefersARealDish:
+    """`richness_score` alone cannot pick the light side.
+
+    Welcome drinks are 1 on 191 of 198 Bangalore rows, salads on 321 of 326 and
+    curd sides on 35 of 37. Asked for "the least rich dish" over the flat plate,
+    the pool returns whichever of a hundred 1s sorts first — which is how a real
+    Wednesday answered a rich dum chicken biryani with `pomegranate mint water`.
+    True, and useless as advice.
+    """
+    RICH = {'name': 'dum_biryani', 'richness_score': 5,
+            'course_type': 'nonveg_main'}
+    LIGHT_MAIN = {'name': 'beans_poriyal', 'richness_score': 1,
+                  'course_type': 'veg_dry'}
+    SALAD = {'name': 'kachumber', 'richness_score': 1, 'course_type': 'salad'}
+    DRINK = {'name': 'mint_water', 'richness_score': 1,
+             'course_type': 'welcome_drink'}
+
+    def test_a_main_beats_a_salad_and_a_drink(self):
+        p = pair_lightener({'nonveg_main': self.RICH, 'veg_dry': self.LIGHT_MAIN,
+                            'salad': self.SALAD, 'welcome_drink': self.DRINK})
+        assert p is not None and p.dishes[1] == 'beans_poriyal'
+
+    def test_a_salad_beats_a_drink(self):
+        p = pair_lightener({'nonveg_main': self.RICH, 'salad': self.SALAD,
+                            'welcome_drink': self.DRINK})
+        assert p is not None and p.dishes[1] == 'kachumber'
+
+    def test_a_drink_is_still_better_than_saying_nothing(self):
+        """The tiers narrow the choice; they must not remove the answer."""
+        p = pair_lightener({'nonveg_main': self.RICH, 'welcome_drink': self.DRINK})
+        assert p is not None and p.dishes[1] == 'mint_water'
+
+
+class TestTheNewRulesKeepTheOldProperties:
+    def test_no_line_repeats_a_plate_that_has_only_one_idea(self):
+        """The whole-plate guard still holds with eight rules instead of five:
+        every rendered pairing must introduce a dish nobody has read about."""
+        out = build_pairings({
+            'nonveg_main': HOT_CURRY, 'curd_side': RAITA, 'bread': CHAPATI,
+            'veg_dry': DRY_VEG,
+            'dessert': {'name': 'kheer', 'richness_score': 5,
+                        'course_type': 'dessert'},
+        })
+        seen: set = set()
+        for p in out['pairings']:
+            assert set(p['slots']) - seen, f'{p["detail"]!r} names nothing new'
+            seen |= set(p['slots'])
+
+    def test_no_dish_name_is_invented(self):
+        out = build_pairings({
+            'nonveg_main': HOT_CURRY, 'curd_side': RAITA, 'bread': CHAPATI,
+            'veg_dry': {'name': 'soya_keema', 'primary_protein': 'soy',
+                        'texture': 'dry'},
+        })
+        real = {'chicken_chettinad', 'boondi_raita', 'wheat_chapati',
+                'soya_keema'}
+        for p in out['pairings']:
+            assert set(p['dishes']) <= real
+
+    def test_a_raising_rule_does_not_take_the_day_down(self):
+        broken = {'veg_dry': {'name': 'x', 'richness_score': object()}}
+        out = build_pairings(broken)
+        assert isinstance(out['pairings'], list)

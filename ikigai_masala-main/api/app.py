@@ -2194,7 +2194,8 @@ def explain_menu():
         {"success": true,
          "days": [{date, weekday, theme, dishes: {slot: {...}},
                    plate_profile: {...}, checks: [...], provenance: [...],
-                   relaxations: [...], overview: str, bullets: [...], prose: str|null,
+                   relaxations: [...], overview: str, overview_source: str,
+                   bullets: [...], prose: str|null,
                    llm_used: bool, reason: str}],
          "llm_used": bool}
 
@@ -2266,11 +2267,29 @@ def explain_menu():
                 'provenance': pack['provenance'],
                 'relaxations': pack['relaxations'],
                 # The short paragraph a chef actually reads: what goes with
-                # what on this plate, and what it lacks. Deterministic, always
-                # present, and the PRIMARY surface — `bullets` below is the
-                # per-verdict breakdown for whoever is auditing the ruleset,
-                # which is a different reader with a different question.
-                'overview': day_overview(pack),
+                # what on this plate, and what it lacks. The PRIMARY surface —
+                # `bullets` below is the per-verdict breakdown for whoever is
+                # auditing the ruleset, a different reader with a different
+                # question.
+                #
+                # The model writes it when one is configured and its reply
+                # passes `validate`, because PHRASING is the one part of this
+                # a model is better at: `day_overview` joins facts with an
+                # em dash and cannot vary a sentence. What it may SAY is
+                # unchanged either way — every claim still comes from the
+                # pack, the validator still rejects an unsourced number or an
+                # invented dish, and `_reports_the_bad_news` still rejects a
+                # reply that stays quiet about a gap. So this swaps who does
+                # the wording, never who decides the facts.
+                #
+                # `day_overview` remains the fallback and is never skipped: no
+                # key, a timeout, a rate limit or a rejected reply all land
+                # here, and an explanation must never be why a menu fails to
+                # render. `overview_source` says which one the reader got, so
+                # a deployment can tell "the model is off" from "the model
+                # keeps being rejected" without reading the logs.
+                'overview': extra.get('prose') or day_overview(pack),
+                'overview_source': 'model' if extra.get('prose') else 'rendered',
                 'bullets': extra.get('bullets') or [],
                 'prose': extra.get('prose'),
                 'llm_used': bool(extra.get('llm_used')),

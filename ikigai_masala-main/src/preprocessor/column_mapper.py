@@ -17,6 +17,33 @@ def _norm_str(x) -> str:
     return str(x).strip().lower()
 
 
+#: Text a blank cell can arrive as. `nan` is the big one: a float NaN that has
+#: already been through `str()` is the string `'nan'`, and `pd.isna('nan')` is
+#: False, so it survives `_norm_str` as a *value*. `none` is here because the
+#: enriched workbooks wrote a literal "none" for "no protein focus"
+#: (`merge_enriched_ontology._norm` folds it on the way in, but a re-import or a
+#: hand edit can put it back).
+_BLANK_CELL_TEXT = frozenset({'', 'na', 'nan', 'null', 'none', 'nat', '-'})
+
+
+def _norm_cell(x) -> str:
+    """Read an ontology cell as a value, or '' when it holds nothing.
+
+    Use this instead of ``_norm_str(str(cell))`` anywhere a rule GROUPS BY a
+    column. The difference only shows on a blank, and on a blank it is the
+    whole behaviour: ``str()`` runs before ``pd.isna`` can fire, so a NaN
+    becomes the string ``'nan'`` and every unclassified dish groups together
+    under one fabricated value. ``primary_protein`` is NaN on 3,988 of
+    Bangalore's rows and is not one of the columns `ColumnMapper` normalises,
+    so "don't repeat a protein on the plate" would have read as "don't serve
+    two dishes nobody has classified" — a penalty on the data's gaps rather
+    than on the menu. Same family as the `_has_value` artefact in
+    `attribute_grouping_rule`.
+    """
+    s = _norm_str(x)
+    return '' if s in _BLANK_CELL_TEXT else s
+
+
 def _norm_color(x) -> str:
     s = _norm_str(x).replace(' ', '_')
     return 'unknown' if s in ('', 'na', 'nan', 'null', 'none', 'unknown', 'unk') else s

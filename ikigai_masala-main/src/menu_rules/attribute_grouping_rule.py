@@ -79,7 +79,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from ..constants import CONST_SLOTS, REPEATABLE_SLOTS, repeatable_row
-from ..preprocessor.column_mapper import _norm_str
+from ..preprocessor.column_mapper import _norm_cell, _norm_str
 from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
@@ -287,7 +287,7 @@ class AttributeGroupingRule(BaseMenuRule):
             if (repeatable_row(row, base_slot)
                     or matches_declared(row, base_slot, declared)):
                 return ''
-            return _norm_str(str(row.get(self.group_by, '')))
+            return _norm_cell(row.get(self.group_by, ''))
 
         # dv_bool[(day_index, value)] = bool var, true iff this scope takes an
         # item whose group_by value == `value` on that day (full reification
@@ -456,7 +456,7 @@ class AttributeGroupingRule(BaseMenuRule):
             return diags
 
         values = {
-            _norm_str(str(v)) for v in pool[self.group_by].dropna().tolist()
+            _norm_cell(v) for v in pool[self.group_by].dropna().tolist()
         }
         values.discard('')
         slot_counts = (

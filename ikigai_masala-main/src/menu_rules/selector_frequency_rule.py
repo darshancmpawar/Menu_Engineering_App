@@ -88,7 +88,7 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
-from ..preprocessor.column_mapper import _norm_str
+from ..preprocessor.column_mapper import _norm_cell, _norm_str
 from .relaxations import RELAXATION
 
 logger = logging.getLogger(__name__)
@@ -245,7 +245,7 @@ class SelectorFrequencyRule(BaseMenuRule):
             name = _norm_str(str(row.get('item', '')))
             return bool(name) and any(nd in name for nd in val)
         col = _TEXT_COLS.get(kind, '')
-        return _norm_str(str(row.get(col, ''))) == val
+        return _norm_cell(row.get(col, '')) == val
 
     def validate_config(self) -> bool:
         return not self.validation_errors()

@@ -29,6 +29,27 @@ ingredients, not variant spellings of anything on the client's list — folding
 them would misname the dish to make a rule fire. They are listed in
 REGIONAL_PULSES so the client can decide whether the rule should count them.
 
+**`primary_protein` is folded too, and soya is why.** That column was left alone
+while only `key_ingredient` mattered; it stopped being enough the moment a rule
+had to say "not two dishes of the same protein on one plate", because soya is
+the one protein the ontology spells four ways and NCR is split nearly in half:
+`primary_protein` soya 37 / soy 21, and `key_ingredient` soya 29 / soy 10 /
+soyabean 3 / soyabin, soyawadi, soybean 1 each. Against 272 clean `soy` rows in
+the other four cities, so `soy` is canonical by a wide margin. A variety rule
+reading the column raw would see two unrelated ingredients and let a soya chaap
+sit beside a soya keema; `data/configs/clients/siemens.json` already carried
+BOTH spellings as adjacent `any_of` selectors, which is a config working around
+a data defect.
+
+**Twelve NCR rows also name a cooking style where the protein belongs**, the
+first-word-of-the-name fingerprint of the mapping pipeline that
+`course_type_corrections.py` documents for `pav`: `chaap_lababdar` is
+`key_ingredient: chaap`, `malai_soya_chaap` is `malai`, `rara_chaap` is `rara`.
+Chaap IS a soy product — all seven `chaap` rows carry `primary_protein: soya`
+independently — so those are named row by row in ROW_KEY_INGREDIENT rather than
+pattern-matched. `ghiya_soya` is deliberately left as `ghiya`: bottle gourd is a
+real co-ingredient there and the protein is already recorded in its own column.
+
 Idempotent; re-run after any re-import.
 """
 from __future__ import annotations
@@ -70,6 +91,46 @@ FOLD = {
     # `key_ingredient: kidney_bean` selector — the exact cost this table
     # exists to remove.
     "rajma": "kidney_bean",
+    # Soya, spelled four ways in NCR alone. `soy` is canonical by majority
+    # (272 rows across the other four cities). `soyawadi` is soya wadi —
+    # the nugget, not a different bean.
+    "soya": "soy",
+    "soyabean": "soy",
+    "soyabin": "soy",
+    "soybean": "soy",
+    "soyawadi": "soy",
+}
+
+#: Variant `primary_protein` -> canonical. Same argument as FOLD, one column
+#: over: a rule that says "not two dishes of the same protein today" reads this
+#: column, so two spellings of one protein read as two proteins.
+FOLD_PROTEIN = {
+    "soya": "soy",
+    "soyabean": "soy",
+    "soyabin": "soy",
+    "soybean": "soy",
+    "soyawadi": "soy",
+}
+
+#: `(item, current key_ingredient) -> canonical` for a row whose key ingredient
+#: column holds a cooking style or a vessel instead of the protein. Named row
+#: by row, with the current value in the key, so a re-run is a no-op and a row
+#: someone has since corrected by hand is never overwritten.
+ROW_KEY_INGREDIENT = {
+    # Chaap is a soy product; every one of these carries primary_protein soya.
+    ("chaap_dhaba", "chaap"): "soy",
+    ("chaap_lababdar", "chaap"): "soy",
+    ("chaap_tak_a_tak", "chaap"): "soy",
+    ("chaap_tikka_biryani", "chaap"): "soy",
+    ("chaap_tikka_masala", "chaap"): "soy",
+    ("masala_chaap_dhabha_style", "chaap"): "soy",
+    ("tawa_chaap", "chaap"): "soy",          # tawa is the griddle
+    ("kadahi_chaap", "kadahi"): "soy",       # kadai is the wok
+    ("malai_soya_chaap", "malai"): "soy",    # malai is the cream finish
+    ("rara_chaap", "rara"): "soy",           # rara is the style
+    ("rogani_chaap", "rogani"): "soy",       # as in rogan josh
+    ("chilli_soya_chunk_gravy", "chilli"): "soy",
+    ("nurtri_soya_chunks_gravy", "nurtri"): "soy",   # nutrela = soy chunks
 }
 
 #: The canonical protein-source vocabulary, i.e. the client's list expressed in
@@ -110,20 +171,43 @@ def _norm(s) -> str:
     return str(s).strip().lower() if s is not None else ""
 
 
-def fold(df: pd.DataFrame) -> int:
-    """Rewrite variant key_ingredient values in place. Returns rows changed."""
-    if "key_ingredient" not in df.columns:
+def _fold_column(df: pd.DataFrame, column: str, table: dict) -> int:
+    """Rewrite variant values of one column in place. Returns rows changed."""
+    if column not in df.columns:
         return 0
-    ki = df["key_ingredient"].map(_norm)
+    col = df[column].map(_norm)
     n = 0
-    for variant, canonical in FOLD.items():
-        mask = ki == variant
+    for variant, canonical in table.items():
+        mask = col == variant
         if mask.any():
             for item in df.loc[mask, "item"].astype(str):
-                print(f"    {item}: {variant} -> {canonical}")
+                print(f"    {item}: {column} {variant} -> {canonical}")
+            df.loc[mask, column] = canonical
+            n += int(mask.sum())
+    return n
+
+
+def _fix_rows(df: pd.DataFrame) -> int:
+    """Apply the named per-row key_ingredient verdicts. Returns rows changed."""
+    if "key_ingredient" not in df.columns:
+        return 0
+    items = df["item"].map(_norm)
+    ki = df["key_ingredient"].map(_norm)
+    n = 0
+    for (item, current), canonical in ROW_KEY_INGREDIENT.items():
+        mask = (items == item) & (ki == current)
+        if mask.any():
+            print(f"    {item}: key_ingredient {current} -> {canonical}")
             df.loc[mask, "key_ingredient"] = canonical
             n += int(mask.sum())
     return n
+
+
+def fold(df: pd.DataFrame) -> int:
+    """Standardise both protein columns in place. Returns rows changed."""
+    return (_fold_column(df, "key_ingredient", FOLD)
+            + _fold_column(df, "primary_protein", FOLD_PROTEIN)
+            + _fix_rows(df))
 
 
 def report(df: pd.DataFrame) -> None:
