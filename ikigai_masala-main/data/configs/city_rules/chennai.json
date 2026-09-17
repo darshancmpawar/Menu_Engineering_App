@@ -294,12 +294,12 @@
       "max_cells_per_day": 1
     },
     {
-      "_comment": "And softly across the whole plate: any protein on two cells of ONE day is penalised -- a paneer gravy beside a paneer starter, soya in the rice and again in the veg dry. HIGH because the client stated the same-day case as the firm one ('if monday i give soya i dont want the same kind of dish in a different slot'), where the week below is 'try and avoid'. Still SOFT, not hard, because this reaches nonveg_main, whose protein is 0% blank and where nonveg_main_daily_pair mandates a chicken gravy every day: on a 2-cell non-veg station a second chicken dish is often forced, and chicken has to be able to outbid this. scope:day is what makes it see a plate at all -- the default horizon scope collapses a value to one bool per day and structurally cannot.",
+      "_comment": "And softly across the whole plate: any protein on two cells of ONE day is penalised -- a paneer gravy beside a paneer starter, soya in the rice and again in the veg dry. SOFT, not hard, because this reaches nonveg_main, whose protein is 0% blank and where nonveg_main_daily_pair mandates a chicken gravy every day: on a 2-cell non-veg station a second chicken dish is often forced, and chicken has to be able to outbid this. scope:day is what makes it see a plate at all -- the default horizon scope collapses a value to one bool per day and structurally cannot. PRIORITY is medium, not high, and the reason is note 32 rather than the client's emphasis: the theme tier is already measurably inverted at MAX_NUM_DAYS, a fifth high-tier soft rule widens that, and the firm half of this requirement is already carried by veg_plate_distinct_protein, which is a HARD constraint and so outranks every soft tier regardless. What stays soft here is the 'and everywhere else on the plate too' part, which is exactly the thing that should yield to a real rule.",
       "name": "plate_protein_echo",
       "type": "soft_preference",
       "mode": "avoid_attribute_repeat",
       "scope": "day",
-      "priority": "high",
+      "priority": "medium",
       "group_by": "primary_protein"
     },
     {

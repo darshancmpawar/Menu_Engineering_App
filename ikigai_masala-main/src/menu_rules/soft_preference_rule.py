@@ -464,26 +464,42 @@ class SoftPreferenceRule(BaseMenuRule):
 
         over_terms = []
 
-        def _over(lits, tag):
-            """max(0, sum(lits) - 1) as an IntVar, or nothing when it cannot fire."""
+        def _over(lits, tag, reachable=None):
+            """max(0, sum(lits) - 1) as an IntVar, or nothing when it cannot fire.
+
+            *reachable* is the largest `sum(lits)` the model permits, which is
+            NOT `len(lits)` in the day scope: those are raw candidate literals
+            and a cell takes exactly one, so a value offered by 300 candidates
+            across 6 cells can never be served more than 6 times. Declaring the
+            domain as 300 is loose in both directions that matter — it weakens
+            propagation, and `test_objective_tier_headroom` bounds a term by
+            its variable's RANGE, so the slack is counted as reachable mass
+            against a theme tier note 32 already records as inverted.
+            """
             if len(lits) < 2:
                 return
-            o = model.NewIntVar(0, len(lits), f'{self.name}_over_{tag}')
+            hi = min(len(lits), reachable if reachable is not None else len(lits))
+            if hi < 2:
+                return
+            o = model.NewIntVar(0, hi, f'{self.name}_over_{tag}')
             model.Add(o >= sum(lits) - 1)
             over_terms.append(o)
 
         if self.scope == 'day':
             for di, dcells in sorted(day_cells.items()):
                 groups = defaultdict(list)
-                for c in dcells:
+                cells_offering = defaultdict(set)
+                for ci, c in enumerate(dcells):
                     for v, r in zip(c.x_vars, c.cand_rows):
                         val = _norm_cell(r.get(self.group_by, ''))
                         if val:
                             groups[val].append(v)
+                            cells_offering[val].add(ci)
                 for vi, (val, lits) in enumerate(sorted(groups.items())):
                     # The raw cell literals, NOT a day-bool: two cells taking
-                    # the same value on one day is the whole point here.
-                    _over(lits, f'{di}_{vi}')
+                    # the same value on one day is the whole point here. The
+                    # count of CELLS offering the value is the real ceiling.
+                    _over(lits, f'{di}_{vi}', reachable=len(cells_offering[val]))
             return [sum(over_terms) * (-abs(w))] if over_terms else []
 
         per_val_days: Dict[Any, List[Any]] = defaultdict(list)
