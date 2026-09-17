@@ -1109,10 +1109,16 @@ if generate_clicked:
             st.session_state.plan_blocks = lunch_blocks
             st.session_state.rule_diagnostics = diags
             st.session_state.diagnostics_summary = summary
-            first = lunch_blocks[0] if lunch_blocks else {}
+            # The header badge describes the PLAN, so a failure only sets it
+            # when there is no plan at all. On a multi-counter client one
+            # blocked counter is a warning inside its own tab, and hoisting it
+            # to the page header would put a red "Pre-flight blocked" above
+            # three tabs that each have a menu.
+            failed = [b for b in lunch_blocks
+                      if b.get("source") in ("error", "preflight_blocked")]
             st.session_state.plan_source = (
-                first.get("source")
-                if first.get("source") in ("error", "preflight_blocked")
+                failed[0]["source"]
+                if failed and len(failed) == len(lunch_blocks)
                 else "solver")
         st.rerun()
 
