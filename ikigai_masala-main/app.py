@@ -52,15 +52,21 @@ _bridge_streamlit_secrets()
 
 from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
 from ui.formatters import (
+    dishes_from_solution,
     display_label_for_slot_id,
     flatten_api_solution,
     format_item_for_ui,
+    meal_difference,
+    MIN_MEAL_DIFFERENCE,
     nonveg_slots_from_solution,
     shared_items_from_solution,
     slot_sort_key,
     THEME_TAG_COLORS,
     THEME_ICONS,
 )
+# The two service names. Imported rather than spelled as literals so the UI,
+# the API payloads and the history key cannot drift apart.
+from src.history import DINNER, LUNCH
 from ui.planner_view import (
     date_label,
     flatten_result,
@@ -264,6 +270,12 @@ _SESSION_DEFAULTS = {
     # clients have one block; multi-cuisine clients have one per counter.
     # Each block: {name, plan, plan_dates, day_types, pool_warnings, source, error}.
     "plan_blocks": [],
+    # Two services a day (feature: lunch + dinner). `meal_blocks` holds one
+    # block list per service and `plan_blocks` MIRRORS the selected one, so
+    # every display, regenerate and save path below is unchanged — a one-meal
+    # client simply has a single entry and never sees the switcher.
+    "meal_blocks": {},
+    "active_meal": LUNCH,
     "plan_mode": "single",
     # Launch view (feature F): when on, the sidebar lists launch sites only —
     # otherwise the UI is identical to the normal planner. Defaults off.
@@ -890,13 +902,18 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """Return (mode, [counter names], city, shared_categories, excluded).
+    """(mode, [counter names], city, shared_categories, excluded, serve_dinner).
 
     ``shared_categories`` are the base slots this client serves identically
     across its counters — the planner pins the primary counter's dish for each
     into the others. ``excluded`` names the counters that opt out of that sync
-    (ICON Chn's Rice Combo, which the client states has its own menu). Degrades
-    to a single unsynced counter if the config cannot be read.
+    (ICON Chn's Rice Combo, which the client states has its own menu).
+    ``serve_dinner`` asks for a second service after lunch.
+
+    Degrades to a single unsynced lunch-only counter if the config cannot be
+    read — the conservative direction on every field, since guessing a second
+    service into existence would double a client's solve time on a config read
+    that failed.
     """
     try:
         cfg = api.get_client_config(name)
@@ -905,9 +922,97 @@ def _client_counter_names(api, name: str):
                  for i, c in enumerate(counters)] or ["Counter 1"]
         return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
                 cfg.get("shared_categories") or [],
-                set(cfg.get("shared_categories_excluded_counters") or []))
+                set(cfg.get("shared_categories_excluded_counters") or []),
+                bool(cfg.get("serve_dinner")))
     except Exception:
-        return "single", ["Counter 1"], None, [], set()
+        return "single", ["Counter 1"], None, [], set(), False
+
+
+def _solve_counters(api, name, counter_names, start_iso, days, *,
+                    shared_categories, shared_excluded, time_limit,
+                    meal=None, exclude_by_counter=None):
+    """Solve every counter for ONE service. Returns (blocks, diagnostics, summary).
+
+    Factored out because lunch and dinner are the same pass with a different
+    `meal` and a different exclusion set — the second service must not be a
+    second code path, or the two drift and only one of them gets the next fix.
+
+    `exclude_by_counter` is `{counter_index: {iso_date: [item, …]}}`: the
+    dishes this counter already served at the earlier sitting. Keyed per
+    COUNTER, not pooled across the site, because counters are separate
+    stations with separate menus — pooling a six-counter site's lunch would
+    ban eighty dishes from every dinner cell and starve the thin pools for no
+    benefit a diner would notice.
+    """
+    blocks, diagnostics, summary = [], [], None
+    shared_items: list = []
+    for i, cname in enumerate(counter_names):
+        try:
+            send_shared = (
+                shared_items if i > 0 and cname not in shared_excluded else None)
+            result = api.plan(
+                client_name=name, start_date=start_iso, num_days=days,
+                time_limit_seconds=time_limit, counter_index=i,
+                shared_items=send_shared, meal=meal,
+                exclude_items=(exclude_by_counter or {}).get(i))
+            if i == 0 and shared_categories:
+                shared_items = shared_items_from_solution(
+                    result.get("solution", {}), shared_categories)
+            blk = flatten_result(result)
+            blk["name"] = cname
+            if i == 0:
+                diagnostics = result.get("rule_diagnostics") or []
+                summary = result.get("summary")
+        except RuleDiagnosticsBlockedError as e:
+            blk = {"name": cname, "plan": {}, "plan_dates": [],
+                   "day_types": {}, "pool_warnings": [],
+                   "source": "preflight_blocked",
+                   "error": str(e) or "Pre-flight blocked for this counter"}
+            if i == 0:
+                diagnostics = e.diagnostics or []
+                summary = e.summary or None
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+            blk = {"name": cname, "plan": {}, "plan_dates": [],
+                   "day_types": {}, "pool_warnings": [],
+                   "source": "error", "error": str(e) or "Generation failed"}
+            # A solve that fails AFTER a clean pre-flight ships the pre-flight
+            # report with the 500; its warnings name the slots under pressure.
+            if getattr(e, "diagnostics", None):
+                diagnostics = e.diagnostics
+                summary = getattr(e, "summary", None) or None
+        blk["meal"] = meal or LUNCH
+        blocks.append(blk)
+    return blocks, diagnostics, summary
+
+
+def _saveable_meals(meal_blocks, fallback_blocks):
+    """`[(meal, blocks), …]` for every service that has something to save.
+
+    Falls back to a single lunch entry when `meal_blocks` is empty, which is
+    the shape a client generated before this feature existed — and the shape a
+    saved-plan REPLAY produces, since only one service is replayed.
+    """
+    if meal_blocks:
+        return [(m, b) for m, b in sorted(meal_blocks.items()) if b]
+    return [(LUNCH, fallback_blocks)] if fallback_blocks else []
+
+
+def _exclusions_from(blocks):
+    """`{counter_index: {iso_date: [item, …]}}` from a solved service.
+
+    What stops dinner reprinting lunch. It has to be done here rather than by
+    a solver rule because the two services are SEPARATE SOLVES: `unique_items`
+    is scoped to one model and cannot see across them, and the item cooldown
+    only reads SAVED history, which is after the duplicate is already on
+    screen.
+    """
+    out = {}
+    for i, blk in enumerate(blocks):
+        raw = blk.get("solution") or {}
+        got = dishes_from_solution(raw)
+        if got:
+            out[i] = got
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -918,7 +1023,8 @@ if generate_clicked:
         st.warning("Select a valid client first.")
     else:
         (mode, counter_names, city, shared_categories,
-         shared_excluded) = _client_counter_names(client, selected_client)
+         shared_excluded, serve_dinner) = _client_counter_names(
+            client, selected_client)
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -928,18 +1034,35 @@ if generate_clicked:
         # city — an Amadeus Pune header above a Bangalore counter's chicken and
         # egg dishes, with stale Days / Slots / Total items cards to match.
         st.session_state.plan_blocks = []
+        st.session_state.meal_blocks = {}
+        st.session_state.active_meal = LUNCH
         st.session_state.plan_source = None
         # Fresh plan → forget which items regenerate has already shown.
         st.session_state.regen_seen = {}
         st.session_state.rule_diagnostics = []
         st.session_state.diagnostics_summary = None
 
+        # The time budget is divided across counters so total wall-clock stays
+        # bounded, and across SERVICES too — a dinner site solves twice as many
+        # models for one click, and a budget that ignored that would double the
+        # wait rather than split it.
+        n_services = 2 if serve_dinner else 1
+        per_limit = max(
+            45,
+            _PLANNING_TIME_LIMIT_SECONDS
+            // max(1, len(counter_names) * n_services))
+        if mode != "multi" and not serve_dinner:
+            per_limit = _PLANNING_TIME_LIMIT_SECONDS
+
+        replayed = False
         if mode != "multi":
-            # Single-cuisine: saved-plan replay, else solve (unchanged flow).
+            # Single-cuisine: saved-plan replay first, unchanged. Only lunch is
+            # replayed — a saved dinner is fetched below on its own key.
             try:
                 saved = client.get_saved_plan(
                     client_name=selected_client,
-                    start_date=start_date.isoformat(), num_days=num_days)
+                    start_date=start_date.isoformat(), num_days=num_days,
+                    meal=LUNCH)
             except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                 st.warning(f"Couldn't check saved history ({e}); generating fresh.")
                 saved = {"exists": False}
@@ -949,107 +1072,98 @@ if generate_clicked:
                     blk = flatten_result(saved)
                     blk["name"] = counter_names[0]
                     blk["source"] = "history"
+                    blk["meal"] = LUNCH
                     st.session_state.plan_blocks = [blk]
+                    st.session_state.meal_blocks = {LUNCH: [blk]}
+                    st.session_state.active_meal = LUNCH
                     st.session_state.plan_source = "history"
-                    st.rerun()
-            else:
-                with st.spinner(f"Generating plan for {selected_client}..."):
-                    try:
-                        result = client.plan(
-                            client_name=selected_client,
-                            start_date=start_date.isoformat(), num_days=num_days,
-                            time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS)
-                        blk = flatten_result(result)
-                        blk["name"] = counter_names[0]
-                        st.session_state.plan_blocks = [blk]
-                        st.session_state.plan_source = "solver"
-                        st.session_state.rule_diagnostics = result.get("rule_diagnostics") or []
-                        st.session_state.diagnostics_summary = result.get("summary")
-                        st.rerun()
-                    except RuleDiagnosticsBlockedError as e:
-                        st.session_state.plan_blocks = [{
-                            "name": counter_names[0], "plan": {}, "plan_dates": [],
-                            "day_types": {}, "pool_warnings": [],
-                            "source": "preflight_blocked",
-                            "error": str(e) or "Pre-flight blocked",
-                        }]
-                        st.session_state.plan_source = "preflight_blocked"
-                        st.session_state.rule_diagnostics = e.diagnostics or []
-                        st.session_state.diagnostics_summary = e.summary or None
-                        st.rerun()
-                    except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                        # Record the failure as a block and rerun, exactly as the
-                        # multi-counter path does. `st.error` alone left the page
-                        # mid-render with whatever `plan_blocks` held.
-                        st.session_state.plan_blocks = [{
-                            "name": counter_names[0], "plan": {}, "plan_dates": [],
-                            "day_types": {}, "pool_warnings": [],
-                            "source": "error",
-                            "error": str(e) or "Generation failed",
-                        }]
-                        st.session_state.plan_source = "error"
-                        # A solve that fails AFTER a clean pre-flight ships the
-                        # pre-flight report with the 500; its warnings name the
-                        # slots and rules under pressure.
-                        st.session_state.rule_diagnostics = (
-                            getattr(e, "diagnostics", None) or [])
-                        st.session_state.diagnostics_summary = (
-                            getattr(e, "summary", None) or None)
-                        st.rerun()
-        else:
-            # Multi-cuisine: solve each counter independently. Divide the
-            # time budget across counters so total wall-clock stays bounded.
-            per_limit = max(45, _PLANNING_TIME_LIMIT_SECONDS // max(1, len(counter_names)))
-            blocks = []
-            # Cross-counter common categories: solve the primary counter first,
-            # then pin its dishes for the shared base slots into every later
-            # counter so a common category resolves to the same dish per day.
-            shared_items: list = []
-            with st.spinner(
-                f"Generating {len(counter_names)} counters for {selected_client}..."
-            ):
-                for i, cname in enumerate(counter_names):
-                    try:
-                        # A counter named in `shared_categories_excluded_counters`
-                        # is sent nothing, so it solves independently — the
-                        # shared list is otherwise all-or-nothing per client.
-                        send_shared = (
-                            shared_items
-                            if i > 0 and cname not in shared_excluded
-                            else None)
-                        result = client.plan(
-                            client_name=selected_client,
-                            start_date=start_date.isoformat(), num_days=num_days,
-                            time_limit_seconds=per_limit, counter_index=i,
-                            shared_items=send_shared)
-                        if i == 0 and shared_categories:
-                            shared_items = shared_items_from_solution(
-                                result.get("solution", {}), shared_categories)
-                        blk = flatten_result(result)
-                        blk["name"] = cname
-                    except RuleDiagnosticsBlockedError as e:
-                        blk = {"name": cname, "plan": {}, "plan_dates": [],
-                               "day_types": {}, "pool_warnings": [],
-                               "source": "preflight_blocked",
-                               "error": str(e) or "Pre-flight blocked for this counter"}
-                    except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                        blk = {"name": cname, "plan": {}, "plan_dates": [],
-                               "day_types": {}, "pool_warnings": [],
-                               "source": "error", "error": str(e)}
-                        if getattr(e, "diagnostics", None):
-                            st.session_state.rule_diagnostics = e.diagnostics
-                            st.session_state.diagnostics_summary = (
-                                getattr(e, "summary", None) or None)
-                    blocks.append(blk)
-            st.session_state.plan_blocks = blocks
-            st.session_state.plan_source = "solver"
-            st.rerun()
+                    replayed = True
+
+        if not replayed:
+            label = ("Generating lunch and dinner" if serve_dinner
+                     else "Generating plan")
+            with st.spinner(f"{label} for {selected_client}..."):
+                lunch_blocks, diags, summary = _solve_counters(
+                    client, selected_client, counter_names,
+                    start_date.isoformat(), num_days,
+                    shared_categories=shared_categories,
+                    shared_excluded=shared_excluded,
+                    time_limit=per_limit, meal=LUNCH)
+                by_meal = {LUNCH: lunch_blocks}
+
+                if serve_dinner:
+                    # Dinner is solved AFTER lunch and is handed lunch's dishes
+                    # to avoid. Sequential rather than parallel for that reason:
+                    # the exclusion is the whole mechanism, and it needs the
+                    # first result to exist.
+                    by_meal[DINNER] = _solve_counters(
+                        client, selected_client, counter_names,
+                        start_date.isoformat(), num_days,
+                        shared_categories=shared_categories,
+                        shared_excluded=shared_excluded,
+                        time_limit=per_limit, meal=DINNER,
+                        exclude_by_counter=_exclusions_from(lunch_blocks))[0]
+
+            st.session_state.meal_blocks = by_meal
+            st.session_state.active_meal = LUNCH
+            st.session_state.plan_blocks = lunch_blocks
+            st.session_state.rule_diagnostics = diags
+            st.session_state.diagnostics_summary = summary
+            first = lunch_blocks[0] if lunch_blocks else {}
+            st.session_state.plan_source = (
+                first.get("source")
+                if first.get("source") in ("error", "preflight_blocked")
+                else "solver")
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Display
 # ---------------------------------------------------------------------------
-_blocks = st.session_state.get("plan_blocks") or []
+_meal_blocks = st.session_state.get("meal_blocks") or {}
 _plan_mode = st.session_state.get("plan_mode", "single")
+
+# Two services: pick which one the rest of the page is about. Everything below
+# reads `plan_blocks`, so switching simply re-points it — the table, the
+# regenerate expander, the explanation and the Excel export all stay one code
+# path with no idea two meals exist.
+if len(_meal_blocks) > 1:
+    _labels = {LUNCH: "Lunch", DINNER: "Dinner"}
+    _order = [m for m in (LUNCH, DINNER) if m in _meal_blocks]
+    _current = st.session_state.get("active_meal", LUNCH)
+    _picked = st.radio(
+        "Service", _order, horizontal=True,
+        index=_order.index(_current) if _current in _order else 0,
+        format_func=lambda m: _labels.get(m, str(m).title()),
+        key="meal_picker")
+    if _picked != _current:
+        st.session_state.active_meal = _picked
+        st.session_state.plan_blocks = _meal_blocks.get(_picked) or []
+        st.rerun()
+    st.session_state.plan_blocks = _meal_blocks.get(_picked) or []
+
+    # How different dinner is from lunch. Reported, never enforced: the
+    # exclusion that produces it is a ban on lunch's dishes and overshoots the
+    # floor by a wide margin, so a solver constraint would be machinery for a
+    # condition that does not bind. What is worth having is the NUMBER — if a
+    # thin pool ever pushes the two services back together, somebody sees it
+    # instead of the guarantee quietly lapsing.
+    _diff = meal_difference(
+        {d: v for b in (_meal_blocks.get(LUNCH) or [])
+         for d, v in (b.get("solution") or {}).items()},
+        {d: v for b in (_meal_blocks.get(DINNER) or [])
+         for d, v in (b.get("solution") or {}).items()})
+    if _diff["per_day"]:
+        _pct = round(_diff["overall"] * 100)
+        if _diff["below_floor"]:
+            st.warning(
+                f"Dinner differs from lunch on {_pct}% of dishes, but "
+                f"{len(_diff['below_floor'])} day(s) fall below the "
+                f"{round(MIN_MEAL_DIFFERENCE * 100)}% floor: "
+                + ", ".join(_diff["below_floor"]))
+        else:
+            st.caption(f"Dinner differs from lunch on {_pct}% of dishes.")
+
+_blocks = st.session_state.get("plan_blocks") or []
 
 _render_diagnostics_expander(
     st.session_state.get("rule_diagnostics") or [],
@@ -1112,14 +1226,23 @@ if _blocks and any(b.get("plan") for b in _blocks):
         with sc1:
             if st.button("Save All to History", type="primary",
                          key="multi_save_btn", use_container_width=True):
-                payload = [{"name": b["name"], "week_plan": b["plan"]}
-                           for b in _blocks if b.get("plan")]
+                # BOTH services, not just the one on screen. `menu_history` is
+                # keyed on (client, date, meal), so an unsaved dinner is not a
+                # missing row the next plan can notice — it is a dinner the
+                # cooldown and the freshness objective will never have heard
+                # of, and the following week reprints it.
                 try:
-                    client.save(client_name=st.session_state.client_name,
-                                week_start=dates_union[0], counters=payload)
-                    for b in _blocks:
-                        if b.get("plan"):
-                            b["source"] = "history"
+                    for _meal, _mb in _saveable_meals(_meal_blocks, _blocks):
+                        payload = [{"name": b["name"], "week_plan": b["plan"]}
+                                   for b in _mb if b.get("plan")]
+                        if not payload:
+                            continue
+                        client.save(client_name=st.session_state.client_name,
+                                    week_start=dates_union[0],
+                                    counters=payload, meal=_meal)
+                        for b in _mb:
+                            if b.get("plan"):
+                                b["source"] = "history"
                     st.session_state.plan_source = "history"
                     st.toast("All counters saved to history", icon="✅")
                 except (ConnectionError, OSError, ValueError, RuntimeError) as e:
@@ -1172,10 +1295,18 @@ if _blocks and any(b.get("plan") for b in _blocks):
             if st.button("Save to History", key="planner_save_btn",
                          use_container_width=True):
                 try:
-                    client.save(client_name=st.session_state.client_name,
-                                week_start=b["plan_dates"][0], week_plan=b["plan"])
+                    # Both services — see the multi-counter save above for why
+                    # an unsaved dinner is worse than a missing row.
+                    for _meal, _mb in _saveable_meals(_meal_blocks, _blocks):
+                        for _b in _mb:
+                            if not _b.get("plan"):
+                                continue
+                            client.save(
+                                client_name=st.session_state.client_name,
+                                week_start=_b["plan_dates"][0],
+                                week_plan=_b["plan"], meal=_meal)
+                            _b["source"] = "history"
                     st.session_state.plan_source = "history"
-                    b["source"] = "history"
                     st.toast("Plan saved to history", icon="✅")
                 except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                     st.error(f"Save failed: {e}")

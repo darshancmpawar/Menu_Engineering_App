@@ -888,6 +888,7 @@ class ClientConfigLoader:
         counters: List[Dict] | None = None,
         city: str | None = None,
         serve_weekends: bool = False,
+        serve_dinner: bool = False,
         item_cooldown_days=None,
         working_days=None,
         source_pools=None,
@@ -931,6 +932,10 @@ class ClientConfigLoader:
             # Only send it when true, so a pre-migration DB still takes the
             # common create path (the column defaults to false there anyway).
             row['is_launch_site'] = True
+        if serve_dinner:
+            # Same argument as is_launch_site above: only sent when true, so a
+            # database predating the column still takes the common path.
+            row['serve_dinner'] = True
         if shared_categories is not None:
             row['shared_categories'] = self._normalize_shared_categories_value(
                 shared_categories)
@@ -945,7 +950,8 @@ class ClientConfigLoader:
                     "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
-                for optional in ('city', 'serve_weekends', 'item_cooldown_days',
+                for optional in ('city', 'serve_weekends', 'serve_dinner',
+                                 'item_cooldown_days',
                                  'working_days', 'source_pools', 'is_launch_site',
                                  'shared_categories'):
                     row.pop(optional, None)
@@ -1359,6 +1365,7 @@ class ClientConfigLoader:
         for column, setter in (
             ('city', self.set_client_city),
             ('serve_weekends', self.set_client_serve_weekends),
+            ('serve_dinner', self.set_client_serve_dinner),
             ('working_days', self.set_client_working_days),
             ('item_cooldown_days', self.set_client_item_cooldown_days),
             ('source_pools', self.set_client_source_pools),

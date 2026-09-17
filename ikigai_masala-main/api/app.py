@@ -1738,6 +1738,9 @@ def get_client_config(client_name):
             'name': client_name,
             'city': row['city'],
             'serve_weekends': row['serve_weekends'],
+            # Two services a day. The planner reads this to decide whether to
+            # run a second solve per counter after lunch.
+            'serve_dinner': row.get('serve_dinner', False),
             'working_days': row['working_days'],
             'item_cooldown_days': row['item_cooldown_days'],
             'source_pools': row['source_pools'],
@@ -1917,6 +1920,8 @@ def update_client_config(client_name):
             fields['city'] = normalize_city(data.get('city'))
         if 'serve_weekends' in data:
             fields['serve_weekends'] = bool(data.get('serve_weekends'))
+        if 'serve_dinner' in data:
+            fields['serve_dinner'] = bool(data.get('serve_dinner'))
         if 'working_days' in data:
             fields['working_days'] = _validated_working_days(
                 data.get('working_days'))
@@ -1988,6 +1993,7 @@ def create_client():
         # the PUT handler had; same fix, one write.
         city = normalize_city(data.get('city'))
         serve_weekends = bool(data.get('serve_weekends', False))
+        serve_dinner = bool(data.get('serve_dinner', False))
         item_cooldown_days = _validated_cooldown_days(
             data.get('item_cooldown_days'))
         working_days = (
@@ -2016,6 +2022,7 @@ def create_client():
                 counters=counters,
                 city=city,
                 serve_weekends=serve_weekends,
+                serve_dinner=serve_dinner,
                 item_cooldown_days=item_cooldown_days,
                 working_days=working_days,
                 source_pools=source_pools,
@@ -2026,6 +2033,7 @@ def create_client():
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
             loader.create_client(name, active_slots, city=city,
                                  serve_weekends=serve_weekends,
+                                 serve_dinner=serve_dinner,
                                  item_cooldown_days=item_cooldown_days,
                                  working_days=working_days,
                                  source_pools=source_pools,

@@ -246,6 +246,19 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                  "skipping them.",
         )
 
+        # Two services a day. On, one Generate click produces a lunch menu and
+        # then a dinner menu that is handed lunch's dishes to avoid, and both
+        # are saved to history under their own `meal` key.
+        loaded_serve_dinner = bool((config or {}).get('serve_dinner', False))
+        serve_dinner = st.toggle(
+            "Also plan dinner",
+            value=loaded_serve_dinner,
+            key=f"editor_dinner_{'new' if is_create_mode else selected_client}",
+            help="If on, each Generate produces two menus for the same dates — "
+                 "lunch first, then a dinner that avoids lunch's dishes. "
+                 "Doubles the solve time.",
+        )
+
         # Item-cooldown window — how many days before a dish can repeat.
         _loaded_cooldown = (config or {}).get('item_cooldown_days')
         loaded_cooldown = (
@@ -488,6 +501,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
             counter_mode != loaded_mode
             or selected_city != loaded_city
             or serve_weekends != loaded_serve_weekends
+            or serve_dinner != loaded_serve_dinner
             or item_cooldown_days != loaded_cooldown
             or sorted(selected_source_pools) != sorted(loaded_source_pools)
             or sorted(selected_shared_categories) != sorted(loaded_shared_categories)
@@ -536,6 +550,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     api.create_client(
                         name, counter_mode=counter_mode, counters=result_counters,
                         city=selected_city, serve_weekends=serve_weekends,
+                        serve_dinner=serve_dinner,
                         item_cooldown_days=item_cooldown_days,
                         source_pools=selected_source_pools,
                         is_launch_site=launch_mode,
@@ -584,6 +599,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     'counters': result_counters,
                     'city': selected_city,
                     'serve_weekends': serve_weekends,
+                    'serve_dinner': serve_dinner,
                     'item_cooldown_days': item_cooldown_days,
                     'source_pools': selected_source_pools,
                     'shared_categories': selected_shared_categories,
