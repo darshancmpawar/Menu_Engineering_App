@@ -658,6 +658,18 @@ def _render_explain_day(day: dict) -> None:
         with col:
             st.metric(label, "—" if value is None else value)
 
+    # The overview comes FIRST and reads as prose: four or five sentences about
+    # what goes with what on this plate and what it lacks. Everything below it
+    # is the working — the itemised plate, the pairings one per line, the
+    # verdicts — for a reader who wants to check it. Most readers do not: they
+    # want to know whether today's combination works, which is a paragraph.
+    overview = (day.get("prose") or day.get("overview") or "").strip()
+    if overview:
+        st.markdown(
+            f"<div style='padding:.6rem .8rem;border-left:3px solid #4c8bf5;"
+            f"opacity:.95;margin-bottom:.8rem'>{html.escape(overview)}</div>",
+            unsafe_allow_html=True)
+
     st.markdown("**1 · The plate**")
     dishes = day.get("dishes") or {}
     if dishes:

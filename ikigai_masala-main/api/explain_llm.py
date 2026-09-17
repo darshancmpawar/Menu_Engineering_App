@@ -63,34 +63,37 @@ _BANNED_RE = re.compile('|'.join(BANNED_PATTERNS), re.IGNORECASE)
 
 _NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
 
-SYSTEM_PROMPT = """You write one short paragraph per day explaining a corporate \
-cafeteria menu to the chef who will cook it.
+SYSTEM_PROMPT = """You write a short overview of one day's corporate cafeteria \
+menu for the chef who will cook it.
 
 You will receive JSON facts. Those facts are the ONLY things you know.
 
-You are not selling this menu. The chef already has it and is going to cook \
-it; what they need is an accurate reading of it, including what is weak. A \
-paragraph that only reports good news is worthless to them and is discarded.
+WHAT THIS IS: an overview of the MEAL — which dishes go together and why, and \
+what the plate is missing. It is NOT a compliance report. Nobody wants to read \
+a list of rule names; they want to know whether today's combination works.
 
-RULES — a reply breaking any of these is discarded:
+`pairings` is where the answer already is. Each entry names two dishes and the \
+reason they belong together ("gobi 65 is very hot - boondi raita cools it"). \
+Use those. `pairings.gaps` is the other half and is just as important.
+
+RULES - a reply breaking any of these is discarded:
 1. Never state a number that does not appear in the facts.
 2. Never name a dish that does not appear in the facts.
 3. Never mention nutrition, calories, health, diet or medical effects.
-4. Never claim a check passed or failed unless it says so in the facts.
-5. If a relaxation is listed, say so plainly in that day's paragraph.
-6. 2-3 sentences per day. Plain language. No marketing adjectives.
-7. Say which dishes work together, using the reasons in `pairings`. If
-   `pairings.gaps` is non-empty, say what the plate is missing — do not call a
-   plate balanced when a gap is listed.
-8. If ANY check failed, or a gap is listed, or a rule was relaxed, that is the
-   most important thing about the day and the paragraph must say it. Do not
-   bury it after the praise and do not soften it into a suggestion.
-9. Say what is distinctive about the day, using `theme` and `provenance` — a
-   dish that has not been served for a long time, a themed day, a dish the
-   client pins. If nothing in the facts makes the day distinctive, say the day
-   is routine. Do not manufacture an occasion.
-10. A good plate should be called good, briefly. Honesty is not pessimism, and
-    hedging a clean day is as inaccurate as flattering a poor one.
+4. FOUR OR FIVE sentences. Open with what the day is, then the pairings that
+   matter, then what it lacks. Plain language, no marketing adjectives.
+5. Do NOT name checks or rules ("texture_contrast", "the colour rule"). Say
+   what is true of the FOOD: "most of this plate is saucy" reads; "texture
+   contrast failed" does not.
+6. If `pairings.gaps` is non-empty you must say what is missing, in the same
+   plain voice. Never call a plate balanced when a gap is listed - an overview
+   that only reports good news is one nobody reads twice.
+7. If a relaxation is listed, say plainly that the menu could not fully meet
+   what was asked. That is the one thing here a kitchen can act on.
+8. Say what is distinctive, using `theme` and `provenance` - a dish not served
+   for a long time, a themed day, a dish the client always has. If nothing is
+   distinctive, say the day is routine. Do not manufacture an occasion.
+9. A good plate should be called good, briefly. Honesty is not pessimism.
 
 OUTPUT: strict JSON, no markdown fences:
 {"days": [{"date": "YYYY-MM-DD", "prose": "..."}]}"""
@@ -313,17 +316,18 @@ def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
 def _bad_news(pack: Dict[str, Any]) -> List[str]:
     """Everything about this plate a chef would want said out loud.
 
-    Failing CALIBRATED checks only. The uncalibrated ones ride in the response
-    for whoever is measuring them (note 33), and requiring the prose to repeat
-    a verdict we do not yet trust would be the opposite of honesty.
-    """
-    from src.explain.checks import CALIBRATED
+    **Gaps and relaxations, NOT check names.** A gap is already a sentence
+    about the food — "this is hot and nothing here cools it" — and belongs in
+    an overview. A failing check is a sentence about the RULESET, and demanding
+    the prose name `texture_contrast` would drag the paragraph back into being
+    the compliance report this layer is deliberately not. The checks still ride
+    in the response for whoever is auditing them.
 
+    A relaxation stays required because it is the one thing here a kitchen can
+    act on: a rule the solver could not hold is a menu that is not what the
+    client configured.
+    """
     out: List[str] = []
-    for c in (pack.get('checks') or []):
-        name = str(c.get('name') or '')
-        if not c.get('passed') and name in CALIBRATED:
-            out.append(name)
     for g in ((pack.get('pairings') or {}).get('gaps') or []):
         text = g if isinstance(g, str) else (g.get('text') or g.get('reason') or '')
         if text:

@@ -83,6 +83,7 @@ from src.menu_rules.relaxations import RelaxationCapture
 from src.explain.evidence import (
     attach_relaxations, attrs_from_dataframe, build_plan_evidence,
 )
+from src.explain.renderer import day_overview
 from api.explain_llm import explain_plan
 from src.solver.menu_solver import MenuSolver, SolverConfig
 from src.solver._helpers import (
@@ -2193,7 +2194,7 @@ def explain_menu():
         {"success": true,
          "days": [{date, weekday, theme, dishes: {slot: {...}},
                    plate_profile: {...}, checks: [...], provenance: [...],
-                   relaxations: [...], bullets: [...], prose: str|null,
+                   relaxations: [...], overview: str, bullets: [...], prose: str|null,
                    llm_used: bool, reason: str}],
          "llm_used": bool}
 
@@ -2264,6 +2265,12 @@ def explain_menu():
                 'pairings': pack['pairings'],
                 'provenance': pack['provenance'],
                 'relaxations': pack['relaxations'],
+                # The short paragraph a chef actually reads: what goes with
+                # what on this plate, and what it lacks. Deterministic, always
+                # present, and the PRIMARY surface — `bullets` below is the
+                # per-verdict breakdown for whoever is auditing the ruleset,
+                # which is a different reader with a different question.
+                'overview': day_overview(pack),
                 'bullets': extra.get('bullets') or [],
                 'prose': extra.get('prose'),
                 'llm_used': bool(extra.get('llm_used')),

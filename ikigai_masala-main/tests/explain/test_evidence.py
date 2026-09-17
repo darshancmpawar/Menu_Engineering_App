@@ -539,18 +539,26 @@ class TestItMustNotBeAYesMan:
             self._with_gap(pack))
         assert ok, why
 
-    def test_silence_about_a_failed_check_is_rejected(self, pack):
+    def test_a_failing_check_is_NOT_demanded(self, pack):
+        """Deliberate, and the opposite of what this once required.
+
+        A gap is a sentence about the FOOD — "this is hot and nothing here
+        cools it" — and belongs in an overview. A failing check is a sentence
+        about the RULESET, and demanding the prose name `texture_contrast`
+        drags the paragraph back into being the compliance report this layer
+        exists not to be. The checks still ride in the response for whoever is
+        auditing them; they are just not the reader this text is written for.
+        """
         ok, why = self._v('Everything works nicely together.',
                           self._with_failed_check(pack))
+        assert ok, why
+
+    def test_a_gap_is_still_demanded(self, pack):
+        """The honesty that survives the narrowing, because a gap IS food."""
+        p = self._with_failed_check(self._with_gap(pack))
+        ok, why = self._v('Everything works nicely together.', p)
         assert not ok
         assert 'only reports good news' in why, why
-
-    def test_naming_the_failed_check_is_accepted(self, pack):
-        from src.explain.checks import CALIBRATED
-        name = sorted(CALIBRATED)[0].replace('_', ' ')
-        ok, why = self._v(f'The {name} check did not hold today.',
-                          self._with_failed_check(pack))
-        assert ok, why
 
     def test_a_relaxed_rule_must_be_mentioned(self, pack):
         p = dict(pack)
