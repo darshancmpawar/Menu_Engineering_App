@@ -123,14 +123,34 @@ class TestWrites:
                 _counter('Empty', []),
             ])
 
-    def test_set_counters_single_truncates(self, loader):
+    def test_the_counters_list_wins_over_the_mode(self, loader):
+        """A mode disagreeing with the list must not DELETE a counter.
+
+        Reverses a previously pinned truncation. The mode is derived in this
+        schema (single <=> 1 counter, multi <=> 2+), so the list is the more
+        specific statement; the flag defaulting to 'single' one layer up in the
+        API meant a caller who omitted it silently lost every counter after the
+        first, on a 200 response.
+        """
         ld, fake = loader
         ld.set_counters_for_client('Bistro', 'single', [
+            _counter('Keep', ['rice']), _counter('AlsoKeep', ['dal']),
+        ])
+        row = [r for r in fake.rows('clients') if r['name'] == 'Bistro'][0]
+        assert [c['name'] for c in row['counters']] == ['Keep', 'AlsoKeep']
+        assert ld.get_counter_mode('Bistro') == 'multi'   # derived
+
+    def test_a_one_entry_list_collapses_the_client(self, loader):
+        """Collapsing stays possible; it is what a one-entry list means."""
+        ld, fake = loader
+        ld.set_counters_for_client('Bistro', 'multi', [
             _counter('Keep', ['rice']), _counter('Drop', ['dal']),
         ])
+        ld.set_counters_for_client('Bistro', 'single', [_counter('Keep', ['rice'])])
         row = [r for r in fake.rows('clients') if r['name'] == 'Bistro'][0]
         assert len(row['counters']) == 1
         assert row['counters'][0]['categories'] == ['rice']
+        assert ld.get_counter_mode('Bistro') == 'single'
 
     def test_update_primary_counter_theme(self, loader):
         ld, fake = loader

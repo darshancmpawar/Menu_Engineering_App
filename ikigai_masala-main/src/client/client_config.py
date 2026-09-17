@@ -639,6 +639,48 @@ class ClientConfigLoader:
                 ) from exc
             raise
 
+    def get_client_serve_dinner(self, name: str) -> bool:
+        """Return whether the client runs a DINNER service as well as lunch.
+
+        Degrades to ``False`` when the ``clients.serve_dinner`` column is
+        missing (pre-migration database), so an un-migrated deployment keeps
+        generating exactly one menu per day.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('serve_dinner')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return False
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return bool(row.data.get('serve_dinner'))
+
+    def set_client_serve_dinner(self, name: str, value: bool) -> None:
+        """Update a client's dinner-service flag."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'serve_dinner': bool(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.serve_dinner column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save dinner setting: the clients.serve_dinner "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     def get_client_is_launch_site(self, name: str) -> bool:
         """Return whether the client is a launch site (F: launch view).
 
@@ -806,14 +848,34 @@ class ClientConfigLoader:
         counter_mode: str,
         counters: List[Dict] | None,
     ) -> List[Dict]:
-        """Normalise create/update inputs into the canonical counters list."""
+        """Normalise create/update inputs into the canonical counters list.
+
+        **An explicit ``counters`` list is the mode.** It used to be truncated
+        to one entry whenever ``counter_mode`` was not ``'multi'``, which made a
+        separate field able to contradict the list and win — and the mode is
+        DERIVED in this schema (single ⇔ 1 counter, multi ⇔ 2+), so there is
+        nothing for it to win over. A caller that sent two counters and omitted
+        ``counter_mode`` (it defaults to ``'single'`` in the API layer) had its
+        second counter deleted and got ``200 Config updated`` back. The visible
+        symptom was elsewhere and looked unrelated: cross-counter shared
+        categories "stopped working", because the client no longer had a second
+        counter to share with.
+
+        Collapsing a multi-counter client is still possible — it is what
+        sending a one-entry list means. The mode no longer does it silently.
+        """
         if counters:
             norm = [normalize_counter(c, i) for i, c in enumerate(counters)]
+            if counter_mode != 'multi' and len(norm) > 1:
+                logger.warning(
+                    "counter_mode=%r was sent with %d counters; honouring the "
+                    "counters list, which is the source of truth. Send a "
+                    "one-entry list to collapse a client to a single counter.",
+                    counter_mode, len(norm),
+                )
         else:
             cats = active_slots if active_slots is not None else list(_TOGGLEABLE_BASE_SLOTS)
             norm = [normalize_counter({'name': 'Counter 1', 'categories': cats}, 0)]
-        if counter_mode != 'multi':
-            norm = norm[:1]
         self._validate_counters(norm)
         return norm
 
@@ -826,6 +888,7 @@ class ClientConfigLoader:
         counters: List[Dict] | None = None,
         city: str | None = None,
         serve_weekends: bool = False,
+        serve_dinner: bool = False,
         item_cooldown_days=None,
         working_days=None,
         source_pools=None,
@@ -869,6 +932,10 @@ class ClientConfigLoader:
             # Only send it when true, so a pre-migration DB still takes the
             # common create path (the column defaults to false there anyway).
             row['is_launch_site'] = True
+        if serve_dinner:
+            # Same argument as is_launch_site above: only sent when true, so a
+            # database predating the column still takes the common path.
+            row['serve_dinner'] = True
         if shared_categories is not None:
             row['shared_categories'] = self._normalize_shared_categories_value(
                 shared_categories)
@@ -883,7 +950,8 @@ class ClientConfigLoader:
                     "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
-                for optional in ('city', 'serve_weekends', 'item_cooldown_days',
+                for optional in ('city', 'serve_weekends', 'serve_dinner',
+                                 'item_cooldown_days',
                                  'working_days', 'source_pools', 'is_launch_site',
                                  'shared_categories'):
                     row.pop(optional, None)
@@ -1118,7 +1186,7 @@ class ClientConfigLoader:
     # Config columns that live directly on the ``clients`` row. Read together so
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
-        'counters', 'city', 'serve_weekends', 'working_days',
+        'counters', 'city', 'serve_weekends', 'serve_dinner', 'working_days',
         'item_cooldown_days', 'source_pools', 'is_launch_site',
         'shared_categories', 'version',
     )
@@ -1153,6 +1221,7 @@ class ClientConfigLoader:
                     'counters': self._counters_list(name),
                     'city': self.get_client_city(name),
                     'serve_weekends': self.get_client_serve_weekends(name),
+                    'serve_dinner': self.get_client_serve_dinner(name),
                     'working_days': self.get_client_working_days(name),
                     'item_cooldown_days': self.get_client_item_cooldown_days(name),
                     'source_pools': self.get_client_source_pools(name),
@@ -1168,6 +1237,7 @@ class ClientConfigLoader:
             'counters': self._normalize_counters_value(name, data.get('counters')),
             'city': normalize_city(data.get('city')),
             'serve_weekends': bool(data.get('serve_weekends')),
+            'serve_dinner': bool(data.get('serve_dinner')),
             'working_days': self._normalize_working_days_value(
                 data.get('working_days')),
             'item_cooldown_days': normalize_item_cooldown_days(
@@ -1295,6 +1365,7 @@ class ClientConfigLoader:
         for column, setter in (
             ('city', self.set_client_city),
             ('serve_weekends', self.set_client_serve_weekends),
+            ('serve_dinner', self.set_client_serve_dinner),
             ('working_days', self.set_client_working_days),
             ('item_cooldown_days', self.set_client_item_cooldown_days),
             ('source_pools', self.set_client_source_pools),

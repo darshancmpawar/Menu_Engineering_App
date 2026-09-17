@@ -55,13 +55,16 @@ from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
 from .selector_frequency_rule import SelectorFrequencyRule
 from ..constants import OBJECTIVE_TIER_WEIGHTS
-from ..preprocessor.column_mapper import _norm_str
+from ..preprocessor.column_mapper import _norm_cell, _norm_str
 
 logger = logging.getLogger(__name__)
+
+_SCOPES = frozenset({'horizon', 'week', 'day'})
 
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
     'prefer_day_types', 'prefer_daily', 'match_attribute',
+    'prefer_attribute_spread',
 })
 
 
@@ -106,6 +109,17 @@ class SoftPreferenceRule(BaseMenuRule):
         self._sel_b = SelectorFrequencyRule._parse_matcher(rule_config.get('selector_b'))
         # avoid_attribute_repeat / match_attribute
         self.group_by: Optional[str] = rule_config.get('group_by')
+        # avoid_attribute_repeat — what "beyond the first" counts over:
+        # 'horizon' (default, unchanged), 'week' (ISO calendar week) or 'day'
+        # (two CELLS of one plate). See get_objective_terms.
+        self.scope: str = str(rule_config.get('scope', 'horizon')).lower()
+        # prefer_attribute_spread — the plate's shape in one attribute.
+        # `min_distinct` is how many different values it should carry;
+        # `max_share` is the fraction of the plate any one value may occupy.
+        md = rule_config.get('min_distinct')
+        self.min_distinct: Optional[int] = int(md) if md is not None else None
+        ms = rule_config.get('max_share')
+        self.max_share: Optional[float] = float(ms) if ms is not None else None
         # match_attribute — the attribute values this rule is about. Required:
         # comparing every value present would read a themed day's own cuisine as
         # a violation (see the module docstring).
@@ -142,6 +156,20 @@ class SoftPreferenceRule(BaseMenuRule):
             errs.append("avoid_consecutive requires selector")
         if self.mode == 'avoid_attribute_repeat' and not self.group_by:
             errs.append("avoid_attribute_repeat requires group_by")
+        if self.mode == 'prefer_attribute_spread':
+            if not self.group_by:
+                errs.append("prefer_attribute_spread requires group_by")
+            if self.min_distinct is None and self.max_share is None:
+                errs.append("prefer_attribute_spread requires min_distinct "
+                            "and/or max_share")
+            if self.min_distinct is not None and self.min_distinct < 2:
+                errs.append("min_distinct must be >= 2 (got "
+                            f"{self.min_distinct}); 1 is always satisfied")
+            if self.max_share is not None and not 0 < self.max_share < 1:
+                errs.append("max_share must be between 0 and 1 exclusive "
+                            f"(got {self.max_share}); 1 can never be exceeded")
+        if self.scope not in _SCOPES:
+            errs.append(f"scope must be one of {sorted(_SCOPES)} (got {self.scope!r})")
         if self.mode == 'prefer_day_types':
             if not self._sel:
                 errs.append("prefer_day_types requires selector")
@@ -206,7 +234,7 @@ class SoftPreferenceRule(BaseMenuRule):
             if allowed is not None and c.base_slot not in allowed:
                 continue
             for v, r in zip(c.x_vars, c.cand_rows):
-                if _norm_str(str(r.get(self.group_by, ''))) != value:
+                if _norm_cell(r.get(self.group_by, '')) != value:
                     continue
                 if matcher is not None and not SelectorFrequencyRule._matches(r, matcher):
                     continue
@@ -252,6 +280,63 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(both <= b)
                 both_bools.append(both)
             return [sum(both_bools) * (-abs(w))] if both_bools else []
+
+        if self.mode == 'prefer_attribute_spread':
+            # "the plate should carry at least N different textures, and no one
+            # texture should be more than X of it."
+            #
+            # NOT `avoid_attribute_repeat`, which penalises every repeat: there
+            # are only SEVEN texture values against a plate of six to nine main
+            # dishes, so "all different" is unreachable and a flat repeat
+            # penalty would be a constant the solver cannot act on. What a diner
+            # notices is a plate that is five-sixths saucy, and that is a
+            # threshold, not a count.
+            #
+            # The denominator is the day's CELL COUNT, known when the model is
+            # built, so the share cap is a plain integer bound rather than a
+            # ratio the solver has to reason about.
+            terms = []
+            for di in range(n):
+                dcells = [c for c in cells
+                          if c.d_idx == di and (self.base_slots is None
+                                                or c.base_slot in self.base_slots)]
+                if len(dcells) < 2:
+                    continue
+                groups = defaultdict(list)
+                for c in dcells:
+                    for v, r in zip(c.x_vars, c.cand_rows):
+                        val = _norm_cell(r.get(self.group_by, ''))
+                        if val:
+                            groups[val].append(v)
+                if not groups:
+                    continue
+                n_cells = len(dcells)
+
+                if self.max_share is not None:
+                    cap = max(1, int(self.max_share * n_cells))
+                    for vi, (val, lits) in enumerate(sorted(groups.items())):
+                        if len(lits) <= cap:
+                            continue        # cannot exceed the cap anyway
+                        over = model.NewIntVar(0, len(lits),
+                                               f'{self.name}_share_{di}_{vi}')
+                        model.Add(over >= sum(lits) - cap)
+                        terms.append(over)
+
+                if self.min_distinct is not None:
+                    # A day with fewer values available than the target is
+                    # skipped: penalising it is a constant, not a preference.
+                    if len(groups) < self.min_distinct:
+                        continue
+                    present = []
+                    for vi, (val, lits) in enumerate(sorted(groups.items())):
+                        y = model.NewBoolVar(f'{self.name}_has_{di}_{vi}')
+                        link_any(model, lits, y)
+                        present.append(y)
+                    short = model.NewIntVar(0, self.min_distinct,
+                                            f'{self.name}_short_{di}')
+                    model.Add(short >= self.min_distinct - sum(present))
+                    terms.append(short)
+            return [sum(terms) * (-abs(w))] if terms else []
 
         if self.mode == 'match_attribute':
             # "slot A serves value v, and slot B serves nothing of value v" —
@@ -354,28 +439,85 @@ class SoftPreferenceRule(BaseMenuRule):
                 pair_bools.append(both)
             return [sum(pair_bools) * (-abs(w))] if pair_bools else []
 
-        # avoid_attribute_repeat: penalise each day a value recurs beyond the
-        # first (over_v = max(0, days_with_value - 1)).
-        per_val_days = defaultdict(list)
+        # avoid_attribute_repeat: penalise each recurrence of a value beyond the
+        # first (over_v = max(0, occurrences - 1)).
+        #
+        # `scope` picks what "beyond the first" counts over, and the three are
+        # genuinely different questions about one plate:
+        #
+        #   horizon (default) — the same value on two DAYS of the plan. What
+        #     every shipped config means today, so it stays the default.
+        #   week — the same, bucketed by ISO calendar week. "a week should carry
+        #     as many different key ingredients as it can" is exactly minimising
+        #     this: fewer repeats within a week IS more distinct values in it.
+        #     Over a horizon the plan-wide count silently tightens as the plan
+        #     grows, the same defect note 26 fixed for `max`.
+        #   day — the same value on two CELLS of ONE plate: a paneer gravy
+        #     beside a paneer dry. The day-bool encoding the other two scopes use
+        #     structurally cannot see this, because it collapses "this value is
+        #     somewhere today" to a single variable.
+        day_cells: Dict[int, List[Any]] = defaultdict(list)
+        for c in cells:
+            if self.base_slots is not None and c.base_slot not in self.base_slots:
+                continue
+            day_cells[c.d_idx].append(c)
+
+        over_terms = []
+
+        def _over(lits, tag, reachable=None):
+            """max(0, sum(lits) - 1) as an IntVar, or nothing when it cannot fire.
+
+            *reachable* is the largest `sum(lits)` the model permits, which is
+            NOT `len(lits)` in the day scope: those are raw candidate literals
+            and a cell takes exactly one, so a value offered by 300 candidates
+            across 6 cells can never be served more than 6 times. Declaring the
+            domain as 300 is loose in both directions that matter — it weakens
+            propagation, and `test_objective_tier_headroom` bounds a term by
+            its variable's RANGE, so the slack is counted as reachable mass
+            against a theme tier note 32 already records as inverted.
+            """
+            if len(lits) < 2:
+                return
+            hi = min(len(lits), reachable if reachable is not None else len(lits))
+            if hi < 2:
+                return
+            o = model.NewIntVar(0, hi, f'{self.name}_over_{tag}')
+            model.Add(o >= sum(lits) - 1)
+            over_terms.append(o)
+
+        if self.scope == 'day':
+            for di, dcells in sorted(day_cells.items()):
+                groups = defaultdict(list)
+                cells_offering = defaultdict(set)
+                for ci, c in enumerate(dcells):
+                    for v, r in zip(c.x_vars, c.cand_rows):
+                        val = _norm_cell(r.get(self.group_by, ''))
+                        if val:
+                            groups[val].append(v)
+                            cells_offering[val].add(ci)
+                for vi, (val, lits) in enumerate(sorted(groups.items())):
+                    # The raw cell literals, NOT a day-bool: two cells taking
+                    # the same value on one day is the whole point here. The
+                    # count of CELLS offering the value is the real ceiling.
+                    _over(lits, f'{di}_{vi}', reachable=len(cells_offering[val]))
+            return [sum(over_terms) * (-abs(w))] if over_terms else []
+
+        per_val_days: Dict[Any, List[Any]] = defaultdict(list)
         for di in range(n):
             groups = defaultdict(list)
-            for c in cells:
-                if c.d_idx != di or (self.base_slots is not None
-                                     and c.base_slot not in self.base_slots):
-                    continue
+            for c in day_cells.get(di, ()):
                 for v, r in zip(c.x_vars, c.cand_rows):
-                    val = _norm_str(str(r.get(self.group_by, '')))
+                    val = _norm_cell(r.get(self.group_by, ''))
                     if val:
                         groups[val].append(v)
             for val, lits in groups.items():
                 h = model.NewBoolVar(f'{self.name}_{di}_{len(per_val_days)}')
                 link_any(model, lits, h)
-                per_val_days[val].append(h)
-        over_terms = []
-        for val, hs in per_val_days.items():
-            if len(hs) < 2:
-                continue
-            over = model.NewIntVar(0, len(hs), f'{self.name}_over_{len(over_terms)}')
-            model.Add(over >= sum(hs) - 1)
-            over_terms.append(over)
+                # Bucket by ISO week when asked, so a fortnight is two weeks
+                # rather than one long horizon.
+                key = (val, dates[di].isocalendar()[:2]) if (
+                    self.scope == 'week' and di < len(dates)) else val
+                per_val_days[key].append(h)
+        for ki, (key, hs) in enumerate(sorted(per_val_days.items(), key=lambda kv: str(kv[0]))):
+            _over(hs, str(ki))
         return [sum(over_terms) * (-abs(w))] if over_terms else []

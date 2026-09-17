@@ -47,15 +47,23 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value JSONB NOT NULL
 );
 
--- 3. Menu history — one row per (client, date); the day's whole menu lives in
---    the `menu` JSONB column ({slot: item_base}). Item-level cooldowns explode
---    this in memory. (Was one row per dish — collapsed to one row per day.)
+-- 3. Menu history — one row per (client, date, meal); the day's whole menu
+--    lives in the `menu` JSONB column ({slot: item_base}, or
+--    {counter: {slot: item_base}} for a multi-cuisine site). Item-level
+--    cooldowns explode this in memory. (Was one row per dish — collapsed to one
+--    row per day.)
+--
+--    `meal` is in the PRIMARY KEY because a site serving lunch AND dinner has
+--    two menus for one date, and without it the second save silently replaces
+--    the first. It defaults to 'lunch' so every existing row and every
+--    single-meal client is unchanged.
 CREATE TABLE IF NOT EXISTS menu_history (
     client_name  TEXT NOT NULL REFERENCES clients(name) ON DELETE CASCADE,
     service_date DATE NOT NULL,
+    meal         TEXT NOT NULL DEFAULT 'lunch',
     menu         JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at   TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (client_name, service_date)
+    PRIMARY KEY (client_name, service_date, meal)
 );
 
 -- 4. Week signatures — one row per saved week plan
@@ -84,6 +92,32 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL
 -- Cross-counter common categories (editor toggle+multiselect). NULL = none;
 -- the planner falls back to the file-based value in client_rules.json (DXC).
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS shared_categories  JSONB;
+-- Two services a day. NOT NULL DEFAULT false, so every existing client keeps
+-- generating exactly one menu and nothing about their plans changes; a site
+-- that serves dinner is opted in explicitly, the same shape as serve_weekends.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_dinner       BOOLEAN NOT NULL DEFAULT false;
+
+-- Migrate menu_history to the (client, date, MEAL) key. Idempotent: the column
+-- is added with a default, existing rows become 'lunch', and the primary key is
+-- only rebuilt when it does not already include `meal`. Dropping and recreating
+-- the constraint is safe here because the widened key is a superset of the old
+-- one — no existing row can collide under it.
+ALTER TABLE menu_history ADD COLUMN IF NOT EXISTS meal TEXT NOT NULL DEFAULT 'lunch';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.key_column_usage k
+         WHERE k.table_name = 'menu_history'
+           AND k.constraint_name = 'menu_history_pkey'
+        GROUP BY k.constraint_name
+        HAVING COUNT(*) = 2
+    ) THEN
+        ALTER TABLE menu_history DROP CONSTRAINT menu_history_pkey;
+        ALTER TABLE menu_history
+            ADD CONSTRAINT menu_history_pkey
+            PRIMARY KEY (client_name, service_date, meal);
+    END IF;
+END $$;
 
 -- Seed working_days for kitchens that do not run a full Mon–Fri week.
 UPDATE clients SET working_days = '["wednesday","thursday","friday"]'::jsonb

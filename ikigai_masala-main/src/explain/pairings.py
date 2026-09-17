@@ -205,13 +205,29 @@ def pair_cooling(dishes, used=None) -> Optional[Pairing]:
 
 
 def pair_lightener(dishes, used=None) -> Optional[Pairing]:
-    """A rich dish and something light enough to cut it."""
+    """A rich dish and something light enough to cut it.
+
+    The light side is picked in TIERS, not from the whole plate at once, and
+    the reason is that `richness_score` cannot separate these on its own:
+    welcome drinks are 1 on 191 of 198 Bangalore rows, salads on 321 of 326
+    and curd sides on 35 of 37. Ask the flat pool for "the least rich dish" and
+    it returns whichever of a hundred 1s sorts first, which is how a real
+    Wednesday plate answered a rich dum chicken biryani with `pomegranate mint
+    water`. True, and useless: a drink taken before the meal is not what cuts a
+    biryani. A main at 1-2 is, a salad is, and a drink is the last resort.
+    """
     rich = _by(main_dishes(dishes), 'richness_score', RICH_AT, highest=True,
                exclude=used)
     if not rich:
         return None
-    light = _by(dishes, 'richness_score', LIGHT_AT, highest=False,
-                exclude=(used or set()) | {rich[0]})
+    skip = (used or set()) | {rich[0]}
+    salads = {s: d for s, d in dishes.items() if base_slot(s) == 'salad'}
+    light = (_by(main_dishes(dishes), 'richness_score', LIGHT_AT,
+                 highest=False, exclude=skip)
+             or _by(salads, 'richness_score', LIGHT_AT, highest=False,
+                    exclude=skip)
+             or _by(dishes, 'richness_score', LIGHT_AT, highest=False,
+                    exclude=skip))
     if not light:
         return None
     rslot, rdish, rval = rich
@@ -309,11 +325,162 @@ def pair_dry_against_saucy(dishes, used=None) -> Optional[Pairing]:
     )
 
 
+def pair_protein_backbone(dishes, used=None) -> Optional[Pairing]:
+    """Where the plate's protein comes from.
+
+    The question a diner actually asks of a vegetarian plate, and nothing else
+    here answers it: `pair_lightener` and `pair_crunch` are about how the meal
+    EATS, this is about what is in it. Yogurt is excluded because it is the
+    cooling side and `pair_cooling` already speaks for it; a raita is not what
+    anyone means by the day's protein.
+
+    Two distinct sources is the good case and is stated as a pairing. One is
+    stated too, as a fact rather than a compliment — "the whole plate's protein
+    is the paneer" is a real thing to know before service, and softening it
+    into praise is what the honesty discipline here exists to prevent.
+    """
+    m = main_dishes(dishes)
+    sources: Dict[str, List[tuple]] = {}
+    for slot, d in sorted(m.items()):
+        p = _text(d, 'primary_protein')
+        if not p or p in COOLING_PROTEINS:
+            continue
+        sources.setdefault(p, []).append((slot, d))
+    if not sources:
+        return None
+    ordered = sorted(sources.items())
+    if len(ordered) >= 2:
+        # Name every source, up to three. Naming two and then saying "3 protein
+        # sources" reads as if the two WERE the three, and a reader counting
+        # the dishes in the sentence finds the number wrong — a small
+        # inaccuracy in the one place this module cannot afford one.
+        shown = ordered[:3]
+        parts = [f"{_pretty(hits[0][1]['name'])} brings {_pretty(protein)}"
+                 for protein, hits in shown]
+        tail = (f" — and {len(ordered) - len(shown)} more protein source(s)"
+                if len(ordered) > len(shown) else '')
+        return Pairing(
+            kind='protein',
+            detail=(', '.join(parts[:-1]) + ' and ' + parts[-1] + tail
+                    if len(parts) > 1 else parts[0] + tail),
+            dishes=[hits[0][1]['name'] for _, hits in shown],
+            slots=[hits[0][0] for _, hits in shown],
+            evidence={'proteins': [p for p, _ in shown],
+                      'distinct_proteins': len(ordered)},
+        )
+    p, hits = ordered[0]
+    slot, dish = hits[0]
+    return Pairing(
+        kind='protein',
+        detail=(f"{_pretty(p)} is the only protein on the plate, in "
+                f"{_pretty(dish['name'])}"),
+        dishes=[dish['name']],
+        slots=[slot],
+        evidence={'protein_a': p, 'distinct_proteins': 1,
+                  'dishes_carrying_it': len(hits)},
+    )
+
+
+def pair_mild_relief(dishes, used=None) -> Optional[Pairing]:
+    """The mild dish that breaks up a hot one, when there is no yogurt.
+
+    `pair_cooling` is the better answer and runs first, so this is gated on
+    there being NO cooling dish anywhere rather than on `used`: the shared-slot
+    guard in `build_pairings` only asks that a line introduce ONE new dish, so
+    without this gate a plate with a raita would get "gobi 65 is very hot —
+    raita cools it" and then "gobi 65 is very hot — aloo jeera is the break",
+    two sentences about one dish's heat.
+    """
+    if any(_is_cooling(s, d) for s, d in dishes.items()):
+        return None
+    m = main_dishes(dishes)
+    hot = _by(m, 'spice_level', HOT_SPICE, highest=True, exclude=used)
+    if not hot:
+        return None
+    mild = _by(m, 'spice_level', 0, highest=False,
+               exclude=(used or set()) | {hot[0]})
+    if not mild or mild[0] == hot[0]:
+        return None
+    hslot, hdish, hlevel = hot
+    mslot, mdish, mlevel = mild
+    if int(mlevel) >= int(hlevel):
+        return None
+    return Pairing(
+        kind='relief',
+        detail=(f"{_pretty(hdish['name'])} is "
+                f"{SPICE_NAMES.get(int(hlevel), int(hlevel))} with no curd on "
+                f"the plate — {_pretty(mdish['name'])} is the mild one to fall "
+                f"back on"),
+        dishes=[hdish['name'], mdish['name']],
+        slots=[hslot, mslot],
+        evidence={'hot_level': int(hlevel), 'mild_level': int(mlevel),
+                  'cooling_dishes': 0},
+    )
+
+
+#: A plate is "already rich" past this mean. Set from the data rather than by
+#: taste: Bangalore desserts are richness 4 or 5 on 365 of 367 rows, so "the
+#: sweet is rich" is true of essentially every menu and saying it every day is
+#: a line that carries no information and crowds out one that does. The
+#: dessert pairing therefore speaks only at the ENDS — when the mains are heavy
+#: enough that the sweet compounds it, or light enough that the sweet is the
+#: only rich thing on the page.
+HEAVY_MEAL_MEAN = 3.5
+LIGHT_MEAL_MEAN = 2.0
+
+
+def pair_sweet_finish(dishes, used=None) -> Optional[Pairing]:
+    """The dessert, and the meal it has to follow — when that is worth saying.
+
+    A sweet is not judged on its own: a payasam after a heavy plate does
+    something different from the same payasam after a light one. But the
+    dessert's own score is nearly a constant (see HEAVY_MEAL_MEAN), so the
+    information is entirely in the MAINS, and this stays silent on the ordinary
+    middle rather than printing the same sentence every day.
+    """
+    sweets = _pick(dishes, lambda s, d: base_slot(s) == 'dessert')
+    if not sweets:
+        return None
+    m = main_dishes(dishes)
+    scores = [v for v in (_num(d, 'richness_score') for d in m.values())
+              if v is not None]
+    if not scores:
+        return None
+    dslot, ddish = sweets[0]
+    dv = _num(ddish, 'richness_score')
+    if dv is None:
+        return None
+    avg = round(sum(scores) / len(scores), 1)
+    if avg >= HEAVY_MEAL_MEAN and dv >= RICH_AT:
+        how = (f"rich at {int(dv)} of 5 on top of mains already averaging "
+               f"{avg} — a heavy lunch end to end")
+    elif avg <= LIGHT_MEAL_MEAN and dv >= RICH_AT:
+        how = (f"the one rich thing on the page at {int(dv)} of 5, against "
+               f"mains averaging {avg}")
+    else:
+        return None
+    return Pairing(
+        kind='finish',
+        detail=f"{_pretty(ddish['name'])} is {how}",
+        dishes=[ddish['name']],
+        slots=[dslot],
+        evidence={'dessert_richness': int(dv), 'mean_main_richness': avg,
+                  'scored_mains': len(scores)},
+    )
+
+
+#: Order is the argument, not a preference. The overview renders the first few
+#: that fire, so the most specific and least predictable go first: a cooling
+#: side is the pairing a diner notices missing, and "a gravy needs bread" is
+#: true of nearly every Indian plate and belongs last.
 ALL_PAIRINGS: List[Callable[..., Optional[Pairing]]] = [
     pair_cooling,
+    pair_mild_relief,
     pair_lightener,
+    pair_protein_backbone,
     pair_crunch,
     pair_dry_against_saucy,
+    pair_sweet_finish,
     pair_carrier,
 ]
 

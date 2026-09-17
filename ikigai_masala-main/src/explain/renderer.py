@@ -15,6 +15,69 @@ from typing import Any, Dict, List
 _TICK = '[ok]'
 _FLAG = '[!]'
 
+#: How many sentences an overview may run to. Four or five — long enough to
+#: name two or three real pairings, short enough that someone reads all of it
+#: before service.
+MAX_OVERVIEW_SENTENCES = 5
+
+
+def day_overview(pack: Dict[str, Any]) -> str:
+    """A short paragraph about the day's menu: what goes with what.
+
+    **An overview, not a checklist.** `render_day` below lists every verdict,
+    which is the right shape for someone auditing the ruleset and the wrong one
+    for someone reading a menu: a column of `[ok] texture contrast` lines says
+    nothing about the food. This says "gobi 65 is very hot — boondi raita cools
+    it", which is a sentence about two dishes a chef recognises.
+
+    Built from `pairings`, because those are already statements about a PAIR
+    with a reason attached; the checks score the plate as a set and leave the
+    reader to work out what four colours means for lunch.
+
+    Honest, though — a gap is named in the same voice as a pairing ("nothing
+    here cools it"), not as a failed check. An overview that only reports good
+    news is the thing a kitchen stops reading, and a missing yogurt beside a
+    hot curry is the one item on this page they can fix this morning.
+
+    Deterministic and model-free: this is the product, not a fallback for one.
+    """
+    pairings = pack.get('pairings') or {}
+    found = list(pairings.get('pairings') or [])
+    gaps = list(pairings.get('gaps') or [])
+    profile = pack.get('plate_profile') or {}
+
+    out: List[str] = []
+
+    # 1. What the day IS. Theme and size, so the rest has something to attach to.
+    weekday = str(pack.get('weekday') or '').strip()
+    theme = str(pack.get('theme') or '').strip()
+    n = profile.get('main_dish_count') or 0
+    who = weekday or str(pack.get('date') or 'This day')
+    if theme and theme != 'mix':
+        out.append(f"{who} is a {theme} menu of {n} main dishes.")
+    else:
+        out.append(f"{who} runs {n} main dishes.")
+
+    # 2-4. The pairings themselves — the point of the paragraph. Each `detail`
+    #      already names two dishes and the reason, so it is used verbatim
+    #      rather than paraphrased: the wording is what the evidence supports.
+    room = MAX_OVERVIEW_SENTENCES - 1 - (1 if gaps else 0)
+    for p in found[:max(1, room)]:
+        detail = str(p.get('detail') or '').strip()
+        if detail:
+            out.append(detail[0].upper() + detail[1:] + '.')
+
+    # 5. What it lacks. Last, and never dropped to make room for more praise.
+    if gaps:
+        out.append('Missing: ' + '; '.join(str(g) for g in gaps[:2]) + '.')
+    elif not found:
+        out.append(
+            'There is not enough recorded texture, spice or richness on these '
+            'dishes to say what pairs with what.'
+        )
+
+    return ' '.join(out[:MAX_OVERVIEW_SENTENCES])
+
 
 def _profile_line(profile: Dict[str, Any]) -> str:
     bits: List[str] = []

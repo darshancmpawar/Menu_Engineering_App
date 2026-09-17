@@ -143,10 +143,32 @@ class TestRenderer:
 # The validator. This is what stops the feature inventing rationale.
 # --------------------------------------------------------------------------
 
+def _strip_bad_news(p):
+    """A pack with nothing for the honesty rule to demand.
+
+    `validate` rejects a reply that stays silent about a failing check, a
+    pairing gap or a relaxed rule (see TestItMustNotBeAYesMan). That rule is
+    about OMISSION; the tests below are about INVENTION, and a test of "is a
+    made-up dish rejected" must not also depend on whether this fixture's
+    plate happens to fail texture_contrast. Each set controls its own state.
+    """
+    out = dict(p)
+    out['checks'] = [dict(c, passed=True) for c in (p.get('checks') or [])]
+    out['pairings'] = dict(p.get('pairings') or {}, gaps=[])
+    out['relaxations'] = []
+    return out
+
+
 @pytest.fixture
-def pack():
+def raw_pack():
+    """The real pack, failing checks and all."""
     return build_evidence(date='2026-09-10', day_items=DAY_ITEMS, attrs=ATTRS,
                           theme='south')
+
+
+@pytest.fixture
+def pack(raw_pack):
+    return _strip_bad_news(raw_pack)
 
 
 class TestValidator:
@@ -470,3 +492,118 @@ class TestTheCache:
         assert out['2026-09-10']['llm_used'] is True
         assert out['2026-09-11']['prose'] is None
         assert mod._cache == {}
+
+
+class TestItMustNotBeAYesMan:
+    """A reply that only reports good news is discarded.
+
+    Every other validator rule catches INVENTION — a fabricated number, a dish
+    the pack does not carry. None of them catches OMISSION, and omission is the
+    cheaper failure: the easiest paragraph a model can write is the one saying
+    everything is lovely, and it passed every rule here. Rules 4, 5 and 7 of
+    SYSTEM_PROMPT told it not to, and nothing enforced them.
+
+    This cannot check that the prose is RIGHT — a validator cannot decide
+    whether free text agrees with `texture_contrast: passed`. It checks that
+    when the pack carries bad news the prose is at least ABOUT it.
+    """
+
+    @staticmethod
+    def _v(prose, pack):
+        from api.explain_llm import validate
+        return validate(prose, pack)
+
+    def _with_gap(self, pack):
+        p = dict(pack)
+        p['pairings'] = dict(p.get('pairings') or {})
+        p['pairings']['gaps'] = ['nothing cooling against the hot dishes']
+        return p
+
+    def _with_failed_check(self, pack):
+        from src.explain.checks import CALIBRATED
+        p = dict(pack)
+        name = sorted(CALIBRATED)[0]
+        p['checks'] = [{'name': name, 'passed': False,
+                        'detail': 'x', 'evidence': {}}]
+        return p
+
+    def test_flattery_over_a_gap_is_rejected(self, pack):
+        ok, why = self._v('A well put together plate, nicely varied.',
+                          self._with_gap(pack))
+        assert not ok
+        assert 'only reports good news' in why, why
+
+    def test_naming_the_gap_is_accepted(self, pack):
+        ok, why = self._v(
+            'There is nothing cooling against the hot dishes today.',
+            self._with_gap(pack))
+        assert ok, why
+
+    def test_a_failing_check_is_NOT_demanded(self, pack):
+        """Deliberate, and the opposite of what this once required.
+
+        A gap is a sentence about the FOOD — "this is hot and nothing here
+        cools it" — and belongs in an overview. A failing check is a sentence
+        about the RULESET, and demanding the prose name `texture_contrast`
+        drags the paragraph back into being the compliance report this layer
+        exists not to be. The checks still ride in the response for whoever is
+        auditing them; they are just not the reader this text is written for.
+        """
+        ok, why = self._v('Everything works nicely together.',
+                          self._with_failed_check(pack))
+        assert ok, why
+
+    def test_a_gap_is_still_demanded(self, pack):
+        """The honesty that survives the narrowing, because a gap IS food."""
+        p = self._with_failed_check(self._with_gap(pack))
+        ok, why = self._v('Everything works nicely together.', p)
+        assert not ok
+        assert 'only reports good news' in why, why
+
+    def test_a_relaxed_rule_must_be_mentioned(self, pack):
+        p = dict(pack)
+        p['relaxations'] = [{'rule': 'veg_key_ingredient_three_day_gap',
+                             'message': 'relaxed'}]
+        ok, _ = self._v('A solid plate all round.', p)
+        assert not ok
+        ok, why = self._v(
+            'The three day gap on the veg key ingredient was relaxed today.', p)
+        assert ok, why
+
+    def test_a_clean_plate_constrains_nothing(self, pack):
+        # No bad news to demand. Requiring hedging on a good day would be its
+        # own dishonesty, so praise is fine when it is earned.
+        p = dict(pack)
+        p['checks'] = [{'name': 'texture_contrast', 'passed': True,
+                        'detail': 'x', 'evidence': {}}]
+        p['pairings'] = dict(p.get('pairings') or {})
+        p['pairings']['gaps'] = []
+        p['relaxations'] = []
+        ok, why = self._v('A balanced plate today.', p)
+        assert ok, why
+
+    def test_an_uncalibrated_failure_is_not_demanded(self, pack):
+        # The uncalibrated checks ride in the response for whoever is measuring
+        # them (note 33). Making the prose repeat a verdict we do not yet trust
+        # would be the opposite of honesty.
+        from src.explain.checks import ALL_CHECKS, CALIBRATED
+        uncal = [c.__name__.replace('check_', '') for c in ALL_CHECKS
+                 if c.__name__.replace('check_', '') not in CALIBRATED]
+        if not uncal:
+            pytest.skip('every check is calibrated')
+        p = dict(pack)
+        p['checks'] = [{'name': uncal[0], 'passed': False,
+                        'detail': 'x', 'evidence': {}}]
+        p['pairings'] = dict(p.get('pairings') or {})
+        p['pairings']['gaps'] = []
+        ok, why = self._v('A balanced plate today.', p)
+        assert ok, why
+
+    def test_a_stopword_does_not_satisfy_the_rule(self, pack):
+        # "the" appears in almost every gap string and in almost every reply;
+        # if it counted, the check would pass on anything.
+        p = dict(pack)
+        p['pairings'] = dict(p.get('pairings') or {})
+        p['pairings']['gaps'] = ['the plate has nothing crisp']
+        ok, _ = self._v('The food is good and the plate is fine.', p)
+        assert not ok

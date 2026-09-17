@@ -127,6 +127,92 @@ def shared_items_from_solution(
     return out
 
 
+#: The share of a day's cells that DINNER must not take from lunch. The client
+#: asked for "35-40% should be different"; the exclusion below delivers ~97% in
+#: practice, so this is a floor that should never bind — which is exactly why it
+#: is checked rather than assumed. A guarantee nothing measures is a guarantee
+#: that quietly stops holding.
+MIN_MEAL_DIFFERENCE = 0.35
+
+
+def dishes_from_solution(raw_solution: Dict[str, Any]) -> Dict[str, list]:
+    """``{iso_date: [item_base, …]}`` — every dish a solved plan serves.
+
+    Fed to the SECOND meal's ``/plan`` as ``exclude_items`` so dinner does not
+    reprint lunch. The union is sent for EVERY date, not just each dish's own
+    day, because `unique_items` works inside ONE solve: lunch and dinner are two
+    separate solves, so nothing else stops Monday's lunch dal turning up at
+    Wednesday's dinner inside a single generation. The cooldown only catches it
+    once the plan is saved, which is after the damage is on screen.
+
+    Staples are NOT filtered out here. They do not need to be: the exclusion is
+    merged into `banned_by_date`, and the item-cooldown pre-filter exempts a
+    declared staple from that map — so the daily curd and the plain chapati
+    still repeat at dinner, which is what a canteen serves.
+    """
+    dishes: set = set()
+    for day_data in (raw_solution or {}).values():
+        items = day_data.get('items') if isinstance(day_data, dict) else None
+        if not isinstance(items, dict):
+            continue
+        for meta in items.values():
+            name = meta.get('item_base') or meta.get('item') if isinstance(meta, dict) else meta
+            if name:
+                dishes.add(str(name))
+    if not dishes:
+        return {}
+    every = sorted(dishes)
+    return {str(d): list(every) for d in (raw_solution or {})}
+
+
+def meal_difference(first: Dict[str, Any], second: Dict[str, Any]) -> Dict[str, Any]:
+    """How different the second meal is from the first, per day and overall.
+
+    Returns ``{overall, per_day, below_floor}`` where each value is the share of
+    that day's cells whose dish differs. Reported rather than enforced as a
+    solver constraint: the exclusion above is the mechanism and it overshoots
+    the floor by a wide margin, so a CP-SAT bound would be machinery for a
+    condition that never binds. What is worth having is the NUMBER, so that if
+    a thin pool ever pushes two services back together somebody sees it.
+    """
+    def _items(sol, date_key):
+        day = (sol or {}).get(date_key)
+        items = day.get('items') if isinstance(day, dict) else None
+        if not isinstance(items, dict):
+            return {}
+        out = {}
+        for slot, meta in items.items():
+            name = meta.get('item_base') or meta.get('item') if isinstance(meta, dict) else meta
+            if name:
+                out[slot] = str(name)
+        return out
+
+    per_day: Dict[str, float] = {}
+    same = diff = 0
+    for date_key in sorted(second or {}):
+        a, b = _items(first, date_key), _items(second, date_key)
+        if not b:
+            continue
+        d = s = 0
+        for slot, dish in b.items():
+            if a.get(slot) == dish:
+                s += 1
+            else:
+                d += 1
+        if d + s:
+            per_day[date_key] = round(d / (d + s), 3)
+        same += s
+        diff += d
+    total = same + diff
+    overall = round(diff / total, 3) if total else 0.0
+    return {
+        'overall': overall,
+        'per_day': per_day,
+        'below_floor': sorted(k for k, v in per_day.items()
+                              if v < MIN_MEAL_DIFFERENCE),
+    }
+
+
 def off_days_from_solution(raw_solution: Dict[str, Any]) -> Set[str]:
     """Dates the client does not work, as the API marked them.
 

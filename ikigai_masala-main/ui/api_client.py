@@ -199,6 +199,8 @@ class MenuApiClient:
         time_limit_seconds: int = 240,
         counter_index: int = 0,
         shared_items: Optional[List[Any]] = None,
+        meal: Optional[str] = None,
+        exclude_items: Optional[Dict[str, List[str]]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -211,6 +213,17 @@ class MenuApiClient:
         # shared base slots, as [[date, slot_id, item], …]. The server pins them.
         if shared_items:
             payload["shared_items"] = shared_items
+        # Which service this is. Only ever echoed back by /plan — the solve is
+        # identical — but it is what /save keys the history row on, so the two
+        # calls have to agree and the planner carries one value through both.
+        if meal:
+            payload["meal"] = meal
+        # `{iso_date: [item, …]}` — dishes an EARLIER service the same day has
+        # already committed, folded into the ban map server-side. This is what
+        # keeps dinner off lunch's dishes: the two are separate solves, so
+        # `unique_items` cannot see across them.
+        if exclude_items:
+            payload["exclude_items"] = exclude_items
 
         def _do():
             return self.session.post(
@@ -262,15 +275,22 @@ class MenuApiClient:
         week_start: str,
         week_plan: Optional[Dict[str, Dict[str, str]]] = None,
         counters: Optional[List[Dict[str, Any]]] = None,
+        meal: Optional[str] = None,
     ) -> Dict[str, Any]:
-        # /save overwrites on (client, dates) — re-saving the same week
+        # /save overwrites on (client, dates, meal) — re-saving the same week
         # is idempotent (DELETE + INSERT under the hood). Pass ``week_plan``
         # for a single-cuisine client, or ``counters`` (a list of
         # {name, week_plan}) for a multi-cuisine client.
+        #
+        # ``meal`` is part of the history key, so omitting it on a dinner save
+        # would overwrite that day's LUNCH row rather than sit beside it — the
+        # two services are different menus for the same date.
         payload: Dict[str, Any] = {
             "client_name": client_name,
             "week_start": week_start,
         }
+        if meal:
+            payload["meal"] = meal
         if counters is not None:
             payload["counters"] = counters
         else:
@@ -345,19 +365,25 @@ class MenuApiClient:
 
     def get_saved_plan(
         self, client_name: str, start_date: str, num_days: int = 5,
+        meal: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Return the saved plan for *(client, start_date, num_days)*.
+        """Return the saved plan for *(client, start_date, num_days, meal)*.
 
         Response carries ``exists`` (True iff every requested weekday is
         covered) and ``solution`` in the same shape as ``plan()``. The
         UI uses ``exists`` to decide whether to display the saved plan
         directly or fall back to running the solver.
+
+        ``meal`` selects the service; omitted, the server reads lunch, which
+        is what every row predating the column is.
         """
         params = {
             "client_name": client_name,
             "start_date": start_date,
             "num_days": num_days,
         }
+        if meal:
+            params["meal"] = meal
 
         def _do():
             return self.session.get(
@@ -435,6 +461,7 @@ class MenuApiClient:
         counters: Optional[List[Dict[str, Any]]] = None,
         city: Optional[str] = None,
         serve_weekends: Optional[bool] = None,
+        serve_dinner: Optional[bool] = None,
         item_cooldown_days: Optional[int] = None,
         source_pools: Optional[List[str]] = None,
         is_launch_site: Optional[bool] = None,
@@ -456,6 +483,8 @@ class MenuApiClient:
             payload["city"] = city
         if serve_weekends is not None:
             payload["serve_weekends"] = bool(serve_weekends)
+        if serve_dinner is not None:
+            payload["serve_dinner"] = bool(serve_dinner)
         if item_cooldown_days is not None:
             payload["item_cooldown_days"] = int(item_cooldown_days)
         if source_pools is not None:

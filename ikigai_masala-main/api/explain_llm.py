@@ -63,21 +63,73 @@ _BANNED_RE = re.compile('|'.join(BANNED_PATTERNS), re.IGNORECASE)
 
 _NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
 
-SYSTEM_PROMPT = """You write one short paragraph per day explaining a corporate \
-cafeteria menu to the chef who will cook it.
+SYSTEM_PROMPT = """You write a short overview of one day's corporate cafeteria \
+menu for the chef who will cook it.
 
-You will receive JSON facts. Those facts are the ONLY things you know.
+You will receive JSON facts. Those facts are the ONLY things you know. You are \
+not judging the menu — the judging is already done and handed to you. Your job \
+is to say it in a way a working chef reads in ten seconds.
 
-RULES — a reply breaking any of these is discarded:
+WHAT THIS IS: an overview of the MEAL — which dishes go WITH which, and what \
+the plate is missing. It is NOT a compliance report. Nobody wants a list of \
+rule names; they want to know whether today's combination works.
+
+`pairings` is where the answer already is. Each entry names dishes and the \
+reason they belong together, and each has a `kind`:
+
+  cooling  a hot dish and the yogurt side that answers it
+  relief   a hot dish and the mild one to fall back on, when there is no curd
+  lightener a rich dish and something light enough to cut it
+  protein  where the plate's protein comes from
+  crunch   something with bite on a plate that is otherwise soft
+  contrast one dry vegetable against one in sauce
+  finish   the dessert, against the meal it follows
+  carrier  a gravy and the bread or rice it is eaten with
+
+Lead with the ones a cook could not have predicted. `cooling`, `relief` and \
+`lightener` are about whether the meal EATS well and are worth a sentence \
+each; `carrier` is true of nearly every Indian plate and is worth a clause at \
+most. `pairings.gaps` is the other half and matters as much as any of them.
+
+HOW TO WRITE IT:
+- Name the dishes. "Gobi 65 is very hot and the boondi raita is what cools it"
+  beats "there is a spicy dish and a cooling one."
+- Connect the pairings into a paragraph. Do not restate the `detail` strings
+  one after another as a list; that is what the fallback already does.
+- Vary the sentences. Two pairings joined by the same "X is Y - Z does W"
+  shape twice in a row reads like a form.
+- One idea per sentence. No semicolon chains.
+- Plain kitchen English. No marketing adjectives: nothing is "delightful",
+  "vibrant", "a symphony" or "thoughtfully curated".
+- Never hedge a real problem into a compliment.
+
+RULES - a reply breaking any of these is discarded:
 1. Never state a number that does not appear in the facts.
 2. Never name a dish that does not appear in the facts.
 3. Never mention nutrition, calories, health, diet or medical effects.
-4. Never claim a check passed or failed unless it says so in the facts.
-5. If a relaxation is listed, say so plainly in that day's paragraph.
-6. 2-3 sentences per day. Plain language. No marketing adjectives.
-7. Say which dishes work together, using the reasons in `pairings`. If
-   `pairings.gaps` is non-empty, say what the plate is missing — do not call a
-   plate balanced when a gap is listed.
+4. FOUR OR FIVE sentences. Open with what the day is, then the pairings that
+   matter, then what it lacks.
+5. Do NOT name checks or rules ("texture_contrast", "the colour rule"). Say
+   what is true of the FOOD: "most of this plate is saucy" reads; "texture
+   contrast failed" does not.
+6. If `pairings.gaps` is non-empty you must say what is missing, in the same
+   plain voice. Never call a plate balanced when a gap is listed - an overview
+   that only reports good news is one nobody reads twice.
+7. If a relaxation is listed, say plainly that the menu could not fully meet
+   what was asked. That is the one thing here a kitchen can act on.
+8. Say what is distinctive, using `theme` and `provenance` - a dish not served
+   for a long time, a themed day, a dish the client always has. If nothing is
+   distinctive, say the day is routine. Do not manufacture an occasion.
+9. A good plate should be called good, briefly. Honesty is not pessimism.
+
+EXAMPLE of the shape (the dishes are illustrative; use only the ones you are \
+given):
+"Thursday is a north menu of six mains. The gobi 65 is the hot dish and the \
+boondi raita is there to take the edge off it. Paneer butter masala is the \
+rich one at 4 of 5, so the plain chapati and the cucumber salad are doing the \
+work of keeping the plate from feeling heavy. Aloo jeera is the only dry \
+vegetable against two gravies. Nothing here has been off the menu for long, so \
+it is a routine day."
 
 OUTPUT: strict JSON, no markdown fences:
 {"days": [{"date": "YYYY-MM-DD", "prose": "..."}]}"""
@@ -290,7 +342,73 @@ def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
             continue
         return False, f'unknown dish {phrase!r}'
 
+    ok, why = _reports_the_bad_news(prose, pack)
+    if not ok:
+        return False, why
+
     return True, 'ok'
+
+
+def _bad_news(pack: Dict[str, Any]) -> List[str]:
+    """Everything about this plate a chef would want said out loud.
+
+    **Gaps and relaxations, NOT check names.** A gap is already a sentence
+    about the food — "this is hot and nothing here cools it" — and belongs in
+    an overview. A failing check is a sentence about the RULESET, and demanding
+    the prose name `texture_contrast` would drag the paragraph back into being
+    the compliance report this layer is deliberately not. The checks still ride
+    in the response for whoever is auditing them.
+
+    A relaxation stays required because it is the one thing here a kitchen can
+    act on: a rule the solver could not hold is a menu that is not what the
+    client configured.
+    """
+    out: List[str] = []
+    for g in ((pack.get('pairings') or {}).get('gaps') or []):
+        text = g if isinstance(g, str) else (g.get('text') or g.get('reason') or '')
+        if text:
+            out.append(str(text))
+    for r in (pack.get('relaxations') or []):
+        rule = str(r.get('rule') or '')
+        if rule:
+            out.append(rule)
+    return out
+
+
+def _reports_the_bad_news(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
+    """Reject a reply that stays silent about a plate's problems.
+
+    Rules 4, 5 and 7 of ``SYSTEM_PROMPT`` tell the model to name a failing
+    check, a relaxed rule and a missing pairing. Nothing enforced them, and an
+    unenforced instruction against flattery is worth very little: the cheapest
+    reply a model can write is the one that says everything is lovely, and it
+    would have passed every other rule here — each of which only catches
+    INVENTION, never omission.
+
+    This cannot check that the prose is *right*. It checks that when the pack
+    carries bad news the prose is at least ABOUT it: one content word from one
+    of the problems has to appear. A model that lists the day's failing check
+    passes; a model that writes "a well-balanced plate with lovely contrast"
+    over a plate with a gap does not, and the deterministic bullets — which
+    already lead with failures — stand instead.
+
+    A clean plate constrains nothing, which is correct: there is no bad news to
+    demand, and requiring hedging on a good day would be its own dishonesty.
+    """
+    problems = _bad_news(pack)
+    if not problems:
+        return True, 'ok'
+    low = prose.lower()
+    for problem in problems:
+        for word in re.split(r'[^a-z]+', problem.lower()):
+            # `_COMMON_WORDS` would let "the"/"is" satisfy this trivially, and a
+            # two-letter fragment matches almost anything.
+            if len(word) > 3 and word not in _COMMON_WORDS and word in low:
+                return True, 'ok'
+    return False, (
+        'says nothing about ' + '; '.join(problems[:3])
+        + ' — a reply that only reports good news is discarded'
+    )
 
 
 # --- model call ------------------------------------------------------------
