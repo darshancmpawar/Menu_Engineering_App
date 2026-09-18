@@ -226,6 +226,20 @@ WEEK_LENGTH_WITH_WEEKENDS = 7
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def _cached_serves_dinner(_api: MenuApiClient, client_name: str) -> bool:
+    """Does this client serve a second meal? False on any failure.
+
+    False is the safe default in both directions: it never doubles a solve
+    nobody asked for, and the sidebar checkbox above it can always turn dinner
+    on for this run regardless of what the database says.
+    """
+    try:
+        return bool(_api.get_client_config(client_name).get("serve_dinner"))
+    except Exception:
+        return False
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def _cached_week_length(_api: MenuApiClient, client_name: str) -> int:
     """How many days this client's week is — the horizon default.
 
@@ -413,6 +427,24 @@ with st.sidebar:
         help=("Number of days (this client serves Sat/Sun)" if _serves_weekends
               else "Number of weekdays (Sat/Sun are skipped). A day the client "
                    "does not work is still shown, as a blank column."))
+
+    # Plan dinner as well as lunch. Defaults to the client's stored
+    # `serve_dinner`, and is a control HERE rather than only in the editor
+    # because the stored value depends on a `clients.serve_dinner` column that
+    # a deployment may not have migrated yet — and a missing COLUMN is caught
+    # by `_is_missing_relation` and degrades to False, so the feature was
+    # silently off with nothing anywhere saying why. A per-run checkbox cannot
+    # be defeated by an un-run migration.
+    _client_wants_dinner = (
+        _cached_serves_dinner(client, selected_client)
+        if clients_list and selected_client != _empty_msg else False)
+    if st.session_state.get("_planner_dinner_for") != selected_client:
+        st.session_state["_planner_dinner_for"] = selected_client
+        st.session_state["planner_serve_dinner"] = _client_wants_dinner
+    plan_dinner = st.checkbox(
+        "Also plan dinner", key="planner_serve_dinner",
+        help="Generates a second menu for the same dates, below lunch, "
+             "avoiding lunch's dishes. Roughly doubles the solve time.")
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -985,6 +1017,54 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
     return blocks, diagnostics, summary
 
 
+def _concat_meal_blocks(meal_order, meal_blocks):
+    """`(all_blocks, {meal: offset})` — every service's blocks, lunch first.
+
+    The offset is what turns a counter's position WITHIN its service into its
+    position in `st.session_state.plan_blocks`, which is what the regenerate
+    and explain panels address. Get it wrong by one and the dinner section's
+    Regenerate edits a lunch cell — silently, because both are real blocks and
+    the page still renders. That is why this is a function with a test rather
+    than a counter incremented inside the render loop.
+    """
+    blocks, offsets, n = [], {}, 0
+    for meal in meal_order:
+        offsets[meal] = n
+        got = list(meal_blocks.get(meal) or [])
+        blocks.extend(got)
+        n += len(got)
+    return blocks, offsets
+
+
+def _render_one_block(api, b, block_index: int, counter_index: int,
+                      key_ns: str) -> None:
+    """One counter's table for one service, with ITS OWN controls.
+
+    `key_ns` scopes every Streamlit widget key. Two services render the same
+    counter twice on one page, and Streamlit keys are global — without the
+    namespace the dinner tab would reuse lunch's widget state and its
+    regenerate panel would edit lunch's plan.
+
+    `block_index` addresses `st.session_state.plan_blocks`, which is every
+    service concatenated; `counter_index` is the counter's position within its
+    own service, which is what `/plan` and `/regenerate` take.
+    """
+    _pool_warnings_expander(b)
+    st.markdown(
+        menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
+                        b.get("nonveg"), b.get("off_days")),
+        unsafe_allow_html=True)
+    st.markdown("")
+    _c1, _c2, _rest = st.columns([1, 1, 4])
+    with _c2:
+        if st.button("Clear", key=f"clear_{key_ns}", use_container_width=True):
+            b["plan"], b["plan_dates"], b["day_types"] = {}, [], {}
+            b["nonveg"] = {}
+            st.rerun()
+    _render_regen_expander(api, block_index, counter_index, key_ns)
+    _render_explain_expander(api, block_index, counter_index, key_ns)
+
+
 def _saveable_meals(meal_blocks, fallback_blocks):
     """`[(meal, blocks), …]` for every service that has something to save.
 
@@ -1023,8 +1103,14 @@ if generate_clicked:
         st.warning("Select a valid client first.")
     else:
         (mode, counter_names, city, shared_categories,
-         shared_excluded, serve_dinner) = _client_counter_names(
+         shared_excluded, _cfg_dinner) = _client_counter_names(
             client, selected_client)
+        # The sidebar checkbox is the authority for THIS run — it is seeded
+        # from the client's stored `serve_dinner` and then owns the decision,
+        # so a deployment whose `clients.serve_dinner` column does not exist
+        # yet can still plan dinner instead of silently getting lunch only.
+        serve_dinner = bool(plan_dinner)
+        del _cfg_dinner
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -1128,47 +1214,23 @@ if generate_clicked:
 _meal_blocks = st.session_state.get("meal_blocks") or {}
 _plan_mode = st.session_state.get("plan_mode", "single")
 
-# Two services: pick which one the rest of the page is about. Everything below
-# reads `plan_blocks`, so switching simply re-points it — the table, the
-# regenerate expander, the explanation and the Excel export all stay one code
-# path with no idea two meals exist.
-if len(_meal_blocks) > 1:
-    _labels = {LUNCH: "Lunch", DINNER: "Dinner"}
-    _order = [m for m in (LUNCH, DINNER) if m in _meal_blocks]
-    _current = st.session_state.get("active_meal", LUNCH)
-    _picked = st.radio(
-        "Service", _order, horizontal=True,
-        index=_order.index(_current) if _current in _order else 0,
-        format_func=lambda m: _labels.get(m, str(m).title()),
-        key="meal_picker")
-    if _picked != _current:
-        st.session_state.active_meal = _picked
-        st.session_state.plan_blocks = _meal_blocks.get(_picked) or []
-        st.rerun()
-    st.session_state.plan_blocks = _meal_blocks.get(_picked) or []
+#: The services to render, in the order they are eaten. Dinner is a SECTION
+#: BELOW lunch rather than a tab or a radio beside it: the two menus are for
+#: the same dates and a kitchen reads them together, so putting one behind a
+#: click means nobody compares them — which is the whole point of generating
+#: the second one against the first.
+_MEAL_LABELS = {LUNCH: "Lunch", DINNER: "Dinner"}
+_meal_order = [m for m in (LUNCH, DINNER) if _meal_blocks.get(m)]
 
-    # How different dinner is from lunch. Reported, never enforced: the
-    # exclusion that produces it is a ban on lunch's dishes and overshoots the
-    # floor by a wide margin, so a solver constraint would be machinery for a
-    # condition that does not bind. What is worth having is the NUMBER — if a
-    # thin pool ever pushes the two services back together, somebody sees it
-    # instead of the guarantee quietly lapsing.
-    _diff = meal_difference(
-        {d: v for b in (_meal_blocks.get(LUNCH) or [])
-         for d, v in (b.get("solution") or {}).items()},
-        {d: v for b in (_meal_blocks.get(DINNER) or [])
-         for d, v in (b.get("solution") or {}).items()})
-    if _diff["per_day"]:
-        _pct = round(_diff["overall"] * 100)
-        if _diff["below_floor"]:
-            st.warning(
-                f"Dinner differs from lunch on {_pct}% of dishes, but "
-                f"{len(_diff['below_floor'])} day(s) fall below the "
-                f"{round(MIN_MEAL_DIFFERENCE * 100)}% floor: "
-                + ", ".join(_diff["below_floor"]))
-        else:
-            st.caption(f"Dinner differs from lunch on {_pct}% of dishes.")
-
+# `plan_blocks` is every meal's blocks CONCATENATED, lunch first, so a block
+# index addresses one block across the whole page. That is what lets the
+# regenerate and explain panels stay index-addressed and unchanged — and the
+# dicts are the SAME objects `meal_blocks` holds, so a regenerate on the
+# dinner section mutates the stored dinner rather than a copy.
+_meal_offsets = {}
+if _meal_order:
+    _all, _meal_offsets = _concat_meal_blocks(_meal_order, _meal_blocks)
+    st.session_state.plan_blocks = _all
 _blocks = st.session_state.get("plan_blocks") or []
 
 _render_diagnostics_expander(
@@ -1176,25 +1238,25 @@ _render_diagnostics_expander(
     st.session_state.get("diagnostics_summary"),
 )
 
-# Single-counter pre-flight block: no table, just the CTA + diagnostics above.
-if (
-    _plan_mode != "multi" and _blocks
-    and _blocks[0].get("source") == "preflight_blocked"
-    and not _blocks[0].get("plan")
-):
-    st.warning(
-        "Pre-flight diagnostics found a guaranteed failure for these dates. "
-        "Fix the issues above (or change the dates / client) and try again.")
-    st.stop()
+# A failure short-circuits only when there is NOTHING to show. It used to test
+# `_blocks[0]`, which is lunch's first block — so with two services a failed
+# lunch stopped the page and took a perfectly good dinner down with it.
+_nothing_planned = bool(_blocks) and not any(b.get("plan") for b in _blocks)
+_first_bad = next(
+    (b for b in _blocks
+     if b.get("source") in ("preflight_blocked", "error")), None)
 
-# Single-counter solve failure: show why and stop. Falling through would render an
-# empty table plus Save / Download buttons for a plan that does not exist.
-if (
-    _plan_mode != "multi" and _blocks
-    and _blocks[0].get("source") == "error"
-    and not _blocks[0].get("plan")
-):
-    st.error(f"Generation failed: {_blocks[0].get('error') or 'unknown error'}")
+if _plan_mode != "multi" and _nothing_planned and _first_bad is not None:
+    if _first_bad.get("source") == "preflight_blocked":
+        st.warning(
+            "Pre-flight diagnostics found a guaranteed failure for these "
+            "dates. Fix the issues above (or change the dates / client) and "
+            "try again.")
+    else:
+        # Falling through would render an empty table plus live Save /
+        # Download buttons for a plan that does not exist.
+        st.error(
+            f"Generation failed: {_first_bad.get('error') or 'unknown error'}")
     st.stop()
 
 if _blocks and any(b.get("plan") for b in _blocks):
@@ -1210,10 +1272,17 @@ if _blocks and any(b.get("plan") for b in _blocks):
     _city = st.session_state.get("client_city")
     if _city:
         cards.append(("City", html.escape(_city)))
+    # Counters is per SERVICE, not the length of the concatenated list — with
+    # lunch and dinner on the page that would read "6 counters" for a
+    # three-counter site. Services is shown only when there are two, so a
+    # one-meal client's cards are exactly what they were.
+    _counters_each = len(_meal_blocks[_meal_order[0]]) if _meal_order else len(_blocks)
     cards += [
-        ("Counters", str(len(_blocks))),
+        ("Counters", str(_counters_each)),
         ("Days", str(len(dates_union))),
     ]
+    if len(_meal_order) > 1:
+        cards.append(("Services", str(len(_meal_order))))
     if _plan_mode != "multi":
         b0 = _blocks[0]
         slots_per_day = len({s for d in b0["plan_dates"] for s in b0["plan"].get(d, {})})
@@ -1226,114 +1295,120 @@ if _blocks and any(b.get("plan") for b in _blocks):
             for lbl, val in cards
         ) + '</div>', unsafe_allow_html=True)
 
-    if _plan_mode == "multi":
-        # Shared Save / Download / Clear-all bar.
-        sc1, sc2, sc3, _sc = st.columns([1.3, 1, 1, 3])
-        with sc1:
-            if st.button("Save All to History", type="primary",
-                         key="multi_save_btn", use_container_width=True):
-                # BOTH services, not just the one on screen. `menu_history` is
-                # keyed on (client, date, meal), so an unsaved dinner is not a
-                # missing row the next plan can notice — it is a dinner the
-                # cooldown and the freshness objective will never have heard
-                # of, and the following week reprints it.
-                try:
-                    for _meal, _mb in _saveable_meals(_meal_blocks, _blocks):
-                        payload = [{"name": b["name"], "week_plan": b["plan"]}
-                                   for b in _mb if b.get("plan")]
-                        if not payload:
-                            continue
+    # --- Save / Download / Clear, once for the whole page ------------------
+    # Shared across services on purpose: a save writes BOTH meals (they are
+    # one day's cooking), and two Save buttons would invite saving half of it.
+    sc1, sc2, sc3, _sc = st.columns([1.3, 1, 1, 3])
+    _n_meals = len(_meal_order)
+    with sc1:
+        _save_label = ("Save All to History" if _plan_mode == "multi" or _n_meals > 1
+                       else "Save to History")
+        if st.button(_save_label, type="primary", key="plan_save_btn",
+                     use_container_width=True):
+            try:
+                for _meal, _mb in _saveable_meals(_meal_blocks, _blocks):
+                    payload = [{"name": b["name"], "week_plan": b["plan"]}
+                               for b in _mb if b.get("plan")]
+                    if not payload:
+                        continue
+                    if _plan_mode == "multi":
                         client.save(client_name=st.session_state.client_name,
                                     week_start=dates_union[0],
                                     counters=payload, meal=_meal)
-                        for b in _mb:
-                            if b.get("plan"):
-                                b["source"] = "history"
-                    st.session_state.plan_source = "history"
-                    st.toast("All counters saved to history", icon="✅")
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Save failed: {e}")
-        with sc2:
-            st.download_button(
-                "Download Excel",
-                data=plan_xlsx(_blocks, st.session_state.client_name),
-                file_name=download_filename(_blocks, st.session_state.client_name),
-                mime=XLSX_MIME, key="multi_dl_btn", use_container_width=True)
-        with sc3:
-            if st.button("Clear All", key="multi_clear_btn",
-                         use_container_width=True):
-                st.session_state.plan_blocks = []
-                st.session_state.changes_log = []
-                st.session_state.plan_source = None
-                st.rerun()
+                    else:
+                        client.save(client_name=st.session_state.client_name,
+                                    week_start=dates_union[0],
+                                    week_plan=payload[0]["week_plan"],
+                                    meal=_meal)
+                    for b in _mb:
+                        if b.get("plan"):
+                            b["source"] = "history"
+                st.session_state.plan_source = "history"
+                st.toast(
+                    f"Saved {_n_meals} service(s) to history"
+                    if _n_meals > 1 else "Plan saved to history", icon="✅")
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.error(f"Save failed: {e}")
+    with sc2:
+        # The export names its sheets after the block, so with two services a
+        # counter would appear twice under one name. The meal is folded into
+        # the name for the workbook only — the on-screen tab keeps the plain
+        # counter name, since the section heading above it already says which
+        # service it is.
+        _xl_blocks = ([dict(b, name=f"{_MEAL_LABELS.get(b.get('meal'), '')} "
+                                    f"{b['name']}".strip())
+                       for b in _blocks] if _n_meals > 1 else _blocks)
+        st.download_button(
+            "Download Excel",
+            data=plan_xlsx(_xl_blocks, st.session_state.client_name),
+            file_name=download_filename(_blocks, st.session_state.client_name),
+            mime=XLSX_MIME, key="plan_dl_btn", use_container_width=True)
+    with sc3:
+        if st.button("Clear All" if _n_meals > 1 or _plan_mode == "multi"
+                     else "Clear", key="plan_clear_btn",
+                     use_container_width=True):
+            st.session_state.plan_blocks = []
+            st.session_state.meal_blocks = {}
+            st.session_state.changes_log = []
+            st.session_state.plan_source = None
+            st.session_state.rule_diagnostics = []
+            st.session_state.diagnostics_summary = None
+            st.rerun()
 
-        tabs = st.tabs([b["name"] for b in _blocks])
-        for i, (tab, b) in enumerate(zip(tabs, _blocks)):
-            with tab:
-                if b.get("error") and not b.get("plan"):
-                    st.warning(f"&#9888; {b['name']}: {b['error']}")
-                    continue
-                _pool_warnings_expander(b)
-                st.markdown(
-                    menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
-                                     b.get("nonveg"), b.get("off_days")),
-                    unsafe_allow_html=True)
-                st.markdown("")
-                cc1, cc2, _cc = st.columns([1, 1, 4])
-                with cc2:
-                    if st.button("Clear", key=f"clear_c{i}",
-                                 use_container_width=True):
-                        b["plan"], b["plan_dates"], b["day_types"] = {}, [], {}
-                        b["nonveg"] = {}
-                        st.rerun()
-                _render_regen_expander(client, i, i, f"c{i}")
-                _render_explain_expander(client, i, i, f"c{i}")
-    else:
-        b = _blocks[0]
-        _pool_warnings_expander(b)
-        st.markdown(
-            menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
-                             b.get("nonveg"), b.get("off_days")),
-            unsafe_allow_html=True)
-        st.markdown("")
-        c1, c2, c3, _c = st.columns([1, 1, 1, 3])
-        with c1:
-            if st.button("Save to History", key="planner_save_btn",
-                         use_container_width=True):
-                try:
-                    # Both services — see the multi-counter save above for why
-                    # an unsaved dinner is worse than a missing row.
-                    for _meal, _mb in _saveable_meals(_meal_blocks, _blocks):
-                        for _b in _mb:
-                            if not _b.get("plan"):
-                                continue
-                            client.save(
-                                client_name=st.session_state.client_name,
-                                week_start=_b["plan_dates"][0],
-                                week_plan=_b["plan"], meal=_meal)
-                            _b["source"] = "history"
-                    st.session_state.plan_source = "history"
-                    st.toast("Plan saved to history", icon="✅")
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Save failed: {e}")
-        with c2:
-            st.download_button(
-                "Download Excel",
-                data=plan_xlsx(_blocks, st.session_state.client_name),
-                file_name=download_filename(_blocks, st.session_state.client_name),
-                mime=XLSX_MIME, key="planner_download_xlsx_btn",
-                use_container_width=True)
-        with c3:
-            if st.button("Clear", key="planner_clear_btn",
-                         use_container_width=True):
-                st.session_state.plan_blocks = []
-                st.session_state.changes_log = []
-                st.session_state.plan_source = None
-                st.session_state.rule_diagnostics = []
-                st.session_state.diagnostics_summary = None
-                st.rerun()
-        _render_regen_expander(client, 0, 0, "single")
-        _render_explain_expander(client, 0, 0, "single")
+    # --- one section per service, lunch then dinner ------------------------
+    for _meal in _meal_order:
+        _mblocks = _meal_blocks[_meal]
+        _offset = _meal_offsets[_meal]
+        if _n_meals > 1:
+            st.markdown(
+                f'<p class="page-subtitle" style="margin-top:1.4rem;'
+                f'font-size:1.05rem;font-weight:700">'
+                f'{_MEAL_LABELS.get(_meal, str(_meal).title())}</p>',
+                unsafe_allow_html=True)
+            if _meal == DINNER:
+                # How different dinner came out. Reported, never enforced: the
+                # exclusion that produces it bans lunch's dishes outright and
+                # overshoots the floor by a wide margin, so a CP-SAT bound
+                # would be machinery for a condition that never binds. What is
+                # worth having is the NUMBER — if a thin pool ever pushes the
+                # two services back together, somebody sees it instead of the
+                # guarantee quietly lapsing.
+                _diff = meal_difference(
+                    {d: v for b in (_meal_blocks.get(LUNCH) or [])
+                     for d, v in (b.get("solution") or {}).items()},
+                    {d: v for b in _mblocks
+                     for d, v in (b.get("solution") or {}).items()})
+                if _diff["per_day"]:
+                    _pct = round(_diff["overall"] * 100)
+                    if _diff["below_floor"]:
+                        st.warning(
+                            f"Dinner differs from lunch on {_pct}% of dishes, "
+                            f"but {len(_diff['below_floor'])} day(s) fall "
+                            f"below the {round(MIN_MEAL_DIFFERENCE * 100)}% "
+                            "floor: " + ", ".join(_diff["below_floor"]))
+                    else:
+                        st.caption(
+                            f"Dinner differs from lunch on {_pct}% of dishes.")
+
+        if not any(b.get("plan") for b in _mblocks):
+            # This service failed while another one has a menu — say so here
+            # rather than taking the page down (see the short-circuit above).
+            _why = next((b.get("error") for b in _mblocks if b.get("error")),
+                        "no menu was produced")
+            st.warning(f"&#9888; {_MEAL_LABELS.get(_meal, _meal)}: {_why}")
+            continue
+
+        if _plan_mode == "multi":
+            _tabs = st.tabs([b["name"] for b in _mblocks])
+            for i, (_tab, b) in enumerate(zip(_tabs, _mblocks)):
+                with _tab:
+                    if b.get("error") and not b.get("plan"):
+                        st.warning(f"&#9888; {b['name']}: {b['error']}")
+                        continue
+                    _render_one_block(client, b, _offset + i, i,
+                                      f"{_meal}_c{i}")
+        else:
+            _render_one_block(client, _mblocks[0], _offset, 0, f"{_meal}_single")
 
     _render_changes_log()
 
