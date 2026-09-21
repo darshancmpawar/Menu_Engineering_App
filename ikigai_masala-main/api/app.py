@@ -69,7 +69,8 @@ from src.client.client_config import (  # noqa: F401 — surfaced in editor-meta
     DEFAULT_ITEM_COOLDOWN_DAYS,
     MAX_COUNTERS,
 )
-from src.history import HistoryManager, normalize_meal, DEFAULT_MEAL
+from src.history import (HistoryManager, normalize_meal, normalize_meals,
+                         DEFAULT_MEAL, DEFAULT_MEALS)
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules import (
     DiagnoseContext,
@@ -1738,9 +1739,10 @@ def get_client_config(client_name):
             'name': client_name,
             'city': row['city'],
             'serve_weekends': row['serve_weekends'],
-            # Two services a day. The planner reads this to decide whether to
-            # run a second solve per counter after lunch.
-            'serve_dinner': row.get('serve_dinner', False),
+            # Which services this client runs, in the order they are eaten.
+            # The planner solves one menu per entry and hands each the
+            # earlier ones' dishes to avoid.
+            'meals': row.get('meals') or list(DEFAULT_MEALS),
             'working_days': row['working_days'],
             'item_cooldown_days': row['item_cooldown_days'],
             'source_pools': row['source_pools'],
@@ -1920,8 +1922,8 @@ def update_client_config(client_name):
             fields['city'] = normalize_city(data.get('city'))
         if 'serve_weekends' in data:
             fields['serve_weekends'] = bool(data.get('serve_weekends'))
-        if 'serve_dinner' in data:
-            fields['serve_dinner'] = bool(data.get('serve_dinner'))
+        if 'meals' in data:
+            fields['meals'] = normalize_meals(data.get('meals'))
         if 'working_days' in data:
             fields['working_days'] = _validated_working_days(
                 data.get('working_days'))
@@ -1993,7 +1995,7 @@ def create_client():
         # the PUT handler had; same fix, one write.
         city = normalize_city(data.get('city'))
         serve_weekends = bool(data.get('serve_weekends', False))
-        serve_dinner = bool(data.get('serve_dinner', False))
+        meals = normalize_meals(data.get('meals')) if 'meals' in data else None
         item_cooldown_days = _validated_cooldown_days(
             data.get('item_cooldown_days'))
         working_days = (
@@ -2022,7 +2024,7 @@ def create_client():
                 counters=counters,
                 city=city,
                 serve_weekends=serve_weekends,
-                serve_dinner=serve_dinner,
+                meals=meals,
                 item_cooldown_days=item_cooldown_days,
                 working_days=working_days,
                 source_pools=source_pools,
@@ -2033,7 +2035,7 @@ def create_client():
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
             loader.create_client(name, active_slots, city=city,
                                  serve_weekends=serve_weekends,
-                                 serve_dinner=serve_dinner,
+                                 meals=meals,
                                  item_cooldown_days=item_cooldown_days,
                                  working_days=working_days,
                                  source_pools=source_pools,

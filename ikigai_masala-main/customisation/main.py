@@ -23,6 +23,7 @@ from ui.formatters import display_label_for_slot_id
 from src.constants import DISPLAY_SLOT_ORDER
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
+from src.history import MEALS, normalize_meals
 
 
 def pools_for_city(metadata: Dict, city) -> List[str]:
@@ -246,18 +247,26 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                  "skipping them.",
         )
 
-        # Two services a day. On, one Generate click produces a lunch menu and
-        # then a dinner menu that is handed lunch's dishes to avoid, and both
-        # are saved to history under their own `meal` key.
-        loaded_serve_dinner = bool((config or {}).get('serve_dinner', False))
-        serve_dinner = st.toggle(
-            "Also plan dinner",
-            value=loaded_serve_dinner,
-            key=f"editor_dinner_{'new' if is_create_mode else selected_client}",
-            help="If on, each Generate produces two menus for the same dates — "
-                 "lunch first, then a dinner that avoids lunch's dishes. "
-                 "Doubles the solve time.",
+        # Which services this site runs. One Generate click produces one menu
+        # per service, in the order they are eaten, each one handed the earlier
+        # ones' dishes to avoid — and each saved to history under its own
+        # `meal` key. Default is lunch + dinner for every client.
+        loaded_meals = normalize_meals((config or {}).get('meals'))
+        selected_meals = st.multiselect(
+            "Services planned",
+            options=list(MEALS),
+            default=loaded_meals,
+            format_func=lambda m: m.title(),
+            key=f"editor_meals_{'new' if is_create_mode else selected_client}",
+            help="One menu is generated per service, in the order they are "
+                 "eaten (breakfast, lunch, snacks, dinner). Each avoids the "
+                 "dishes of the services before it on the same day. Solve time "
+                 "scales with the number of services.",
         )
+        # An empty multiselect is a UI state, not an instruction: a client that
+        # serves nothing cannot be planned, so it reads as the default rather
+        # than being written as an empty list.
+        selected_meals = normalize_meals(selected_meals)
 
         # Item-cooldown window — how many days before a dish can repeat.
         _loaded_cooldown = (config or {}).get('item_cooldown_days')
@@ -501,7 +510,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
             counter_mode != loaded_mode
             or selected_city != loaded_city
             or serve_weekends != loaded_serve_weekends
-            or serve_dinner != loaded_serve_dinner
+            or sorted(selected_meals) != sorted(loaded_meals)
             or item_cooldown_days != loaded_cooldown
             or sorted(selected_source_pools) != sorted(loaded_source_pools)
             or sorted(selected_shared_categories) != sorted(loaded_shared_categories)
@@ -550,7 +559,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     api.create_client(
                         name, counter_mode=counter_mode, counters=result_counters,
                         city=selected_city, serve_weekends=serve_weekends,
-                        serve_dinner=serve_dinner,
+                        meals=selected_meals,
                         item_cooldown_days=item_cooldown_days,
                         source_pools=selected_source_pools,
                         is_launch_site=launch_mode,
@@ -599,7 +608,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     'counters': result_counters,
                     'city': selected_city,
                     'serve_weekends': serve_weekends,
-                    'serve_dinner': serve_dinner,
+                    'meals': selected_meals,
                     'item_cooldown_days': item_cooldown_days,
                     'source_pools': selected_source_pools,
                     'shared_categories': selected_shared_categories,

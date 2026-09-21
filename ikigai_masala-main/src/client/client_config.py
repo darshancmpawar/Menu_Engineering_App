@@ -38,6 +38,7 @@ from src.constants import (
     DISPLAY_SLOT_NAME,
 )
 from src.db import get_supabase
+from src.history import DEFAULT_MEALS, normalize_meals
 from src.preprocessor.pool_builder import _expand_slots_in_order
 from src.preprocessor.client_pool_filter import (
     normalize_name as _normalize_pool_name, COMMON_POOL,
@@ -639,45 +640,49 @@ class ClientConfigLoader:
                 ) from exc
             raise
 
-    def get_client_serve_dinner(self, name: str) -> bool:
-        """Return whether the client runs a DINNER service as well as lunch.
+    def get_client_meals(self, name: str) -> List[str]:
+        """Which services this client runs, in the order they are eaten.
 
-        Degrades to ``False`` when the ``clients.serve_dinner`` column is
-        missing (pre-migration database), so an un-migrated deployment keeps
-        generating exactly one menu per day.
+        Degrades to ``DEFAULT_MEALS`` (lunch + dinner) when the
+        ``clients.meals`` column is missing, which is also the value every
+        existing client gets: the instruction was that every site plans both
+        unless its config says otherwise, so the un-migrated fallback and the
+        configured default are deliberately the same value. There is no shape
+        of database in which a client silently plans fewer services than
+        intended.
         """
         try:
             row = (
                 self._sb.table('clients')
-                .select('serve_dinner')
+                .select('meals')
                 .eq('name', name)
                 .maybe_single()
                 .execute()
             )
         except Exception as exc:
             if _is_missing_relation(exc):
-                return False
+                return list(DEFAULT_MEALS)
             raise
         if not row.data:
             raise ValueError(f"Unknown client: {name}")
-        return bool(row.data.get('serve_dinner'))
+        return normalize_meals(row.data.get('meals'))
 
-    def set_client_serve_dinner(self, name: str, value: bool) -> None:
-        """Update a client's dinner-service flag."""
+    def set_client_meals(self, name: str, value) -> None:
+        """Update which services a client runs."""
         self._require_client_exists(name)
         try:
             self._sb.table('clients').update({
-                'serve_dinner': bool(value),
+                'meals': normalize_meals(value),
             }).eq('name', name).execute()
         except Exception as exc:
             if _is_missing_relation(exc):
                 logger.error(
-                    "clients.serve_dinner column missing for %r — %s",
+                    "clients.meals column missing for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
                 raise ValueError(
-                    "Cannot save dinner setting: the clients.serve_dinner "
-                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                    "Cannot save the meal list: the clients.meals column is "
+                    "missing. " + _MIGRATION_HINT_COUNTERS
                 ) from exc
             raise
 
@@ -888,7 +893,7 @@ class ClientConfigLoader:
         counters: List[Dict] | None = None,
         city: str | None = None,
         serve_weekends: bool = False,
-        serve_dinner: bool = False,
+        meals=None,
         item_cooldown_days=None,
         working_days=None,
         source_pools=None,
@@ -932,10 +937,12 @@ class ClientConfigLoader:
             # Only send it when true, so a pre-migration DB still takes the
             # common create path (the column defaults to false there anyway).
             row['is_launch_site'] = True
-        if serve_dinner:
-            # Same argument as is_launch_site above: only sent when true, so a
-            # database predating the column still takes the common path.
-            row['serve_dinner'] = True
+        if meals is not None:
+            # Only sent when the caller set it, so a database predating the
+            # column still takes the common create path — same argument as
+            # is_launch_site above. Unset means the client gets DEFAULT_MEALS
+            # on read, which is what every existing client gets too.
+            row['meals'] = normalize_meals(meals)
         if shared_categories is not None:
             row['shared_categories'] = self._normalize_shared_categories_value(
                 shared_categories)
@@ -950,7 +957,7 @@ class ClientConfigLoader:
                     "optional clients column missing on create for %r — %s",
                     name, _MIGRATION_HINT_COUNTERS,
                 )
-                for optional in ('city', 'serve_weekends', 'serve_dinner',
+                for optional in ('city', 'serve_weekends', 'meals',
                                  'item_cooldown_days',
                                  'working_days', 'source_pools', 'is_launch_site',
                                  'shared_categories'):
@@ -1186,7 +1193,7 @@ class ClientConfigLoader:
     # Config columns that live directly on the ``clients`` row. Read together so
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
-        'counters', 'city', 'serve_weekends', 'serve_dinner', 'working_days',
+        'counters', 'city', 'serve_weekends', 'meals', 'working_days',
         'item_cooldown_days', 'source_pools', 'is_launch_site',
         'shared_categories', 'version',
     )
@@ -1221,7 +1228,7 @@ class ClientConfigLoader:
                     'counters': self._counters_list(name),
                     'city': self.get_client_city(name),
                     'serve_weekends': self.get_client_serve_weekends(name),
-                    'serve_dinner': self.get_client_serve_dinner(name),
+                    'meals': self.get_client_meals(name),
                     'working_days': self.get_client_working_days(name),
                     'item_cooldown_days': self.get_client_item_cooldown_days(name),
                     'source_pools': self.get_client_source_pools(name),
@@ -1237,7 +1244,7 @@ class ClientConfigLoader:
             'counters': self._normalize_counters_value(name, data.get('counters')),
             'city': normalize_city(data.get('city')),
             'serve_weekends': bool(data.get('serve_weekends')),
-            'serve_dinner': bool(data.get('serve_dinner')),
+            'meals': normalize_meals(data.get('meals')),
             'working_days': self._normalize_working_days_value(
                 data.get('working_days')),
             'item_cooldown_days': normalize_item_cooldown_days(
@@ -1365,7 +1372,7 @@ class ClientConfigLoader:
         for column, setter in (
             ('city', self.set_client_city),
             ('serve_weekends', self.set_client_serve_weekends),
-            ('serve_dinner', self.set_client_serve_dinner),
+            ('meals', self.set_client_meals),
             ('working_days', self.set_client_working_days),
             ('item_cooldown_days', self.set_client_item_cooldown_days),
             ('source_pools', self.set_client_source_pools),

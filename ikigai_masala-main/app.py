@@ -66,7 +66,8 @@ from ui.formatters import (
 )
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import DINNER, LUNCH
+from src.history import (DEFAULT_MEALS, DINNER, LUNCH, MEALS,
+                         normalize_meals)
 from ui.planner_view import (
     date_label,
     flatten_result,
@@ -226,17 +227,18 @@ WEEK_LENGTH_WITH_WEEKENDS = 7
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _cached_serves_dinner(_api: MenuApiClient, client_name: str) -> bool:
-    """Does this client serve a second meal? False on any failure.
+def _cached_meals(_api: MenuApiClient, client_name: str) -> list:
+    """Which services this client runs. DEFAULT_MEALS on any failure.
 
-    False is the safe default in both directions: it never doubles a solve
-    nobody asked for, and the sidebar checkbox above it can always turn dinner
-    on for this run regardless of what the database says.
+    The default is lunch + dinner rather than lunch alone, because that is the
+    product default for every client — a config read that fails must not
+    quietly drop a service the site actually runs.
     """
     try:
-        return bool(_api.get_client_config(client_name).get("serve_dinner"))
+        return normalize_meals(
+            _api.get_client_config(client_name).get("meals"))
     except Exception:
-        return False
+        return list(DEFAULT_MEALS)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -428,23 +430,24 @@ with st.sidebar:
               else "Number of weekdays (Sat/Sun are skipped). A day the client "
                    "does not work is still shown, as a blank column."))
 
-    # Plan dinner as well as lunch. Defaults to the client's stored
-    # `serve_dinner`, and is a control HERE rather than only in the editor
-    # because the stored value depends on a `clients.serve_dinner` column that
-    # a deployment may not have migrated yet — and a missing COLUMN is caught
-    # by `_is_missing_relation` and degrades to False, so the feature was
-    # silently off with nothing anywhere saying why. A per-run checkbox cannot
-    # be defeated by an un-run migration.
-    _client_wants_dinner = (
-        _cached_serves_dinner(client, selected_client)
-        if clients_list and selected_client != _empty_msg else False)
-    if st.session_state.get("_planner_dinner_for") != selected_client:
-        st.session_state["_planner_dinner_for"] = selected_client
-        st.session_state["planner_serve_dinner"] = _client_wants_dinner
-    plan_dinner = st.checkbox(
-        "Also plan dinner", key="planner_serve_dinner",
-        help="Generates a second menu for the same dates, below lunch, "
-             "avoiding lunch's dishes. Roughly doubles the solve time.")
+    # Which services to plan on this run. Seeded from the client's stored
+    # `meals` and then owned by this control, so a deployment whose
+    # `clients.meals` column does not exist yet can still plan whatever it
+    # needs — a missing column degrades to the default rather than to nothing.
+    _client_meals = (
+        _cached_meals(client, selected_client)
+        if clients_list and selected_client != _empty_msg
+        else list(DEFAULT_MEALS))
+    if st.session_state.get("_planner_meals_for") != selected_client:
+        st.session_state["_planner_meals_for"] = selected_client
+        st.session_state["planner_meals"] = _client_meals
+    plan_meals = st.multiselect(
+        "Services", options=list(MEALS), key="planner_meals",
+        format_func=lambda m: m.title(),
+        help="One menu per service, in the order they are eaten. Each avoids "
+             "the dishes of the services before it that day. Solve time "
+             "scales with how many you pick.")
+    plan_meals = normalize_meals(plan_meals)
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -934,18 +937,16 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """(mode, [counter names], city, shared_categories, excluded, serve_dinner).
+    """(mode, [counter names], city, shared_categories, excluded).
 
     ``shared_categories`` are the base slots this client serves identically
     across its counters — the planner pins the primary counter's dish for each
     into the others. ``excluded`` names the counters that opt out of that sync
     (ICON Chn's Rice Combo, which the client states has its own menu).
-    ``serve_dinner`` asks for a second service after lunch.
 
-    Degrades to a single unsynced lunch-only counter if the config cannot be
-    read — the conservative direction on every field, since guessing a second
-    service into existence would double a client's solve time on a config read
-    that failed.
+    Degrades to a single unsynced counter if the config cannot be read. Which
+    SERVICES to plan is not read here — the sidebar owns that, seeded from
+    `_cached_meals`, so a failed config read cannot silently drop one.
     """
     try:
         cfg = api.get_client_config(name)
@@ -954,10 +955,9 @@ def _client_counter_names(api, name: str):
                  for i, c in enumerate(counters)] or ["Counter 1"]
         return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
                 cfg.get("shared_categories") or [],
-                set(cfg.get("shared_categories_excluded_counters") or []),
-                bool(cfg.get("serve_dinner")))
+                set(cfg.get("shared_categories_excluded_counters") or []))
     except Exception:
-        return "single", ["Counter 1"], None, [], set(), False
+        return "single", ["Counter 1"], None, [], set()
 
 
 def _solve_counters(api, name, counter_names, start_iso, days, *,
@@ -1015,6 +1015,23 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
         blk["meal"] = meal or LUNCH
         blocks.append(blk)
     return blocks, diagnostics, summary
+
+
+def _merge_exclusions(so_far, new):
+    """Union two `{counter_index: {iso_date: [item, …]}}` exclusion maps.
+
+    Services accumulate: dinner must avoid breakfast AND lunch AND snacks, not
+    merely the service immediately before it. Passing only the previous one is
+    the easy mistake, and it fails quietly — the menu still renders, it just
+    reprints the morning's dishes at night.
+    """
+    out = {ci: {d: list(v) for d, v in days.items()}
+           for ci, days in (so_far or {}).items()}
+    for ci, days in (new or {}).items():
+        slot = out.setdefault(ci, {})
+        for d, items in days.items():
+            slot[d] = sorted(set(slot.get(d, [])) | set(items))
+    return out
 
 
 def _concat_meal_blocks(meal_order, meal_blocks):
@@ -1103,14 +1120,7 @@ if generate_clicked:
         st.warning("Select a valid client first.")
     else:
         (mode, counter_names, city, shared_categories,
-         shared_excluded, _cfg_dinner) = _client_counter_names(
-            client, selected_client)
-        # The sidebar checkbox is the authority for THIS run — it is seeded
-        # from the client's stored `serve_dinner` and then owns the decision,
-        # so a deployment whose `clients.serve_dinner` column does not exist
-        # yet can still plan dinner instead of silently getting lunch only.
-        serve_dinner = bool(plan_dinner)
-        del _cfg_dinner
+         shared_excluded) = _client_counter_names(client, selected_client)
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -1128,22 +1138,23 @@ if generate_clicked:
         st.session_state.rule_diagnostics = []
         st.session_state.diagnostics_summary = None
 
-        # The time budget is divided across counters so total wall-clock stays
-        # bounded, and across SERVICES too — a dinner site solves twice as many
-        # models for one click, and a budget that ignored that would double the
-        # wait rather than split it.
-        n_services = 2 if serve_dinner else 1
+        # The time budget divides across counters AND services — a site
+        # running four services solves four times as many models for one
+        # click, and a budget that ignored that would quadruple the wait
+        # rather than split it.
         per_limit = max(
             45,
             _PLANNING_TIME_LIMIT_SECONDS
-            // max(1, len(counter_names) * n_services))
-        if mode != "multi" and not serve_dinner:
+            // max(1, len(counter_names) * max(1, len(plan_meals))))
+        if mode != "multi" and len(plan_meals) == 1:
             per_limit = _PLANNING_TIME_LIMIT_SECONDS
 
         replayed = False
-        if mode != "multi":
-            # Single-cuisine: saved-plan replay first, unchanged. Only lunch is
-            # replayed — a saved dinner is fetched below on its own key.
+        if mode != "multi" and plan_meals == [LUNCH]:
+            # Saved-plan replay, unchanged, and only for a lunch-only run:
+            # replaying one service while solving the others would mix a
+            # stored menu with fresh ones and quietly skip the exclusions
+            # between them.
             try:
                 saved = client.get_saved_plan(
                     client_name=selected_client,
@@ -1166,45 +1177,45 @@ if generate_clicked:
                     replayed = True
 
         if not replayed:
-            label = ("Generating lunch and dinner" if serve_dinner
-                     else "Generating plan")
+            label = (f"Generating {len(plan_meals)} services"
+                     if len(plan_meals) > 1 else "Generating plan")
+            by_meal, diags, summary = {}, [], None
+            # Each service is solved in EATING order and handed every earlier
+            # service's dishes to avoid — accumulated, not just the previous
+            # one, or dinner would happily reprint breakfast.
+            served_so_far: dict = {}
             with st.spinner(f"{label} for {selected_client}..."):
-                lunch_blocks, diags, summary = _solve_counters(
-                    client, selected_client, counter_names,
-                    start_date.isoformat(), num_days,
-                    shared_categories=shared_categories,
-                    shared_excluded=shared_excluded,
-                    time_limit=per_limit, meal=LUNCH)
-                by_meal = {LUNCH: lunch_blocks}
-
-                if serve_dinner:
-                    # Dinner is solved AFTER lunch and is handed lunch's dishes
-                    # to avoid. Sequential rather than parallel for that reason:
-                    # the exclusion is the whole mechanism, and it needs the
-                    # first result to exist.
-                    by_meal[DINNER] = _solve_counters(
+                for _i, _meal in enumerate(plan_meals):
+                    blocks, d, s = _solve_counters(
                         client, selected_client, counter_names,
                         start_date.isoformat(), num_days,
                         shared_categories=shared_categories,
                         shared_excluded=shared_excluded,
-                        time_limit=per_limit, meal=DINNER,
-                        exclude_by_counter=_exclusions_from(lunch_blocks))[0]
+                        time_limit=per_limit, meal=_meal,
+                        exclude_by_counter=served_so_far or None)
+                    by_meal[_meal] = blocks
+                    if _i == 0:
+                        diags, summary = d, s
+                    served_so_far = _merge_exclusions(
+                        served_so_far, _exclusions_from(blocks))
 
+            first_meal = plan_meals[0] if plan_meals else LUNCH
             st.session_state.meal_blocks = by_meal
-            st.session_state.active_meal = LUNCH
-            st.session_state.plan_blocks = lunch_blocks
+            st.session_state.active_meal = first_meal
+            st.session_state.plan_blocks = by_meal.get(first_meal) or []
             st.session_state.rule_diagnostics = diags
             st.session_state.diagnostics_summary = summary
             # The header badge describes the PLAN, so a failure only sets it
             # when there is no plan at all. On a multi-counter client one
             # blocked counter is a warning inside its own tab, and hoisting it
             # to the page header would put a red "Pre-flight blocked" above
-            # three tabs that each have a menu.
-            failed = [b for b in lunch_blocks
+            # tabs that each have a menu.
+            every = [b for bl in by_meal.values() for b in bl]
+            failed = [b for b in every
                       if b.get("source") in ("error", "preflight_blocked")]
             st.session_state.plan_source = (
                 failed[0]["source"]
-                if failed and len(failed) == len(lunch_blocks)
+                if failed and len(failed) == len(every)
                 else "solver")
         st.rerun()
 
@@ -1219,8 +1230,8 @@ _plan_mode = st.session_state.get("plan_mode", "single")
 #: the same dates and a kitchen reads them together, so putting one behind a
 #: click means nobody compares them — which is the whole point of generating
 #: the second one against the first.
-_MEAL_LABELS = {LUNCH: "Lunch", DINNER: "Dinner"}
-_meal_order = [m for m in (LUNCH, DINNER) if _meal_blocks.get(m)]
+_MEAL_LABELS = {m: m.title() for m in MEALS}
+_meal_order = [m for m in MEALS if _meal_blocks.get(m)]
 
 # `plan_blocks` is every meal's blocks CONCATENATED, lunch first, so a block
 # index addresses one block across the whole page. That is what lets the
@@ -1365,30 +1376,38 @@ if _blocks and any(b.get("plan") for b in _blocks):
                 f'font-size:1.05rem;font-weight:700">'
                 f'{_MEAL_LABELS.get(_meal, str(_meal).title())}</p>',
                 unsafe_allow_html=True)
-            if _meal == DINNER:
-                # How different dinner came out. Reported, never enforced: the
-                # exclusion that produces it bans lunch's dishes outright and
-                # overshoots the floor by a wide margin, so a CP-SAT bound
-                # would be machinery for a condition that never binds. What is
-                # worth having is the NUMBER — if a thin pool ever pushes the
-                # two services back together, somebody sees it instead of the
-                # guarantee quietly lapsing.
+            _prev = (_meal_order[_meal_order.index(_meal) - 1]
+                     if _meal_order.index(_meal) > 0 else None)
+            if _prev:
+                # How different this service came out from the one before it.
+                # Reported, never enforced: the exclusion that produces it
+                # bans the earlier services' dishes outright and overshoots
+                # the floor by a wide margin, so a CP-SAT bound would be
+                # machinery for a condition that never binds. What is worth
+                # having is the NUMBER — if a thin pool ever pushes two
+                # services back together, somebody sees it instead of the
+                # guarantee quietly lapsing. Compared against the PREVIOUS
+                # service rather than always lunch, since with four services
+                # "different from lunch" says nothing about snacks vs dinner.
                 _diff = meal_difference(
-                    {d: v for b in (_meal_blocks.get(LUNCH) or [])
+                    {d: v for b in (_meal_blocks.get(_prev) or [])
                      for d, v in (b.get("solution") or {}).items()},
                     {d: v for b in _mblocks
                      for d, v in (b.get("solution") or {}).items()})
                 if _diff["per_day"]:
                     _pct = round(_diff["overall"] * 100)
+                    _a, _b = _MEAL_LABELS.get(_meal, _meal), _MEAL_LABELS.get(_prev, _prev)
                     if _diff["below_floor"]:
                         st.warning(
-                            f"Dinner differs from lunch on {_pct}% of dishes, "
-                            f"but {len(_diff['below_floor'])} day(s) fall "
-                            f"below the {round(MIN_MEAL_DIFFERENCE * 100)}% "
-                            "floor: " + ", ".join(_diff["below_floor"]))
+                            f"{_a} differs from {_b.lower()} on {_pct}% of "
+                            f"dishes, but {len(_diff['below_floor'])} day(s) "
+                            f"fall below the "
+                            f"{round(MIN_MEAL_DIFFERENCE * 100)}% floor: "
+                            + ", ".join(_diff["below_floor"]))
                     else:
                         st.caption(
-                            f"Dinner differs from lunch on {_pct}% of dishes.")
+                            f"{_a} differs from {_b.lower()} on {_pct}% of "
+                            "dishes.")
 
         if not any(b.get("plan") for b in _mblocks):
             # This service failed while another one has a menu — say so here
