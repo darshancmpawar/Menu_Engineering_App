@@ -119,7 +119,8 @@ from ui.formatters import dishes_from_solution as _dishes_from_solution
 def _planner_helpers():
     src = (_pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text()
     tree = _ast.parse(src)
-    wanted = {'_exclusions_from', '_saveable_meals', '_concat_meal_blocks'}
+    wanted = {'_exclusions_from', '_saveable_meals', '_concat_meal_blocks',
+              '_merge_exclusions'}
     ns = {'dishes_from_solution': _dishes_from_solution,
           'LUNCH': LUNCH, 'DINNER': DINNER}
     found = [n for n in tree.body
@@ -129,10 +130,11 @@ def _planner_helpers():
         'cannot reach them and is measuring nothing')
     exec(compile(_ast.Module(body=found, type_ignores=[]), 'app.py', 'exec'), ns)
     return (ns['_exclusions_from'], ns['_saveable_meals'],
-            ns['_concat_meal_blocks'])
+            ns['_concat_meal_blocks'], ns['_merge_exclusions'])
 
 
-_exclusions_from, _saveable_meals, _concat_meal_blocks = _planner_helpers()
+(_exclusions_from, _saveable_meals, _concat_meal_blocks,
+ _merge_exclusions) = _planner_helpers()
 
 
 def _block(name, solution, plan=None):
@@ -257,3 +259,73 @@ class TestWhereEachServicesBlocksLand:
 
     def test_nothing_at_all(self):
         assert _concat_meal_blocks([], {}) == ([], {})
+
+
+# ---------------------------------------------------------------------------
+# Four services, not two.
+# ---------------------------------------------------------------------------
+
+from src.history import BREAKFAST, SNACKS, MEALS, DEFAULT_MEALS, normalize_meals  # noqa: E402
+
+
+class TestTheMealList:
+    def test_the_order_is_when_they_are_eaten(self):
+        """Not the order anyone lists them in. Snacks sit between lunch and
+        dinner because that is when a canteen serves them, and this order IS
+        the solve order — each service avoids the ones before it."""
+        assert MEALS == (BREAKFAST, LUNCH, SNACKS, DINNER)
+
+    def test_every_client_defaults_to_lunch_and_dinner(self):
+        assert list(DEFAULT_MEALS) == [LUNCH, DINNER]
+        assert normalize_meals(None) == [LUNCH, DINNER]
+
+    def test_the_caller_cannot_change_the_order(self):
+        """Ticking boxes in a different order must not reorder the solve."""
+        assert normalize_meals([DINNER, BREAKFAST, LUNCH]) == [
+            BREAKFAST, LUNCH, DINNER]
+
+    def test_nothing_selected_reads_as_the_default(self):
+        """A client that serves NO meal cannot be planned, and returning an
+        empty list would surface as a solver failure rather than a config
+        mistake."""
+        assert normalize_meals([]) == list(DEFAULT_MEALS)
+        assert normalize_meals(['not_a_meal']) == list(DEFAULT_MEALS)
+
+    def test_duplicates_and_case_collapse(self):
+        assert normalize_meals(['LUNCH', 'lunch', ' Lunch ']) == [LUNCH]
+
+
+class TestExclusionsAccumulate:
+    """Dinner must avoid breakfast AND lunch AND snacks — not merely the
+    service immediately before it. Passing only the previous one fails
+    quietly: the menu still renders, it just reprints the morning's dishes at
+    night."""
+
+    def test_two_services_union_per_counter_and_day(self):
+        a = {0: {'2026-03-02': ['idli', 'chutney']}}
+        b = {0: {'2026-03-02': ['dal', 'idli']}}
+        assert _merge_exclusions(a, b) == {
+            0: {'2026-03-02': ['chutney', 'dal', 'idli']}}
+
+    def test_counters_stay_separate(self):
+        a = {0: {'d': ['x']}}
+        b = {1: {'d': ['y']}}
+        out = _merge_exclusions(a, b)
+        assert out == {0: {'d': ['x']}, 1: {'d': ['y']}}
+
+    def test_a_new_day_is_added_not_dropped(self):
+        a = {0: {'d1': ['x']}}
+        b = {0: {'d2': ['y']}}
+        assert _merge_exclusions(a, b) == {0: {'d1': ['x'], 'd2': ['y']}}
+
+    def test_it_does_not_mutate_what_it_was_given(self):
+        """The loop reassigns the accumulator each round; mutating in place
+        would make an earlier service's exclusions grow retroactively."""
+        a = {0: {'d': ['x']}}
+        _merge_exclusions(a, {0: {'d': ['y']}})
+        assert a == {0: {'d': ['x']}}
+
+    def test_empty_inputs(self):
+        assert _merge_exclusions({}, {}) == {}
+        assert _merge_exclusions(None, {0: {'d': ['x']}}) == {0: {'d': ['x']}}
+        assert _merge_exclusions({0: {'d': ['x']}}, None) == {0: {'d': ['x']}}

@@ -92,10 +92,20 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL
 -- Cross-counter common categories (editor toggle+multiselect). NULL = none;
 -- the planner falls back to the file-based value in client_rules.json (DXC).
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS shared_categories  JSONB;
--- Two services a day. NOT NULL DEFAULT false, so every existing client keeps
--- generating exactly one menu and nothing about their plans changes; a site
--- that serves dinner is opted in explicitly, the same shape as serve_weekends.
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS serve_dinner       BOOLEAN NOT NULL DEFAULT false;
+-- Which services a client runs, as an ordered list: breakfast / lunch /
+-- snacks / dinner. Replaces the older `serve_dinner` boolean, which could only
+-- say "lunch, and maybe dinner". DEFAULT is lunch + dinner, so every existing
+-- row plans both without anyone editing it; NULL reads as the same default in
+-- `normalize_meals`, so a row written before this column existed behaves
+-- identically to one written after.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS meals              JSONB DEFAULT '["lunch","dinner"]'::jsonb;
+-- Backfill in the same shape. A site that had serve_dinner=false was NOT
+-- opting out of dinner — the column defaulted false and nobody ever set it —
+-- so every row becomes lunch+dinner rather than carrying that false forward.
+UPDATE clients SET meals = '["lunch","dinner"]'::jsonb WHERE meals IS NULL;
+-- `serve_dinner` is left in place rather than dropped: nothing reads it any
+-- more, and dropping a column is the one migration step that cannot be undone
+-- by re-running this file.
 
 -- Migrate menu_history to the (client, date, MEAL) key. Idempotent: the column
 -- is added with a default, existing rows become 'lunch', and the primary key is

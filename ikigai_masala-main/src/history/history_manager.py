@@ -110,10 +110,45 @@ def _write_history(supabase_client, day_rows, client_name, date_isos, meal,
 #: everywhere, so a single-service client is byte-for-byte unchanged by the
 #: arrival of dinner: the column defaults to it, every save that does not name
 #: a meal writes it, and every read that does not name one finds it.
+BREAKFAST = 'breakfast'
 LUNCH = 'lunch'
+SNACKS = 'snacks'
 DINNER = 'dinner'
 DEFAULT_MEAL = LUNCH
-MEALS = (LUNCH, DINNER)
+
+#: The services a site can run, in the order they are EATEN — which is not the
+#: order they are usually listed in. Snacks sit between lunch and dinner
+#: because that is when a canteen serves them (late afternoon), and this tuple
+#: is not just a label list: it is the order the planner solves in, and each
+#: service is handed every EARLIER service's dishes to avoid. Put dinner before
+#: snacks here and the evening snack would be told to avoid nothing while
+#: dinner avoided it, which is backwards.
+MEALS = (BREAKFAST, LUNCH, SNACKS, DINNER)
+
+#: What a client serves unless its config says otherwise. Every existing client
+#: gets this, so a site that has never been configured plans both services.
+DEFAULT_MEALS = (LUNCH, DINNER)
+
+
+def normalize_meals(value) -> list:
+    """A client's `meals` config -> an ordered, de-duplicated, valid list.
+
+    Ordered by `MEALS` rather than by what the caller passed, so the solve
+    order and the render order cannot depend on the order someone happened to
+    tick boxes in. Anything unrecognised is dropped, and an empty result falls
+    back to `DEFAULT_MEALS` — a client that serves NO meal cannot be planned
+    at all, and silently returning nothing would read as a solver failure.
+    """
+    if value is None:
+        return list(DEFAULT_MEALS)
+    if isinstance(value, str):
+        value = [value]
+    try:
+        given = {str(v).strip().lower() for v in value}
+    except TypeError:
+        return list(DEFAULT_MEALS)
+    got = [m for m in MEALS if m in given]
+    return got or list(DEFAULT_MEALS)
 
 
 def normalize_meal(value) -> str:
