@@ -150,25 +150,66 @@ instead of failing**, and it already stamps a `RELAXATION` when it caps (note
 *and says so in the explanation*, rather than silently serving a plate with no
 region on it.
 
-### 2.3 Config — a second per-weekday map beside `theme_map`
+### 2.3 The control lives on the PLANNER, not in Edit Logic
 
-On each counter in `clients.counters`:
+A region is a weekly editorial decision — "let's do a Tamil Thursday this week"
+— not a structural fact about the site, so it belongs where the menu is, and it
+has to work **after** a plan exists. A strip of per-day pickers sits above the
+menu table; picking one and hitting **Apply** re-solves that day alone.
+
+The mechanism already exists: `POST /api/v1/regenerate`
+(`MenuRegenerator.regenerate`) locks every cell outside a replace mask and
+re-solves the rest. Applying a region is exactly that call with the mask set to
+the chosen day's regional-capable cells, plus the §2.2 rule for that date. So
+the week's `unique_items`, the 20-day cooldown, the freshness objective and the
+cross-counter `shared_items` sync all still hold — the day is solved **against**
+the rest of the week rather than in place of it, and no new solve path is
+introduced.
+
+So the region reaches the solver as a **per-date request field** on `/plan` and
+`/regenerate`:
 
 ```json
-"region_map":   {"thu": "Tamil Nadu"},
-"region_dates": {"2026-10-20": "Maharashtra"}
+"region_days": {"2026-09-25": "Tamil Nadu"}
 ```
 
-`region_map` is the recurring weekly programme; `region_dates` is the one-off
-(a festival, a client visit) and beats the weekday map for that date. Both are
-normalised at write time against the city's themeable-region list — an
-unthemeable region is **rejected at the PUT**, not dropped at solve time. Note
-9's lesson: a config key that silently matches nothing is the expensive failure,
-because the plan still comes back and looks fine.
+Config persistence is the second step, not the entry point. A **Save as this
+client's weekly default** action writes the weekday map onto the counter:
 
-The rules in §2.2 are **generated from the map**, not hand-written per client.
-36 client files each hand-rolling a regional floor is how `rule_library.json`
-came to exist.
+```json
+"region_map": {"thu": "Tamil Nadu"}
+```
+
+which seeds the strip on every later generation and can still be overridden for
+one week from the planner. That covers "before is fine too" without making the
+editor the only way in. The map is normalised at write time against the city's
+themeable-region list, and an unthemeable region is **rejected at the PUT** —
+note 9's lesson, that a config key which silently matches nothing is the
+expensive failure, because the plan still comes back and looks fine.
+
+The rules in §2.2 are **generated from the map or the request field**, never
+hand-written per client. 36 client files each hand-rolling a regional floor is
+how `rule_library.json` came to exist.
+
+**Page-level, not per-counter.** One strip for the client, because "Thursday is
+a Tamil Nadu day at this site" is how the decision is actually made. It applies
+to every counter whose theme admits the region and skips the others, saying so
+("applies to 2 of 3 counters") rather than silently doing nothing on the Chinese
+station.
+
+### 2.3b The floor's slot list is derived from the region's own depth
+
+Not a fixed set. Punjab's floor of 3 runs over
+`[veg_gravy, veg_dry, dal, nonveg_main, dessert]` — the slots §1.4 measured as
+deep enough — so it is always satisfiable, and rice and bread are simply not
+part of it. "Thin" is then an editor note about what the day *will not* carry,
+not a runtime relaxation.
+
+That distinction matters because it keeps `RELAXATION` meaning one thing: the
+pool ran out **this week** under the cooldown, which is worth telling a chef.
+A region that never had a Punjabi rice to begin with is a fact about the city
+list and belongs in the picker, where it is visible before anyone generates
+anything.
 
 ### 2.4 The compatibility guard — an ERROR, not a degradation
 
@@ -200,15 +241,32 @@ negligible against the 1.86e15 already measured below THEME. This adds no
 meaningful mass, and `tests/rules/test_objective_tier_headroom.py` fails if that
 estimate is wrong.
 
-### 2.6 UI
+### 2.6 UI — a strip on the planner, under the Save row
 
-`customisation/theme_editor.py` gains a second control per weekday: **Region
-(optional)**, defaulting to "—". Options come from `/editor-metadata` as
-`themeable_regions_by_city`, computed by the §1.4 depth measurement and
-committed as a small JSON the way `pool_tokens.json` already is (note 22) — the
-endpoint must not open five workbooks to answer. A region incompatible with that
-weekday's theme is shown disabled *with the reason*, not offered and failed
-later.
+`app.py` gains a **Regional days** panel between the Save/Download/Clear row and
+the counter tabs: one card per date in the horizon, each with the day's theme
+badge and a compact region select, laid out with `st.columns(len(dates))` so the
+cards line up over the table beneath. Changing one marks that day pending and
+reveals **Apply to menu** / **Reset**; applying calls `/regenerate` for that day
+and reports how many cells moved.
+
+The select is where the §1 measurements become visible:
+
+- compatible regions carry their depth — `Karnataka · 11 slots`
+- incompatible ones are **disabled with the reason** — `West Bengal — wrong
+  cuisine for this day`
+- regions below the §1.4 floor are **disabled, not hidden** — `Rajasthan — too
+  few dishes in Bangalore` — so an operator can see they were weighed
+- a `chinese` or `biryani` day disables the control outright and says why
+
+Options come from `/editor-metadata` as `themeable_regions_by_city`, computed by
+the §1.4 depth measurement and committed as a small JSON the way
+`pool_tokens.json` already is (note 22) — the endpoint must not open five
+workbooks to answer.
+
+`customisation/theme_editor.py` gets nothing new. The only config surface is the
+**Save as weekly default** action in §2.3, which writes `region_map` from the
+planner.
 
 ### 2.7 Explanation
 
