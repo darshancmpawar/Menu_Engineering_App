@@ -446,3 +446,112 @@ class TestTheMealDimension:
         hm = HistoryManager().load_from_dataframes(long_df, None)
         banned = hm.banned_items_by_date([dt.date(2026, 3, 17)], cooldown_days=20)
         assert banned[dt.date(2026, 3, 17)] == {'jeera_rice', 'lemon_rice'}
+
+
+# ---------------------------------------------------------------------------
+# A database that has not run the `meal` migration.
+# ---------------------------------------------------------------------------
+
+class _NoMealColumn:
+    """A Supabase stand-in whose menu_history/week_signatures lack `meal`.
+
+    Raises the way PostgREST does for an unknown column, on either a filter or
+    an insert that mentions it.
+    """
+
+    class _Q:
+        def __init__(self, outer, table, mode):
+            self._o, self._t, self._mode = outer, table, mode
+            self._touched_meal = False
+
+        def eq(self, col, _val):
+            if col == 'meal':
+                self._touched_meal = True
+            return self
+
+        def in_(self, _col, _vals):
+            return self
+
+        def execute(self):
+            if self._touched_meal:
+                raise RuntimeError(
+                    "column menu_history.meal does not exist")
+            self._o.calls.append((self._t, self._mode))
+            return type('R', (), {'data': []})()
+
+    class _T:
+        def __init__(self, outer, name):
+            self._o, self._n = outer, name
+
+        def delete(self):
+            return _NoMealColumn._Q(self._o, self._n, 'delete')
+
+        def insert(self, rows):
+            payload = rows if isinstance(rows, list) else [rows]
+            if any('meal' in r for r in payload):
+                raise RuntimeError(
+                    f"Could not find the 'meal' column of '{self._n}' "
+                    "in the schema cache")
+            outer, name = self._o, self._n
+
+            class _Ins:
+                def execute(self_inner):
+                    outer.inserted.extend(payload)
+                    outer.calls.append((name, 'insert'))
+                    return type('R', (), {'data': payload})()
+            return _Ins()
+
+    def __init__(self):
+        self.calls, self.inserted = [], []
+
+    def table(self, name):
+        return _NoMealColumn._T(self, name)
+
+
+class TestSavingBeforeTheMealMigration:
+    """Adding `meal` to every write made SAVING depend on a migration.
+
+    The column is sent for lunch too, so an un-migrated database lost the
+    ability to save anything at all — a regression for every existing
+    single-service client, not just for the new feature.
+    """
+
+    @staticmethod
+    def _args(meal):
+        import datetime as dt
+        d = dt.date(2026, 3, 2)
+        return dict(
+            week_plan={d: {'bread__1': 'plain_chapati'}},
+            dates=[d], client_name='X', week_start=d,
+            week_signature='sig', meal=meal)
+
+    def test_lunch_still_saves_without_the_column(self):
+        """Falls back to the meal-free write, which is EXACTLY what a
+        single-service client always had: one row per (client, date)."""
+        fake = _NoMealColumn()
+        HistoryManager().save(supabase_client=fake, **self._args('lunch'))
+        assert ('menu_history', 'insert') in fake.calls
+        assert fake.inserted, 'nothing was written'
+        assert all('meal' not in r for r in fake.inserted)
+        assert any(r.get('service_date') == '2026-03-02'
+                   for r in fake.inserted)
+
+    def test_dinner_refuses_loudly_instead_of_eating_lunch(self):
+        """Without the column there is one row per (client, date), so a
+        meal-free dinner write would DELETE that date's lunch row and leave
+        the day holding one menu where there should be two — silently. The
+        only safe answer is to fail and name the migration."""
+        fake = _NoMealColumn()
+        with pytest.raises(RuntimeError) as err:
+            HistoryManager().save(supabase_client=fake, **self._args('dinner'))
+        assert 'setup_all.sql' in str(err.value)
+        assert not fake.inserted, 'a dinner row was written anyway'
+
+    def test_an_unrelated_database_error_is_not_swallowed(self):
+        """The fallback keys on the missing COLUMN. A connection failure or a
+        constraint violation must still surface."""
+        class Boom:
+            def table(self, _n):
+                raise RuntimeError('connection refused')
+        with pytest.raises(RuntimeError, match='connection refused'):
+            HistoryManager().save(supabase_client=Boom(), **self._args('lunch'))

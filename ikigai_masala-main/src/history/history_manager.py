@@ -16,6 +16,96 @@ import pandas as pd
 from ..preprocessor.column_mapper import _norm_str
 
 
+def _missing_meal_column(exc: BaseException) -> bool:
+    """Is *exc* Postgres saying `menu_history.meal` does not exist?
+
+    Same shape as `client_config._is_missing_relation` and kept local rather
+    than imported so the history layer does not depend on the client layer for
+    a five-line predicate.
+    """
+    if getattr(exc, "code", None) in ("42703", "PGRST204", "PGRST205"):
+        return True
+    msg = str(exc).lower()
+    return "meal" in msg and (
+        "does not exist" in msg or "could not find" in msg
+        or "schema cache" in msg)
+
+
+#: What to tell an operator whose database predates the two-services change.
+MEAL_MIGRATION_HINT = (
+    "the menu_history.meal column is missing — run scripts/setup_all.sql "
+    "(it is idempotent) to add it before saving a dinner menu"
+)
+
+
+def _write_week_signature(supabase_client, client_name, week_start,
+                          week_signature, meal):
+    """Replace the week-signature row. Same degradation rule as the history
+    write above: lunch falls back to the meal-free shape, dinner refuses."""
+    row = {'week_start': week_start.isoformat(),
+           'week_signature': week_signature,
+           'client_name': client_name, 'meal': meal}
+
+    def _delete(use_meal):
+        q = (supabase_client.table('week_signatures').delete()
+             .eq('client_name', client_name))
+        if use_meal:
+            q = q.eq('meal', meal)
+        return q.eq('week_start', week_start.isoformat()).execute()
+
+    try:
+        _delete(True)
+        supabase_client.table('week_signatures').insert(row).execute()
+    except Exception as exc:
+        if not _missing_meal_column(exc):
+            raise
+        if normalize_meal(meal) != DEFAULT_MEAL:
+            raise RuntimeError(
+                f"Cannot save the {meal} week signature: "
+                f"{MEAL_MIGRATION_HINT}.") from exc
+        _delete(False)
+        supabase_client.table('week_signatures').insert(
+            {k: v for k, v in row.items() if k != 'meal'}).execute()
+
+
+def _write_history(supabase_client, day_rows, client_name, date_isos, meal,
+                   table='menu_history'):
+    """Replace this (client, dates, meal) slice of history.
+
+    Degrades on a database that has not run the `meal` migration, but ONLY for
+    lunch: without the column there is one row per (client, date), which is
+    exactly what a single-service client always had, so dropping `meal` from
+    the write reproduces the old behaviour precisely. For DINNER it refuses —
+    a meal-free write would delete that date's LUNCH row and leave the day
+    holding one menu where there should be two, silently. A loud failure with
+    the migration named is the only safe answer there.
+    """
+    def _delete(use_meal):
+        q = (supabase_client.table(table).delete()
+             .eq('client_name', client_name))
+        if use_meal:
+            q = q.eq('meal', meal)
+        return q.in_('service_date', date_isos).execute()
+
+    try:
+        if date_isos:
+            _delete(True)
+        if day_rows:
+            supabase_client.table(table).insert(day_rows).execute()
+    except Exception as exc:
+        if not _missing_meal_column(exc):
+            raise
+        if normalize_meal(meal) != DEFAULT_MEAL:
+            raise RuntimeError(
+                f"Cannot save the {meal} menu: {MEAL_MIGRATION_HINT}.") from exc
+        if date_isos:
+            _delete(False)
+        if day_rows:
+            supabase_client.table(table).insert(
+                [{k: v for k, v in r.items() if k != 'meal'} for r in day_rows]
+            ).execute()
+
+
 #: The services a client can run in one day. ``lunch`` is the default
 #: everywhere, so a single-service client is byte-for-byte unchanged by the
 #: arrival of dinner: the column defaults to it, every save that does not name
@@ -285,33 +375,9 @@ class HistoryManager:
                 })
 
         date_isos = [d.isoformat() for d in dates]
-        if date_isos:
-            (
-                supabase_client.table('menu_history')
-                .delete()
-                .eq('client_name', client_name)
-                .eq('meal', meal)
-                .in_('service_date', date_isos)
-                .execute()
-            )
-        if day_rows:
-            supabase_client.table('menu_history').insert(day_rows).execute()
-
-        # Same overwrite rule for the per-week signature row.
-        (
-            supabase_client.table('week_signatures')
-            .delete()
-            .eq('client_name', client_name)
-            .eq('meal', meal)
-            .eq('week_start', week_start.isoformat())
-            .execute()
-        )
-        supabase_client.table('week_signatures').insert({
-            'week_start': week_start.isoformat(),
-            'week_signature': week_signature,
-            'client_name': client_name,
-            'meal': meal,
-        }).execute()
+        _write_history(supabase_client, day_rows, client_name, date_isos, meal)
+        _write_week_signature(supabase_client, client_name, week_start,
+                              week_signature, meal)
 
     def save_counters(
         self,
@@ -356,32 +422,9 @@ class HistoryManager:
                 })
 
         date_isos = [d.isoformat() for d in dates]
-        if date_isos:
-            (
-                supabase_client.table('menu_history')
-                .delete()
-                .eq('client_name', client_name)
-                .eq('meal', meal)
-                .in_('service_date', date_isos)
-                .execute()
-            )
-        if day_rows:
-            supabase_client.table('menu_history').insert(day_rows).execute()
-
-        (
-            supabase_client.table('week_signatures')
-            .delete()
-            .eq('client_name', client_name)
-            .eq('meal', meal)
-            .eq('week_start', week_start.isoformat())
-            .execute()
-        )
-        supabase_client.table('week_signatures').insert({
-            'week_start': week_start.isoformat(),
-            'week_signature': week_signature,
-            'client_name': client_name,
-            'meal': meal,
-        }).execute()
+        _write_history(supabase_client, day_rows, client_name, date_isos, meal)
+        _write_week_signature(supabase_client, client_name, week_start,
+                              week_signature, meal)
 
     # ----- Load saved plan -----
 

@@ -39,6 +39,8 @@ disagreed by a factor of ten on the same model.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 # The horizon the API will accept. The whole point of this file is to measure at
@@ -147,7 +149,19 @@ def objective_coeffs(live_clients, monkeypatch):
     return max(captured, key=lambda c: len(c['coeffs']))   # the primary model
 
 
-def _reachable_below(capture, weight, seconds=20):
+#: Seconds CP-SAT gets per rung. **Measured, not chosen.** At the original 20
+#: the probe returned UNKNOWN for all three rungs on a completely idle machine
+#: — verified against both this branch's rulesets and the ones before it, so it
+#: is the budget and not the rule count. At 240 all three decide. That is the
+#: whole cost of the file being worth running: at 20s it spent six minutes
+#: reporting "undecided" three times, and a reader who saw `medium` and `high`
+#: come back undecided concluded they were COMFORTABLE — the inference this
+#: module exists to prevent, and wrong by a factor of 76 (see the high rung
+#: below). Override with HEADROOM_PROBE_SECONDS to trade certainty for time.
+PROBE_SECONDS = int(os.getenv('HEADROOM_PROBE_SECONDS', '240'))
+
+
+def _reachable_below(capture, weight, seconds=PROBE_SECONDS):
     """The largest total the terms cheaper than `weight` can actually reach.
 
     **Asked of CP-SAT rather than computed here, because every arithmetic bound
@@ -385,17 +399,33 @@ class TestTheTiersStayLexicographic:
           — and the test passed **having measured nothing**. The strict marker
           then reported that XPASS as a failure, which is the only reason it
           was noticed at all.
-        * `medium` and `high` are undecided at this budget even on an idle
-          machine, so the vacuity is not hypothetical; only THEME reliably
-          decides, and THEME is the rung that matters (it has the whole ladder
-          beneath it, while the other two read comfortable merely by sitting
-          under fewer tiers).
+        * every rung was undecided at the ORIGINAL 20s budget, even on a
+          completely idle machine — so the vacuity was not hypothetical, it
+          was the normal outcome. `PROBE_SECONDS` is now 240, at which all
+          three decide.
 
-        So the measurement is made a precondition: the theme rung must DECIDE,
-        or the guard is blind and says so. Fixing the tiers is still the
-        client's call — it changes every menu for every client — and this test
-        failing is exactly how that decision announces itself: when the
-        separation is widened, come here, flip the assertion, and delete this
+        **And the undecided rungs were then read as comfortable, which was
+        wrong by a factor of 76.** This docstring used to say only THEME
+        mattered, "while the other two read comfortable merely by sitting
+        under fewer tiers". Measured at 240s, on a machine with nothing else
+        running:
+
+            medium   4.80e5  of 1e9    0.00x   holds
+            high     7.86e13 of 1e12  78.59x   INVERTED
+            theme    1.89e15 of 1e15   1.89x   INVERTED
+
+        HIGH is the worst rung by forty times, not theme. Nobody knew because
+        the guard returned "undecided" and a reader supplied the optimistic
+        reading — the exact move note 33 documents, in the file written to
+        stop it. Both figures were reproduced against the rulesets as they
+        stood BEFORE the plate-variety rules were added (75.90x / 1.89x), so
+        the inversion is long-standing and not a recent regression.
+
+        So the measurement is a precondition on BOTH inverted rungs: each must
+        DECIDE, or the guard is blind and says so. Fixing the tiers is still
+        the client's call — it changes every menu for every client — and this
+        test failing is exactly how that decision announces itself: when the
+        separation is widened, come here, flip the assertions, and delete this
         paragraph.
         """
         # LOW is deliberately not one of the rungs checked here — see
@@ -411,6 +441,18 @@ class TestTheTiersStayLexicographic:
             measured[name] = achieved
 
         theme = OBJECTIVE_TIER_WEIGHTS['theme']
+        high = OBJECTIVE_TIER_WEIGHTS['high']
+        assert measured['high'] is not None, (
+            'the high rung came back UNDECIDED. Do NOT read that as the tier '
+            'holding — that reading is how a 76x inversion went unrecorded '
+            f'for as long as it did. Raise HEADROOM_PROBE_SECONDS above '
+            f'{PROBE_SECONDS} or run on an idle machine.')
+        assert measured['high'] >= high, (
+            'the high tier is no longer inverted — the mass below it now '
+            f'reaches only {measured["high"]:,} against one high unit '
+            f'({high:,}), where it was 78.59x. GOOD NEWS, and this assertion '
+            'is now wrong: flip it and update design note 32.')
+
         assert measured['theme'] is not None, (
             'the theme rung came back UNDECIDED, so this test measured '
             'NOTHING — it is not evidence that the ladder holds. CP-SAT ran '

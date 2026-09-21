@@ -119,7 +119,7 @@ from ui.formatters import dishes_from_solution as _dishes_from_solution
 def _planner_helpers():
     src = (_pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text()
     tree = _ast.parse(src)
-    wanted = {'_exclusions_from', '_saveable_meals'}
+    wanted = {'_exclusions_from', '_saveable_meals', '_concat_meal_blocks'}
     ns = {'dishes_from_solution': _dishes_from_solution,
           'LUNCH': LUNCH, 'DINNER': DINNER}
     found = [n for n in tree.body
@@ -128,10 +128,11 @@ def _planner_helpers():
         'app.py no longer defines both helpers at module level; this test '
         'cannot reach them and is measuring nothing')
     exec(compile(_ast.Module(body=found, type_ignores=[]), 'app.py', 'exec'), ns)
-    return ns['_exclusions_from'], ns['_saveable_meals']
+    return (ns['_exclusions_from'], ns['_saveable_meals'],
+            ns['_concat_meal_blocks'])
 
 
-_exclusions_from, _saveable_meals = _planner_helpers()
+_exclusions_from, _saveable_meals, _concat_meal_blocks = _planner_helpers()
 
 
 def _block(name, solution, plan=None):
@@ -210,3 +211,49 @@ class TestWhichServicesGetSaved:
 
     def test_nothing_to_save_is_an_empty_list_not_a_crash(self):
         assert _saveable_meals({}, []) == []
+
+
+class TestWhereEachServicesBlocksLand:
+    """The offset arithmetic behind the stacked layout.
+
+    Dinner renders as a section BELOW lunch, and both sections address one
+    concatenated `plan_blocks` list. An offset wrong by one points the dinner
+    section's Regenerate at a LUNCH cell — silently, because both are real
+    blocks and the page still renders perfectly.
+    """
+
+    def test_lunch_comes_first_and_dinner_follows_it(self):
+        mb = {LUNCH: [_block('A', {}), _block('B', {})],
+              DINNER: [_block('A', {}), _block('B', {})]}
+        blocks, offsets = _concat_meal_blocks([LUNCH, DINNER], mb)
+        assert len(blocks) == 4
+        assert offsets == {LUNCH: 0, DINNER: 2}
+        for meal in (LUNCH, DINNER):
+            for i, b in enumerate(mb[meal]):
+                assert blocks[offsets[meal] + i] is b
+
+    def test_the_blocks_are_the_same_objects_not_copies(self):
+        """A regenerate mutates `plan_blocks[i]` in place. If the
+        concatenation copied, the edit would vanish on the next rerun when the
+        page rebuilds the list from `meal_blocks`."""
+        mb = {LUNCH: [_block('A', {})], DINNER: [_block('A', {})]}
+        blocks, offsets = _concat_meal_blocks([LUNCH, DINNER], mb)
+        blocks[offsets[DINNER]]['plan'] = {'edited': {}}
+        assert mb[DINNER][0]['plan'] == {'edited': {}}
+        assert mb[LUNCH][0]['plan'] != {'edited': {}}
+
+    def test_one_service_is_unchanged(self):
+        mb = {LUNCH: [_block('A', {}), _block('B', {})]}
+        blocks, offsets = _concat_meal_blocks([LUNCH], mb)
+        assert len(blocks) == 2 and offsets == {LUNCH: 0}
+
+    def test_a_service_with_no_blocks_still_gets_an_offset(self):
+        """A failed dinner renders its own warning and must not shift the
+        offsets of anything after it, nor raise on lookup."""
+        mb = {LUNCH: [_block('A', {})], DINNER: []}
+        blocks, offsets = _concat_meal_blocks([LUNCH, DINNER], mb)
+        assert len(blocks) == 1
+        assert offsets == {LUNCH: 0, DINNER: 1}
+
+    def test_nothing_at_all(self):
+        assert _concat_meal_blocks([], {}) == ([], {})
