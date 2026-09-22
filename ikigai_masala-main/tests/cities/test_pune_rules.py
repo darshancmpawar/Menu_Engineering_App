@@ -113,16 +113,32 @@ class TestPuneRulesBiteOnPuneData:
             f"inert rules changed: {sorted(inert)}"
         )
 
+    #: Columns whose BLANK is a real value rather than an unclassified row, so
+    #: a rule grouping on them must NOT declare `require_value`.
+    #:
+    #: `primary_protein` is the only one, and it is the distinction the whole
+    #: check turns on. A blank `key_ingredient` means nobody classified the
+    #: dish, so leaving those in lets the solver escape a variety rule by
+    #: serving exactly the unclassified dishes — hence `require_value`. A blank
+    #: `primary_protein` means "no protein focus" (the enriched workbooks wrote
+    #: it as a literal `none`, which `_norm_cell` folds): two plain vegetable
+    #: dishes on one plate are not a protein repeat, and dropping the blanks
+    #: would delete 74% of Pune's veg_dry pool to enforce a rule about soya.
+    #: See design note 38.
+    BLANK_IS_A_VALUE = {'primary_protein'}
+
     def test_attribute_grouping_columns_are_populated(self, pune_rules, pune_pools):
         """A grouping rule must have a column it can actually group on.
 
-        Two ways to satisfy that, and a rule has to pick one. Either the column
-        is populated for every candidate — the original requirement, still what
-        `item_color` meets — or the rule declares `require_value`, which drops
-        the blanks from the pool itself. The second exists because
-        `key_ingredient` is blank on 23% of the Pune list and a blank is
-        *unconstrained*: without the drop the solver escapes a variety rule by
-        serving exactly the dishes nobody has classified.
+        Three ways to satisfy that. Either the column is populated for every
+        candidate — the original requirement, still what `item_color` meets —
+        or the rule declares `require_value`, which drops the blanks from the
+        pool itself, or the column is one whose blank MEANS something
+        (`BLANK_IS_A_VALUE` above), where dropping would be the bug.
+
+        The allow-list is deliberately a set of COLUMNS rather than of rule
+        names: a new rule grouping on an unclassified column still has to
+        answer for itself, which is the case this check exists for.
         """
         _df, pools = pune_pools
         for rule in pune_rules:
@@ -134,7 +150,8 @@ class TestPuneRulesBiteOnPuneData:
                 if pool is None or pool.empty:
                     continue
                 values = pool[rule.group_by].dropna()
-                if not rule.require_value:
+                if (not rule.require_value
+                        and rule.group_by not in self.BLANK_IS_A_VALUE):
                     assert len(values) == len(pool), (
                         f"{rule.name}: {rule.group_by} is unset for "
                         f"{len(pool) - len(values)} of {len(pool)} {slot} items, "
@@ -144,6 +161,26 @@ class TestPuneRulesBiteOnPuneData:
                     f"{rule.name}: only one distinct {rule.group_by} in {slot}, "
                     f"so the gap can never be satisfied"
                 )
+
+    def test_the_blank_allow_list_has_not_swallowed_the_check(
+            self, pune_rules, pune_pools):
+        """A test that exempts a column can end up exempting everything.
+
+        At least one grouping rule must still face the strict requirement, or
+        the check above passes by having nothing left to check.
+        """
+        _df, pools = pune_pools
+        strict = [
+            r for r in pune_rules
+            if r.rule_type.value == 'attribute_grouping'
+            and not r.require_value
+            and r.group_by not in self.BLANK_IS_A_VALUE
+            and any(not (pools.get(s) is None or pools[s].empty)
+                    for s in (r.base_slots or pools))
+        ]
+        assert strict, (
+            'every attribute_grouping rule is now exempt from the populated-'
+            'column check, so it is measuring nothing')
 
     def test_yellow_dal_floor_is_achievable(self, pune_rules, pune_pools):
         """min targets auto-cap to what is placeable, so an over-ambitious floor
