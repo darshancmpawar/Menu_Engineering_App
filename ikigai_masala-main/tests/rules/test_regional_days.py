@@ -132,6 +132,45 @@ class TestAWorkbookWithoutTheColumns:
         assert not has_region_data(df)
 
 
+class TestTheRepositoryCacheDoesNotDeadlock:
+    """`OntologyRepository.regions` must not hold `self._lock` while calling
+    `menu_data()`, which takes the same lock. `threading.Lock` is not
+    reentrant, so the first version of this hung every request on a cache miss
+    — and hung it *silently*, which is why a plain timing assertion is worth
+    having: nothing raises, the endpoint simply never answers.
+    """
+
+    def test_a_cold_read_completes(self):
+        import threading
+        from src.ontology.repository import OntologyRepository
+
+        repo = OntologyRepository()
+        done = threading.Event()
+
+        def _read():
+            repo.regions('bangalore')
+            done.set()
+
+        t = threading.Thread(target=_read, daemon=True)
+        t.start()
+        assert done.wait(timeout=120), \
+            'regions() did not return — the lock is being taken twice'
+
+    def test_a_warm_read_is_cached(self):
+        from src.ontology.repository import OntologyRepository
+        repo = OntologyRepository()
+        first = repo.regions('bangalore')
+        assert repo.cache_sizes()['regions'] == 1
+        assert repo.regions('bangalore') is first
+
+    def test_reset_clears_it(self):
+        from src.ontology.repository import OntologyRepository
+        repo = OntologyRepository()
+        repo.regions('bangalore')
+        repo.reset()
+        assert repo.cache_sizes()['regions'] == 0
+
+
 class TestTheFloorIsDerivedFromDepth:
     """Punjab's floor runs over gravy/dry/dal/non-veg/dessert. Rice and bread
     are not in it, so it is always satisfiable and a relaxation keeps meaning

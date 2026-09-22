@@ -228,12 +228,15 @@ class OntologyRepository:
         path = city_excel_path(city)
         cached = self._regions_by_path.get(path)
         if cached is None:
-            with self._lock:
-                cached = self._regions_by_path.get(path)
-                if cached is None:
-                    df, _ = self.menu_data(city)
-                    cached = measure_regions(df)
-                    self._regions_by_path[path] = cached
+            # NOT under `self._lock`, and that is load-bearing: `menu_data()`
+            # takes the same lock and `threading.Lock` is not reentrant, so
+            # holding it here deadlocks the request on a cache miss. Same
+            # check-compute-store shape as `nonveg_items` above, for the same
+            # reason — two threads racing recompute the same value, which
+            # costs one duplicate measurement and nothing else.
+            df, _ = self.menu_data(city)
+            cached = measure_regions(df)
+            self._regions_by_path[path] = cached
         return cached
 
     def rules_for_city(self, city) -> List[Any]:

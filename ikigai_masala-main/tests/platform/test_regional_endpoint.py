@@ -82,19 +82,26 @@ class TestWritingARegionMap:
 class TestPlanningWithARegionPick:
     def test_a_pick_a_city_cannot_honour_does_not_cost_the_menu(
             self, client, fake_supabase):
-        """The whole design in one assertion: a regional day is a floor, so the
-        worst case is a plan with no regional dishes — never a failed plan."""
-        resp = client.post('/api/v1/plan', json={
-            'client_name': 'TestClient',
-            'start_date': '2026-09-21',
-            'num_days': 2,
-            'region_days': {'2026-09-24': 'Tamil Nadu'},
-        })
-        assert resp.status_code in (200, 422, 500)
-        body = resp.get_json()
-        if resp.status_code == 200:
-            assert body['success'] is True
-            assert body.get('solution')
+        """The whole design in one assertion: a regional day is a FLOOR, so the
+        worst case is a plan with no regional dishes — never a different
+        outcome from not asking.
+
+        Asserted as "the same request with and without `region_days` ends the
+        same way" rather than as a fixed status code, because what this has to
+        prove is that the pick changed nothing — and that holds whether this
+        environment's fixture client can actually solve or not.
+        """
+        # Bounded like every other /plan test here. Left at the default 240s
+        # these solves alone ran the file past fifteen minutes.
+        body = {'client_name': 'TestClient', 'start_date': '2026-09-21',
+                'num_days': 1, 'time_limit_seconds': 15}
+        plain = client.post('/api/v1/plan', json=body)
+        with_region = client.post(
+            '/api/v1/plan',
+            json=dict(body, region_days={'2026-09-24': 'Tamil Nadu'}))
+        assert with_region.status_code == plain.status_code, (
+            'asking for a regional day changed the outcome of the request; a '
+            'floor must never be able to do that')
 
     def test_an_ordinary_plan_body_is_unchanged(self, client, fake_supabase):
         """Both keys absent when nobody asked for a region, so every existing
@@ -102,7 +109,8 @@ class TestPlanningWithARegionPick:
         resp = client.post('/api/v1/plan', json={
             'client_name': 'TestClient',
             'start_date': '2026-09-21',
-            'num_days': 2,
+            'num_days': 1,
+            'time_limit_seconds': 15,
         })
         if resp.status_code != 200:
             pytest.skip('this fixture client cannot plan in this environment')
