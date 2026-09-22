@@ -59,6 +59,8 @@ class OntologyRepository:
         self._nonveg_by_path: Dict[str, Set[str]] = {}
         #: normalized city -> ruleset
         self._rules_by_city: Dict[Optional[str], List[Any]] = {}
+        #: resolved workbook path -> measured regions (see src/ontology/regions.py)
+        self._regions_by_path: Dict[str, Tuple[Any, ...]] = {}
 
     # -- loading -----------------------------------------------------------
 
@@ -132,7 +134,7 @@ class OntologyRepository:
         # there because only 893 of its 4,349 rows carry `common`, and most of
         # its clients have `source_pools = []` — so they were planning from the
         # common fifth of the list while the other 3,456 dishes (eight client
-        # pools) sat unreachable. See note 15 in CLAUDE.md.
+        # pools) sat unreachable. See note 15 in docs/repo_map.md.
         #
         # The check is on the RESOLVED workbook, not on the city string. A
         # client whose `clients.city` is null reads Bangalore's list (that is
@@ -206,6 +208,37 @@ class OntologyRepository:
         except Exception:  # noqa: BLE001 — never break planning over a pin lookup
             return frozenset()
 
+    def regions(self, city=None) -> Tuple[Any, ...]:
+        """Single-state regions available in *city*'s item list, with depth.
+
+        Keyed by resolved PATH like every other cache here (note 17): a city
+        with no workbook of its own reads the default city's, and keying by name
+        would hold a second copy of the same measurement.
+
+        Measured over the WHOLE city list rather than a client's filtered
+        subset. A region's depth is a property of what the kitchen can cook, and
+        computing it per `source_pools` combination would multiply the cache by
+        every client while changing the answer only where a pool narrowing has
+        already made the region unusable — which the floor's own per-day cap
+        handles, because it relaxes to what the day can place.
+        """
+        from src.ontology.paths import city_excel_path
+        from src.ontology.regions import measure_regions
+
+        path = city_excel_path(city)
+        cached = self._regions_by_path.get(path)
+        if cached is None:
+            # NOT under `self._lock`, and that is load-bearing: `menu_data()`
+            # takes the same lock and `threading.Lock` is not reentrant, so
+            # holding it here deadlocks the request on a cache miss. Same
+            # check-compute-store shape as `nonveg_items` above, for the same
+            # reason — two threads racing recompute the same value, which
+            # costs one duplicate measurement and nothing else.
+            df, _ = self.menu_data(city)
+            cached = measure_regions(df)
+            self._regions_by_path[path] = cached
+        return cached
+
     def rules_for_city(self, city) -> List[Any]:
         """Cached base ruleset for a city — resolves `city_rules/<city>.json` and
         its ``extends`` chain, falling back to the default city. Cached per
@@ -233,6 +266,7 @@ class OntologyRepository:
             self._filtered_by_path_and_pools.clear()
             self._nonveg_by_path.clear()
             self._rules_by_city.clear()
+            self._regions_by_path.clear()
 
     def cache_sizes(self) -> Dict[str, int]:
         """Entry counts per cache — for the metrics endpoint and for tests that
@@ -242,6 +276,7 @@ class OntologyRepository:
             'filtered': len(self._filtered_by_path_and_pools),
             'nonveg': len(self._nonveg_by_path),
             'rules': len(self._rules_by_city),
+            'regions': len(self._regions_by_path),
         }
 
 

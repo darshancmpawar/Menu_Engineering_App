@@ -46,11 +46,6 @@ REPORT = ROOT / "docs" / "chef_review_queue.csv"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from city_list import CITIES  # noqa: E402
 
-#: What the enriched `chef_review` sheet carries per row, beyond `item`.
-REVIEW_COLUMNS = ("course_type", "item_color", "richness_score",
-                  "spice_level", "texture", "item_color__confidence")
-
-
 def _norm(value) -> str:
     s = str(value).strip().lower()
     return "" if s in ("", "nan", "none") else s

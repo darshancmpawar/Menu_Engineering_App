@@ -43,7 +43,6 @@ from .checks import SPICE_NAMES, base_slot, main_dishes
 # saucy, dry, grainy, crisp, fresh, soft, bready.
 SAUCY = 'saucy'
 CRISP = 'crisp'
-FRESH = 'fresh'
 DRY = 'dry'
 
 # What a saucy dish is eaten WITH. Bread and rice, by their texture rather than

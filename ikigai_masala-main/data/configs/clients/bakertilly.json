@@ -69,7 +69,7 @@
         ]
       },
       {
-        "_comment": "…'and it will be chicken dry'. Both Wednesday cells are dry, so `count: 2` over the two dry flags. The city rule `nonveg_main_daily_pair` is DISABLED for this client rather than overridden: it composes a 2-4 dish counter as one dry plus one regional chicken gravy, and on a biryani day as biryani plus gravy — both of which put a gravy on the plate the client says is dry. `count` caps itself to what the day can serve, so if the biryani-day pool offers only one dry the component relaxes to one and diagnose() reports it (the theme filter keeps the dry families available at 2+ slots — CLAUDE.md note 16).",
+        "_comment": "…'and it will be chicken dry'. Both Wednesday cells are dry, so `count: 2` over the two dry flags. The city rule `nonveg_main_daily_pair` is DISABLED for this client rather than overridden: it composes a 2-4 dish counter as one dry plus one regional chicken gravy, and on a biryani day as biryani plus gravy — both of which put a gravy on the plate the client says is dry. `count` caps itself to what the day can serve, so if the biryani-day pool offers only one dry the component relaxes to one and diagnose() reports it (the theme filter keeps the dry families available at 2+ slots — docs/repo_map.md note 16).",
         "name": "bakertilly_two_chicken_dry_on_the_biryani_day",
         "type": "slot_composition",
         "base_slot": "nonveg_main",

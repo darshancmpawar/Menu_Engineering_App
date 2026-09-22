@@ -311,44 +311,90 @@ class TestWeekdaySpellingsAgreeAcrossModules:
     """A config writing "sat" must mean the same thing to every rule that
     reads a weekday.
 
-    Two tables hold the accepted spellings and they cannot be merged, because
-    they map to different things: `menu_solver._WEEKDAY_ALIASES` resolves an
-    alias to a full weekday NAME (what `working_days` and
-    `slot_day_restriction` compare against), and
-    `selector_frequency_rule._WEEKDAY_TOKENS` resolves it to a weekday INDEX
-    (what `forbidden_weekdays` needs for `date.weekday()`).
+    Six modules used to type out their own weekday table, in three shapes: a
+    name tuple, alias -> full NAME (what `working_days` and
+    `slot_day_restriction` compare against) and alias -> INDEX (what
+    `forbidden_weekdays` needs for `date.weekday()`). The hazard was drift —
+    adding "thurs" to one leaves a config that works in `slot_day_restriction`
+    and is silently ignored in `forbidden_weekdays`, a weekday ban that reads
+    as configured and bans nothing.
 
-    What must not happen is the two drifting: adding "thurs" to one leaves a
-    config that works in `slot_day_restriction` and is silently ignored in
-    `forbidden_weekdays` — a weekday ban that reads as configured and bans
-    nothing. Pinned as an agreement on the KEYS, which is the only thing they
-    share and the only thing that can go wrong.
+    Both shapes are still needed, but `src/constants.py` now DERIVES them from
+    one ordered tuple, so they cannot disagree. This class no longer checks
+    that they agree — that is arithmetic — it checks that nobody has quietly
+    gone back to a hand-written copy, which is the only way the old hazard can
+    return.
     """
 
-    def _tables(self):
-        from src.menu_rules.selector_frequency_rule import _WEEKDAY_TOKENS
-        from src.solver.menu_solver import _WEEKDAY_ALIASES
-        return _WEEKDAY_TOKENS, _WEEKDAY_ALIASES
-
-    def test_they_accept_the_same_spellings(self):
-        tokens, aliases = self._tables()
-        assert set(tokens) == set(aliases)
-
-    def test_every_weekday_has_a_short_and_a_long_spelling(self):
-        tokens, _ = self._tables()
-        assert len(tokens) == 14, sorted(tokens)
-        assert set(tokens.values()) == set(range(7))
-
-    def test_the_two_resolve_an_alias_consistently(self):
-        """Different value types, same answer: alias -> index and alias -> name
-        must name the same day."""
+    def test_both_shapes_come_from_the_one_tuple(self):
         import datetime as dt
-        tokens, aliases = self._tables()
+        from src.constants import (
+            WEEKDAY_CANON, WEEKDAY_INDEX, WEEKDAY_NAMES, canonical_weekday)
+        assert len(WEEKDAY_NAMES) == 7
+        assert len(WEEKDAY_INDEX) == 14, sorted(WEEKDAY_INDEX)
+        assert set(WEEKDAY_INDEX) == set(WEEKDAY_CANON)
+        assert set(WEEKDAY_INDEX.values()) == set(range(7))
         # 2026-09-07 is a Monday, so index i is that weekday's name.
         monday = dt.date(2026, 9, 7)
-        for alias, idx in tokens.items():
+        for alias, idx in WEEKDAY_INDEX.items():
             expected = (monday + dt.timedelta(days=idx)).strftime('%A').lower()
-            assert aliases[alias] == expected, (alias, idx, aliases[alias])
+            assert WEEKDAY_CANON[alias] == expected
+            assert canonical_weekday(alias.upper() + ' ') == expected
+
+    def test_an_unrecognised_spelling_resolves_to_nothing(self):
+        """Empty, not the input echoed back: a caller storing the result must
+        not be able to persist "thurs" as though it were a weekday."""
+        from src.constants import canonical_weekday
+        assert canonical_weekday('thurs') == ''
+        assert canonical_weekday(None) == ''
+
+    def test_no_module_has_gone_back_to_its_own_table(self):
+        """The guard that replaces the old agreement check.
+
+        A module-level dict or tuple listing three or more weekday names is a
+        second copy of the fact, wherever it appears outside `constants.py`.
+        `DEFAULT_WEEKDAY_THEMES` and the editor's Mon-Fri display list are
+        different facts (a theme per day, and which days the editor shows), so
+        they are named here rather than matched by shape.
+        """
+        import ast
+        allowed = {
+            ('src/constants.py', 'WEEKDAY_NAMES'),
+            ('src/constants.py', 'WEEKDAY_INDEX'),
+            ('src/constants.py', 'WEEKDAY_CANON'),
+            ('src/constants.py', 'DEFAULT_WEEKDAY_THEMES'),
+            ('customisation/theme_editor.py', '_WEEKDAYS'),
+        }
+        names = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+                 'saturday', 'sunday'}
+        offenders = []
+        paths = []
+        for pkg in ('src', 'api', 'ui', 'customisation'):
+            for root, _dirs, files in os.walk(os.path.join(REPO, pkg)):
+                paths += [os.path.join(root, f)
+                          for f in files if f.endswith('.py')]
+        assert len(paths) > 40, 'the package layout moved; this scanned nothing'
+        for path in paths:
+            rel = os.path.relpath(path, REPO)
+            try:
+                tree = ast.parse(open(path).read())
+            except SyntaxError:                      # pragma: no cover
+                continue
+            for node in tree.body:
+                if not isinstance(node, ast.Assign):
+                    continue
+                literals = {
+                    n.value.lower() for n in ast.walk(node.value)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                }
+                if len(literals & names) < 3:
+                    continue
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and (rel, t.id) not in allowed:
+                        offenders.append(f'{rel}:{node.lineno}: {t.id}')
+        assert not offenders, (
+            'these re-introduce a weekday table; import it from src.constants '
+            'instead: ' + '; '.join(offenders))
 
 
 class TestTheExplainLayerStaysOffline:

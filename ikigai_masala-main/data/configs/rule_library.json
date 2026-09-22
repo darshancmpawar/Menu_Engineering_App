@@ -65,7 +65,7 @@
     "_doc": [
       "The Indian bread slot is a chapati or phulka, every day.",
       "A one-slot `slot_composition` component IS 'this slot must be a matching",
-      "dish' (CLAUDE.md note 20) — `fixed_daily_item` is the wrong tool, it only",
+      "dish' (docs/repo_map.md note 20) — `fixed_daily_item` is the wrong tool, it only",
       "makes the dish CONSISTENT and leaves the solver free to serve something",
       "else. Self-gates on a single-bread counter.",
       "",
@@ -100,7 +100,7 @@
       "Plain chapati may run on consecutive days — it is a staple, not a",
       "variety slot. Needed by any client that pins or mandates it daily:",
       "without the declaration `unique_items` forbids the repeat and the",
-      "counter goes INFEASIBLE (CLAUDE.md note 18)."
+      "counter goes INFEASIBLE (docs/repo_map.md note 18)."
     ],
     "type": "repeatable_items",
     "base_slot": "bread",

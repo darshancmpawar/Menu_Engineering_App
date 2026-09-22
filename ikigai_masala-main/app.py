@@ -66,7 +66,7 @@ from ui.formatters import (
 )
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import (DEFAULT_MEALS, DINNER, LUNCH, MEALS,
+from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
                          normalize_meals)
 from ui.planner_view import (
     date_label,
@@ -77,6 +77,8 @@ from ui.planner_view import (
     XLSX_MIME,
 )
 from src.explain.checks import MAIN_COURSES, base_slot
+from src.application.horizon import _weekdays_from
+from src.solver._helpers import weekday_type_for_config
 from ui.styles import STYLES
 from ui.branding import favicon as _favicon, logo_img_tag
 from ui.backend_probe import health_check, pick_backend_port
@@ -239,6 +241,79 @@ def _cached_meals(_api: MenuApiClient, client_name: str) -> list:
             _api.get_client_config(client_name).get("meals"))
     except Exception:
         return list(DEFAULT_MEALS)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_client_city(_api: MenuApiClient, client_name: str) -> str:
+    """The selected client's city, for the picker BEFORE anything is generated.
+
+    `st.session_state.client_city` is only written by Generate, so reading it
+    here would show a Pune client Bangalore's regions until they pressed the
+    button — the default city is what `/api/v1/regions` falls back to without
+    one, so the wrong answer would look like a working list rather than an
+    error.
+    """
+    try:
+        return _api.get_client_config(client_name).get("city") or ""
+    except Exception:  # noqa: BLE001 — the picker must render regardless
+        return ""
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_theme_map(_api: MenuApiClient, client_name: str) -> dict:
+    """The primary counter's weekday -> theme map, for the pre-generation strip.
+
+    Only needed before a plan exists; afterwards each block carries the themes
+    the solve actually used. Empty on failure, which makes every day read as
+    its global default theme rather than taking the picker down.
+    """
+    try:
+        return _api.get_client_config(client_name).get("theme_map") or {}
+    except Exception:  # noqa: BLE001 — the picker must render regardless
+        return {}
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_regions(_api: MenuApiClient, city: str) -> dict:
+    """Which regions this city can theme a day with, and on which themes.
+
+    Fetched only when the regional toggle is ON — it costs one workbook read
+    server-side, and a user who never asks for a regional day should not pay
+    for it. Cached longer than the config helpers above because an item list
+    changes when somebody re-imports a workbook, not between clicks.
+
+    Any failure reads as "no regions", which is also the honest answer for
+    every city today: the regional columns arrived with the client's corrected
+    workbooks and those are not installed.
+    """
+    try:
+        return _api.get_regions(city or None)
+    except Exception:  # noqa: BLE001 — the planner must render regardless
+        return {"available": False, "regions": [], "theme_compatibility": {}}
+
+
+def _region_options(meta: dict, theme: str) -> list:
+    """`[(value, label, disabled)]` for one day's region select.
+
+    Three groups, in this order: the regions this day CAN take, the ones whose
+    cuisine its theme excludes, and the ones this city has too few dishes for.
+    The last two are DISABLED rather than hidden, each carrying its reason, so
+    an operator can see a region was weighed and rejected instead of wondering
+    where it went.
+    """
+    compat = set((meta.get("theme_compatibility") or {}).get(theme, []))
+    ok, wrong_theme, thin = [], [], []
+    for r in meta.get("regions") or []:
+        name = r.get("name", "")
+        slots = len(r.get("deep_slots") or [])
+        if not r.get("themeable"):
+            thin.append((name, f"{name}  —  only {slots} slots here", True))
+        elif name in compat:
+            ok.append((name, f"{name}  ·  {slots} slots", False))
+        else:
+            wrong_theme.append(
+                (name, f"{name}  —  wrong cuisine for a {theme} day", True))
+    return ok + wrong_theme + thin
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -448,6 +523,15 @@ with st.sidebar:
              "the dishes of the services before it that day. Solve time "
              "scales with how many you pick.")
     plan_meals = normalize_meals(plan_meals)
+
+    # Regional days. OFF by default and the only thing that reveals the whole
+    # section — nothing about the planner changes, and no workbook is read for
+    # regions, until somebody switches it on.
+    regional_on = st.toggle(
+        "Regional days", value=False, key="planner_regional_on",
+        help="Give a day a regional focus (a Tamil Nadu Thursday) on top of "
+             "its cuisine theme. Pick before generating, or after — applying "
+             "re-solves only that day.")
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -960,9 +1044,200 @@ def _client_counter_names(api, name: str):
         return "single", ["Counter 1"], None, [], set()
 
 
+def _weekday_map_from_dates(region_days: dict) -> dict:
+    """`{iso: region}` -> `{weekday: region}` for storing as a standing pattern.
+
+    A horizon can hold the same weekday twice; the later date wins, which is
+    the more recent decision. Kept here rather than server-side because it is
+    the *planner's* reading of what "make it permanent" means — the API stores
+    whatever map it is handed.
+    """
+    out = {}
+    for iso in sorted(region_days):
+        try:
+            day = dt.date.fromisoformat(iso)
+        except (TypeError, ValueError):
+            continue
+        out[day.strftime('%A').lower()] = region_days[iso]
+    return out
+
+
+def _render_region_strip(api, city, dates, day_themes, has_plan):
+    """The per-day region pickers. Rendered only while the toggle is ON.
+
+    Returns ``(pending, dirty)`` — what is currently picked, and whether it
+    differs from what the menu on screen was actually planned with. Everything
+    else (applying, saving as a default) happens inside.
+
+    Placed on the PLANNER rather than in Edit Logic because picking a region is
+    a weekly editorial decision, not a structural fact about the site, and it
+    has to work AFTER a plan exists. Applying re-solves one day through
+    `/regenerate`, which locks every other cell — so the week's no-repeat rule,
+    the cooldown and the cross-counter sync all still hold.
+    """
+    meta = _cached_regions(api, city or "")
+    applied = st.session_state.setdefault("region_applied", {})
+    pending = st.session_state.setdefault("region_pending", {})
+
+    st.markdown('<p class="page-subtitle" style="margin-top:0.8rem;'
+                'font-size:0.95rem;font-weight:700">Regional days</p>',
+                unsafe_allow_html=True)
+
+    if not meta.get("available"):
+        st.info(
+            f"{city or 'This city'}'s item list does not carry regional data "
+            "yet, so there are no regional days to pick. Nothing else about "
+            "the plan changes.")
+        return {}, False
+
+    st.caption("A regional focus on top of the day's cuisine theme. It asks "
+               "for regional dishes across the slots that can carry them and "
+               "never narrows a slot, so a day whose region runs thin simply "
+               "carries fewer of them.")
+
+    cols = st.columns(len(dates)) if dates else []
+    for col, d in zip(cols, dates):
+        iso = d if isinstance(d, str) else d.isoformat()
+        try:
+            label = dt.date.fromisoformat(iso).strftime("%a %d %b")
+        except ValueError:
+            label = iso
+        theme = (day_themes or {}).get(iso, "")
+        options = _region_options(meta, theme)
+        with col:
+            st.markdown(
+                f'<div style="font-size:0.78rem;font-weight:700">{label}</div>'
+                f'<div style="font-size:0.68rem;color:#8a8a8a;'
+                f'text-transform:uppercase;letter-spacing:.04em">'
+                f'{theme or "—"}</div>', unsafe_allow_html=True)
+            enabled = [o for o in options if not o[2]]
+            if not enabled:
+                # A chinese / biryani / continental day narrows its main slots
+                # by FLAG, not by cuisine, so a region's dishes are gone before
+                # any floor could be read. Saying so beats an empty dropdown.
+                st.caption(f"A {theme} day takes no region.")
+                pending.pop(iso, None)
+                continue
+            values = [""] + [o[0] for o in enabled]
+            labels = {"": "— No region"}
+            labels.update({o[0]: o[1] for o in enabled})
+            current = pending.get(iso, "")
+            # Streamlit cannot disable an individual option, so the ones this
+            # day cannot take go in the HELP text WITH their reasons instead of
+            # being dropped. A region silently absent from the list reads as
+            # forgotten, and the operator has no way to tell "Rajasthan was
+            # weighed and Bangalore has three slots of it" from a broken list.
+            blocked = [o[1] for o in options if o[2]]
+            st.selectbox(
+                f"Region for {label}", values,
+                index=values.index(current) if current in values else 0,
+                format_func=lambda v: labels.get(v, v),
+                key=f"region_pick_{iso}", label_visibility="collapsed",
+                help=("Not available on this day:\n\n- "
+                      + "\n- ".join(blocked)) if blocked else None)
+            picked = st.session_state.get(f"region_pick_{iso}", "")
+            if picked:
+                pending[iso] = picked
+            else:
+                pending.pop(iso, None)
+            if blocked:
+                st.caption(f"{len(blocked)} not available today")
+
+    # Anything the last Apply could not honour, carried across the rerun that
+    # follows it. Rendered here rather than at the call site so it sits under
+    # the picker that caused it.
+    for _p in st.session_state.pop("region_problems", []) or []:
+        st.warning(_p.get("message") or str(_p))
+
+    dirty = pending != applied
+    if not has_plan:
+        if pending:
+            st.caption("Applied when you generate.")
+        return dict(pending), dirty
+
+    if dirty:
+        changed = sorted(set(pending) ^ set(applied)) + [
+            k for k in pending if k in applied and pending[k] != applied[k]]
+        st.warning(
+            f"{len(set(changed))} day(s) changed. Applying re-solves only "
+            "those days — every other day on the menu stays exactly as it is.")
+        c1, c2, _ = st.columns([1.2, 1, 4])
+        with c1:
+            if st.button("Apply to menu", type="primary", key="region_apply"):
+                st.session_state["_region_apply_now"] = True
+                st.rerun()
+        with c2:
+            if st.button("Reset", key="region_reset"):
+                for iso in list(st.session_state.keys()):
+                    if iso.startswith("region_pick_"):
+                        del st.session_state[iso]
+                st.session_state["region_pending"] = dict(applied)
+                st.rerun()
+    elif applied:
+        names = ", ".join(f"{dt.date.fromisoformat(k).strftime('%a')} · {v}"
+                          for k, v in sorted(applied.items()))
+        c1, c2 = st.columns([3, 1.4])
+        with c1:
+            st.success(f"Applied: {names}")
+        with c2:
+            if st.button("Save as weekly default", key="region_save_default",
+                         use_container_width=True):
+                try:
+                    api.update_client_config(
+                        st.session_state.client_name,
+                        {"region_map": _weekday_map_from_dates(applied)})
+                    st.toast("Saved — this pattern now seeds every plan.",
+                             icon="✅")
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Could not save: {e}")
+    return dict(pending), dirty
+
+
+def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
+    """Re-solve only *changed_dates*, under the new regional map.
+
+    `/regenerate` locks every cell the mask does not name, so this is a
+    one-day re-solve against the rest of the week rather than a fresh plan:
+    `unique_items`, the 20-day cooldown, the freshness objective and the
+    cross-counter sync all still hold. Returns the number of counters changed
+    and any problem the server reported.
+    """
+    touched, problems = 0, []
+    for b in blocks:
+        plan, plan_dates = b.get("plan") or {}, b.get("plan_dates") or []
+        mask = {d: sorted(plan.get(d, {}).keys())
+                for d in changed_dates if plan.get(d)}
+        if not mask:
+            continue
+        try:
+            result = api.regenerate(
+                client_name=st.session_state.client_name,
+                base_plan=plan, replace_slots=mask,
+                start_date=plan_dates[0], num_days=len(plan_dates),
+                time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
+                counter_index=b.get("counter_index", 0),
+                region_days=region_days)
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+            problems.append({"message": f"{b.get('name', 'counter')}: {e}"})
+            continue
+        solution = result.get("solution", {})
+        flat, day_types = flatten_api_solution(solution)
+        if flat:
+            b["plan"] = flat
+            b["plan_dates"] = sorted(flat.keys())
+            b["nonveg"] = nonveg_slots_from_solution(solution)
+            b["solution"] = solution
+            if day_types:
+                b["day_types"] = day_types
+            b["source"] = "modified"
+            touched += 1
+        problems.extend(result.get("region_problems") or [])
+    return touched, problems
+
+
 def _solve_counters(api, name, counter_names, start_iso, days, *,
                     shared_categories, shared_excluded, time_limit,
-                    meal=None, exclude_by_counter=None):
+                    meal=None, exclude_by_counter=None, region_days=None):
     """Solve every counter for ONE service. Returns (blocks, diagnostics, summary).
 
     Factored out because lunch and dinner are the same pass with a different
@@ -986,7 +1261,8 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
                 client_name=name, start_date=start_iso, num_days=days,
                 time_limit_seconds=time_limit, counter_index=i,
                 shared_items=send_shared, meal=meal,
-                exclude_items=(exclude_by_counter or {}).get(i))
+                exclude_items=(exclude_by_counter or {}).get(i),
+                region_days=region_days)
             if i == 0 and shared_categories:
                 shared_items = shared_items_from_solution(
                     result.get("solution", {}), shared_categories)
@@ -1013,6 +1289,10 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
                 diagnostics = e.diagnostics
                 summary = getattr(e, "summary", None) or None
         blk["meal"] = meal or LUNCH
+        # Which counter this block IS. The regional re-solve addresses one
+        # counter at a time and cannot infer the index from list position once
+        # several services are concatenated onto the page.
+        blk["counter_index"] = i
         blocks.append(blk)
     return blocks, diagnostics, summary
 
@@ -1192,13 +1472,22 @@ if generate_clicked:
                         shared_categories=shared_categories,
                         shared_excluded=shared_excluded,
                         time_limit=per_limit, meal=_meal,
-                        exclude_by_counter=served_so_far or None)
+                        exclude_by_counter=served_so_far or None,
+                        # Regional days picked BEFORE generating. Empty unless
+                        # the toggle is on and somebody chose one.
+                        region_days=(st.session_state.get("region_pending")
+                                     if regional_on else None) or None)
                     by_meal[_meal] = blocks
                     if _i == 0:
                         diags, summary = d, s
                     served_so_far = _merge_exclusions(
                         served_so_far, _exclusions_from(blocks))
 
+            # What the menu on screen was actually planned with, so the
+            # strip can tell "picked" from "applied".
+            st.session_state.region_applied = dict(
+                st.session_state.get("region_pending") or {}
+            ) if regional_on else {}
             first_meal = plan_meals[0] if plan_meals else LUNCH
             st.session_state.meal_blocks = by_meal
             st.session_state.active_meal = first_meal
@@ -1248,6 +1537,67 @@ _render_diagnostics_expander(
     st.session_state.get("rule_diagnostics") or [],
     st.session_state.get("diagnostics_summary"),
 )
+
+# --- Regional days -------------------------------------------------------
+# Hidden entirely unless the sidebar toggle is on: no control, no region
+# fetch, no workbook read. Rendered in one place whether or not a plan exists,
+# so the picker does not move between "before you generate" and "after".
+if regional_on and clients_list and selected_client != _empty_msg:
+    # Picks belong to a client, not to the session. Switching client must not
+    # carry a Tamil Nadu Thursday over to a Pune site, where the region does
+    # not exist — the server would refuse it, but only after the operator had
+    # seen it sitting in the picker as though it applied.
+    if st.session_state.get("_region_for") != selected_client:
+        st.session_state["_region_for"] = selected_client
+        for _k in [k for k in st.session_state if k.startswith("region_pick_")]:
+            del st.session_state[_k]
+        st.session_state["region_pending"] = {}
+        st.session_state["region_applied"] = {}
+
+    _region_dates = sorted({d for b in _blocks for d in b.get("plan_dates", [])})
+    _region_themes = {}
+    for _b in _blocks:
+        _region_themes.update(_b.get("day_types") or {})
+    if not _region_dates:
+        # No plan yet — pick against the horizon the sidebar is set to. The
+        # themes come from the client's own map, resolved the way the solver
+        # resolves them, so an alternating `chinese_continental` weekday shows
+        # the theme this plan would actually get rather than the meta-theme.
+        _region_dates = [
+            d.isoformat() for d in _weekdays_from(
+                start_date, num_days, _serves_weekends)
+        ]
+        _tmap = _cached_theme_map(client, selected_client)
+        _region_themes = {
+            iso: weekday_type_for_config(dt.date.fromisoformat(iso), _tmap)
+            for iso in _region_dates
+        }
+    # The city of the client SELECTED now, not of the last one generated —
+    # those differ the moment somebody switches client without pressing
+    # Generate, and the regions would then be the previous city's.
+    _region_city = (st.session_state.get("client_city")
+                    if st.session_state.get("client_name") == selected_client
+                    else None) or _cached_client_city(client, selected_client)
+    _region_pending, _region_dirty = _render_region_strip(
+        client, _region_city, _region_dates, _region_themes,
+        has_plan=bool(_region_dates and _blocks))
+
+    if st.session_state.pop("_region_apply_now", False):
+        _prev = st.session_state.get("region_applied") or {}
+        _changed = sorted(
+            {k for k in set(_prev) | set(_region_pending)
+             if _prev.get(k) != _region_pending.get(k)})
+        with st.spinner("Re-solving those days..."):
+            _n, _probs = _apply_region_days_to_blocks(
+                client, _blocks, _region_pending, _changed)
+        st.session_state.region_applied = dict(_region_pending)
+        if _n:
+            st.session_state.plan_source = "modified"
+        # Always rerun, stashing any problem for the strip to render on the way
+        # back. Skipping the rerun to keep a warning on screen left the picker
+        # showing "N days changed" over a menu that had already been re-solved.
+        st.session_state["region_problems"] = _probs
+        st.rerun()
 
 # A failure short-circuits only when there is NOTHING to show. It used to test
 # `_blocks[0]`, which is lunch's first block — so with two services a failed

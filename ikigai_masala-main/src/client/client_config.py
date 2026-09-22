@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
+    canonical_weekday,
     CONST_SLOTS,
     DEFAULT_OFF_SLOTS,
     DEFAULT_WEEKDAY_THEMES,
@@ -600,6 +601,56 @@ class ClientConfigLoader:
         return self._normalize_shared_categories_value(
             row.data.get('shared_categories'))
 
+    def get_client_region_map(self, name: str):
+        """Return this client's standing weekday -> region pattern.
+
+          * ``dict`` — e.g. ``{"thursday": "Tamil Nadu"}``.
+          * ``{}``   — column exists, no pattern set. The common case: a region
+            is usually picked for one week on the planner and never stored.
+          * ``None`` — the ``clients.region_map`` column is missing
+            (pre-migration), so the planner simply offers no standing pattern.
+
+        Shape only. Whether the named region EXISTS in the client's city is
+        checked where the city is known — at the API write, and again when the
+        map is resolved for a horizon. A region that has since left a workbook
+        is dropped there rather than here.
+        """
+        try:
+            row = (
+                self._sb.table('clients')
+                .select('region_map')
+                .eq('name', name)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return None
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return self._normalize_region_map_value(row.data.get('region_map'))
+
+    def set_client_region_map(self, name: str, region_map) -> None:
+        """Persist the weekday -> region pattern (shape-normalised)."""
+        self._require_client_exists(name)
+        norm = self._normalize_region_map_value(region_map)
+        try:
+            self._sb.table('clients').update({
+                'region_map': norm,
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                logger.error(
+                    "clients.region_map column missing for %r — %s",
+                    name, _MIGRATION_HINT_COUNTERS,
+                )
+                raise ValueError(
+                    "Cannot save regional days: the clients.region_map column "
+                    "is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     def get_client_serve_weekends(self, name: str) -> bool:
         """Return whether the client is served on weekends (Sat/Sun).
 
@@ -899,6 +950,7 @@ class ClientConfigLoader:
         source_pools=None,
         is_launch_site: bool = False,
         shared_categories=None,
+        region_map=None,
     ) -> None:
         """Create a new client. Config is stored entirely in ``counters``.
 
@@ -946,6 +998,8 @@ class ClientConfigLoader:
         if shared_categories is not None:
             row['shared_categories'] = self._normalize_shared_categories_value(
                 shared_categories)
+        if region_map is not None:
+            row['region_map'] = self._normalize_region_map_value(region_map)
         try:
             self._sb.table('clients').insert(row).execute()
         except Exception as exc:
@@ -960,7 +1014,7 @@ class ClientConfigLoader:
                 for optional in ('city', 'serve_weekends', 'meals',
                                  'item_cooldown_days',
                                  'working_days', 'source_pools', 'is_launch_site',
-                                 'shared_categories'):
+                                 'shared_categories', 'region_map'):
                     row.pop(optional, None)
                 self._sb.table('clients').insert(row).execute()
             else:
@@ -1190,12 +1244,32 @@ class ClientConfigLoader:
                 out.append(s)
         return out
 
+    @staticmethod
+    def _normalize_region_map_value(raw) -> Dict[str, str]:
+        """``{weekday: region}`` with recognised weekday keys, shape only.
+
+        A weekday may be written long or short (``thursday`` / ``thu``), the
+        same tolerance `selector_frequency` allows, and is stored long. The
+        region NAME is passed through untouched: validating it needs the city's
+        item list, which this layer does not read (and must not — `src/client`
+        talks to Supabase, not to workbooks).
+        """
+        if not isinstance(raw, dict):
+            return {}
+        out: Dict[str, str] = {}
+        for k, v in raw.items():
+            full = canonical_weekday(k)
+            value = str(v).strip() if v is not None else ''
+            if full and value:
+                out[full] = value
+        return out
+
     # Config columns that live directly on the ``clients`` row. Read together so
     # one request costs one round trip instead of one per field.
     _CONFIG_COLUMNS = (
         'counters', 'city', 'serve_weekends', 'meals', 'working_days',
         'item_cooldown_days', 'source_pools', 'is_launch_site',
-        'shared_categories', 'version',
+        'shared_categories', 'region_map', 'version',
     )
 
     def get_client_row(self, name: str) -> Dict[str, Any]:
@@ -1234,6 +1308,7 @@ class ClientConfigLoader:
                     'source_pools': self.get_client_source_pools(name),
                     'is_launch_site': self.get_client_is_launch_site(name),
                     'shared_categories': self.get_client_shared_categories(name),
+                    'region_map': self.get_client_region_map(name),
                     'version': self.get_client_version(name),
                 }
             raise
@@ -1254,6 +1329,8 @@ class ClientConfigLoader:
             'is_launch_site': bool(data.get('is_launch_site')),
             'shared_categories': self._normalize_shared_categories_value(
                 data.get('shared_categories')),
+            'region_map': self._normalize_region_map_value(
+                data.get('region_map')),
             'version': int(data.get('version') or 1),
         }
 
@@ -1378,6 +1455,7 @@ class ClientConfigLoader:
             ('source_pools', self.set_client_source_pools),
             ('is_launch_site', self.set_client_is_launch_site),
             ('shared_categories', self.set_client_shared_categories),
+            ('region_map', self.set_client_region_map),
         ):
             if column in fields:
                 try:

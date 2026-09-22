@@ -8,7 +8,7 @@ import datetime as dt
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
-from src.constants import DEFAULT_WEEKDAY_THEMES
+from src.constants import DEFAULT_WEEKDAY_THEMES, WEEKDAY_NAMES
 from ..preprocessor.pool_builder import _base_slot
 
 
@@ -34,12 +34,6 @@ def cell_is_skipped(
     return (d, _base_slot(slot_id)) in skip_cells
 
 
-_WEEKDAY_NAMES = (
-    'monday', 'tuesday', 'wednesday', 'thursday',
-    'friday', 'saturday', 'sunday',
-)
-
-
 def weekday_name(d: dt.date) -> str:
     """Return the lowercase English weekday name for *d*.
 
@@ -49,7 +43,7 @@ def weekday_name(d: dt.date) -> str:
     per-weekday constants) silently stops matching and the menu quietly
     loses its themes.
     """
-    return _WEEKDAY_NAMES[d.weekday()]
+    return WEEKDAY_NAMES[d.weekday()]
 
 
 def planned_dates(cfg) -> List[dt.date]:

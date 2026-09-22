@@ -34,12 +34,10 @@ def _filter_dates_by_working_days(dates, working_days):
     """Keep only dates whose weekday is in *working_days* (None = unchanged)."""
     if not working_days:
         return list(dates)
-    from src.solver.menu_solver import _WEEKDAY_ALIASES
+    from src.constants import canonical_weekday
     from src.solver._helpers import weekday_name
-    allowed = {
-        _WEEKDAY_ALIASES.get(str(d).strip().lower(), str(d).strip().lower())
-        for d in working_days
-    }
+    allowed = {canonical_weekday(d) or str(d).strip().lower()
+               for d in working_days}
     return [d for d in dates if weekday_name(d) in allowed]
 
 

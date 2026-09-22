@@ -58,7 +58,7 @@ NONVEG_PROTEINS = frozenset({
 })
 
 # `key_ingredient` values that name no ingredient. `mixed_vegetables` is 375
-# Bangalore rows — CLAUDE.md records it as the de-facto default for a mixed
+# Bangalore rows — docs/repo_map.md records it as the de-facto default for a mixed
 # salad — so two dishes "sharing" it is a gap in the data, not an echo on the
 # plate. Reported as unknown rather than counted either way: calling it a pass
 # would be as wrong as calling it a repeat.

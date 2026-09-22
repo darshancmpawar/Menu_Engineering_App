@@ -10,7 +10,7 @@
           "nonveg_biryani_once_per_week"
         ],
         "constant_items": {
-          "_comment": "Wednesday only, ONE non-veg main, alternating weekly: Hyd Mutton Biryani one week and Fish Tikka Masala the next, in the same slot (nonveg_main__1). Neither is in the Bangalore ontology (chicken + egg only), so it stamps verbatim. The list value = alternate across ISO weeks (even week -> first, odd -> second); see _resolve_client_constant / CLAUDE.md note 9. The other two non-veg mains and every non-Wednesday day are solved normally.",
+          "_comment": "Wednesday only, ONE non-veg main, alternating weekly: Hyd Mutton Biryani one week and Fish Tikka Masala the next, in the same slot (nonveg_main__1). Neither is in the Bangalore ontology (chicken + egg only), so it stamps verbatim. The list value = alternate across ISO weeks (even week -> first, odd -> second); see _resolve_client_constant / docs/repo_map.md note 9. The other two non-veg mains and every non-Wednesday day are solved normally.",
           "nonveg_main__1": {
             "wed": [
               "Hyd Mutton Biryani",

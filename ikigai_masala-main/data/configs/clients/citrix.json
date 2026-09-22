@@ -16,7 +16,7 @@
     ],
     "rules": [
       {
-        "_comment": "'Welcome drink will be buttermilk only.' A one-slot composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20). Bangalore carries 10 buttermilks, which is fewer than the ~20 distinct dishes a daily slot needs inside the 20-day cooldown window — hence the staple declaration below, without which the slot has nothing legal from week three.",
+        "_comment": "'Welcome drink will be buttermilk only.' A one-slot composition component IS 'this slot must be a matching dish' (docs/repo_map.md note 20). Bangalore carries 10 buttermilks, which is fewer than the ~20 distinct dishes a daily slot needs inside the 20-day cooldown window — hence the staple declaration below, without which the slot has nothing legal from week three.",
         "name": "citrix_welcome_drink_is_buttermilk",
         "type": "slot_composition",
         "base_slot": "welcome_drink",
@@ -32,7 +32,7 @@
         ]
       },
       {
-        "_comment": "10 distinct buttermilks cannot fill a daily slot across a 20-day no-repeat window, so the history ban has to stand down — but `scope: cooldown` keeps `unique_items`, so the week still serves five different buttermilks and a repeat only comes once every distinct one has been used (CLAUDE.md note 11's treatment, per client). Under the default `both` scope the solver was free to pour the same tempered buttermilk on Monday and Thursday while eight others went unused.",
+        "_comment": "10 distinct buttermilks cannot fill a daily slot across a 20-day no-repeat window, so the history ban has to stand down — but `scope: cooldown` keeps `unique_items`, so the week still serves five different buttermilks and a repeat only comes once every distinct one has been used (docs/repo_map.md note 11's treatment, per client). Under the default `both` scope the solver was free to pour the same tempered buttermilk on Monday and Thursday while eight others went unused.",
         "name": "citrix_buttermilk_may_recur_across_weeks",
         "type": "repeatable_items",
         "base_slot": "welcome_drink",
@@ -135,7 +135,7 @@
         ]
       },
       {
-        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (CLAUDE.md note 9e, the `allowed_day_types` case). Weekly, not per-horizon: the rule's own sentence says 'the week's one chicken biryani', and Friday is forced by the composition, so a 14-day plan forces two and a horizon-wide `max: 1` made the pair unsatisfiable.",
+        "_comment": "Friday is this counter's biryani day and the client asked for the biryani there. A `mix` day is not narrowed by the theme filter at all, so without this the solver could spend the week's one chicken biryani on a Monday or Wednesday and leave Friday's mandate unsatisfiable (docs/repo_map.md note 9e, the `allowed_day_types` case). Weekly, not per-horizon: the rule's own sentence says 'the week's one chicken biryani', and Friday is forced by the composition, so a 14-day plan forces two and a horizon-wide `max: 1` made the pair unsatisfiable.",
         "name": "citrix_biryani_only_on_biryani_day",
         "type": "selector_frequency",
         "base_slot": "nonveg_main",

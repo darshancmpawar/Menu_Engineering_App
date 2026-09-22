@@ -1,6 +1,6 @@
 {
   "Clario": {
-    "_comment": "Bangalore site. NOT configured as rules because they are DB values, not logic: 'working Mon-Thu only' is clients.working_days, and 'biryani on Monday AND Wednesday' is the counter's theme_map (today Mon=mix, Wed=biryani). 'When non-veg is on it is usually just chapati' is left out until 'usually' is pinned down — a hard rule would forbid the flavoured bread the sample also shows. 'Chinese items restricted to the veg dry and flavoured rice' is the theme filter standing down on the other cuisine-main slots, NOT a frequency cap: the filter narrows veg_gravy/starter/nonveg_main TO chinese on that day, so a `max: 0` on chinese is forced past and the counter goes INFEASIBLE (CLAUDE.md note 9e).",
+    "_comment": "Bangalore site. NOT configured as rules because they are DB values, not logic: 'working Mon-Thu only' is clients.working_days, and 'biryani on Monday AND Wednesday' is the counter's theme_map (today Mon=mix, Wed=biryani). 'When non-veg is on it is usually just chapati' is left out until 'usually' is pinned down — a hard rule would forbid the flavoured bread the sample also shows. 'Chinese items restricted to the veg dry and flavoured rice' is the theme filter standing down on the other cuisine-main slots, NOT a frequency cap: the filter narrows veg_gravy/starter/nonveg_main TO chinese on that day, so a `max: 0` on chinese is forced past and the counter goes INFEASIBLE (docs/repo_map.md note 9e).",
     "disable": [],
     "use": [
       {

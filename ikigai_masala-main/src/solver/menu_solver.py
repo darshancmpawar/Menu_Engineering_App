@@ -27,6 +27,7 @@ from ._helpers import (
 )
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
+    canonical_weekday,
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
     COMBO_CATEGORIES, combo_minority_count, REPEATABLE_SLOTS,
@@ -57,16 +58,7 @@ DEFAULT_CAP = 900  # fallback for slots not in DEFAULT_CAP_BY_SLOT
 # UniqueItemsMenuRule.starved_slots).
 UNIQUENESS_TIGHT_HEADROOM = 3
 
-# Weekday token → full lowercase name (for client constant_items maps).
-_WEEKDAY_ALIASES: Dict[str, str] = {
-    'mon': 'monday', 'monday': 'monday',
-    'tue': 'tuesday', 'tuesday': 'tuesday',
-    'wed': 'wednesday', 'wednesday': 'wednesday',
-    'thu': 'thursday', 'thursday': 'thursday',
-    'fri': 'friday', 'friday': 'friday',
-    'sat': 'saturday', 'saturday': 'saturday',
-    'sun': 'sunday', 'sunday': 'sunday',
-}
+
 
 
 def _resolve_client_constant(
@@ -97,11 +89,11 @@ def _resolve_client_constant(
     if isinstance(spec, list):
         return _pick(spec)
     if isinstance(spec, dict):
-        target = _WEEKDAY_ALIASES.get(weekday.lower(), weekday.lower())
+        target = canonical_weekday(weekday) or weekday.lower()
         for key, value in spec.items():
             if not isinstance(key, str):
                 continue
-            if _WEEKDAY_ALIASES.get(key.strip().lower()) == target and value is not None:
+            if canonical_weekday(key) == target and value is not None:
                 return _pick(value)
         return None
     return str(spec)

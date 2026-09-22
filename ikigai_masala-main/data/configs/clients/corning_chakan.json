@@ -123,7 +123,7 @@
         ]
       },
       {
-        "_comment": "'Starter should be chat item.' A one-slot composition component IS 'this slot must be a matching dish' (CLAUDE.md note 20). Pune's starter pool holds four chaats (dhokla, kachori, papadi, samosa) against roughly four Thursdays inside the 20-day cooldown — it fits, with nothing spare, so a fifth chaat in the Pune list would give this rule some slack.",
+        "_comment": "'Starter should be chat item.' A one-slot composition component IS 'this slot must be a matching dish' (docs/repo_map.md note 20). Pune's starter pool holds four chaats (dhokla, kachori, papadi, samosa) against roughly four Thursdays inside the 20-day cooldown — it fits, with nothing spare, so a fifth chaat in the Pune list would give this rule some slack.",
         "name": "corning_chakan_starter_is_a_chaat",
         "type": "slot_composition",
         "base_slot": "starter",

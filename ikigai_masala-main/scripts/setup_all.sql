@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS clients (
     working_days       JSONB,
     is_launch_site     BOOLEAN NOT NULL DEFAULT false,
     shared_categories  JSONB,
+    region_map         JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -92,6 +93,13 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL
 -- Cross-counter common categories (editor toggle+multiselect). NULL = none;
 -- the planner falls back to the file-based value in client_rules.json (DXC).
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS shared_categories  JSONB;
+-- Standing weekday -> regional theme pattern, e.g. {"thursday": "Tamil Nadu"}.
+-- NULL and {} both read as "no regional days", so every existing row plans
+-- exactly as it did. A region is picked per week on the planner; this column
+-- only holds the pattern somebody chose to keep. Regions come from the item
+-- list's `state_origin` column, so a city whose workbook lacks it simply has
+-- none to offer and the planner hides the control.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS region_map         JSONB;
 -- Which services a client runs, as an ordered list: breakfast / lunch /
 -- snacks / dinner. Replaces the older `serve_dinner` boolean, which could only
 -- say "lunch, and maybe dinner". DEFAULT is lunch + dinner, so every existing
@@ -175,7 +183,7 @@ UPDATE clients SET source_pools = '["infineon"]'::jsonb
 -- A multi-counter client can declare that some base slots serve the SAME dish
 -- across all of its counters each day (the "common category" sync). The planner
 -- solves the primary counter first and pins its dish for each shared slot into
--- every other counter (see note 22 in CLAUDE.md). shared_categories NULL means
+-- every other counter (see note 22 in docs/repo_map.md). shared_categories NULL means
 -- "none"; the planner then falls back to the file value in client_rules.json.
 --
 -- Seed the known multi-counter client(s) here so the feature is live straight

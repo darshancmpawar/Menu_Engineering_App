@@ -170,7 +170,7 @@ Bangalore site, one counter, one dish per slot (themes Mon-Thu = mix, Fri = biry
 
 ## Clario
 
-Bangalore site. NOT configured as rules because they are DB values, not logic: 'working Mon-Thu only' is clients.working_days, and 'biryani on Monday AND Wednesday' is the counter's theme_map (today Mon=mix, Wed=biryani). 'When non-veg is on it is usually just chapati' is left out until 'usually' is pinned down — a hard rule would forbid the flavoured bread the sample also shows. 'Chinese items restricted to the veg dry and flavoured rice' is the theme filter standing down on the other cuisine-main slots, NOT a frequency cap: the filter narrows veg_gravy/starter/nonveg_main TO chinese on that day, so a `max: 0` on chinese is forced past and the counter goes INFEASIBLE (CLAUDE.md note 9e).
+Bangalore site. NOT configured as rules because they are DB values, not logic: 'working Mon-Thu only' is clients.working_days, and 'biryani on Monday AND Wednesday' is the counter's theme_map (today Mon=mix, Wed=biryani). 'When non-veg is on it is usually just chapati' is left out until 'usually' is pinned down — a hard rule would forbid the flavoured bread the sample also shows. 'Chinese items restricted to the veg dry and flavoured rice' is the theme filter standing down on the other cuisine-main slots, NOT a frequency cap: the filter narrows veg_gravy/starter/nonveg_main TO chinese on that day, so a `max: 0` on chinese is forced past and the counter goes INFEASIBLE (docs/repo_map.md note 9e).
 
 | Rule | What it does | Client's words |
 |---|---|---|
@@ -434,7 +434,7 @@ NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet
 |---|---|---|
 | `siemens_nonveg_pair_by_weekday` | nonveg_main must include (when the counter serves ≥2 of it): 2× primary_protein chicken; on tue: primary_protein chicken + is_egg_dish | Two non-veg in the gravy part |
 | `siemens_paneer_1x` | primary_protein paneer @ veg_gravy: exactly 1 day(s) | One paneer a week (in the veg gravy). |
-| `siemens_soya_1x` | primary_protein soya or primary_protein soy @ veg_gravy: exactly 1 day(s) | One soya a week (soya chaap; primary_protein soya/soy in the veg gravy). |
+| `siemens_soya_1x` | primary_protein soy @ veg_gravy: exactly 1 day(s) | One soya a week (soya chaap, in the veg gravy) |
 | `siemens_kofta_max_1` | is_veg_kofta_gravy @ veg_gravy: ≤ 1 day(s) | Kofta at most once a WEEK within a plan (within-plan half of once-per-2-weeks). |
 | `siemens_kofta_14d_window` | is_veg_kofta_gravy @ veg_gravy: once per 14 days, read from saved history | Kofta once every 2 WEEKS (14 days) across plans, from saved history: a kofta served in the last 14 days is held off until the window clears |
 

@@ -201,6 +201,7 @@ class MenuApiClient:
         shared_items: Optional[List[Any]] = None,
         meal: Optional[str] = None,
         exclude_items: Optional[Dict[str, List[str]]] = None,
+        region_days: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -224,6 +225,12 @@ class MenuApiClient:
         # `unique_items` cannot see across them.
         if exclude_items:
             payload["exclude_items"] = exclude_items
+        # `{iso_date: region}` — a regional focus for named days. The floor it
+        # becomes never removes a cell, so an unservable pick degrades to fewer
+        # regional dishes rather than a thinner menu; anything the server could
+        # not honour comes back in `region_problems`.
+        if region_days:
+            payload["region_days"] = region_days
 
         def _do():
             return self.session.post(
@@ -245,6 +252,7 @@ class MenuApiClient:
         time_limit_seconds: int = 240,
         counter_index: int = 0,
         exclude_items: Optional[Dict[str, Dict[str, List[str]]]] = None,
+        region_days: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -260,6 +268,10 @@ class MenuApiClient:
         # don't cycle A->B->A. {iso_date: {slot_id: [item, …]}}.
         if exclude_items:
             payload["exclude_items"] = exclude_items
+        # Applying a regional day re-solves ONE day: the mask names that day's
+        # cells and this names the region they are re-solved under.
+        if region_days:
+            payload["region_days"] = region_days
 
         def _do():
             return self.session.post(
@@ -392,6 +404,25 @@ class MenuApiClient:
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Failed to load saved plan")
+
+    def get_regions(self, city=None) -> Dict[str, Any]:
+        """Regions *city*'s item list can theme a day with.
+
+        Its own call, made only when somebody switches the regional toggle on:
+        it costs one workbook read (cached thereafter), and a user who never
+        asks for a regional day should not pay for it. `available` is False for
+        every city today — the regional columns arrived with the client's
+        corrected workbooks, which are not installed — and the planner hides
+        the whole control on that.
+        """
+        params = {'city': city} if city else None
+
+        def _do():
+            return self.session.get(
+                f"{self.base_url}/api/v1/regions", timeout=30, params=params,
+            )
+        resp = _with_one_retry(_do, retryable=True)
+        return _parse_response(resp, "Failed to load regions")
 
     # ----- Customisation editor endpoints -----
 

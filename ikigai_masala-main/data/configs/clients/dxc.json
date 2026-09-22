@@ -48,7 +48,7 @@
         "max": 0
       },
       {
-        "_comment": "Indian bread is plain chapati every day. A slot_composition component (not fixed_daily_item, which only makes the dish CONSISTENT and lets the solver serve a non-matching bread — see CLAUDE.md note 20) mandates a plain_chapatti/phulka item (plain_chapatti or plain_phulka) in the single bread cell each day.",
+        "_comment": "Indian bread is plain chapati every day. A slot_composition component (not fixed_daily_item, which only makes the dish CONSISTENT and lets the solver serve a non-matching bread — see docs/repo_map.md note 20) mandates a plain_chapatti/phulka item (plain_chapatti or plain_phulka) in the single bread cell each day.",
         "name": "dxc_plain_chapati_daily",
         "type": "slot_composition",
         "base_slot": "bread",

@@ -120,7 +120,7 @@ and mix days down other branches that never touch bread), so on those days every
 south bread stays a candidate. Junglee's week 1 duly came back with `pesarattu`
 on the biryani Wednesday *and* `malabar_paratha` on the south Thursday. The
 within-plan half is `ncr_south_bread_weekly_max`, a `selector_frequency`
-`max: 1` over the same selector — the pairing CLAUDE.md note 23 describes. With
+`max: 1` over the same selector — the pairing docs/repo_map.md note 23 describes. With
 it the one allowed day goes to the south day, which the lock forces anyway, and
 the biryani day is back to a roti.
 
@@ -211,7 +211,7 @@ declaration so `unique_items` allows the daily repeat.
 
 The **15-day / fortnightly cadences** (Stryker fish/biryani/sambar, Siemens
 kofta) exceed a weekly horizon, so they are enforced across plans by the
-`selector_history_window` rule type (CLAUDE.md note 23): it reads saved
+`selector_history_window` rule type (docs/repo_map.md note 23): it reads saved
 `menu_history` and bans the whole family on dates within the window of a prior
 occurrence, paired with a within-plan `max` cap. So "fish once per 15 days" is
 now automatic — a fish served last week holds the family off until the 15 days
@@ -220,7 +220,7 @@ serves sambar (switch `dal` → `dal_sambar`); Stryker's biryani window enforces
 the *cap* half only. **"Biryani not the same week as fish"** is now enforced
 directly by `same_day_exclusion` with `"scope": "week"`
 (`strykerncr_fish_biryani_not_same_week`) — a within-plan constraint over the
-whole horizon rather than a history read (CLAUDE.md §4.2 + note 23). Only the
+whole horizon rather than a history read (docs/repo_map.md §4.2 + note 23). Only the
 positive "serve a biryani day once/15 days" (the min direction across plans)
 stays deferred. The remaining **deferred** rows are the ones the next round of
 client input / a sample menu should pin down.

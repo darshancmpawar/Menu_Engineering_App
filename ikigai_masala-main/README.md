@@ -46,7 +46,7 @@ streamlit run app.py
   logs + metrics, troubleshooting table, project layout.
 
 For a file-level symbol map optimised for Claude Code sessions, see
-[`../CLAUDE.md`](../CLAUDE.md).
+[`../docs/repo_map.md`](../docs/repo_map.md).
 
 ---
 

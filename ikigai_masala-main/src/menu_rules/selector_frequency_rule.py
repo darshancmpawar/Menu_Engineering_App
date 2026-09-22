@@ -88,6 +88,7 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
+from ..constants import WEEKDAY_INDEX
 from ..preprocessor.column_mapper import _norm_cell, _norm_str
 from .relaxations import RELAXATION
 
@@ -95,21 +96,48 @@ logger = logging.getLogger(__name__)
 
 _SELECTOR_KEYS = frozenset({
     'flag', 'sub_category', 'item', 'key_ingredient', 'primary_protein',
-    'course_type', 'cuisine_family',
+    'course_type', 'cuisine_family', 'state_origin', 'admin_type',
 })
 _TEXT_COLS = {
     'sub_category': 'sub_category', 'item': 'item',
     'key_ingredient': 'key_ingredient', 'primary_protein': 'primary_protein',
     'course_type': 'course_type', 'cuisine_family': 'cuisine_family',
+    # Regional columns. `cuisine_family` files Maharashtra, Punjab and Bengal
+    # all as `north_indian`, so it structurally cannot express "a Punjabi
+    # Friday"; `state_origin` can. `admin_type` is how a rule says "any single
+    # state" without naming one — the column is `state` / `union_territory` /
+    # `non_state` / `foreign`, and only the first two carry a real region (the
+    # rest are pan-level buckets that restate the cuisine family).
+    'state_origin': 'state_origin', 'admin_type': 'admin_type',
 }
-#: Both spellings, matching `slot_day_restriction_rule`'s own table — a config
-#: writing "sat" for one rule and "saturday" for the other should not surprise
-#: anyone.
-_WEEKDAY_TOKENS = {
-    'mon': 0, 'monday': 0, 'tue': 1, 'tuesday': 1, 'wed': 2, 'wednesday': 2,
-    'thu': 3, 'thursday': 3, 'fri': 4, 'friday': 4, 'sat': 5, 'saturday': 5,
-    'sun': 6, 'sunday': 6,
-}
+#: Both spellings, and the SAME table `slot_day_restriction_rule` reads — a
+#: config writing "sat" for one rule and "saturday" for the other should not
+#: surprise anyone, and two hand-typed copies could drift into exactly that.
+_WEEKDAY_TOKENS = WEEKDAY_INDEX
+
+
+def _iso_day(d) -> str:
+    """A date, or something spelling one, as ``YYYY-MM-DD``.
+
+    Both shapes reach a rule: the config carries strings and ``context['dates']``
+    carries ``datetime.date``. Comparing the two as strings keeps one code path
+    and means a config may write either. Anything unparseable yields ``''`` and
+    is dropped rather than matching everything, which is the safe direction for
+    a scope key — a typo makes the rule inert on every day, not active on all of
+    them.
+    """
+    if d is None:
+        return ''
+    iso = getattr(d, 'isoformat', None)
+    if callable(iso):
+        try:
+            return str(iso())[:10]
+        except (TypeError, ValueError):            # pragma: no cover
+            return ''
+    text = str(d).strip()[:10]
+    if len(text) != 10 or text[4] != '-' or text[7] != '-':
+        return ''
+    return text if text.replace('-', '').isdigit() else ''
 
 
 class SelectorFrequencyRule(BaseMenuRule):
@@ -170,6 +198,23 @@ class SelectorFrequencyRule(BaseMenuRule):
                 if str(t).strip().lower() in _WEEKDAY_TOKENS
             }
             self.forbidden_weekdays = days or None
+        # Scope the WHOLE rule to named ISO dates: on any other day it adds
+        # nothing at all, and that day does not count toward `max`, `min` or the
+        # weekly buckets either. This is NOT `allowed_day_types` with dates —
+        # that one BANS the selector on days it does not list, which is the
+        # opposite behaviour and would be wrong here. A regional day is an
+        # instruction about one date ("serve three Tamil dishes on Thursday"),
+        # and it must say nothing whatever about Monday.
+        #
+        # Dates rather than weekdays because a horizon can span two ISO weeks
+        # and start mid-week, so "Thursday" is ambiguous inside one plan. The
+        # caller resolves its weekday map to concrete dates once, where it can
+        # see the horizon; see `src/application/regions.py`.
+        self.only_on_dates: Optional[Set[str]] = None
+        ood = rule_config.get('only_on_dates')
+        if ood:
+            iso = {_iso_day(d) for d in ood}
+            self.only_on_dates = {d for d in iso if d} or None
 
     @staticmethod
     def _int_or_none(cfg, key):
@@ -307,6 +352,13 @@ class SelectorFrequencyRule(BaseMenuRule):
 
         day_has: List = []  # (day_index, bool_var) for days that CAN match
         for di in range(len(dates)):
+            # Out-of-scope day: the rule is inert here, and deliberately does
+            # not reach `day_has` either, so this day cannot count toward `max`
+            # or a weekly bucket. A regional Thursday must say nothing at all
+            # about Monday.
+            if (self.only_on_dates is not None
+                    and _iso_day(dates[di]) not in self.only_on_dates):
+                continue
             day_cells = [
                 c for c in cells
                 if c.d_idx == di and (self.base_slots is None

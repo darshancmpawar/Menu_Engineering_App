@@ -152,7 +152,7 @@ DEFINITIONS: List[Tuple[str, str, Set[str], Set[str], Set[str]]] = [
 #: **`key_ingredient` is deliberately NOT read**, though it is the column the
 #: existing flag was derived from. In this ontology `key_ingredient = paneer` is
 #: the de-facto default for a CHINESE dish, exactly as `baby_corn` is for a mixed
-#: salad (CLAUDE.md §4.2, `name_contains`). Every Bangalore `veg_gravy` row it
+#: salad (docs/repo_map.md §4.2, `name_contains`). Every Bangalore `veg_gravy` row it
 #: claims beyond protein-or-name is Chinese and none is paneer —
 #: `thai_green_curry`, `thai_veg_curry`, `veg_in_hot_garlic_sauce`,
 #: `veg_in_mongolian_sauce`, `vegetable_hoisin_sauce` — and in `veg_dry` it adds

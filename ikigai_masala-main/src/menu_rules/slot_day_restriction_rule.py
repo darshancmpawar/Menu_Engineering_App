@@ -22,15 +22,7 @@ from ortools.sat.python import cp_model
 from .base_menu_rule import BaseMenuRule, MenuRuleType
 
 
-_WEEKDAY_TOKENS: Dict[str, int] = {
-    'mon': 0, 'monday': 0,
-    'tue': 1, 'tuesday': 1,
-    'wed': 2, 'wednesday': 2,
-    'thu': 3, 'thursday': 3,
-    'fri': 4, 'friday': 4,
-    'sat': 5, 'saturday': 5,
-    'sun': 6, 'sunday': 6,
-}
+from ..constants import WEEKDAY_INDEX as _WEEKDAY_TOKENS
 
 
 class SlotDayRestrictionRule(BaseMenuRule):

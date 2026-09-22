@@ -456,12 +456,6 @@ def norm(v) -> str:
     return re.sub(r"\s+", " ", str(v).replace("\n", " ")).strip()
 
 
-#: A printed cell often holds two dishes — "Puri + Chapti", "Idli + Chutney",
-#: "Veg Cutlet /Green Chutney". Imported whole it becomes one dish named after
-#: both, which no rule can reason about and no kitchen has an entry for.
-_COMBO_SPLIT = re.compile(r"\s*(?:\+|&|,| and )\s*", re.I)
-
-
 #: Column headers that mark a NON-dish column in a printed grid: portion sizes
 #: and nutrition blocks sit between the day columns in several client menus.
 #: Their numbers filter out as numeric, but `allergen` holds words ("gluten",
