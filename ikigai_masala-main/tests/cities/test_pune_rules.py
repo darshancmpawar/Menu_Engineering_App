@@ -304,27 +304,23 @@ class TestColorVarietyRule:
         assert cfg.max_colors_at_reach == default.max_colors_at_reach
 
     def test_unknown_field_is_dropped_not_applied(self, caplog):
-        import api.app as api_app
-
         class Rogue:
             name = 'rogue'
 
             def solver_overrides(self):
                 return {'time_limit_sec': 9999, 'max_same_color_per_day': 2}
 
-        out = api_app._rule_solver_overrides([Rogue()])
+        out = solve_inputs._rule_solver_overrides([Rogue()])
         assert out == {'max_same_color_per_day': 2}
 
     def test_a_raising_rule_does_not_break_planning(self):
-        import api.app as api_app
-
         class Broken:
             name = 'broken'
 
             def solver_overrides(self):
                 raise RuntimeError('boom')
 
-        assert api_app._rule_solver_overrides([Broken()]) == {}
+        assert solve_inputs._rule_solver_overrides([Broken()]) == {}
 
 
 class TestRepeatableItemsRule:
