@@ -25,6 +25,8 @@ from src.menu_rules.unique_items_menu_rule import (
 )
 from src.solver._helpers import planned_dates, weekday_name
 from src.solver.solution_formatter import SolutionFormatter
+from src.application import solve_inputs
+from src.application.constant_items import _canonical_item_name
 
 MON = dt.date(2026, 8, 3)
 
@@ -542,7 +544,7 @@ class TestConstantValueValidation:
 
     def test_api_app_still_re_exports_it(self):
         """The route code calls it through api.app, so the name must stay there."""
-        from api.app import _validate_constant_values
+        from src.application.constant_items import _validate_constant_values
         from src.application.constant_items import (
             _validate_constant_values as moved)
         assert _validate_constant_values is moved
@@ -1121,14 +1123,13 @@ class TestPinnedDishGoesThroughTheSolver:
     config change."""
 
     def test_canonical_name_matches_spaces_and_underscores(self):
-        import api.app as api_app
         known = frozenset({'boiled_egg', 'plain_curd'})
-        assert api_app._canonical_item_name('Boiled Egg', known) == 'boiled_egg'
-        assert api_app._canonical_item_name('boiled_egg', known) == 'boiled_egg'
-        assert api_app._canonical_item_name('Mutton Biryani', known) is None
-        assert api_app._canonical_item_name('', known) is None
-        assert api_app._canonical_item_name(None, known) is None
-        assert api_app._canonical_item_name(5, known) is None
+        assert _canonical_item_name('Boiled Egg', known) == 'boiled_egg'
+        assert _canonical_item_name('boiled_egg', known) == 'boiled_egg'
+        assert _canonical_item_name('Mutton Biryani', known) is None
+        assert _canonical_item_name('', known) is None
+        assert _canonical_item_name(None, known) is None
+        assert _canonical_item_name(5, known) is None
 
     def test_solver_config_carries_forced_items(self):
         from src.solver.menu_solver import SolverConfig
@@ -1258,8 +1259,8 @@ class TestWholeHorizonPinStaysStamped:
     """
 
     def _skips(self, monkeypatch, constants, active_slots, dates):
-        import api.app as api_app
-        monkeypatch.setattr('api.app._get_menu_rules_for_city', lambda city: [])
+        monkeypatch.setattr(solve_inputs.repository, 'rules_for_city',
+                            lambda city: [])
         monkeypatch.setattr(
             'src.menu_rules.MenuRuleLoader.load_for_client',
             lambda self, name, generic, counter_name=None: [],
@@ -1278,7 +1279,7 @@ class TestWholeHorizonPinStaysStamped:
                 self.theme_map = {}
 
         _r, skips, _resolved, whole, forced = (
-            api_app._rules_and_skip_for_client(
+            solve_inputs.rules_and_skip_for_client(
                 'Booking.com', dates, city='bangalore',
                 client_cfg=_Cfg(active_slots),
             )
@@ -1728,8 +1729,8 @@ class TestMergeSharedItems:
 
     def _fn(self):
         flask = pytest.importorskip("flask")  # noqa: F841
-        from api.app import _merge_shared_items
-        return _merge_shared_items
+        from src.application.solve_inputs import merge_shared_items
+        return merge_shared_items
 
     DATES = [dt.date(2026, 8, 3), dt.date(2026, 8, 4)]
 

@@ -32,6 +32,7 @@ import os
 import sys
 
 import pytest
+from src.application import solve_inputs
 
 def _repo_root() -> str:
     """Walk up to the directory holding `pytest.ini` and `src/`.
@@ -203,12 +204,23 @@ class TestWorkerCountIsInjectedNotImported:
         assert len(calls) == 1
 
     def test_the_api_passes_the_real_provider(self):
+        """The binding lives in the WEB layer now.
+
+        `build_solver_config` moved to `src/application/solve_inputs.py` and
+        takes `worker_count` as a parameter; `api/app.py` is what passes the
+        real `get_worker_count` down. That is the injection working, so this
+        checks the web side hands it over and the domain side does not reach
+        for it.
+        """
+        import inspect
         from api.concurrency import get_worker_count
         import api.app as api_app
-        import inspect
-        src = inspect.getsource(api_app._build_solver_config)
-        assert 'worker_count_provider=get_worker_count' in src
         assert callable(get_worker_count)
+        assert 'worker_count=get_worker_count' in inspect.getsource(
+            api_app._prepare_solver_inputs)
+        assert 'worker_count_provider=worker_count' in inspect.getsource(
+            solve_inputs.build_solver_config)
+        assert 'api' not in _imported_roots(solve_inputs.__file__)
 
 class TestOntologyCachesAreNotPokedByName:
     """The ontology caches moved into `src/ontology/repository.py` and are reset
@@ -252,9 +264,9 @@ class TestOntologyCachesAreNotPokedByName:
     def test_reset_caches_actually_empties_them(self):
         import api.app as api_app
         api_app._get_menu_data('Chennai')
-        assert api_app._ontology.cache_sizes()['menu_data'] > 0
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] > 0
         api_app.reset_caches()
-        assert all(v == 0 for v in api_app._ontology.cache_sizes().values())
+        assert all(v == 0 for v in api_app.ontology_repository.cache_sizes().values())
 
     def test_cities_sharing_a_workbook_share_one_entry(self):
         """Why the caches are keyed by resolved path, not city name: a city with
@@ -270,13 +282,13 @@ class TestOntologyCachesAreNotPokedByName:
         api_app.reset_caches()
         api_app._get_menu_data('Bangalore')
         api_app._get_menu_data('Kolkata')        # no file — shares bangalore.xlsx
-        assert api_app._ontology.cache_sizes()['menu_data'] == 1
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] == 1
         api_app._get_menu_data('NCR')            # own file
-        assert api_app._ontology.cache_sizes()['menu_data'] == 2
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] == 2
         api_app._get_menu_data('Chennai')        # own file
-        assert api_app._ontology.cache_sizes()['menu_data'] == 3
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] == 3
         api_app._get_menu_data('Hyderabad')      # own file, seeded from Bangalore
-        assert api_app._ontology.cache_sizes()['menu_data'] == 4
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] == 4
         api_app.reset_caches()
 
 

@@ -258,7 +258,7 @@ class TestItNeverBlocksASave:
         check that exists only to improve a later one."""
         import api.app as api_app
         monkeypatch.setattr(
-            api_app._ontology, 'item_names',
+            api_app.ontology_repository, 'item_names',
             lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError('boom')))
         r = _save(api, {MONDAY: {'veg_dry__1': 'Anything At All'}})
         assert r.status_code == 200

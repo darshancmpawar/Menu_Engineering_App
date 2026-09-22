@@ -25,6 +25,7 @@ from api.config import (
 )
 from src.constants import BASE_SLOT_NAMES, DEFAULT_OFF_SLOTS
 from src.preprocessor.pool_builder import PoolBuilder
+from src.ontology import repository as ontology_repository
 
 
 class TestCityExcelPath:
@@ -190,7 +191,7 @@ class TestPerCityCaches:
         # — and a separate cache entry, which is the assertion that matters.
         assert len(hyd_df) > len(blr_df)
         # bangalore (shared with the fallback city) + pune + hyderabad
-        assert api_app._ontology.cache_sizes()['menu_data'] == 3
+        assert api_app.ontology_repository.cache_sizes()['menu_data'] == 3
 
     def test_nonveg_items_are_per_city(self, fake_supabase):
         import api.app as api_app
@@ -200,9 +201,8 @@ class TestPerCityCaches:
     def test_ontology_item_names_are_per_city(self, fake_supabase):
         """A pin naming a dish only Bangalore carries must not be handed to the
         solver as a Pune candidate — there is no pool row for it."""
-        import api.app as api_app
-        blr = api_app._ontology_item_names('Bangalore')
-        pune = api_app._ontology_item_names('Pune')
+        blr = ontology_repository.item_names('Bangalore')
+        pune = ontology_repository.item_names('Pune')
         assert 'chicken_biryani' in blr
         assert 'chicken_biryani' not in pune
         assert 'phodnicha_bhat' in pune
@@ -223,7 +223,7 @@ class TestPerCityCaches:
         api_app._get_client_loader().set_client_city('Rippling', 'Pune')
         pune_df, _ = api_app._menu_data_for_client('Rippling')
         assert len(pune_df)
-        keys = list(api_app._ontology._filtered_by_path_and_pools)
+        keys = list(api_app.ontology_repository._filtered_by_path_and_pools)
         assert len(keys) == 1
         path, tokens = keys[0]
         assert path == city_excel_path('Pune')

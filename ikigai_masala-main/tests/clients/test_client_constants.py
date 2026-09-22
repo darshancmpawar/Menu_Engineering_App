@@ -11,12 +11,12 @@ from src.solver.menu_solver import (
     MenuSolver,
     _resolve_client_constant,
 )
+from src.application.constant_items import (
+    _exclusive_siblings, _resolve_constant_items)
+from src.application.solve_inputs import rules_and_skip_for_client
 from api.app import (
     _filter_dates_by_working_days,
     _weekdays_from,
-    _exclusive_siblings,
-    _resolve_constant_items,
-    _rules_and_skip_for_client,
 )
 
 
@@ -236,7 +236,7 @@ class TestSkipCellsSuppressSibling:
             'src.menu_rules.MenuRuleLoader.get_client_constant_items',
             lambda self, name, counter_name=None: constants,
         )
-        _rules, skips, resolved, whole, forced = _rules_and_skip_for_client(
+        _rules, skips, resolved, whole, forced = rules_and_skip_for_client(
             'Booking.com', dates, city='bangalore',
             client_cfg=_cfg('Counter 1', active_slots),
         )

@@ -8,6 +8,7 @@ import pytest
 
 flask = pytest.importorskip("flask", reason="Flask not installed")
 from api.app import app
+from src.application import solve_inputs
 
 
 @pytest.fixture
@@ -880,7 +881,7 @@ class TestItemCooldownConfig:
         ic = [r for r in generic
               if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
         original = ic.cooldown_days
-        new_rules = api_app._apply_item_cooldown_override(generic, 7)
+        new_rules = solve_inputs.apply_item_cooldown_override(generic, 7)
         new_ic = [r for r in new_rules
                   if getattr(getattr(r, 'rule_type', None), 'value', None) == 'item_cooldown'][0]
         assert new_ic.cooldown_days == 7
@@ -889,7 +890,7 @@ class TestItemCooldownConfig:
     def test_override_none_is_noop(self, fake_supabase):
         import api.app as api_app
         generic = api_app._get_menu_rules_for_city('Bangalore')
-        assert api_app._apply_item_cooldown_override(generic, None) is generic
+        assert solve_inputs.apply_item_cooldown_override(generic, None) is generic
 
 
 class TestNonvegFlag:

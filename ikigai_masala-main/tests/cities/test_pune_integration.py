@@ -21,6 +21,7 @@ import os
 import pytest
 
 from tests.fake_supabase import FakeSupabase
+from src.ontology import repository as ontology_repository
 
 MONDAY = '2026-08-03'
 NEXT_MONDAY = '2026-08-10'
@@ -298,7 +299,7 @@ class TestPerCityIsolation:
         pune, _ = pune_api._get_menu_data('Pune')
         assert blr is other                         # same file, one load
         assert pune is not blr and len(pune) == _pune_row_count()
-        assert pune_api._ontology.cache_sizes()['menu_data'] == 2
+        assert pune_api.ontology_repository.cache_sizes()['menu_data'] == 2
 
     def test_rulesets_do_not_bleed(self):
         from src.menu_rules.menu_rule_loader import MenuRuleLoader
@@ -323,8 +324,8 @@ class TestPerCityIsolation:
         assert len(pune_api._get_nonveg_items('Bangalore')) > 0
 
     def test_pin_resolution_is_per_city(self, pune_api):
-        blr = pune_api._ontology_item_names('Bangalore')
-        pune = pune_api._ontology_item_names('Pune')
+        blr = ontology_repository.item_names('Bangalore')
+        pune = ontology_repository.item_names('Pune')
         assert 'chicken_biryani' in blr and 'chicken_biryani' not in pune
         assert 'phodnicha_bhat' in pune and 'phodnicha_bhat' not in blr
 
