@@ -111,7 +111,7 @@ def test_an_unpooled_client_still_sees_the_whole_list(hyd_client):
     `FULL_POOL_CITIES` city. Hyderabad's `common` is 960 of 6,260 rows and holds
     none of Quest's dishes, so this is the assertion that the switch is on."""
     import api.app as api_app
-    whole, _ = api_app._ontology.menu_data('Hyderabad')
+    whole, _ = api_app.ontology_repository.menu_data('Hyderabad')
     got, _ = api_app._menu_data_for_client('Quest HYD Reference')
     assert len(got) == len(whole)
 

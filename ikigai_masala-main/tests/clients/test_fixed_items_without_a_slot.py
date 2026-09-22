@@ -129,7 +129,7 @@ class TestTheStampWinsWhenThereIsNoCell:
 
     def _run(self, pins, active, counter_count=1):
         import datetime as dt
-        from api.app import _rules_and_skip_for_client
+        from src.application.solve_inputs import rules_and_skip_for_client
         from src.menu_rules.menu_rule_loader import MenuRuleLoader
 
         cfg = _Cfg(active, counter_count=counter_count)
@@ -139,7 +139,7 @@ class TestTheStampWinsWhenThereIsNoCell:
             MenuRuleLoader.get_client_constant_items = (
                 lambda self, name, counter=None: dict(pins))
             _rules, _skip, constants, _whole, forced = (
-                _rules_and_skip_for_client(
+                rules_and_skip_for_client(
                     'Solo', dates, city='Bangalore', client_cfg=cfg,
                     pools=self._pools()))
         finally:

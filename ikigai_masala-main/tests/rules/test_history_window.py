@@ -4,7 +4,7 @@ The API queries menu_history and week_signatures with a backward
 lookback that has to cover the deepest rule cooldown. A fixed
 constant used to do the job, but per-client rule overrides can push
 cooldowns past the constant and silently truncate the data that's
-passed to the solver. ``_effective_history_window(rules)`` is the
+passed to the solver. ``effective_history_window(rules)`` is the
 runtime version that widens the lookback as needed.
 """
 
@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 
 
-from api.app import (
-    _effective_history_window,
-    _HISTORY_WINDOW_DAYS,
-    _HISTORY_WINDOW_SLACK_DAYS,
+from src.application import solve_inputs
+from src.application.history import (
+    _HISTORY_WINDOW_DAYS, _HISTORY_WINDOW_SLACK_DAYS,
 )
+from src.application.solve_inputs import effective_history_window
 
 
 class _Rule:
@@ -30,19 +30,19 @@ class _Rule:
 
 class TestEffectiveHistoryWindow:
     def test_empty_rules_uses_floor(self):
-        assert _effective_history_window([]) == _HISTORY_WINDOW_DAYS
+        assert effective_history_window([]) == _HISTORY_WINDOW_DAYS
 
     def test_none_rules_is_safe(self):
-        assert _effective_history_window(None) == _HISTORY_WINDOW_DAYS
+        assert effective_history_window(None) == _HISTORY_WINDOW_DAYS
 
     def test_small_cooldowns_stay_at_floor(self):
         rules = [_Rule(cooldown_days=10), _Rule(gap_days=5)]
-        assert _effective_history_window(rules) == _HISTORY_WINDOW_DAYS
+        assert effective_history_window(rules) == _HISTORY_WINDOW_DAYS
 
     def test_cooldown_exceeding_floor_widens_window(self):
         # 60d cooldown + 15d slack = 75, bigger than the 45d floor.
         rules = [_Rule(cooldown_days=60)]
-        assert _effective_history_window(rules) == 60 + _HISTORY_WINDOW_SLACK_DAYS
+        assert effective_history_window(rules) == 60 + _HISTORY_WINDOW_SLACK_DAYS
 
     def test_takes_max_across_rules_and_attributes(self):
         rules = [
@@ -50,7 +50,7 @@ class TestEffectiveHistoryWindow:
             _Rule(gap_days=50),        # this one's the winner
             _Rule(cooldown_days=30),
         ]
-        assert _effective_history_window(rules) == 50 + _HISTORY_WINDOW_SLACK_DAYS
+        assert effective_history_window(rules) == 50 + _HISTORY_WINDOW_SLACK_DAYS
 
     def test_ignores_non_int_attrs(self):
         """A rule that surfaces a non-int cooldown (e.g. a dict from an
@@ -61,19 +61,19 @@ class TestEffectiveHistoryWindow:
             _Rule(cooldown_days=35),
         ]
         # 35 is the only meaningful value; 35+15 > 45 floor, so window = 50.
-        assert _effective_history_window(rules) == 50
+        assert effective_history_window(rules) == 50
 
     def test_widening_logs_a_warning(self, caplog):
         caplog.set_level(logging.WARNING, logger="api.app")
         rules = [_Rule(cooldown_days=90)]
-        _effective_history_window(rules)
+        effective_history_window(rules)
         assert any(
             "Widening history lookback" in rec.message for rec in caplog.records
         )
 
     def test_floor_window_does_not_log(self, caplog):
         caplog.set_level(logging.WARNING, logger="api.app")
-        _effective_history_window([_Rule(cooldown_days=10)])
+        effective_history_window([_Rule(cooldown_days=10)])
         assert not any(
             "Widening history lookback" in rec.message for rec in caplog.records
         )
@@ -106,14 +106,14 @@ class TestSolverInputsPicksCorrectWindow:
                 hm.days_since_last_served(start_date),
             )
 
-        monkeypatch.setattr(api_app, "_build_history_context", _capture)
+        monkeypatch.setattr(solve_inputs, "_build_history_context", _capture)
 
         # Force a rule with a deep cooldown so the widening path triggers.
         class _DeepRule:
             cooldown_days = 90
 
         monkeypatch.setattr(
-            api_app, "_rules_and_skip_for_client",
+            solve_inputs, "rules_and_skip_for_client",
             lambda name, dates, **kwargs: (
                 [_DeepRule()], set(), {}, set(), {},
             ),

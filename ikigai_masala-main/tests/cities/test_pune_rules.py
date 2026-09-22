@@ -25,6 +25,7 @@ from src.menu_rules.unique_items_menu_rule import matches_declared
 from src.preprocessor.data_cleanser import DataCleanser
 from src.preprocessor.excel_reader import ExcelReader
 from src.preprocessor.pool_builder import PoolBuilder
+from src.application import solve_inputs
 
 
 @pytest.fixture(scope='module')
@@ -272,9 +273,8 @@ class TestColorVarietyRule:
         ).validate_config()
 
     def test_reaches_solver_config(self):
-        import api.app as api_app
         from src.client.client_config import ClientConfig
-        cfg = api_app._build_solver_config(
+        cfg = solve_inputs.build_solver_config(
             pd.DataFrame([{'item': 'x', 'is_premium_veg': 0}]),
             ClientConfig(
                 name='t', active_slots=['dal'], slot_counts={'dal': 1},
@@ -288,10 +288,9 @@ class TestColorVarietyRule:
         assert cfg.max_colors_at_reach == 0
 
     def test_bangalore_keeps_the_defaults(self):
-        import api.app as api_app
         from src.client.client_config import ClientConfig
         from src.solver.menu_solver import SolverConfig
-        cfg = api_app._build_solver_config(
+        cfg = solve_inputs.build_solver_config(
             pd.DataFrame([{'item': 'x', 'is_premium_veg': 0}]),
             ClientConfig(
                 name='t', active_slots=['dal'], slot_counts={'dal': 1},
@@ -305,27 +304,23 @@ class TestColorVarietyRule:
         assert cfg.max_colors_at_reach == default.max_colors_at_reach
 
     def test_unknown_field_is_dropped_not_applied(self, caplog):
-        import api.app as api_app
-
         class Rogue:
             name = 'rogue'
 
             def solver_overrides(self):
                 return {'time_limit_sec': 9999, 'max_same_color_per_day': 2}
 
-        out = api_app._rule_solver_overrides([Rogue()])
+        out = solve_inputs._rule_solver_overrides([Rogue()])
         assert out == {'max_same_color_per_day': 2}
 
     def test_a_raising_rule_does_not_break_planning(self):
-        import api.app as api_app
-
         class Broken:
             name = 'broken'
 
             def solver_overrides(self):
                 raise RuntimeError('boom')
 
-        assert api_app._rule_solver_overrides([Broken()]) == {}
+        assert solve_inputs._rule_solver_overrides([Broken()]) == {}
 
 
 class TestRepeatableItemsRule:

@@ -22,6 +22,8 @@ import pandas as pd
 import pytest
 
 from tests.fake_supabase import FakeSupabase
+from src.application.constant_items import (
+    _resolve_constant_items, _slot_item_names)
 
 MONDAY = '2026-08-03'      # Monday, ISO week 32
 TIME_LIMIT = 60
@@ -425,21 +427,20 @@ class TestEngineFixesThisClientNeeded:
         normally — and then be skipped by the stamping pass for being in
         `forced_items`. The pin vanished with only an INFO line to show for it.
         """
-        import api.app as api_app
         from src.client.client_config import ClientConfig
 
         pools = {
             'salad': pd.DataFrame([{'item': 'green_salad'}]),
             'curd_side': pd.DataFrame([{'item': 'raita'}]),
         }
-        assert api_app._slot_item_names(pools, 'salad') == frozenset({'green_salad'})
-        assert 'raita' not in api_app._slot_item_names(pools, 'salad')
+        assert _slot_item_names(pools, 'salad') == frozenset({'green_salad'})
+        assert 'raita' not in _slot_item_names(pools, 'salad')
 
         cfg = ClientConfig(
             name='t', active_slots=['salad'], slot_counts={'salad': 1},
             theme_map={},
         )
-        resolved, whole = api_app._resolve_constant_items(
+        resolved, whole = _resolve_constant_items(
             't', {'salad': {'sunday': 'Raita'}}, cfg,
         )
         assert resolved == {'salad': {'sunday': 'Raita'}}
@@ -448,14 +449,13 @@ class TestEngineFixesThisClientNeeded:
     def test_underscore_keys_in_constant_items_are_documentation(self):
         """`_comment` inside a constant_items block used to log 'not a known
         slot' on every plan."""
-        import api.app as api_app
         from src.client.client_config import ClientConfig
 
         cfg = ClientConfig(
             name='t', active_slots=['bread'], slot_counts={'bread': 1},
             theme_map={},
         )
-        resolved, _whole = api_app._resolve_constant_items(
+        resolved, _whole = _resolve_constant_items(
             't', {'_comment': 'why', 'bread': 'chapati'}, cfg,
         )
         assert resolved == {'bread': 'chapati'}
