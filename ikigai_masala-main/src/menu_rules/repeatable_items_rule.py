@@ -27,7 +27,7 @@ mandates the dish appear at all.
 * ``"cooldown"`` — exempt from the cooldown only; ``unique_items`` still holds,
   so the slot serves distinct dishes within a plan and repeats only once every
   distinct one is used. This is the ``COOLDOWN_EXEMPT_SLOTS`` treatment
-  (CLAUDE.md note 11) made available per client instead of globally, and it is
+  (docs/repo_map.md note 11) made available per client instead of globally, and it is
   what a *family* daily needs rather than a single dish: Citrix's welcome drink
   is buttermilk every day and Bangalore carries ten buttermilks — fewer than a
   daily slot needs across a 20-day window, so the ban has to go, but with

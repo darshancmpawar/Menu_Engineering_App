@@ -24,28 +24,11 @@ that matters.
 
 from __future__ import annotations
 
-import datetime as dt
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from ..ontology.regions import (
-    DEFAULT_REGION_FLOOR, MIN_REGION_SLOTS, Region, region_by_name,
-)
-
-#: Weekday index -> the token a `region_map` key may use. Mirrors
-#: `selector_frequency_rule._WEEKDAY_TOKENS` so a config may write either
-#: spelling, for the reason that module gives: one file writing "sat" for one
-#: rule and "saturday" for another should surprise nobody.
-_WEEKDAY_NAMES = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-                  'saturday', 'sunday')
-
-
-def _iso(d) -> str:
-    return d.isoformat()[:10] if hasattr(d, 'isoformat') else str(d)[:10]
-
-
-def _weekday_key(d) -> Tuple[str, str]:
-    wd = _WEEKDAY_NAMES[d.weekday()]
-    return wd, wd[:3]
+from ..constants import WEEKDAY_NAMES, canonical_weekday
+from ..menu_rules.selector_frequency_rule import _iso_day as _iso
+from ..ontology.regions import MIN_REGION_SLOTS, Region, region_by_name
 
 
 def normalize_region_map(value: Any, regions: Sequence[Region]) -> Dict[str, str]:
@@ -61,9 +44,7 @@ def normalize_region_map(value: Any, regions: Sequence[Region]) -> Dict[str, str
         return {}
     out: Dict[str, str] = {}
     for raw_day, raw_region in value.items():
-        day = str(raw_day).strip().lower()
-        full = next((w for w in _WEEKDAY_NAMES
-                     if w == day or w[:3] == day), None)
+        full = canonical_weekday(raw_day)
         if not full:
             continue
         region = region_by_name(regions, str(raw_region))
@@ -97,10 +78,9 @@ def resolve_region_days(
     # Weekday pattern first, then the per-date picks over the top of it.
     wanted: Dict[str, str] = {}
     if region_map:
-        lowered = {str(k).strip().lower(): v for k, v in region_map.items()}
+        by_day = {canonical_weekday(k): v for k, v in region_map.items()}
         for d in dates:
-            full, short = _weekday_key(d)
-            name = lowered.get(full, lowered.get(short))
+            name = by_day.get(WEEKDAY_NAMES[d.weekday()])
             if name:
                 wanted[_iso(d)] = str(name)
     for raw_date, name in (region_days or {}).items():
@@ -220,38 +200,3 @@ def _slug(name: str) -> str:
     while '__' in slug:
         slug = slug.replace('__', '_')
     return slug or 'region'
-
-
-def regional_dishes(solution: Mapping[str, Any], chosen: Mapping[str, Region],
-                    name_to_region: Mapping[str, str]) -> Dict[str, List[str]]:
-    """Which dishes on each regional day actually came out regional.
-
-    Reported, never enforced — the same shape as `meal_difference` (note 39).
-    The floor guarantees three; whether the day came out with three or nine is
-    the number worth showing, and a day that quietly fell back to three is the
-    one an operator would want to look at.
-    """
-    out: Dict[str, List[str]] = {}
-    for iso, region in chosen.items():
-        day = solution.get(iso) or {}
-        names = []
-        for value in day.values():
-            item = value.get('item_base') if isinstance(value, Mapping) else value
-            if not item:
-                continue
-            if name_to_region.get(str(item).strip().lower()) == region.name:
-                names.append(str(item))
-        out[iso] = sorted(set(names))
-    return out
-
-
-def horizon_dates(start: Any, num_days: int) -> List[dt.date]:   # pragma: no cover
-    """Small convenience for tests and callers holding only a start date."""
-    base = start if isinstance(start, dt.date) else dt.date.fromisoformat(str(start))
-    return [base + dt.timedelta(days=i) for i in range(int(num_days))]
-
-
-__all__ = [
-    'DEFAULT_REGION_FLOOR', 'normalize_region_map', 'resolve_region_days',
-    'region_rule_configs', 'regional_dishes', 'horizon_dates',
-]

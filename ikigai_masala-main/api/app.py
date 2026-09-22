@@ -1969,13 +1969,11 @@ def _validated_working_days(raw):
         return None
     if not isinstance(raw, list):
         raise ValueError("working_days must be a list of weekday names or null")
-    from src.solver._helpers import _WEEKDAY_NAMES
-    from src.solver.menu_solver import _WEEKDAY_ALIASES
+    from src.constants import canonical_weekday
     out = []
     for value in raw:
-        name = str(value).strip().lower()
-        full = _WEEKDAY_ALIASES.get(name, name)
-        if full not in _WEEKDAY_NAMES:
+        full = canonical_weekday(value)
+        if not full:
             raise ValueError(
                 f"working_days contains {value!r}, which is not a weekday. "
                 f"Use full names or three-letter abbreviations."

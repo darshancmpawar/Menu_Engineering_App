@@ -16,7 +16,7 @@ that cries wolf gets deleted, so it is not worth adding.
 This is the signal that does work, and it is structural rather than lexical: a
 row whose single-token NAME equals its own `key_ingredient`, `course_type` or
 `sub_category` is describing itself rather than naming a dish. That is exactly
-the shape the mapping pipeline leaves behind — CLAUDE.md records
+the shape the mapping pipeline leaves behind — docs/repo_map.md records
 `key_ingredient` being copied from the first word of the name in several places,
 and `samber` was `course_type: dal` with `key_ingredient: samber`.
 

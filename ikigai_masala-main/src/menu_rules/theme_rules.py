@@ -295,7 +295,7 @@ class ThemeSlotFilterRule(BaseMenuRule):
         # Indian. Expressing that as a frequency cap does not work: the theme
         # filter NARROWS those slots to chinese, so a `max: 0` on chinese is
         # forced past on the themed day and the counter goes INFEASIBLE
-        # (CLAUDE.md note 9e). It has to be the filter that stands down.
+        # (docs/repo_map.md note 9e). It has to be the filter that stands down.
         self.indian_slots_by_theme: Dict[str, Set[str]] = {
             t: {'veg_dry'} for t in self.indian_veg_dry_themes
         }

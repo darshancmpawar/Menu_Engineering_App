@@ -66,7 +66,7 @@ from ui.formatters import (
 )
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import (DEFAULT_MEALS, DINNER, LUNCH, MEALS,
+from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
                          normalize_meals)
 from ui.planner_view import (
     date_label,

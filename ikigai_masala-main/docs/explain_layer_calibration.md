@@ -125,7 +125,7 @@ The repeats it found, across 14 flagged days:
 |---|---:|---|
 | `chicken` | 5 | **No** — `nonveg_main_daily_pair` MANDATES one dry plus one chicken gravy every day |
 | `wheat` | 4 | **No** — a counter with two bread slots serves two wheat breads |
-| `mixed_vegetables` | 2 | **No** — the ontology's catch-all, and CLAUDE.md records it as the de-facto default for a mixed salad |
+| `mixed_vegetables` | 2 | **No** — the ontology's catch-all, and docs/repo_map.md records it as the de-facto default for a mixed salad |
 | `corn`, `potato`, `paneer` | 1 each | **Yes** — these are the real ones |
 
 Nine of fourteen are false. The check is sound in principle — a paneer gravy

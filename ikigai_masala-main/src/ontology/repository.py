@@ -134,7 +134,7 @@ class OntologyRepository:
         # there because only 893 of its 4,349 rows carry `common`, and most of
         # its clients have `source_pools = []` — so they were planning from the
         # common fifth of the list while the other 3,456 dishes (eight client
-        # pools) sat unreachable. See note 15 in CLAUDE.md.
+        # pools) sat unreachable. See note 15 in docs/repo_map.md.
         #
         # The check is on the RESOLVED workbook, not on the city string. A
         # client whose `clients.city` is null reads Bangalore's list (that is

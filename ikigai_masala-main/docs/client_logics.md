@@ -502,7 +502,7 @@ Two separate needs, both now expressible.
 
 A **multi-week window** ("once in 10 days", "2 weeks once", "once in a month")
 spans more than one plan, so it is evaluated against history rather than within
-the horizon. The `selector_history_window` rule type (CLAUDE.md §4.2 + note 23)
+the horizon. The `selector_history_window` rule type (docs/repo_map.md §4.2 + note 23)
 does exactly this **per category with a window in days**: it resolves the
 selector to concrete items, reads saved `menu_history`, and bans the whole
 family on any planned date within `window_days` of a prior occurrence — folded
@@ -785,7 +785,7 @@ logic, so those rules sit at the client level.
 | Flavoured rice: biryani ≥3 days/week, even on non-biryani days | DONE | `dxc_flavoured_rice_biryani_3x` (`min: 3`) + base `mixedveg_pulao_biryani_weekly` **disabled** (it caps biryani+pulao at 1/week) |
 | Flavoured rice: pulao ≥1/week | DONE | `dxc_flavoured_rice_pulao_1x` (`min: 1`) |
 | No South-cuisine flavoured rice | DONE | `dxc_no_south_flavoured_rice` (`max: 0`) |
-| Indian bread is plain chapati every day | DONE | `dxc_plain_chapati_daily` (a one-cell `slot_composition` component mandating `sub_category = plain_chapatti/phulka` — **not** `fixed_daily_item`, which only makes the dish consistent, see CLAUDE.md note 20) + `dxc_plain_chapati_repeatable` so the 2-item staple survives the cooldown into week 2 |
+| Indian bread is plain chapati every day | DONE | `dxc_plain_chapati_daily` (a one-cell `slot_composition` component mandating `sub_category = plain_chapatti/phulka` — **not** `fixed_daily_item`, which only makes the dish consistent, see docs/repo_map.md note 20) + `dxc_plain_chapati_repeatable` so the 2-item staple survives the cooldown into week 2 |
 | Curd side: raita Mon/Tue/Thu/Fri, plain curd Wednesday | DONE | `dxc_raita_except_wed_curd` (`slot_composition.components_by_weekday`) + base `curd_raita_logic` **disabled** (it forces raita on every biryani/pulao day, which collides with the fixed Wednesday curd) |
 | Common categories (bread, rice, sambar, rasam, curd, sweet) identical across both counters each day | DONE | `shared_categories` in the client's rules file — the planner pins the primary counter's dish for each shared slot into the Non Veg counter per day (Gap 1, per-day dish sync) |
 

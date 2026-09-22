@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
+    canonical_weekday,
     CONST_SLOTS,
     DEFAULT_OFF_SLOTS,
     DEFAULT_WEEKDAY_THEMES,
@@ -1255,12 +1256,9 @@ class ClientConfigLoader:
         """
         if not isinstance(raw, dict):
             return {}
-        days = ('monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-                'saturday', 'sunday')
         out: Dict[str, str] = {}
         for k, v in raw.items():
-            key = str(k).strip().lower()
-            full = next((d for d in days if d == key or d[:3] == key), None)
+            full = canonical_weekday(k)
             value = str(v).strip() if v is not None else ''
             if full and value:
                 out[full] = value

@@ -18,7 +18,6 @@ import ast as _ast
 import datetime as dt
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 

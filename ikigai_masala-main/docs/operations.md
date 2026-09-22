@@ -203,4 +203,4 @@ ikigai_masala-main/
 ```
 
 For a file-level symbol map optimised for Claude sessions, see
-`../CLAUDE.md` at the repo root.
+`../docs/repo_map.md` at the repo root.

@@ -42,6 +42,49 @@ DEFAULT_WEEKDAY_THEMES: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Weekdays — one ordered list, everything else derived from it
+# ---------------------------------------------------------------------------
+# Six modules used to type out their own weekday table: the solver's name
+# tuple, an alias->name map in `menu_solver`, alias->index maps in
+# `slot_day_restriction_rule` and `selector_frequency_rule`, and two more in
+# the regional-day code. They held the same fact in three shapes, and the
+# hazard was them drifting: adding "thurs" to one leaves a config that works in
+# `slot_day_restriction` and is silently ignored in `forbidden_weekdays` — a
+# weekday ban that reads as configured and bans nothing.
+#
+# Both lookup shapes are still needed (a NAME is what `working_days` compares
+# against, an INDEX is what `date.weekday()` needs), but deriving both from one
+# tuple means they cannot disagree, which is better than a test checking that
+# they have not. Indexed rather than `strftime('%A')` because `%A` is
+# locale-dependent and would break every weekday comparison under a non-English
+# locale.
+WEEKDAY_NAMES: tuple = (
+    'monday', 'tuesday', 'wednesday', 'thursday',
+    'friday', 'saturday', 'sunday',
+)
+
+#: Accepted spelling -> weekday index (0 = Monday), long and 3-letter forms.
+WEEKDAY_INDEX: Dict[str, int] = {
+    spelling: i
+    for i, name in enumerate(WEEKDAY_NAMES)
+    for spelling in (name, name[:3])
+}
+
+#: Accepted spelling -> full lowercase name.
+WEEKDAY_CANON: Dict[str, str] = {
+    spelling: WEEKDAY_NAMES[i] for spelling, i in WEEKDAY_INDEX.items()
+}
+
+
+def canonical_weekday(value) -> str:
+    """Full lowercase weekday name for a spelling, or ``''`` if unrecognised.
+
+    Empty rather than the input echoed back, so a caller storing the result
+    cannot persist a typo as though it were a weekday.
+    """
+    return WEEKDAY_CANON.get(str(value).strip().lower(), '')
+
+# ---------------------------------------------------------------------------
 # Slot names
 # ---------------------------------------------------------------------------
 

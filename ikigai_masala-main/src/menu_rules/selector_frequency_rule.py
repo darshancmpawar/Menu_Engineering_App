@@ -88,6 +88,7 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
+from ..constants import WEEKDAY_INDEX
 from ..preprocessor.column_mapper import _norm_cell, _norm_str
 from .relaxations import RELAXATION
 
@@ -109,14 +110,10 @@ _TEXT_COLS = {
     # rest are pan-level buckets that restate the cuisine family).
     'state_origin': 'state_origin', 'admin_type': 'admin_type',
 }
-#: Both spellings, matching `slot_day_restriction_rule`'s own table — a config
-#: writing "sat" for one rule and "saturday" for the other should not surprise
-#: anyone.
-_WEEKDAY_TOKENS = {
-    'mon': 0, 'monday': 0, 'tue': 1, 'tuesday': 1, 'wed': 2, 'wednesday': 2,
-    'thu': 3, 'thursday': 3, 'fri': 4, 'friday': 4, 'sat': 5, 'saturday': 5,
-    'sun': 6, 'sunday': 6,
-}
+#: Both spellings, and the SAME table `slot_day_restriction_rule` reads — a
+#: config writing "sat" for one rule and "saturday" for the other should not
+#: surprise anyone, and two hand-typed copies could drift into exactly that.
+_WEEKDAY_TOKENS = WEEKDAY_INDEX
 
 
 def _iso_day(d) -> str:

@@ -13,7 +13,7 @@
 | 1 `checks.py` | done | `src/explain/checks.py`, `tests/explain/test_checks.py` |
 | 2 `evidence.py` | done | `src/explain/evidence.py`, `tests/explain/test_evidence.py` |
 | 3 `renderer.py` | done | `src/explain/renderer.py` |
-| 4 relaxation capture | done | `src/menu_rules/relaxations.py`, `tests/explain/test_relaxations.py` — CLAUDE.md note 31 |
+| 4 relaxation capture | done | `src/menu_rules/relaxations.py`, `tests/explain/test_relaxations.py` — docs/repo_map.md note 31 |
 | 5 `explain_llm.py` | done | `api/explain_llm.py`, `tests/explain/test_evidence.py::TestValidator` |
 | 6 wire it up | done | `POST /api/v1/explain`, `MenuApiClient.explain`, the planner's "Why this menu" expander |
 
@@ -37,7 +37,7 @@ estimated, and the measurement overturned the estimate — see that section.
 verified problem report re-derived them). Three false-positive classes were
 real and are corrected in `src/explain/checks.py`; the calibration report's own
 method was wrong for two more. See `docs/explain_layer_calibration.md` — its
-correction section leads now — and CLAUDE.md note 33.
+correction section leads now — and docs/repo_map.md note 33.
 
 **Still open, and it is the client's call:** the theme tier is provably not
 lexicographic at `MAX_NUM_DAYS` (known issue 5 below). The fix is a wider tier
@@ -92,7 +92,7 @@ Verified across all five city workbooks:
 `spice_level`, `texture` and `richness_score` arrived with the enriched merge
 (schema 134 → 136) and feed nothing. No new data collection is required.
 
-> **Note for the docs pass:** `CLAUDE.md` currently says richness_score is
+> **Note for the docs pass:** `docs/repo_map.md` currently says richness_score is
 > "6,092 of 6,169 rows are 0 and nothing reads it". That is stale — the merge
 > filled it; only 5 rows are 0 in Bangalore. Fix that line while you are here.
 

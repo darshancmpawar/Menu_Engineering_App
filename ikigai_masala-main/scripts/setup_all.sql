@@ -183,7 +183,7 @@ UPDATE clients SET source_pools = '["infineon"]'::jsonb
 -- A multi-counter client can declare that some base slots serve the SAME dish
 -- across all of its counters each day (the "common category" sync). The planner
 -- solves the primary counter first and pins its dish for each shared slot into
--- every other counter (see note 22 in CLAUDE.md). shared_categories NULL means
+-- every other counter (see note 22 in docs/repo_map.md). shared_categories NULL means
 -- "none"; the planner then falls back to the file value in client_rules.json.
 --
 -- Seed the known multi-counter client(s) here so the feature is live straight
