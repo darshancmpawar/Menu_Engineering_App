@@ -620,6 +620,97 @@ def _rule_solver_overrides(rules):
     return out
 
 
+def _apply_region_days(rules, data, dates, client_cfg, city, row):
+    """Append the regional-day rules for this counter and horizon.
+
+    Returns ``(rules, {iso: Region}, problems)``. Two inputs are flattened: the
+    counter's standing ``region_map`` (a weekday pattern) and the request's
+    ``region_days`` (what the planner picked for these dates), the latter
+    winning. See `src/application/regions.py` for why weekdays are resolved to
+    dates here rather than inside the rule.
+
+    Never raises. Three things make this a no-op and all three are ordinary:
+    a workbook without the regional columns (every committed one today), a
+    client with no pattern and a request with no picks, or a counter that
+    serves none of the region's slots. Nothing about a plan changes until
+    somebody asks for a regional day.
+    """
+    from src.application.regions import (
+        normalize_region_map, region_rule_configs, resolve_region_days,
+    )
+
+    requested = data.get('region_days') if isinstance(data, dict) else None
+    stored = (row or {}).get('region_map') if hasattr(row, 'get') else None
+    if not requested and not stored:
+        return rules, {}, []
+
+    try:
+        regions = ontology_repository.regions(city)
+    except Exception:  # noqa: BLE001 — a plan must never be lost to this
+        logger.warning("could not measure regions for city %r", city,
+                       exc_info=True)
+        return rules, {}, []
+    if not regions:
+        # The columns are absent, so a pick cannot be honoured. Say so rather
+        # than dropping it: the planner only offers regions this endpoint
+        # reported, so a request carrying one here means the two disagree.
+        problems = [
+            {'date': str(k), 'region': str(v), 'reason': 'no_region_data',
+             'message': "This city's item list does not carry regional data."}
+            for k, v in (requested or {}).items() if str(v or '').strip()
+        ]
+        return rules, {}, problems
+
+    day_themes = [
+        _weekday_type_cfg(d, getattr(client_cfg, 'theme_map', None) or {})
+        for d in dates
+    ]
+    chosen, problems = resolve_region_days(
+        dates, day_themes, regions,
+        region_map=normalize_region_map(stored, regions),
+        region_days=requested,
+    )
+    if not chosen:
+        return rules, {}, problems
+
+    served = _client_base_slots(client_cfg)
+    loader = MenuRuleLoader()
+    added = []
+    for cfg in region_rule_configs(chosen, served):
+        rule = loader._create_rule(cfg)
+        # A rule that will not build is dropped WITH a problem entry rather
+        # than silently, which is the failure `test_client_disable_targets`
+        # exists to stop for the hand-written configs: `load_for_client` logs
+        # and moves on, so the client loses the rule while /plan still answers
+        # 200 and /diagnose still reports clean.
+        if rule is None or not rule.validate_config():
+            errs = rule.validation_errors() if rule is not None else ['unbuildable']
+            logger.warning("regional rule %s did not build: %s",
+                           cfg.get('name'), errs)
+            problems.append({
+                'date': (cfg.get('only_on_dates') or [''])[0],
+                'region': cfg.get('selector', {}).get('state_origin', ''),
+                'reason': 'rule_error', 'message': '; '.join(map(str, errs)),
+            })
+            continue
+        added.append(rule)
+    if not added:
+        # The pick resolved but produced no rule — this counter serves none of
+        # the region's deep slots (a non-veg station against a region whose
+        # depth is all veg, say). Reported, because a region that quietly does
+        # nothing is indistinguishable from one that worked.
+        for iso, region in sorted(chosen.items()):
+            problems.append({
+                'date': iso, 'region': region.name, 'reason': 'no_usable_slot',
+                'message': (
+                    f"This counter serves none of the slots {region.name} is "
+                    f"deep in ({', '.join(region.deep_slots) or 'none'}), so "
+                    f"there is nothing for a regional floor to ask for."),
+            })
+        return rules, {}, problems
+    return list(rules) + added, chosen, problems
+
+
 def _build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
     constant_items=None, whole_slot_bases=None, forced_items=None,
@@ -692,6 +783,14 @@ class SolverInputs:
     # column instead of vanishing (see `_span_dates`). Same list for a client
     # with no `working_days` restriction, which is all but three of them.
     span_dates: List[dt.date] = field(default_factory=list)
+    # {iso date: region name} actually in force for this solve, and the picks
+    # that could not be honoured (wrong cuisine for the day's theme, a region
+    # this city cannot theme, a name that matches nothing). Both ride on the
+    # response so the planner can badge the day and SAY WHY when it cannot —
+    # learning that a Tamil Nadu Thursday was dropped by reading a plate with no
+    # Tamil food on it is the worst way to find out.
+    region_days: Dict[str, str] = field(default_factory=dict)
+    region_problems: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _span_dates(plan_dates, inputs):
@@ -849,6 +948,13 @@ def _prepare_solver_inputs(
     rules, skip_cells, constant_items, whole_slot_bases, forced_items = _rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
     )
+    # Regional days: the counter's standing weekday pattern plus whatever the
+    # planner picked for this horizon. Appended as ordinary rules, so nothing
+    # downstream — diagnose, the objective, the relaxation channel — needs to
+    # know regions exist. A city whose workbook lacks the columns yields none.
+    rules, region_days, region_problems = _apply_region_days(
+        rules, data, weekday_dates, client_cfg, city, row,
+    )
     _validate_constant_values(client_name, constant_items, df)
     # Cross-counter shared categories: the planner passes the primary counter's
     # dish for each shared base slot as `shared_items`; fold them into the
@@ -903,6 +1009,8 @@ def _prepare_solver_inputs(
         cfg=cfg,
         city=city,
         span_dates=span_dates,
+        region_days={k: v.name for k, v in region_days.items()},
+        region_problems=region_problems,
     )
 
 
@@ -1133,6 +1241,13 @@ def plan_menu():
             response['alternates'] = [_format(p) for p in plans[1:]]
         if pool_warnings:
             response['pool_warnings'] = pool_warnings
+        # Regional days actually in force, and the picks that could not be.
+        # Both absent on a plan nobody asked a region for, so an ordinary
+        # response body is byte-for-byte what it was.
+        if inputs.region_days:
+            response['region_days'] = dict(inputs.region_days)
+        if inputs.region_problems:
+            response['region_problems'] = list(inputs.region_problems)
         # Rules the solve under-enforced rather than failed on. Pass these back
         # to /explain so the explanation says which rule did not hold — the
         # honesty channel, not decoration (design note 9c).
@@ -1668,6 +1783,49 @@ def editor_metadata():
         return _internal_error_response(500)
 
 
+@app.route('/api/v1/regions', methods=['GET'])
+@rate_limit("diagnose")
+def regions_for_city():
+    """Regions a city's item list can theme a day with.
+
+    ``?city=<name>`` is required in practice — without it the default city's
+    list is measured, which is the same fallback `city_excel_path` makes
+    everywhere else.
+
+    Its own endpoint rather than a field on `/editor-metadata` for the reason
+    note 21 records: that one already costs every city's workbook, and this
+    needs one. The planner calls it only when somebody switches the regional
+    toggle ON, so a user who never does pays nothing — the same argument
+    `/explain` is a separate request.
+
+    Every region is returned, themeable or not, each carrying its per-slot
+    depth. The picker greys the thin ones out *with their counts* instead of
+    hiding them, so an operator can see a region was weighed and rejected
+    rather than forgotten.
+    """
+    try:
+        city = (request.args.get('city') or '').strip() or None
+        regions = ontology_repository.regions(city)
+        return jsonify({
+            'success': True,
+            'city': city,
+            'regions': [r.as_dict() for r in regions],
+            'themeable': [r.name for r in regions if r.is_themeable],
+            # False for every committed workbook today: the regional columns
+            # arrived with the client's corrected city lists, which are not
+            # installed. The planner hides the whole control on this.
+            'available': any(r.is_themeable for r in regions),
+            'theme_compatibility': {
+                t: sorted(r.name for r in regions
+                          if r.is_themeable and r.compatible_with(t))
+                for t in AVAILABLE_THEMES
+            },
+        })
+    except Exception as e:
+        logger.error("Failed to measure regions: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
 @app.route('/api/v1/pool-preview', methods=['POST'])
 @rate_limit("diagnose")
 def pool_preview():
@@ -1767,6 +1925,10 @@ def get_client_config(client_name):
             # menu, and the shared list is otherwise all-or-nothing per client.
             'shared_categories_excluded_counters':
                 MenuRuleLoader().get_shared_category_exclusions(client_name),
+            # Standing weekday -> region pattern. `{}` when nothing is stored
+            # and when the column predates this feature, so the planner treats
+            # both the same: no regional days until somebody picks one.
+            'region_map': row.get('region_map') or {},
         })
         response.headers['ETag'] = f'"{version}"'
         return response
@@ -1858,6 +2020,43 @@ def _validated_source_pools(raw, city=None):
     return sorted(requested)
 
 
+def _validated_region_map(raw, city=None):
+    """Normalise a ``region_map`` against *city*'s item list or raise ValueError.
+
+    Validated per city for the same reason as `_validated_source_pools`: a
+    region lives in one city's list, so a Pune client storing "Tamil Nadu"
+    would match nothing and quietly plan an ordinary week. Rejecting at the
+    write is what makes that a 400 the operator sees rather than note 9's
+    silent mismatch, where the plan still comes back and looks fine.
+
+    An empty map is always valid — that is how a standing pattern is cleared.
+    """
+    from src.application.regions import normalize_region_map
+
+    if raw in (None, {}, ''):
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("region_map must be an object of weekday -> region")
+    regions = ontology_repository.regions(city)
+    themeable = {r.name for r in regions if r.is_themeable}
+    cleaned = normalize_region_map(raw, regions)
+    # Anything the normaliser dropped: a weekday nobody recognises, or a region
+    # this city cannot theme. Both are worth a message — silently storing the
+    # survivors would leave the operator believing they saved a Friday they did
+    # not.
+    asked = {str(k).strip().lower() for k, v in raw.items() if str(v or '').strip()}
+    kept = {k for k in cleaned} | {k[:3] for k in cleaned}
+    lost = sorted(a for a in asked if a not in kept)
+    if lost:
+        raise ValueError(
+            f"Cannot set a regional day for {lost} in "
+            f"{city or 'the default city'}: the weekday is unknown, or the "
+            f"region is not one this city can theme. Available: "
+            f"{sorted(themeable) or 'none — this city has no regional data'}"
+        )
+    return cleaned
+
+
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 @rate_limit("write")
 @require_write_token
@@ -1944,6 +2143,16 @@ def update_client_config(client_name):
             # Base slots synced across counters (the editor's toggle+multiselect).
             # Normalisation (keep known slots only) happens in the config layer.
             fields['shared_categories'] = list(data.get('shared_categories') or [])
+        if 'region_map' in data:
+            # Validated against the city the client will HAVE after this write,
+            # same as source_pools above and for the same reason: a city change
+            # and a region change can arrive in one PUT. Rejected rather than
+            # dropped — a stored region that matches nothing is note 9's silent
+            # config mismatch, where the plan still comes back and looks fine.
+            fields['region_map'] = _validated_region_map(
+                data.get('region_map'),
+                city=fields.get('city', _client_row(client_name)['city']),
+            )
 
         new_version = loader.update_client_atomic(client_name, expected, fields)
 
@@ -2015,6 +2224,10 @@ def create_client():
             list(data.get('shared_categories') or [])
             if 'shared_categories' in data else None
         )
+        region_map = (
+            _validated_region_map(data.get('region_map'), city=city)
+            if 'region_map' in data else None
+        )
 
         counters = data.get('counters')
         if counters:
@@ -2030,6 +2243,7 @@ def create_client():
                 source_pools=source_pools,
                 is_launch_site=is_launch_site,
                 shared_categories=shared_categories,
+                region_map=region_map,
             )
         else:
             active_slots = data.get('active_slots', list(BASE_SLOT_NAMES))
@@ -2040,7 +2254,8 @@ def create_client():
                                  working_days=working_days,
                                  source_pools=source_pools,
                                  is_launch_site=is_launch_site,
-                                 shared_categories=shared_categories)
+                                 shared_categories=shared_categories,
+                                 region_map=region_map)
 
         return jsonify({'success': True, 'message': f'Client {name} created'})
     except ValueError as e:

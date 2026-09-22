@@ -18,6 +18,15 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     (hard) and on the Chinese and biryani days as well when nothing else has to
     give (soft) — a hard every-day floor there would trade a whole plan for one
     dish.
+  * ``prefer_cells`` — penalise every CELL that is not the selector. The
+    per-cell twin of ``prefer_daily``, and a separate mode because the two
+    answer different questions: ``prefer_daily`` scores a DAY, so the moment
+    one matching dish lands anywhere on the plate its penalty is zero and the
+    remaining cells are unscored. Right for "a protein somewhere on the plate";
+    useless for "make this day Tamil", where a hard floor of 3 over 5 slots
+    paired with ``prefer_daily`` came back with exactly 3 every time. Takes
+    ``only_on_dates``, which is what a regional day needs — see
+    ``src/application/regions.py``.
   * ``match_attribute`` — penalise a day where two *different* slots carry
     different values of one attribute (Citrix: "a South flavoured rice wants a
     South veg gravy", "a North veg gravy wants a North veg dry"). SOFT because
@@ -53,7 +62,7 @@ from typing import Any, Dict, List, Optional, Set
 from ortools.sat.python import cp_model
 
 from .base_menu_rule import BaseMenuRule, MenuRuleType, MenuRuleSeverity
-from .selector_frequency_rule import SelectorFrequencyRule
+from .selector_frequency_rule import SelectorFrequencyRule, _iso_day
 from ..constants import OBJECTIVE_TIER_WEIGHTS
 from ..preprocessor.column_mapper import _norm_cell, _norm_str
 
@@ -63,7 +72,7 @@ _SCOPES = frozenset({'horizon', 'week', 'day'})
 
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
-    'prefer_day_types', 'prefer_daily', 'match_attribute',
+    'prefer_day_types', 'prefer_daily', 'prefer_cells', 'match_attribute',
     'prefer_attribute_spread',
 })
 
@@ -134,6 +143,18 @@ class SoftPreferenceRule(BaseMenuRule):
         self.day_types: Optional[Set[str]] = (
             {str(t).strip().lower() for t in pdt} if pdt else None
         )
+        # prefer_daily — scope the preference to named ISO dates. A regional day
+        # wants its dishes preferred on THAT day and nowhere else; without this
+        # a "prefer Tamil Nadu" term would pull the whole week south. Same key
+        # and same parser as `selector_frequency.only_on_dates`, because a
+        # config that spells one of them differently is a config that gets it
+        # wrong. Honoured by `prefer_daily` only, and `validation_errors()`
+        # refuses it elsewhere rather than letting it read as applied.
+        self.only_on_dates: Optional[Set[str]] = None
+        ood = rule_config.get('only_on_dates')
+        if ood:
+            iso = {_iso_day(d) for d in ood}
+            self.only_on_dates = {d for d in iso if d} or None
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
@@ -177,6 +198,15 @@ class SoftPreferenceRule(BaseMenuRule):
                 errs.append("prefer_day_types requires a non-empty day_types")
         if self.mode == 'prefer_daily' and not self._sel:
             errs.append("prefer_daily requires selector")
+        if self.mode == 'prefer_cells' and not self._sel:
+            errs.append("prefer_cells requires selector")
+        if self.only_on_dates and self.mode not in ('prefer_daily',
+                                                    'prefer_cells'):
+            # Only `prefer_daily` reads it. Accepting it elsewhere would be a
+            # rule that looks date-scoped and is not — the silent-config failure
+            # of note 9, where the plan still comes back and looks fine.
+            errs.append("only_on_dates is supported for prefer_daily only "
+                        f"(mode is {self.mode!r})")
         if self.mode == 'match_attribute':
             if not self.group_by:
                 errs.append("match_attribute requires group_by")
@@ -409,6 +439,9 @@ class SoftPreferenceRule(BaseMenuRule):
             # constant the solver cannot act on, and would drown the days it can.
             missing = []
             for di in range(n):
+                if (self.only_on_dates is not None
+                        and _iso_day(dates[di]) not in self.only_on_dates):
+                    continue
                 lits = self._day_slot_lits(cells, di, self.base_slots, self._sel)
                 if not lits:
                     continue
@@ -418,6 +451,44 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(gap == 1 - h)
                 missing.append(gap)
             return [sum(missing) * (-abs(w))] if missing else []
+
+        if self.mode == 'prefer_cells':
+            # One penalty per CELL that is not the selector — the per-cell twin
+            # of `prefer_daily`, and a different rule rather than a variant
+            # because the two answer different questions. `prefer_daily` scores
+            # a DAY: once one matching dish is anywhere on the plate its
+            # penalty is zero, so it cannot fill a second cell and pairing it
+            # with a hard floor buys nothing at all (a floor of 3 over 5 slots
+            # came back with exactly 3). This scores each cell, so beyond
+            # whatever a hard rule mandates the remaining cells go the same way
+            # wherever nothing objects — which is what makes a regional day
+            # read regional instead of merely containing three regional dishes.
+            #
+            # Only cells that COULD carry the selector are scored, for the
+            # reason `prefer_daily` gives: a cell with no matching candidate is
+            # a constant the solver cannot act on and would drown the ones it
+            # can.
+            misses = []
+            for di in range(n):
+                if (self.only_on_dates is not None
+                        and _iso_day(dates[di]) not in self.only_on_dates):
+                    continue
+                for c in cells:
+                    if c.d_idx != di:
+                        continue
+                    if (self.base_slots is not None
+                            and c.base_slot not in self.base_slots):
+                        continue
+                    lits = [v for v, r in zip(c.x_vars, c.cand_rows)
+                            if SelectorFrequencyRule._matches(r, self._sel)]
+                    if not lits:
+                        continue
+                    h = model.NewBoolVar(f'{self.name}_cell_{di}_{c.slot_id}')
+                    link_any(model, lits, h)
+                    gap = model.NewBoolVar(f'{self.name}_cgap_{di}_{c.slot_id}')
+                    model.Add(gap == 1 - h)
+                    misses.append(gap)
+            return [sum(misses) * (-abs(w))] if misses else []
 
         if self.mode == 'avoid_consecutive':
             day_has = {}

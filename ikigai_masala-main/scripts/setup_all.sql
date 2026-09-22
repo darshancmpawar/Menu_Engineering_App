@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS clients (
     working_days       JSONB,
     is_launch_site     BOOLEAN NOT NULL DEFAULT false,
     shared_categories  JSONB,
+    region_map         JSONB,
     created_at         TIMESTAMPTZ DEFAULT now()
 );
 
@@ -92,6 +93,13 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_launch_site     BOOLEAN NOT NULL
 -- Cross-counter common categories (editor toggle+multiselect). NULL = none;
 -- the planner falls back to the file-based value in client_rules.json (DXC).
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS shared_categories  JSONB;
+-- Standing weekday -> regional theme pattern, e.g. {"thursday": "Tamil Nadu"}.
+-- NULL and {} both read as "no regional days", so every existing row plans
+-- exactly as it did. A region is picked per week on the planner; this column
+-- only holds the pattern somebody chose to keep. Regions come from the item
+-- list's `state_origin` column, so a city whose workbook lacks it simply has
+-- none to offer and the planner hides the control.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS region_map         JSONB;
 -- Which services a client runs, as an ordered list: breakfast / lunch /
 -- snacks / dinner. Replaces the older `serve_dinner` boolean, which could only
 -- say "lunch, and maybe dinner". DEFAULT is lunch + dinner, so every existing

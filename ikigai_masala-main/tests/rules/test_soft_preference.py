@@ -469,3 +469,99 @@ class TestBaseSlotListNormalisation:
                                 'base_slot': 'rice', 'selector': {'flag': 'f'}})
         assert r.base_slot == 'rice'
         assert r.base_slots == {'rice'}
+
+
+class TestPreferCells:
+    """The per-cell twin of `prefer_daily`, and why it is a separate mode.
+
+    `prefer_daily` scores a DAY — one penalty if the selector is absent from
+    the whole plate. That is right for "a protein somewhere on the plate" and
+    useless for "make this day Tamil", because the moment one matching dish
+    lands the penalty is zero and the other four cells are unscored. Pairing it
+    with a hard floor of 3 over 5 slots therefore came back with exactly 3
+    every time, which is the defect this mode exists for and the first test
+    below pins.
+    """
+
+    def _five_cells(self, model, di=0):
+        """Five slots, each offering one matching and one non-matching dish."""
+        cells = []
+        for slot in ('veg_gravy', 'veg_dry', 'dal', 'nonveg_main', 'dessert'):
+            cells.append(_cell(model, di, slot, [{'f': 1}, {'f': 0}]))
+        return cells
+
+    def _picked(self, mode):
+        model = cp_model.CpModel()
+        cells = self._five_cells(model)
+        rule = SoftPreferenceRule({
+            'name': 'x', 'mode': mode, 'weight': 1_000_000,
+            'selector': {'flag': 'f'},
+            'base_slot': ['veg_gravy', 'veg_dry', 'dal', 'nonveg_main',
+                          'dessert']})
+        ctx = _ctx(cells, 1)
+        terms = rule.get_objective_terms(model, ctx) or []
+        # Every NON-matching dish is worth 1, so the preference has to earn
+        # each cell rather than getting it by default.
+        nudge = [c.x_vars[1] for c in cells]
+        _, status = _maximize(model, list(terms) + nudge)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5
+        model.Maximize(sum(list(terms) + nudge))
+        solver.Solve(model)
+        return sum(1 for c in cells if solver.Value(c.x_vars[0]))
+
+    def test_prefer_daily_only_ever_buys_one_cell(self):
+        """Pinned as the limitation, not as a bug: `prefer_daily` is correct
+        for what it is for. This is why it could not be reused."""
+        assert self._picked('prefer_daily') == 1
+
+    def test_prefer_cells_takes_every_cell_it_can(self):
+        assert self._picked('prefer_cells') == 5
+
+    def test_it_requires_a_selector(self):
+        assert not SoftPreferenceRule(
+            {'name': 'x', 'mode': 'prefer_cells'}).validate_config()
+
+    def test_a_cell_with_no_matching_candidate_is_not_scored(self):
+        """A cell that COULD not carry the selector is a constant the solver
+        cannot act on, and scoring it would drown the cells it can."""
+        model = cp_model.CpModel()
+        cells = [_cell(model, 0, 'veg_gravy', [{'f': 0}, {'f': 0}])]
+        rule = SoftPreferenceRule({
+            'name': 'x', 'mode': 'prefer_cells', 'selector': {'flag': 'f'},
+            'base_slot': ['veg_gravy']})
+        assert rule.get_objective_terms(model, _ctx(cells, 1)) == []
+
+    def _two_day_picks(self, only_on_dates):
+        """Solve two days and report which took the matching dish.
+
+        Asserted through the SOLUTION rather than by inspecting the objective
+        expression: the term is one opaque CP-SAT object either way, and what
+        the scope has to change is the menu.
+        """
+        model = cp_model.CpModel()
+        cells = self._five_cells(model, 0) + self._five_cells(model, 1)
+        ctx = _ctx(cells, 2)
+        cfg = {'name': 'a', 'mode': 'prefer_cells', 'weight': 1_000_000,
+               'selector': {'flag': 'f'}, 'base_slot': ['veg_gravy']}
+        if only_on_dates is not None:
+            cfg['only_on_dates'] = [ctx['dates'][i].isoformat()
+                                    for i in only_on_dates]
+        terms = SoftPreferenceRule(cfg).get_objective_terms(model, ctx) or []
+        nudge = [c.x_vars[1] for c in cells]        # prefer the NON-matching
+        model.Maximize(sum(list(terms) + nudge))
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = 5
+        solver.Solve(model)
+        return [
+            any(solver.Value(c.x_vars[0])
+                for c in cells if c.d_idx == di and c.base_slot == 'veg_gravy')
+            for di in (0, 1)
+        ]
+
+    def test_unscoped_it_takes_both_days(self):
+        assert self._two_day_picks(None) == [True, True]
+
+    def test_only_on_dates_leaves_the_other_day_alone(self):
+        assert self._two_day_picks([0]) == [True, False]

@@ -434,7 +434,7 @@ NCR site 'Seimens' (city NCR, 2 nonveg_main slots). Logics from the client sheet
 |---|---|---|
 | `siemens_nonveg_pair_by_weekday` | nonveg_main must include (when the counter serves ≥2 of it): 2× primary_protein chicken; on tue: primary_protein chicken + is_egg_dish | Two non-veg in the gravy part |
 | `siemens_paneer_1x` | primary_protein paneer @ veg_gravy: exactly 1 day(s) | One paneer a week (in the veg gravy). |
-| `siemens_soya_1x` | primary_protein soya or primary_protein soy @ veg_gravy: exactly 1 day(s) | One soya a week (soya chaap; primary_protein soya/soy in the veg gravy). |
+| `siemens_soya_1x` | primary_protein soy @ veg_gravy: exactly 1 day(s) | One soya a week (soya chaap, in the veg gravy) |
 | `siemens_kofta_max_1` | is_veg_kofta_gravy @ veg_gravy: ≤ 1 day(s) | Kofta at most once a WEEK within a plan (within-plan half of once-per-2-weeks). |
 | `siemens_kofta_14d_window` | is_veg_kofta_gravy @ veg_gravy: once per 14 days, read from saved history | Kofta once every 2 WEEKS (14 days) across plans, from saved history: a kofta served in the last 14 days is held off until the window clears |
 

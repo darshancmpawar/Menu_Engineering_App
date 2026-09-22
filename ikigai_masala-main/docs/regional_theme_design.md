@@ -1,9 +1,18 @@
-# Regional theme days — design
+# Regional theme days — design, and what got built
 
-**Status: design only. Nothing here is built.** It depends on the five
-`*_cleaned_final_1.xlsx` workbooks, which are not installed (four dish-level
-verdicts are still open). Every number below was measured from those uploads on
-2026-09-21; the script is `scripts/` material once the feature is approved.
+**Status: built and merged, and OFF everywhere.** The engine, the API and the
+planner control all ship; they find no regions, because the `state_origin` /
+`admin_type` columns arrived with the five `*_cleaned_final_1.xlsx` workbooks
+and those are **not installed** (four dish-level verdicts are still open). The
+planner hides the whole section until `/api/v1/regions` reports
+`available: true`, so nothing about a plan changes until the data lands.
+
+Every number below was measured from those uploads on 2026-09-21.
+
+**Two things building it changed, both recorded in place below:** the floor's
+slot list is derived from the region's own depth (§2.3b), and the soft top-up
+needed a new `prefer_cells` mode because `prefer_daily` structurally cannot do
+it (§2.5).
 
 The ask: *on the client config, for a given day, pick a regional theme* — a
 Tamil Nadu Thursday, a Maharashtra Friday — on top of the cuisine theme the day
@@ -228,20 +237,42 @@ Telangana go with `south` or `mix`; Punjab / Maharashtra / Bengal / Rajasthan
 with `north` or `mix`. `chinese`, `continental` and `biryani` days take no
 region.
 
-### 2.5 Soft top-up, so the day reads as regional
+### 2.5 Soft top-up — and the mode that had to be added for it
 
-The hard floor puts 3 regional dishes on the plate. A `soft_preference`
-`prefer_daily` on the same selector and slots, `priority: low`, scoped to the
-same weekday, makes the solver prefer regional dishes in the *remaining* cells
-without ever trading a real rule for one.
+The hard floor puts 3 regional dishes on the plate. A `soft_preference` at
+`priority: low`, scoped with `only_on_dates`, takes the *remaining* cells
+wherever no real rule objects. That is what makes the day read regional rather
+than merely contain three regional dishes.
+
+**`prefer_daily` cannot do this, which the design originally got wrong.**
+It scores a DAY: one penalty if the selector is absent from the whole plate. So
+the moment the hard floor lands its first dish the penalty is already zero and
+the other cells are unscored. Measured, the pair returned a floor of 3 over 5
+slots and **exactly 3** every time — the soft half bought nothing at all. The
+test that caught it is
+`test_regional_days.py::test_the_soft_half_carries_the_day_past_the_floor`.
+
+So `soft_preference` gained **`prefer_cells`**: one penalty per CELL that is
+not the selector. A separate mode rather than a flag on the old one, because
+the two answer genuinely different questions — `prefer_daily` is right for "a
+protein somewhere on the plate", which is what Tekion and Stryker use it for,
+and nothing about that changes. With `prefer_cells` the same fixture returns
+5 of 5. Both modes are pinned in `tests/rules/test_soft_preference.py`,
+including `prefer_daily`'s one-cell ceiling *as a limitation*, so nobody
+re-derives this.
 
 Tier arithmetic, since note 32 says the ladder must be checked rather than
-trusted: ~6 slots × 25 days × 1e6 = 1.5e8, which is 0.15 of one MEDIUM unit and
-negligible against the 1.86e15 already measured below THEME. This adds no
-meaningful mass, and `tests/rules/test_objective_tier_headroom.py` fails if that
-estimate is wrong.
+trusted: per-cell at LOW is ~6 slots × 25 days × 1e6 = 1.5e8, which is 0.15 of
+one MEDIUM unit and negligible against the 1.86e15 already measured below
+THEME. `tests/rules/test_objective_tier_headroom.py` fails if that estimate is
+wrong.
 
-### 2.6 UI — a strip on the planner, under the Save row
+### 2.6 UI — behind a toggle, on the planner
+
+**A sidebar toggle, OFF by default, reveals the whole section.** Nothing is
+rendered and `/api/v1/regions` is never called until it is switched on — so a
+user who never wants a regional day pays nothing, not even the one workbook
+read the measurement costs. Same argument as `/explain` being a second request.
 
 `app.py` gains a **Regional days** panel between the Save/Download/Clear row and
 the counter tabs: one card per date in the horizon, each with the day's theme
