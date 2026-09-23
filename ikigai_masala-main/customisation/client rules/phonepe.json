@@ -1,0 +1,253 @@
+{
+  "PhonePe": {
+    "_comment": "Pune site, one counter: welcome_drink x2, soup, bread, rice, dal, veg_dry, veg_gravy, nonveg_main x3, plus the const white_rice and papad. The sheet lists 47 lines and MOST OF THEM ARE ALREADY THE CITY'S: Pune's ruleset carries the 10-day-plus item cooldown, no-repeat-within-the-horizon, the monthly week-signature cooldown, colour diversity at three distinct / max two alike, premium gravy and premium veg dry weekly, kabuli chana weekly, kofta weekly plus a 14-day window, mix-veg-or-aloo-dry at least weekly, pappu dal weekly, yellow dal at least twice, oil-based bread monthly, leafy veg dry once in 15 days and plain chapati repeatable. Restating any of them here would be a second copy to keep in step, so only the delta is below. Three of the remaining lines are inert against Pune's list and are deliberately NOT written \u2014 see the bottom of this comment.\n\nWHAT THE SHEET ASKS FOR THAT THIS COUNTER CANNOT DO YET, because the slot does not exist on the row: the Mon/Wed/Fri salad and Tue/Thu chaat swap (no salad slot, and no city carries a `chaat` course_type at all); everything about sweets \u2014 ice cream monthly, no repeat in 15 days, no milk-based, premium sweet three days, dessert form not repeating (no dessert slot); the pulao-then-raita / otherwise-curd pairing and the Mon/Wed/Fri curd staple (no curd_side slot); and the starter rules \u2014 deep-fried after a rice bread, veg starter under veg dry, chutney with an Indian starter (no starter slot).\n\nNOT WRITTEN BECAUSE THEY WOULD MATCH NOTHING: 'if Bread is a rice-bread then Rice must be a liquid rice' (Pune's bread pool holds no rice bread) and 'veg gravy and flavoured rice must complement, spicy to mellow' (`is_mellow` is 0 on every Pune veg gravy). A rule whose selector matches nothing loads as zero rules while /plan still answers 200 \u2014 see note 9 \u2014 so they are recorded here rather than shipped inert.\n\nTWO DATA GAPS, both flagged in docs/pending_config_changes.md: Pune carries no `boiled_egg` and no `boiled_chicken` row, so the two staple non-veg pins below print as text instead of being solved; and it carries one buttermilk row and no masala buttermilk, so 'plain buttermilk Mon/Wed/Fri, masala buttermilk Tue/Thu, both staple' cannot be written at all.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'noveg 1 will serve chicken gravy on mon,wed,frid and egg gravy on tue and tursday.' The first non-veg cell only \u2014 the other two are the boiled staples pinned below. Pune carries 124 chicken gravies and 5 egg gravies; a component RELAXES rather than failing, so a week where the egg gravies are all cooled down degrades to whatever the pool can supply instead of going INFEASIBLE, and says so in the explanation.",
+        "name": "phonepe_nonveg_1_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "all_of": [
+                  {
+                    "primary_protein": "chicken"
+                  },
+                  {
+                    "flag": "is_nonveg_gravy"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "all_of": [
+                  {
+                    "primary_protein": "chicken"
+                  },
+                  {
+                    "flag": "is_nonveg_gravy"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "all_of": [
+                  {
+                    "primary_protein": "chicken"
+                  },
+                  {
+                    "flag": "is_nonveg_gravy"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "all_of": [
+                  {
+                    "flag": "is_egg_dish"
+                  },
+                  {
+                    "flag": "is_nonveg_gravy"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "all_of": [
+                  {
+                    "flag": "is_egg_dish"
+                  },
+                  {
+                    "flag": "is_nonveg_gravy"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'indian bread will serve chapati as staple on mon,wed and fri . Then tue and thur will serve paratas'. The sheet's other wording, '3 days Chapati and 3 days Paratha', adds to six over a five-day week; the weekday split is the one that is actionable and it is what the sample grid prints (Chapati / Ajwain Paratha / Chapati / Plain Paratha / Chapati). Pune has 10 plain chapatti/phulka rows and 14 parathas across `flavoured_paratha`, `tandoor` and `thepla`.",
+        "name": "phonepe_bread_by_weekday",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 1,
+        "components_by_weekday": {
+          "mon": [
+            {
+              "selector": {
+                "flag": "is_plain_phulka_chapathi"
+              },
+              "count": 1
+            }
+          ],
+          "wed": [
+            {
+              "selector": {
+                "flag": "is_plain_phulka_chapathi"
+              },
+              "count": 1
+            }
+          ],
+          "fri": [
+            {
+              "selector": {
+                "flag": "is_plain_phulka_chapathi"
+              },
+              "count": 1
+            }
+          ],
+          "tue": [
+            {
+              "selector": {
+                "any_of": [
+                  {
+                    "sub_category": "flavoured_paratha"
+                  },
+                  {
+                    "sub_category": "tandoor"
+                  },
+                  {
+                    "sub_category": "thepla"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ],
+          "thu": [
+            {
+              "selector": {
+                "any_of": [
+                  {
+                    "sub_category": "flavoured_paratha"
+                  },
+                  {
+                    "sub_category": "tandoor"
+                  },
+                  {
+                    "sub_category": "thepla"
+                  }
+                ]
+              },
+              "count": 1
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "'3 days rice 2 day pulao'. Stated as the pulao half only, because the other three days are then whatever the rice slot picks that is not a pulao \u2014 two rules would be two things to keep in step. `exact` over the horizon rather than `max_per_week`, since the client gave a count and not a cap.\n\nSelected by FLAG OR NAME, and the name is doing most of the work: `is_pulao` is set on 10 of Pune's 110 rices while 47 of them are pulaos, so the flag alone let the solver serve three pulaos in a week and still report the rule satisfied \u2014 measured, on the first plan this file produced. Every one of the 47 the name catches is a real pulao, so the union is safe as well as accurate, and it leaves the flag in place for a row whose name does not say so.",
+        "name": "phonepe_pulao_2x",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_pulao"
+            },
+            {
+              "name_contains": [
+                "pulao"
+              ]
+            }
+          ]
+        },
+        "exact": 2
+      },
+      {
+        "_comment": "'2 Days Paneer in week' \u2014 the total, across both veg slots, which is why this one has no `base_slot`. The gravy half is the rule below.",
+        "name": "phonepe_paneer_2x_total",
+        "type": "selector_frequency",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 2
+      },
+      {
+        "_comment": "'pannar in gravy weekly once'. One of the two paneer days above is the gravy; the other is free to be the veg dry. Both numbers are the client's and they are consistent, so both are written rather than picking one.",
+        "name": "phonepe_paneer_gravy_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "'All black dals together: max once/week.' Three Pune dals carry `is_black_dal`; the city ruleset caps black CHANA gravies but says nothing about the dal, so this is a real addition rather than a restatement.",
+        "name": "phonepe_black_dal_weekly",
+        "type": "selector_frequency",
+        "base_slot": "dal",
+        "selector": {
+          "flag": "is_black_dal"
+        },
+        "max_per_week": 1
+      },
+      {
+        "_comment": "'Flavour Rice and Veg Gravy should not be the same color on the same day.' The sheet's '(except on Chinese day if allowed)' has nothing to except: PhonePe's theme map is north on four days and mix on Thursday, with no Chinese day.",
+        "name": "phonepe_rice_and_gravy_differ_in_colour",
+        "type": "color_pairing",
+        "course_type_a": "rice",
+        "course_type_b": "veg_gravy"
+      },
+      {
+        "_comment": "'Welcome drink colors cannot repeat on consecutive days.' Bangalore runs the same rule city-wide; Pune does not, and PhonePe is the first Pune counter with two drink cells.",
+        "name": "phonepe_welcome_drink_no_repeat_colour",
+        "type": "welcome_drink_color"
+      },
+      {
+        "_comment": "'Welcome drink 1 is non dairy' \u2014 as a per-day cap across the two cells, which is what it amounts to on a counter whose other drink is meant to be the buttermilk. Written this way because a composition cannot target one cell of a slot, and it is worth writing rather than assuming: the first plan this file produced put `masala_milk` in a drink cell on Wednesday. Dairy is matched by flag OR name \u2014 `drink_rule_group` cannot be trusted for it, since Pune files `masala_milk` and `badam_milk` as `fruit_drink`. The pair catches 10 of 39, which is the lassis, the milks, taak and the buttermilk.",
+        "name": "phonepe_welcome_drink_max_one_dairy",
+        "type": "selector_frequency",
+        "base_slot": "welcome_drink",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_buttermilk"
+            },
+            {
+              "flag": "is_lassi"
+            },
+            {
+              "name_contains": [
+                "milk",
+                "lassi",
+                "shake",
+                "badam",
+                "taak",
+                "chaas"
+              ]
+            }
+          ]
+        },
+        "daily_max": 1
+      }
+    ],
+    "constant_items": {
+      "_comment": "'Non Veg 2 & 3 will serve Boiled egg and boiled chicken daily as staple' \u2014 the same dish every day, so pins rather than rules. Indexed so the FIRST non-veg cell still solves and keeps its weekday composition above. Pune carries neither dish today, so both are stamped as text post-solve and are invisible to colour, variety and cooldown; add a `boiled_egg` and a `boiled_chicken` row to the Pune list and the same pins start being solved instead, with no config change.",
+      "nonveg_main__2": "boiled egg",
+      "nonveg_main__3": "boiled chicken"
+    }
+  }
+}

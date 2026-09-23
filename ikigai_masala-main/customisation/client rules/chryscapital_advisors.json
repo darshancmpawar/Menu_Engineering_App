@@ -1,0 +1,30 @@
+{
+  "ChrysCapital Advisors": {
+    "_comment": "Pune site, one counter. Four stated rules and three of them are here — 'working days will be only Monday,Tue and Wednesday' is the `working_days` COLUMN on the clients row, not a rule, and the live row still has it null, so the counter plans five days until someone sets it (see docs/pending_config_changes.md). The row's `item_cooldown_days` is 17, which is the client's own number and is left alone.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'panner not more the 2 a week'. A cap, not a target — the client is limiting paneer, not asking for it. Scoped to the gravy, which is where 53 of Pune's 57 paneer dishes sit; the four in veg_dry are left to the city's own premium caps.",
+        "name": "chryscapital_paneer_max_2x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "primary_protein": "paneer" },
+        "max": 2
+      },
+      {
+        "_comment": "'when white rice is served we will not serve flavour rice and vice verse' + 'white rule to be served only once a week' (white RICE). A weekday split, the same shape Sinch NCR and the three NCR sites use: the flavoured rice slot stands down on the white-rice day and nowhere else, so exactly one carb is served each day. TUESDAY IS A CHOICE — the client fixed the count, not the day, and their own two sample grids put Steamed Rice on the Tuesday of one and the Wednesday of the other. Move both rules together to change it. If `working_days` is set to Mon/Tue/Wed as the sheet asks, this becomes one white-rice day in three rather than in five.",
+        "name": "chryscapital_flavour_rice_not_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": ["mon", "wed", "thu", "fri"]
+      },
+      {
+        "_comment": "The other half of the split: white rice (the const steamed-rice slot) on Tuesday alone.",
+        "name": "chryscapital_white_rice_tue",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": ["tue"]
+      }
+    ]
+  }
+}

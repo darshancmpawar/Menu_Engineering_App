@@ -122,6 +122,36 @@ and no rule should be relaxed for them.
 
 ---
 
+## 3c. The two Pune rulebook sites
+
+Both are configured and both generate, but the sheets ask for more than the
+counter rows and the Pune list can currently carry.
+
+**Database values** — nothing here is a code change:
+
+| Client | Change | Why |
+|---|---|---|
+| ChrysCapital Advisors | `working_days = ["monday","tuesday","wednesday"]` | The sheet's first rule. The column is null, so the counter plans five days. |
+| PhonePe | `item_cooldown_days`: 20 → 10? | The sheet asks for a 10-day cooldown; the row says 20, which is stricter. Left alone — confirm which you want. |
+| PhonePe | add `salad`, `dessert`, `curd_side` and `starter` to the counter | Fourteen of its 47 rules name a slot the counter does not run: the Mon/Wed/Fri salad and Tue/Thu chaat swap, everything about sweets, the pulao→raita / else→curd pairing and the Mon/Wed/Fri curd staple, and the three starter rules. None of them can be written until the slot exists. |
+
+**Pune item list** — three gaps, each blocking a stated rule:
+
+| Missing | Blocks |
+|---|---|
+| `boiled_egg`, `boiled_chicken` | 'Non Veg 2 & 3 will serve Boiled egg and boiled chicken daily as staple'. Both are pinned and print correctly, but as TEXT — invisible to colour, variety and the cooldown. Adding the two rows upgrades the same pins to solved cells with no config change. |
+| a `masala_buttermilk` row | '2 welcome drinks … mon,wed,fri plain buttermilk and tue,thur masala buttermilk, both staple'. Pune has one buttermilk row, so the rule cannot be written at all. What IS written is a cap of one dairy drink per day. |
+| a `chaat` course_type, in any city | 'Tuesday and Thursday, chaat will be served instead of salad, with 2 chaat items'. No city carries one. |
+
+**Flags that made a rule miss.** `is_pulao` is set on 10 of Pune's 110 rices while
+47 of them are pulaos — with the flag alone, '3 days rice 2 day pulao' let three
+pulaos through and still reported satisfied. PhonePe's rule selects on flag OR
+name as a result. Two others are inert in Pune and were deliberately not written:
+no bread carries `is_rice_bread`, and `is_mellow` is 0 on every veg gravy.
+Correcting the flags would let both be written as stated.
+
+---
+
 ## 4. Decisions still open
 
 | Topic | Question | Where it bites |

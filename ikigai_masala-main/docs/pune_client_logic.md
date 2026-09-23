@@ -11,6 +11,16 @@ nine stated rules. Scope is **lunch**.
 `customisation/client rules/<slug>.json`. Asserted end to end by
 `tests/test_pune_client_logic.py`.
 
+**The other Pune sites** — Corning Chakan, PhonePe and ChrysCapital Advisors —
+are not transcribed here. Each rule's own `_comment` in
+`customisation/client rules/<slug>.json` carries the client's sentence and why it
+is wired the way it is, and a second copy in a doc is a second thing to keep in
+step (which is the argument that retired the generated rules index). What the
+two newest sites still NEED — a `working_days` column, four more slots on
+PhonePe's counter, and three missing Pune dishes — is in
+[`pending_config_changes.md`](pending_config_changes.md) §3c, because those are
+open items rather than a record.
+
 ---
 
 ## Amadeus Pune
