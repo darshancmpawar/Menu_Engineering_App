@@ -1,0 +1,139 @@
+{
+  "Carelon": {
+    "_comment": "NCR site, one counter, seven days (the row has serve_weekends), from the client's rule sheet plus two full sample weeks. The counter already runs two bread cells, which is what 'we serve 2 indian breads' needs: one is pinned to the tawa roti staple and the other is held to a flavoured bread by the composition below.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'2 indian breads. One will be tawa roti staple and other will be a flavour roti or parata.' The pin takes the first cell; this holds the second to a bread that is not a plain chapatti. The sub-category list is DELIBERATELY the wide reading of 'flavour roti or parata' \u2014 22 of NCR's 60 breads, the parathas and every flavoured chapatti, and not just the eight rows filed `flavoured_paratha`. Measured, not stylistic: the narrow five sub-categories carry only BROWN and GREEN dishes, and forcing one of those beside a brown tawa roti every day left the colour-variety rule leaning on healthy_rice, whose nine dishes could not supply enough distinct colours over Carelon's seven-day week \u2014 the plan came back INFEASIBLE blaming healthy_rice, which is the slot that ran out rather than the rule that caused it. The wide list adds orange and red and the counter solves. `poori_/_bhatura` is still out: a poori is neither a roti nor a paratha. Gated at `min_slot_count: 2` so it stands down rather than fighting the pin if the counter is ever cut to one bread.",
+        "name": "carelon_second_bread_is_flavoured",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "any_of": [
+                {
+                  "sub_category": "flavoured_paratha"
+                },
+                {
+                  "sub_category": "layered_paratha"
+                },
+                {
+                  "sub_category": "fat-enriched_chapatti"
+                },
+                {
+                  "sub_category": "leafy_/_herb_chapatti"
+                },
+                {
+                  "sub_category": "tandoor"
+                },
+                {
+                  "sub_category": "stuffed_veg_paratha"
+                },
+                {
+                  "sub_category": "spice_chapatti"
+                },
+                {
+                  "sub_category": "veg_/_fruit_chapatti"
+                },
+                {
+                  "sub_category": "thepla"
+                }
+              ]
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "'weekly twice panner gravy not on consecutive days'. Both halves in one rule: `exact: 2` is the count, `non_consecutive` is the gap. Week 1 of the sample runs Shahi Paneer Monday and Matar Paneer Thursday; week 2 Matar Paneer Monday and Palak Paneer Thursday \u2014 twice, never adjacent.",
+        "name": "carelon_paneer_gravy_2x_non_consecutive",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "primary_protein": "paneer"
+        },
+        "exact": 2,
+        "non_consecutive": true
+      },
+      {
+        "_comment": "'1 kofta in a week'. Selected by NAME because a kofta is a preparation rather than an ingredient \u2014 NCR's 22 koftas are malai, lauki, veg and paneer, spread across three sub-categories, and no flag marks them. Week 1's Friday is Malai Kofta and week 2's Friday is Kofta Curry.",
+        "name": "carelon_kofta_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": {
+          "name_contains": [
+            "kofta"
+          ]
+        },
+        "exact": 1
+      },
+      {
+        "_comment": "'no non veg on Tue and sat'. The counter serves seven days, so the allowed list is the other five. Both sample weeks leave the NON-VEG row blank on exactly those two days.",
+        "name": "carelon_no_nonveg_tue_sat",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "mon",
+          "wed",
+          "thu",
+          "fri",
+          "sun"
+        ]
+      },
+      {
+        "_comment": "'egg gravy not to be served more then onces a week'. A cap rather than a target: the client is limiting it, not asking for it, and week 1's non-veg row is chicken on all five of its days.",
+        "name": "carelon_egg_gravy_max_1x",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_egg_dish"
+        },
+        "max": 1
+      },
+      {
+        "_comment": "'white rice at 2 time max 3 time a week. No more then 2 consective days will have white rice' + 'when white rice is served we will not serve flavour rice and vice verse'. A weekday split, as Sinch NCR's is: the flavoured rice slot stands down on the white-rice days and nowhere else, so exactly one carb is served every day. MON/THU/SAT IS A CHOICE \u2014 the client fixed the counts and the no-more-than-two-in-a-row, not the days; these three are week 1 of their own sample (Steamed Rice on Monday, Thursday and Saturday) and satisfy the run limit by never being adjacent at all. Move both rules together to change it.",
+        "name": "carelon_flavour_rice_off_white_rice_days",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "tue",
+          "wed",
+          "fri",
+          "sun"
+        ]
+      },
+      {
+        "_comment": "The other half of the split: white rice (the const steamed-rice slot) on Monday, Thursday and Saturday.",
+        "name": "carelon_white_rice_mon_thu_sat",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "mon",
+          "thu",
+          "sat"
+        ]
+      },
+      {
+        "_comment": "'only different types of raita will be served.' A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). `is_raita` covers 34 of NCR's 38 curd sides; the two plain curds are what it excludes. Both sample weeks print a different raita on every one of the seven days, which the item cooldown already guarantees.",
+        "name": "carelon_curd_side_raita_only",
+        "type": "slot_composition",
+        "base_slot": "curd_side",
+        "min_slot_count": 1,
+        "components": [
+          {
+            "selector": {
+              "flag": "is_raita"
+            },
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "constant_items": {
+      "_comment": "The staple half of 'One will be tawa roti staple'. Indexed so the SECOND bread cell still solves \u2014 a bare `bread` pin would take the whole family and leave no cell for the flavoured bread.",
+      "bread__1": "tawa roti"
+    }
+  }
+}

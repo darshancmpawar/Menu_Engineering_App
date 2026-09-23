@@ -1,0 +1,44 @@
+{
+  "Corning": {
+    "_comment": "NCR site, one counter, from the client's rule sheet plus the 16-20 March sample week. Not to be confused with Corning Chakan, which is the Pune site and has its own file. The grid's Seasonal Greens / Green Base / Cyclic Toppings rows are a salad BAR — components a diner assembles, not a solver slot — which is why the counter declares no salad and none is configured here, the same reading Corning Chakan's Pune menu got. Fruit 1 / Fruit 2 are likewise not slots. Add on 1 and Add on 2 are the const chutney and papad the counter already carries, and Beverage is its welcome drink.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'panner can be severd 2 times a week'. Scoped to the gravy, which is the slot the sample week's Paneer Kolahpuri and Paneer Hyderabadi sit in — two of its five days, so the rule states what the grid already does.",
+        "name": "corning_paneer_2x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 2
+      },
+      {
+        "_comment": "'when white rice is there there is not flavour rice and vice verse' + 'white rice will be atleast weekly once or twice at max'. A weekday split, as Sinch NCR's is: the flavoured rice slot stands down on the white-rice day, so exactly one carb is served each day. THURSDAY IS A CHOICE — the client fixed the count, not the day, and their sample week prints Steam Rice in the fourth column with Jeera Rice or Peas Pulao on the rest. Move both rules together to change it, or add a second day to reach their 'twice at max'.",
+        "name": "corning_flavour_rice_not_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": ["mon", "tue", "wed", "fri"]
+      },
+      {
+        "_comment": "The other half of the split: white rice (the const steamed-rice slot) on Thursday alone.",
+        "name": "corning_white_rice_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": ["thu"]
+      },
+      {
+        "_comment": "'only different types of raita will be served.' A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). `is_raita` covers 34 of NCR's 38 curd sides; the two plain curds are what it excludes. The sample week's Kakdi Kotambir / Boondi / Masala Tadka / Burani / Beetroot are five distinct raitas, which the item cooldown already guarantees.",
+        "name": "corning_curd_side_raita_only",
+        "type": "slot_composition",
+        "base_slot": "curd_side",
+        "min_slot_count": 1,
+        "components": [
+          { "selector": { "flag": "is_raita" }, "count": 1 }
+        ]
+      }
+    ],
+    "constant_items": {
+      "_comment": "'in indian bread roti is a staple and will be served daily' — the grid prints Roti on all five days, so a pin rather than a rule.",
+      "bread": "roti"
+    }
+  }
+}
