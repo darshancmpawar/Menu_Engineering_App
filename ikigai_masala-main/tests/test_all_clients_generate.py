@@ -100,35 +100,10 @@ def _plan(api_app, name, idx, **overrides):
     return resp, (resp.get_json() or {})
 
 
-#: Counters that cannot be planned because the DATA cannot supply a slot they
-#: declare — not because a rule is wrong. Each entry is a live client whose
-#: menu is blocked until someone acts on the note.
-#:
-#: PhonePe (3 non-veg mains a day) and ChrysCapital Advisors (1) are Pune
-#: sites, and Pune's SERVABLE list holds no non-veg at all: the workbook's 147
-#: non-veg rows carry no pool token, so `filter_eligible` drops every one of
-#: them. The solver is right to refuse — a counter that asked for three chicken
-#: dishes and silently got none is the failure worth 500ing over, and the
-#: diagnostic already names the slot and the count. Giving those rows a pool
-#: token these two clients name unblocks both; a blanket `common` would also
-#: hand meat to Amadeus Pune and Corning Chakan, which declare none.
-BLOCKED_ON_DATA = {
-    ('PhonePe', 'Counter 1'),
-    ('ChrysCapital Advisors', 'Counter 1'),
-}
-
-
 def _all_counters():
     for client in CLIENTS:
         for idx, counter in enumerate(client['counters']):
             yield client['name'], idx, counter['name']
-
-
-def _skip_if_blocked_on_data(client_name, counter_name):
-    if (client_name, counter_name) in BLOCKED_ON_DATA:
-        pytest.xfail(
-            f"{client_name}/{counter_name}: the city list cannot supply a slot "
-            f"this counter declares — see BLOCKED_ON_DATA")
 
 
 # Start dates that exercise the theme resolution, not just one happy Monday.
@@ -160,7 +135,6 @@ def test_every_counter_generates_on_other_start_dates(
     designed behaviour for an over-constrained counter. An unexplained
     INFEASIBLE is the failure this test exists to catch.
     """
-    _skip_if_blocked_on_data(client_name, counter_name)
     resp, body = _plan(live_clients, client_name, idx, start_date=start)
     assert resp.status_code in (200, 422), (
         f"{client_name}/{counter_name} start={start} returned "
@@ -187,7 +161,6 @@ def test_every_counter_generates_on_other_start_dates(
 )
 def test_every_counter_generates(live_clients, client_name, idx, counter_name):
     """No counter may fail, and no active slot may be left empty."""
-    _skip_if_blocked_on_data(client_name, counter_name)
     resp, body = _plan(live_clients, client_name, idx)
     assert resp.status_code == 200, (
         f"{client_name}/{counter_name} did not generate "

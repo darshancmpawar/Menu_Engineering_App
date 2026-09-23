@@ -17,9 +17,8 @@ def client():
 
 def _pune_tokens():
     """Every distinct pool token in the Pune workbook. Blank cells are not
-    tokens — they are rows in no pool at all, which is a different thing and is
-    what `test_the_unreachable_half_of_the_pune_list_is_exactly_the_meat` is
-    about."""
+    tokens — they are rows in no pool, which since Pune went full-pool means
+    nothing at all."""
     import pandas as pd
     from src.ontology.paths import CITY_ITEMS_DIR
     cells = pd.read_excel(CITY_ITEMS_DIR / 'pune.xlsx')['client'].dropna()
@@ -108,10 +107,9 @@ class TestNoCommonCityFallback:
         FULL_POOL_CITIES switch — flip Bangalore out of it and the old behaviour
         is back, unchanged.
 
-        It has to be demonstrated this way: Bangalore was the only city with a
-        mixed `client` column, and it is now full-pool by choice. Chennai and
-        Pune are 100% `common`, so narrowing there is a no-op and would prove
-        nothing.
+        It has to be demonstrated this way: every city is full-pool now, and
+        Bangalore is the one with a mixed `client` column — Chennai's and Pune's
+        tagged rows are all `common`, so narrowing there would prove nothing.
         """
         import src.constants as consts
         monkeypatch.setattr(consts, 'FULL_POOL_CITIES', set(), raising=True)
@@ -206,65 +204,59 @@ class TestPlanFlowFilter:
         for cell in out['client']:
             assert parse_client_pools(cell) & active, cell
 
-    def test_every_city_with_per_site_pools_is_now_full_pool(self):
+    def test_every_city_is_now_full_pool(self):
         """The policy, stated as an assertion. A city whose list is carved into
         per-site pools and whose clients do not name them plans from a fraction
-        of its own dishes — which is what put Bangalore, NCR and now Chennai in
-        this set."""
+        of its own dishes. Pune was the last holdout and joined for the same
+        reason as the rest, in the client's words: the full city list is the
+        common menu for every site in it."""
         from src.constants import FULL_POOL_CITIES
-        for city in ('bangalore', 'chennai', 'ncr'):
-            assert city in FULL_POOL_CITIES, city
-        assert 'pune' not in FULL_POOL_CITIES
+        from src.client.client_config import AVAILABLE_CITIES
+        for city in AVAILABLE_CITIES:
+            assert city.strip().lower() in FULL_POOL_CITIES, city
 
     def test_punes_only_pool_token_is_common(self):
-        """Pune declares no per-site pool, so `source_pools` can only narrow.
-
-        It used to be that every Pune row carried `common` too, which is what
-        kept Pune out of `FULL_POOL_CITIES`: narrowing was a no-op rather than a
-        loss. The corrected list broke that — see the test below — but the
-        token vocabulary is still the one word, and a second token appearing
-        would mean a per-site carve nobody configured.
-        """
+        """A second token would mean a per-site carve nobody configured. Pune is
+        full-pool so it would not narrow anything today, but it would be the
+        first sign the list had been split behind our backs."""
         assert _pune_tokens() == {'common'}, sorted(_pune_tokens())
 
-    def test_the_unreachable_half_of_the_pune_list_is_exactly_the_meat(self):
-        """**The vegetarian line, and the reason Pune's new dishes do not show.**
+    def test_no_veg_slot_can_be_served_a_nonveg_dish(self):
+        """**The vegetarian line, asserted where it is actually held.**
 
-        The corrected Pune workbook is 1,315 rows where the old one was 512. The
-        803 new rows carry NO pool token, so `filter_eligible` drops every one of
-        them and a Pune client still plans from the same 512 dishes — the list
-        tripled and nothing reached a plate.
+        Pune carries 147 non-veg rows and, now that it is full-pool, every Pune
+        client can reach them. Nothing is lost by that, because a pool token was
+        never what kept meat off a vegetarian plate: `_nonveg_mask` keeps non-veg
+        out of every veg slot, and a counter that declares no `nonveg_main` slot
+        has no cell for one to land in. Amadeus Pune and Corning Chakan declare
+        none, which is the second half of the guarantee and is asserted below.
 
-        That would be a pure loss except for what is in there: all 147 non-veg
-        rows are among the 803, and their missing token is the ONLY thing
-        keeping Pune vegetarian. So the two facts are one decision, and it is
-        the client's: tagging the stranded rows `common` in bulk, or adding Pune
-        to `FULL_POOL_CITIES`, unlocks ~656 veg dishes and 147 meat dishes
-        together. Tag the veg rows and leave the meat untagged, and Pune gets
-        the variety without the meat.
-
-        Asserted as a SHAPE, not a count, so the numbers can move while the
-        invariant holds: nothing reachable is non-veg, and the unreachable set
-        is not only meat.
+        This is the test that fails if either half is ever removed.
         """
-        import pandas as pd
-        from src.preprocessor.client_pool_filter import (
-            filter_eligible, get_active_pools,
-        )
+        from src.ontology.repository import OntologyRepository
         from src.preprocessor.pool_builder import _nonveg_mask
-        from src.ontology.paths import CITY_ITEMS_DIR
+        _df, pools = OntologyRepository().filtered_menu_data('Pune', [])
+        assert len(pools['nonveg_main']) > 0, 'the meat should be reachable now'
+        for slot, items in pools.items():
+            if slot == 'nonveg_main' or not len(items):
+                continue
+            assert not _nonveg_mask(items).any(), slot
 
-        pune = pd.read_excel(CITY_ITEMS_DIR / 'pune.xlsx')
-        reachable = filter_eligible(pune, get_active_pools([]))
-        assert _nonveg_mask(reachable).sum() == 0
-
-        stranded = pune.drop(index=reachable.index)
-        nonveg = int(_nonveg_mask(stranded).sum())
-        assert nonveg == int(_nonveg_mask(pune).sum()), (
-            'a non-veg Pune row became reachable')
-        assert len(stranded) - nonveg > 0, (
-            'no veg dishes are stranded any more — if the pool tokens were '
-            'backfilled, fold this into the test above')
+    def test_a_pune_counter_without_the_slot_cannot_plate_meat(self):
+        """The other half: the two vegetarian Pune sites declare no non-veg slot,
+        so widening the pool gave them nothing to serve."""
+        from tests.client_fixtures import CLIENTS
+        veg_sites = {'Amadeus Pune', 'Corning Chakan'}
+        seen = set()
+        for c in CLIENTS:
+            if c['name'] not in veg_sites:
+                continue
+            seen.add(c['name'])
+            for counter in c['counters']:
+                assert 'nonveg_main' not in (counter.get('slot_counts') or {}), (
+                    f"{c['name']}/{counter['name']} now declares a non-veg slot "
+                    f"— if that is intended, move it out of this test")
+        assert seen == veg_sites, sorted(veg_sites - seen)
 
     def test_a_full_pool_city_ignores_source_pools(self, fake_supabase):
         """Bangalore is in `FULL_POOL_CITIES`, so naming a pool changes nothing

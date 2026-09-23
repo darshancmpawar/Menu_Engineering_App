@@ -57,7 +57,7 @@ configure_logging()
 # happens in production long after the process looked healthy.
 validate_required_env()
 from src.preprocessor.client_pool_filter import (
-    get_active_pools, filter_eligible, available_pool_tokens, normalize_name,
+    get_active_pools, available_pool_tokens, normalize_name,
 )
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS,
@@ -1288,7 +1288,11 @@ def pool_preview():
                 ),
             }), 400
         active = get_active_pools(requested)
-        eligible = filter_eligible(df, active)
+        # Through the repository, not `filter_eligible` directly: the full-pool
+        # policy lives there (note 15), so counting it here meant the editor
+        # previewed a narrowing the planner does not do. Pune showed it — the
+        # preview said 512 dishes while a plan drew on all 1,315.
+        eligible, _ = ontology_repository.filtered_menu_data(city, sorted(requested))
         by_cat = (
             eligible['course_type'].astype(str).str.lower()
             .value_counts().to_dict()

@@ -29,33 +29,17 @@ TIME_LIMIT = 60
 CLIENT = 'Amadeus Pune'
 
 
-def _pune_workbook():
-    import pandas as pd
-    from src.ontology.paths import city_excel_path
-    return pd.read_excel(city_excel_path('Pune'))
-
-
 def _pune_row_count():
     """How many dishes the committed Pune workbook holds, read from the file.
 
     The counts below used to be literals and broke every time the ontology
     gained a dish; what they are actually asserting is "this endpoint counted
     PUNE's list, not Bangalore's", which the derived number states directly.
+    Pune is full-pool, so this is also what a client can be served.
     """
-    return len(_pune_workbook())
-
-
-def _pune_eligible_count():
-    """...and how many of those a Pune client with no `source_pools` can see.
-
-    A separate number from the one above since the corrected list arrived: Pune
-    is not in `FULL_POOL_CITIES`, so a client sees `common` and nothing else,
-    and that is what a pool preview counts.
-    """
-    from src.preprocessor.client_pool_filter import (
-        filter_eligible, get_active_pools,
-    )
-    return len(filter_eligible(_pune_workbook(), get_active_pools([])))
+    import pandas as pd
+    from src.ontology.paths import city_excel_path
+    return len(pd.read_excel(city_excel_path('Pune')))
 
 
 @pytest.fixture
@@ -139,12 +123,12 @@ class TestEveryEndpointServesAPuneClient:
         body = r.get_json()
         # Derived, not hard-coded: the point is that the endpoint counts *Pune's*
         # list, and a literal here just breaks every time a dish is added.
-        assert body['eligible_item_count'] == _pune_eligible_count(), body
+        assert body['eligible_item_count'] == _pune_row_count(), body
         assert body['city'] == 'Pune'
 
     def test_pool_preview_without_a_city_counts_the_default(self, pune_api):
         r = _post(pune_api, '/api/v1/pool-preview', {'source_pools': []})
-        assert r.get_json()['eligible_item_count'] > _pune_eligible_count()
+        assert r.get_json()['eligible_item_count'] > _pune_row_count()
 
     def test_bangalore_pool_token_is_rejected_for_a_pune_client(self, pune_api):
         """Pool tokens live inside one city's list, so a Bangalore token on a Pune

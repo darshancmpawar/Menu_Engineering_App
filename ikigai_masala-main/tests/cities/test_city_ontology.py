@@ -63,9 +63,11 @@ class TestCityRequiredSlots:
     def test_declared_city_gets_its_declared_set(self):
         required = city_required_slots('Pune')
         assert required is not None
-        # Pune serves no non-veg station and no sambar/rasam.
-        assert 'nonveg_main' not in required
-        assert 'veg_gravy' in required
+        # Narrower than the full mandatory set — Pune serves no curd_rice and no
+        # combined dal_sambar — but it does serve non-veg now that PhonePe and
+        # ChrysCapital Advisors are live and the city is full-pool.
+        assert {'veg_gravy', 'nonveg_main'} <= required
+        assert 'curd_rice' not in required
 
     def test_undeclared_city_keeps_the_full_mandatory_check(self):
         """Bangalore must still fail loudly if a mapping regression empties a
@@ -139,51 +141,28 @@ class TestPuneOntologyFile:
         for slot in city_required_slots('Pune'):
             assert len(pools[slot]) > 0, slot
 
-    @pytest.fixture(scope='class')
-    def pune_eligible(self, pune_df):
-        """What a Pune client with no `source_pools` can actually be served.
-
-        Pune is not in `FULL_POOL_CITIES`, so a client sees `common` plus its
-        own pools and nothing else. Every assertion about what Pune serves is
-        made HERE rather than on the workbook: the two stopped being the same
-        thing when the corrected list arrived carrying rows the pool filter
-        does not reach, and the workbook is not what reaches a plate.
-        """
-        from src.preprocessor.client_pool_filter import (
-            filter_eligible, get_active_pools,
-        )
-        return filter_eligible(pune_df, get_active_pools([]))
-
-    def test_manifest_declares_everything_the_file_covers(self, pune_eligible):
-        """Keeps the manifest honest: a category a Pune client can be served but
-        the manifest omits is a slot nothing would notice losing."""
-        pools = PoolBuilder.build_pools(pune_eligible, required_slots=set())
+    def test_manifest_declares_everything_the_file_covers(self, pune_df):
+        """Keeps the manifest honest: a category the workbook covers but the
+        manifest omits is a slot nothing would notice losing. `nonveg_main`
+        joined it when Pune went full-pool — the 147 non-veg rows had been in
+        the file all along, unreachable, and two Pune sites now serve them."""
+        pools = PoolBuilder.build_pools(pune_df, required_slots=set())
         covered = {
             s for s in BASE_SLOT_NAMES
             if len(pools.get(s, [])) > 0 and s not in DEFAULT_OFF_SLOTS
         }
         assert covered == set(city_required_slots('Pune'))
 
-    def test_a_pune_client_with_no_pools_gets_the_common_rows(
-            self, pune_df, pune_eligible):
-        """`common` is the whole of Pune's servable list — the city declares no
-        client-specific pool token, so `source_pools` can only ever narrow."""
+    def test_a_pune_client_sees_the_whole_list(self, pune_df):
+        """Pune is full-pool, so `source_pools` cannot narrow it — which is the
+        client's own statement of how the city works, and the fix for 656 veg
+        dishes that were unreachable while it was not."""
         from src.preprocessor.client_pool_filter import available_pool_tokens
+        from src.ontology.repository import OntologyRepository
         assert available_pool_tokens(pune_df) == set()
-        assert 0 < len(pune_eligible) <= len(pune_df)
-
-    def test_no_pune_client_can_be_served_a_nonveg_dish(self, pune_eligible):
-        """Pune is a vegetarian site and this is the assertion that keeps it one.
-
-        Stated over the eligible list, not the workbook: the corrected Pune
-        list carries non-veg rows, all of them outside `common` and so outside
-        every Pune client's pool. That is the only reason they are harmless, so
-        this fails the moment one of them is given a reachable pool token —
-        which is the failure worth catching, and the one nothing else would.
-        """
-        from src.preprocessor.pool_builder import _nonveg_mask
-        served = pune_eligible[_nonveg_mask(pune_eligible)]
-        assert served.empty, sorted(served['item'])[:10]
+        for pools in ([], ['common'], ['anything']):
+            df, _ = OntologyRepository().filtered_menu_data('Pune', pools)
+            assert len(df) == len(pune_df), pools
 
 
 class TestPerCityCaches:
@@ -236,18 +215,19 @@ class TestPerCityCaches:
         assert 'akki_roti' not in pune
         assert 'phodnicha_bhat' in pune
 
-    def test_filtered_cache_key_includes_the_city(self, fake_supabase):
+    def test_filtered_cache_key_includes_the_city(self, fake_supabase, monkeypatch):
         """The F5 pool cache used to be keyed by pool tokens alone, which would
         hand a Pune client Bangalore's `common` pool.
 
-        Asserted on the KEY rather than by populating two entries, because
-        Pune is now the only city that narrows at all — Bangalore, Chennai, NCR
-        and Hyderabad are all in `FULL_POOL_CITIES` and never reach this cache.
-        A count-based test would quietly stop asserting anything the next time a
-        city joins that set.
+        Every city is in `FULL_POOL_CITIES` today, so nothing reaches this cache
+        in production and the bug cannot be demonstrated against a live city.
+        The switch is turned off for the duration instead — that is what the set
+        is for, and it keeps the guard alive for whoever turns a city back.
         """
         import api.app as api_app
+        import src.constants as consts
         from src.ontology.paths import city_excel_path
+        monkeypatch.setattr(consts, 'FULL_POOL_CITIES', set(), raising=True)
         api_app.reset_caches()
         api_app._get_client_loader().set_client_city('Rippling', 'Pune')
         pune_df, _ = api_app._menu_data_for_client('Rippling')

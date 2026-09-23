@@ -328,10 +328,26 @@ THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 # tagged `quest`. The tokens are an artefact of where the list came from; the
 # dishes are simply the city's list.
 #
+# Pune is the last to join, and the client's own words are the reason: the full
+# Pune list is the common menu for every Pune site, as NCR's is. The corrected
+# workbook made that a live problem rather than a tidiness one — it tripled the
+# list to 1,315 rows and tagged only 512 of them `common`, so a Pune client was
+# still planning from the old 512 while 656 new VEG dishes sat unreachable. The
+# other 147 untagged rows are non-veg, and PhonePe (3 non-veg mains a day) and
+# ChrysCapital Advisors (1) could not produce a menu at all without them: the
+# solve came back INFEASIBLE on `nonveg_main (0 distinct items)`.
+#
+# Widening the pool cannot put meat on a vegetarian counter. Amadeus Pune and
+# Corning Chakan declare no `nonveg_main` slot, so there is no cell for a
+# non-veg dish to land in, and `PoolBuilder._nonveg_mask` keeps non-veg out of
+# every veg slot regardless of pool. The vegetarian line is held by the slot and
+# the mask, not by a missing pool token — which is the right place for it, since
+# a pool token is a menu decision and this is a dietary one.
+#
 # Deliberately a city-level switch, not a per-client edit: it is reversible in
 # one line and leaves every client row untouched. Remove a city from this set to
 # restore per-client pools.
-FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'hyderabad', 'ncr'}
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'hyderabad', 'ncr', 'pune'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.

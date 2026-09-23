@@ -35,20 +35,21 @@
     "nonveg_main"
   ],
   "pune": [
-    "welcome_drink",
-    "salad",
     "bread",
-    "rice",
-    "veg_dry",
-    "veg_gravy",
+    "curd_side",
     "dal",
     "dessert",
     "healthy_rice",
-    "curd_side",
-    "starter",
+    "nonveg_main",
     "rasam",
+    "rice",
+    "salad",
     "sambar",
-    "soup"
+    "soup",
+    "starter",
+    "veg_dry",
+    "veg_gravy",
+    "welcome_drink"
   ],
   "ncr": [
     "welcome_drink",
