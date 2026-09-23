@@ -1,26 +1,2 @@
 dish_family,course_type,n_dishes,item_color,example_dishes
-chicken,nonveg_main,7,,hyderabad:andhra_chicken_pulao; hyderabad:champaran_chicken_curry; hyderabad:hyderabadi_laal_chicken; hyderabad:pahadi_chicken_curry; hyderabad:pepper_chilli_chicken; hyderabad:tellicherry_chicken_curry
-kodi,nonveg_main,5,,hyderabad:avakaya_kodi_kura; hyderabad:inti_kodi_kura; hyderabad:kodi_kura; hyderabad:kodi_pulusu; hyderabad:telanagana_kodi_kura
-pappu,dal,5,,hyderabad:dosakaya_pappu; hyderabad:gujarati_pappu; hyderabad:menthikoora_pappu; hyderabad:paalakoora_pappu; hyderabad:thotakura_pappu
-rice,rice,4,,hyderabad:coconut_mint_rice; hyderabad:corn_capsicum_rice; hyderabad:jeera_brownonion_rice; hyderabad:tomato_tadka_rice
-aloo,veg_gravy,2,,hyderabad:aloo_drumstick_curry; hyderabad:dum_aloo_jaipuri
-cheese,starter,2,,hyderabad:cheese_balls; hyderabad:corn_cheese_nuggets
-dum,nonveg_main,2,,hyderabad:hyderabadi_dum_biryani; hyderabad:hyderabadi_dum_pulao
-kura,veg_gravy,2,,hyderabad:beerakaya_drumstick_kura; hyderabad:vankaya_kura
-masala,veg_gravy,2,,hyderabad:vankai_peas_masala; hyderabad:vegetable_pepper_masala
-murgh,nonveg_main,2,,hyderabad:adraki_dhaniya_murgh; hyderabad:murgh_rara_masala
-pulao,rice,2,,hyderabad:corn_veg_pulao; hyderabad:meal_maker_pulao
-pulusu,veg_gravy,2,,hyderabad:munakkaya_pulusu; hyderabad:vankaya_pulusu
-balusagi,dessert,1,,hyderabad:balusagi
-beerakaya,dal,1,,hyderabad:beerakaya_senagapappu
-bhaji,veg_gravy,1,,hyderabad:vangya_rassa_bhaji
-cabbage,salad,1,,hyderabad:cabbage_khimchi
-chhole,dal,1,,hyderabad:chhole_masala
-coconut,dessert,1,,hyderabad:coconut_orange_laddu
-corn,starter,1,,hyderabad:veg_n_corn_nuggets
-kimchi,salad,1,,hyderabad:veg_kimchi
-kodikura,nonveg_main,1,,hyderabad:kothmeera_kodikura
-lachha,salad,1,,hyderabad:lachha_onion_and_lemon
-para,dessert,1,,hyderabad:sakkar_para
-pudding,dessert,1,,hyderabad:red_velvet_pudding
-pulihora,rice,1,,hyderabad:pulihora
+manjusha,veg_gravy,1,,pune:ratan_manjusha
