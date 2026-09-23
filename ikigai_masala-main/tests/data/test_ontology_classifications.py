@@ -14,6 +14,12 @@ def ontology(ensure_sample_data_exists):
     return pd.read_excel(ensure_sample_data_exists)
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "`is_kadhi_dal` is 0 on every row of all five corrected workbooks, against "
+    "182 rows named kadhi / mor kuzhambu / majjige huli. Three rules key on it "
+    "— Pune's R30 `kadhi_weekly` and `kadhi_15d_window`, and one Bangalore rule "
+    "— so all three are silently inert. Waiting on the flag coming back in the "
+    "data; remove this marker with it."))
 def test_all_kadhi_items_are_veg_gravy(ontology):
     """Kadhi (pakora / mor kuzhambu / majjige huli) serves in the gravy slot,
     not as an everyday lentil dal. All is_kadhi_dal items must be veg_gravy so

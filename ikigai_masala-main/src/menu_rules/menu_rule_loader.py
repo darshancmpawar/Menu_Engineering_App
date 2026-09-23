@@ -27,7 +27,7 @@ CLIENT_RULES_CONFIG_PATH = os.getenv(
 # 36 clients, which made every client edit touch the same document.
 CLIENT_RULES_DIR = os.getenv(
     'CLIENT_RULES_DIR',
-    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'clients'),
+    str(Path(__file__).resolve().parent.parent.parent / 'customisation' / 'client rules'),
 )
 
 # Directory holding one rules file per city (``<city>.json``). A city file may

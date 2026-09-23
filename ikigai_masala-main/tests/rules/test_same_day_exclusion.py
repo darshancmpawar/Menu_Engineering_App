@@ -475,11 +475,20 @@ class TestShippedSelectorsMatchTheRightItems:
                             ('babycorn', 'baby_corn', 'soya', 'mushroom', 'chole'))]
         assert not stray, f"{city}: generic salads excluded from paneer days: {stray}"
 
+    #: A soya-named dish the corrected list files as PANEER on both columns,
+    #: and correctly: `soya_paneer_mutter_masala` is genuinely both, and the
+    #: exclusion it exists to serve still works — the paneer side catches it, so
+    #: it cannot share a day with another paneer dish. Counting it as soy as
+    #: well would make one dish block both families.
+    DUAL_PROTEIN = {'soya_paneer_mutter_masala'}
+
     def test_pune_soya_dishes_all_carry_the_soy_tag(self):
-        """Two were left on their vegetable's key_ingredient, so the rule could
-        not see them; `scripts/pune_flag_corrections.py` fixes that."""
+        """A soya dish whose key_ingredient names its vegetable instead is
+        invisible to the rule. Two Pune rows were in that state once; the
+        assertion is what keeps a re-import from putting them back."""
         df = self._df('Pune')
-        named = df[df['item'].str.contains('soya', case=False, na=False)]
+        named = df[df['item'].str.contains('soya', case=False, na=False)
+                   & ~df['item'].isin(self.DUAL_PROTEIN)]
         assert len(named) >= 6, len(named)
         assert set(named['key_ingredient']) == {'soy'}, \
             named[['item', 'key_ingredient']].to_string(index=False)

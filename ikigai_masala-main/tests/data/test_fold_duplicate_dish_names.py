@@ -1,4 +1,4 @@
-"""One dish, one row — `scripts/fold_duplicate_dish_names.py`.
+"""One dish, one row — `Chain rules/fold_duplicate_dish_names.py`.
 
 386 rows were dropped, so the guards here are about what a fold must NOT do.
 Three failure modes, in descending order of how quietly they happen:
@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-_SCRIPTS = Path(__file__).resolve().parents[2] / 'scripts'
+_SCRIPTS = Path(__file__).resolve().parents[2] / 'Chain rules'
 sys.path.insert(0, str(_SCRIPTS))
 
 from audit_duplicate_dish_names import (  # noqa: E402
@@ -167,7 +167,7 @@ class TestTheMisfileVerdicts:
 
     def test_the_report_covers_every_verdict_and_carries_its_reason(self):
         import csv as _csv
-        path = _SCRIPTS.parent / 'docs' / 'duplicate_dish_misfile_verdicts.csv'
+        path = _SCRIPTS / 'reports' / 'duplicate_dish_misfile_verdicts.csv'
         rows = list(_csv.DictReader(path.open(encoding='utf-8')))
         expected = sum(len(_for_city(t, c)) for t in (_MISFILES, _FORM_RENAMES)
                        for c in CITIES)

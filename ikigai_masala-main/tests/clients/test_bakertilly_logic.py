@@ -18,7 +18,7 @@ priority rather than an ultimatum.
 The selector deliberately reads `primary_protein` and the dish NAME for paneer
 and never `key_ingredient`: that column is the de-facto default for a Chinese
 dish in this ontology, which is why a Thai green curry used to count as a paneer
-gravy (`scripts/definitional_flags.py`).
+gravy (`Chain rules/definitional_flags.py`).
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from src.menu_rules.menu_rule_loader import MenuRuleLoader
 from src.ontology.paths import city_excel_path
 
 ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / "data" / "configs" / "clients" / "bakertilly.json"
+CONFIG = ROOT / "customisation" / "client rules" / "bakertilly.json"
 
 NONVEG_RULE = "bakertilly_second_nonveg_on_the_biryani_day_only"
 GRAVY_RULE = "bakertilly_veg_gravy_from_the_named_families_daily"

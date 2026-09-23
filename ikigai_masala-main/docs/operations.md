@@ -38,7 +38,7 @@ Defined in `tests/conftest.py`:
 - `ruff check --select=F,E9` — real-bug ruleset (undefined names, syntax
   errors, unused imports). Style rules are intentionally out of scope for
   now.
-- `bandit -ll -r api src scripts` — medium+ severity security findings.
+- `bandit -ll -r api src "Chain rules"` — medium+ severity security findings.
 
 A fourth job — `slow-tests` — runs only on push to `main` and manual
 `workflow_dispatch` triggers, so PR feedback stays fast.
@@ -122,8 +122,8 @@ without them falls back to the default city (`bangalore`) for that half.
    set, coerces flags to 0/1 and reports what the list does not cover:
 
    ```bash
-   python Chain rules/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx --dry-run
-   python Chain rules/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
+   python "Chain rules/normalize_city_ontology.py" pune ~/Downloads/pune_menu_items.xlsx --dry-run
+   python "Chain rules/normalize_city_ontology.py" pune ~/Downloads/pune_menu_items.xlsx
    ```
 
    Then declare the categories the list covers in
@@ -189,12 +189,13 @@ ikigai_masala-main/
 │   ├── client/               ClientConfig(Loader), ConcurrentEditError
 │   └── history/              HistoryManager
 ├── ui/                       API client (with retry) + formatters
-├── customisation/            Streamlit editor UIs
 ├── data/
 │   ├── raw/city_items/<city>.xlsx   one item list per city + ontology_categories.json
 │   ├── configs/city_rules/<city>.json  one ruleset per city
-│   └── configs/clients/<slug>.json  one overrides file per client
-├── Chain rules/                  Supabase seeders + SQL schema
+│   └── configs/rule_library.json    reusable rule bodies clients reference by name
+├── customisation/            Streamlit editor UIs + client rules/<slug>.json, one per client
+├── Chain rules/              the ontology correction chain + client menu importers (dev tooling)
+├── scripts/                  Supabase SQL only
 ├── tests/                    Pytest suite
 ├── docs/                     setup, architecture, api, operations
 ├── pytest.ini

@@ -11,7 +11,7 @@ named for a category, not a dish) and `data/raw/source_workbooks/chennai_sample_
 `Toasttab`. Scope is **lunch**.
 
 **Implementation:** the `"ToastTab CHN"` entry in
-`data/configs/clients/<slug>.json`. Asserted end to end by
+`customisation/client rules/<slug>.json`. Asserted end to end by
 `tests/test_chennai_client_logic.py`; the city ruleset by
 `tests/test_chennai_rules.py`.
 
@@ -175,8 +175,9 @@ A fifth client, **RNTBCI**, is listed on `Sheet1` with nothing beside it and its
 own sheet is empty. It is on hold at the client's request; its six counters plan
 from the city ruleset alone.
 
-Full rule-by-rule tables are in [`client_rules_index.md`](client_rules_index.md).
-What follows is what each client taught the tool.
+The rules themselves are in `customisation/client rules/<slug>.json`, each one's
+`_comment` carrying the client's own sentence. What follows is what each client
+taught the tool.
 
 ### TCL — one counter, seven days
 

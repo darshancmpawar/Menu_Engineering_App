@@ -2,5 +2,12 @@
 # atomic-write temp files from the ontology correction scripts
 *.xlsx.tmp
 
-# generated reports from the ontology correction chain
-Chain rules/reports/
+# Open-question reports the ontology correction chain rewrites on every run.
+# The other two files in that directory ARE committed: the duplicate-name
+# audit, because `--check` compares it against a fresh run, and the misfile
+# verdicts, because those are decisions rather than output.
+Chain rules/reports/colours_to_confirm_by_family.csv
+Chain rules/reports/cuisines_to_confirm.csv
+Chain rules/reports/dishes_needing_a_colour.csv
+Chain rules/reports/ontology_gaps.csv
+Chain rules/reports/vegnonveg_to_confirm.csv

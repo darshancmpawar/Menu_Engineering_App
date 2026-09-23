@@ -8,7 +8,7 @@ It covers the shapes that ship: multi-counter clients, ``nonveg_main`` counts of
 per-client ``item_cooldown_days`` and ``working_days``, and cities with their own
 item list and ruleset (Pune, Chennai, NCR).
 
-GENERATED — do not hand-edit. Run ``scripts/dump_client_fixtures.py`` against a
+GENERATED — do not hand-edit. Run ``Chain rules/dump_client_fixtures.py`` against a
 fresh `clients` export and commit the diff. Editing it by hand is how it fell
 0 clients behind the live table, which meant a third of the fleet was
 never swept.
@@ -22,7 +22,7 @@ value except:
 
 * ``working_days`` is blank on every live row, so Quince's three-day week is
   synthetic — kept because it is the only coverage of the horizon filter. It is
-  declared in ``scripts/dump_client_fixtures.py::OVERRIDES`` so a refresh cannot
+  declared in ``Chain rules/dump_client_fixtures.py::OVERRIDES`` so a refresh cannot
   drop it.
 * L&T's ``Non Veg Lunch`` counter serves ``nonveg_main: 1`` live, while the
   client's requirement is the five-dish station (biryani + gravy + dry + kebab +

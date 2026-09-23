@@ -23,6 +23,7 @@ from flask import Flask, request, jsonify, g, has_request_context
 from flask_cors import CORS
 
 from api.concurrency import solver_gate, get_worker_count, get_stats as _solver_stats
+from src.ontology.paths import pool_tokens_for_city
 from src.ontology import repository as ontology_repository
 from src.application.constant_items import _canonical_item_name
 from src.application.horizon import (
@@ -1135,20 +1136,6 @@ def saved_plan():
         return _internal_error_response(500)
 
 
-def _pool_tokens_from_map(city):
-    """Pool tokens for *city* from the committed map, or None if unavailable.
-
-    Kept as a thin wrapper so the import stays local: Chain rules/ is not a runtime
-    dependency of the API, and a missing script must degrade to the slow path
-    rather than break the endpoint.
-    """
-    try:
-        from scripts.build_pool_token_map import tokens_for_city
-        return tokens_for_city(city)
-    except Exception:  # noqa: BLE001 — any failure means "use the workbooks"
-        return None
-
-
 def _city_pool_tokens(only_city=None):
     """``{city: [pool tokens]}``, plus the union under ``''``.
 
@@ -1172,7 +1159,7 @@ def _city_pool_tokens(only_city=None):
     # helper means the file is absent or unreadable, in which case we fall back to
     # the workbooks — a fresh checkout is slow, never wrong.
     for city in wanted:
-        cached = _pool_tokens_from_map(city)
+        cached = pool_tokens_for_city(city)
         if cached is not None:
             by_city[city] = sorted(cached)
             union |= set(cached)
@@ -1784,8 +1771,8 @@ def diagnose_plan():
 def _rule_notes(rules) -> Dict[str, str]:
     """``{base_slot: the client's own sentence}`` from each rule's ``_comment``.
 
-    `docs/client_rules_index.md` already renders these; reusing them means the
-    explanation quotes the client back to themselves instead of inventing a
+    The `_comment` is where the client's own sentence is recorded; reusing it
+    means the explanation quotes them back to themselves instead of inventing a
     phrasing for a rule it only half understands.
 
     A rule whose ``base_slot`` is a LIST is skipped: it constrains the plate

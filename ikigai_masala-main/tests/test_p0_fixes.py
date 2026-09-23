@@ -597,7 +597,7 @@ class TestPerCounterScoping:
     def test_real_config_scopes_the_lt_biryani_cap(self):
         """The shipped L&T entry must apply only to its non-veg counter."""
         # Through the loader: the rules are one file per client under
-        # data/configs/clients/ now, and the loader is the only place that
+        # customisation/client rules/ now, and the loader is the only place that
         # knows how they are assembled.
         blob = MenuRuleLoader._read_client_blob()
         block = blob.get('L&T')
@@ -1541,7 +1541,7 @@ class TestResolvedSampleConflicts:
 
     def _entry(self, client):
         # Reads through the loader rather than a fixed path: the rules moved to
-        # one file per client under data/configs/clients/, and the loader is the
+        # one file per client under customisation/client rules/, and the loader is the
         # single place that knows how they are assembled.
         from src.menu_rules.menu_rule_loader import MenuRuleLoader
         return MenuRuleLoader._read_client_blob()[client]

@@ -19,7 +19,7 @@ see [`pune_rulebook.md`](pune_rulebook.md) for the city rules and
 [`pune_client_logic.md`](pune_client_logic.md) for its clients.
 
 **Status is a first-pass reading of the config, not a verified outcome.** A row
-marked DONE means a matching rule exists in `data/configs/clients/<slug>.json` (or
+marked DONE means a matching rule exists in `customisation/client rules/<slug>.json` (or
 the city baseline covers it) — it does not yet mean a generated menu was checked
 against it. Confirm against a real week per client, then promote the row.
 

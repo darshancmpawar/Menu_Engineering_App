@@ -45,7 +45,7 @@ from src.ontology.paths import city_excel_path
 from tests.client_fixtures import CLIENTS as CLIENT_ROWS
 
 ROOT = Path(__file__).resolve().parents[2]
-CLIENT_DIR = ROOT / "data" / "configs" / "clients"
+CLIENT_DIR = ROOT / "customisation" / "client rules"
 
 #: Pins that name no dish in their city ON PURPOSE, with the reason. Anything
 #: else that matches nothing is treated as a typo if it resembles a real dish.

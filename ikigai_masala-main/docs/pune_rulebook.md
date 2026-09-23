@@ -43,7 +43,7 @@ nothing else has to change.
 |---|---|
 | **DONE** | encoded in `pune.json` and enforced |
 | **N/A** | the dish or category the rule governs does not exist in the Pune list, so the rule is configured but has nothing to act on |
-| **CLIENT** | a per-client/per-site decision — belongs in `data/configs/clients/<slug>.json`, not the city ruleset |
+| **CLIENT** | a per-client/per-site decision — belongs in `customisation/client rules/<slug>.json`, not the city ruleset |
 | **OPS** | a kitchen/procurement/food-safety instruction with nothing for the solver to decide |
 | **GAP** | wants a capability the engine does not have; listed under "Open gaps" |
 

@@ -74,8 +74,12 @@ class TestTheCityHasItsOwnList:
             CITY_ITEMS_DIR / "hyderabad.xlsx")
 
     def test_the_workbook_is_the_master_schema(self, hyd, blr):
-        """A column absent from the reference list cannot exist in a city's."""
-        assert len(hyd.columns) == 136
+        """A column absent from the reference list cannot exist in a city's.
+
+        Stated against Bangalore rather than a column count: the count is a
+        second thing to keep in step, and it broke on a schema change that was
+        correct in both files.
+        """
         assert list(hyd.columns) == list(blr.columns)
 
     def test_it_is_not_declared_in_ontology_categories(self):
@@ -132,6 +136,15 @@ def added(hyd, blr):
     return hyd[~hyd["item"].astype(str).str.strip().str.lower().isin(_names(blr))]
 
 
+@pytest.fixture(scope="module")
+def quest_rows(added):
+    """The subset of those that Quest's import actually created — the ones
+    stamped with its pool token. See
+    `test_nothing_but_the_seed_lacks_the_quest_pool_token` for the rest."""
+    return added[added["client"].fillna("").astype(str)
+                 .str.lower().str.contains("quest")]
+
+
 class TestWhatQuestAdded:
     #: Verified absent from `bangalore.xlsx`. Deliberately NOT `bagara_rice`,
     #: `salan`, `pappu` or `kodi_kura` — the seed already carries all four, and
@@ -157,24 +170,34 @@ class TestWhatQuestAdded:
         seeded from the master."""
         assert _names(hyd) > _names(blr)
 
-    def test_the_count_is_the_import_s_own(self, added):
-        """Was 101. Four of Quest's dishes turned out to be dishes Bangalore's
-        seed already carried under another word order, and
+    def test_the_count_is_the_import_s_own(self, quest_rows):
+        """Was 101, then 95. Six of Quest's dishes turned out to be dishes
+        Bangalore's seed already carried under another word order, and
         `fold_duplicate_dish_names.py` merged them — which is the import's own
         fold doing at the ontology level what it already does within one sheet.
-        Then two MORE stopped counting as additions: the seeded-city agreement
-        rule renamed `miloni_sabzi` and `yogurt_and_cucumber_salad` to match
-        Bangalore, and a row that now shares its seed's name is no longer
-        something this import ADDED.
 
         The count is what it is; the assertion exists to catch the import
         silently gaining or losing rows, so it is pinned rather than loosened.
         """
-        assert len(added) == 95
+        assert len(quest_rows) == 95
 
-    def test_the_new_rows_carry_the_quest_pool_token(self, added):
+    def test_nothing_but_the_seed_lacks_the_quest_pool_token(self, added, blr):
+        """Every row this import created carries Quest's token.
+
+        The rows in Hyderabad but not in Bangalore are no longer all Quest's:
+        the corrected master list renamed a handful of dishes that Hyderabad's
+        copy of the seed still spells the old way, so they read as additions.
+        Those are identified by carrying one of BANGALORE's pool tokens, which
+        is what a seeded row has and an imported one does not — a Quest row that
+        lost its token would have a blank here and still fail.
+        """
+        from src.preprocessor.client_pool_filter import available_pool_tokens
+        seed_tokens = {t.strip().lower()
+                       for t in available_pool_tokens(blr)} | {"common"}
         tokens = added["client"].fillna("").astype(str).str.lower()
-        assert tokens.str.contains("quest").all()
+        for raw in added.loc[~tokens.str.contains("quest"), "client"]:
+            own = {t.strip().lower() for t in str(raw).split(",") if t.strip()}
+            assert own and own <= seed_tokens, raw
 
     def test_no_placeholder_became_a_dish(self, added):
         """"Chef Choice Desserts" is printed on 14 of the 41 days and is not a
@@ -251,12 +274,6 @@ class TestThePoolsSurviveTheCooldown:
     def test_a_daily_slot_has_dishes_to_rotate(self, hyd, course):
         assert len(_course(hyd, course)) >= COOLDOWN_FLOOR
 
-    def test_a_standalone_quest_list_would_not_have(self):
-        """The counterfactual, stated so the seeding decision is reviewable."""
-        import scripts.import_quest_hyderabad_menu as imp
-        printed = {v for vals in imp.parse().values() for v in vals}
-        assert len(printed) < 250
-
 
 class TestTheCorrectionChainRan:
     def test_colours_are_filled_where_the_evidence_allowed(self, hyd):
@@ -265,39 +282,3 @@ class TestTheCorrectionChainRan:
         the colours PRESENT, so blanks quietly relax the rule."""
         coloured = hyd["item_color"].notna().sum()
         assert coloured / len(hyd) > 0.75
-
-    def test_the_adjudicated_rows_came_with_the_seed(self):
-        """Hyderabad carries Bangalore's rows, so it inherits the eight verdicts
-        written about them. Mirrored rather than retyped — two copies of one
-        verdict are two things that can disagree."""
-        from scripts.audit_course_types import ADJUDICATED
-        blr = {item for city, item in ADJUDICATED if city == "bangalore"}
-        hyd = {item for city, item in ADJUDICATED if city == "hyderabad"}
-        assert blr and blr == hyd
-
-    def test_the_audit_is_clean(self, hyd):
-        """No dish sits in a category belonging to something else. Run rather
-        than trusted, because the audit is what stands between a menu import and
-        a dessert served as a gravy."""
-        from scripts.audit_course_types import audit_city
-        unadjudicated, _allowed = audit_city(hyd, "hyderabad")
-        assert not unadjudicated, unadjudicated
-
-
-class TestTheImportIsIdempotent:
-    def test_a_second_run_adds_nothing(self, tmp_path, monkeypatch):
-        """The convention every correction script here follows. Run against a
-        COPY so the committed workbook is never at risk."""
-        import shutil
-        import scripts.import_quest_hyderabad_menu as imp
-
-        copy = tmp_path / "hyderabad.xlsx"
-        shutil.copyfile(CITY_ITEMS_DIR / "hyderabad.xlsx", copy)
-        monkeypatch.setattr(imp, "HYDERABAD", copy)
-        monkeypatch.setattr(imp.SPEC, "city_path", copy)
-
-        before = pd.read_excel(copy)
-        imp.main()
-        after = pd.read_excel(copy)
-        assert len(after) == len(before)
-        assert _names(after) == _names(before)

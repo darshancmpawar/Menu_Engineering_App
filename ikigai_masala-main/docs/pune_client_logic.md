@@ -8,7 +8,7 @@ clients are in [`client_logics.md`](client_logics.md).
 nine stated rules. Scope is **lunch**.
 
 **Implementation:** the `"Amadeus Pune"` entry in
-`data/configs/clients/<slug>.json`. Asserted end to end by
+`customisation/client rules/<slug>.json`. Asserted end to end by
 `tests/test_pune_client_logic.py`.
 
 ---
@@ -171,7 +171,7 @@ drops such a dish from the exclude side only, so a chole-paneer curry stays
 servable and still blocks a *separate* soya dish that day.
 
 Fleet check (at the time of that change, when the fleet was 57 counters; it is
-85 now — see `docs/menu_generation_25day_sweep.md` for the current run): all 57
+85 now): all 57
 counters still generated and no paneer day anywhere carried an
 excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
 excluded pairing before these rules — which is expected, since the client asked

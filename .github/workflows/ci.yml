@@ -44,6 +44,14 @@ jobs:
         working-directory: ikigai_masala-main
         run: pytest -q --cov --cov-report=term --cov-fail-under=82
 
+      # `/editor-metadata` reads this committed map instead of parsing every
+      # city workbook; a stale one is served as fact. Checked here rather than
+      # in pytest because the builder lives in `Chain rules/`, which is not an
+      # importable package and is not a runtime dependency of the app.
+      - name: Pool token map is current
+        working-directory: ikigai_masala-main
+        run: python "Chain rules/build_pool_token_map.py" --check
+
   lint:
     name: ruff (bug-only ruleset)
     runs-on: ubuntu-latest

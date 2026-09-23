@@ -29,6 +29,12 @@ TIME_LIMIT = 60
 CLIENT = 'Amadeus Pune'
 
 
+def _pune_workbook():
+    import pandas as pd
+    from src.ontology.paths import city_excel_path
+    return pd.read_excel(city_excel_path('Pune'))
+
+
 def _pune_row_count():
     """How many dishes the committed Pune workbook holds, read from the file.
 
@@ -36,9 +42,20 @@ def _pune_row_count():
     gained a dish; what they are actually asserting is "this endpoint counted
     PUNE's list, not Bangalore's", which the derived number states directly.
     """
-    import pandas as pd
-    from src.ontology.paths import city_excel_path
-    return len(pd.read_excel(city_excel_path('Pune')))
+    return len(_pune_workbook())
+
+
+def _pune_eligible_count():
+    """...and how many of those a Pune client with no `source_pools` can see.
+
+    A separate number from the one above since the corrected list arrived: Pune
+    is not in `FULL_POOL_CITIES`, so a client sees `common` and nothing else,
+    and that is what a pool preview counts.
+    """
+    from src.preprocessor.client_pool_filter import (
+        filter_eligible, get_active_pools,
+    )
+    return len(filter_eligible(_pune_workbook(), get_active_pools([])))
 
 
 @pytest.fixture
@@ -122,12 +139,12 @@ class TestEveryEndpointServesAPuneClient:
         body = r.get_json()
         # Derived, not hard-coded: the point is that the endpoint counts *Pune's*
         # list, and a literal here just breaks every time a dish is added.
-        assert body['eligible_item_count'] == _pune_row_count(), body
+        assert body['eligible_item_count'] == _pune_eligible_count(), body
         assert body['city'] == 'Pune'
 
     def test_pool_preview_without_a_city_counts_the_default(self, pune_api):
         r = _post(pune_api, '/api/v1/pool-preview', {'source_pools': []})
-        assert r.get_json()['eligible_item_count'] > _pune_row_count()
+        assert r.get_json()['eligible_item_count'] > _pune_eligible_count()
 
     def test_bangalore_pool_token_is_rejected_for_a_pune_client(self, pune_api):
         """Pool tokens live inside one city's list, so a Bangalore token on a Pune
@@ -320,13 +337,19 @@ class TestPerCityIsolation:
         assert not any(n.startswith('amadeus_pune_') for n in amadeus), amadeus
 
     def test_nonveg_name_set_is_per_city(self, pune_api):
-        assert pune_api._get_nonveg_items('Pune') == set()
-        assert len(pune_api._get_nonveg_items('Bangalore')) > 0
+        """A red-rendering lookup over each city's whole list, so the assertion
+        is that the two do not share one — not that Pune's is empty, which stopped
+        being a property of the workbook and is tested where it belongs, over the
+        eligible pool (`test_city_ontology.py`)."""
+        pune = pune_api._get_nonveg_items('Pune')
+        blr = pune_api._get_nonveg_items('Bangalore')
+        assert blr and pune and blr != pune
+        assert 'achari_chicken' in blr and 'achari_chicken' not in pune
 
     def test_pin_resolution_is_per_city(self, pune_api):
         blr = ontology_repository.item_names('Bangalore')
         pune = ontology_repository.item_names('Pune')
-        assert 'chicken_biryani' in blr and 'chicken_biryani' not in pune
+        assert 'akki_roti' in blr and 'akki_roti' not in pune
         assert 'phodnicha_bhat' in pune and 'phodnicha_bhat' not in blr
 
 class TestNoCrossCityWorkbookReads:
@@ -405,7 +428,7 @@ class TestNoCrossCityWorkbookReads:
         strings.
 
         The answer is now precomputed into `city_items/pool_tokens.json`
-        (scripts/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
+        (Chain rules/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
         cross-city test rather than deleted: reading zero workbooks is a strictly
         stronger statement of "no cross-city read" than reading both was.
         """
@@ -414,7 +437,7 @@ class TestNoCrossCityWorkbookReads:
         assert traced == [], (
             'expected no workbook reads — is pool_tokens.json missing? The '
             'endpoint falls back to parsing every workbook when it is, which is '
-            'slow but not wrong: run scripts/build_pool_token_map.py')
+            'slow but not wrong: run Chain rules/build_pool_token_map.py')
 
     def test_it_still_reports_pool_tokens_for_both_cities(self, fleet_api):
         """The speed change must not have cost the information. Bangalore has real
@@ -428,7 +451,7 @@ class TestNoCrossCityWorkbookReads:
             self, fleet_api, monkeypatch):
         """The map is a cache, so prove it agrees with the thing it caches."""
         with_map = _get(fleet_api, '/api/v1/editor-metadata').get_json()
-        monkeypatch.setattr(fleet_api, '_pool_tokens_from_map', lambda _c: None)
+        monkeypatch.setattr(fleet_api, 'pool_tokens_for_city', lambda _c: None)
         fleet_api.reset_caches()
         without = _get(fleet_api, '/api/v1/editor-metadata').get_json()
         assert with_map['client_pools_by_city'] == without['client_pools_by_city']

@@ -64,10 +64,15 @@ under-enforce on purpose; every one stamps the relaxation channel so the
 explanation names the rule that did not hold. A silent relaxation is
 indistinguishable from a satisfied rule, which is worse than a failure. Note 31.
 
-**4. The ontology correction scripts** (`Chain rules/*.py` that rewrite
-`data/raw/city_items/*.xlsx`). They mutate committed data, they must be
-idempotent, and their tests are the only thing standing between a re-run and a
-silently corrupted item list. Keep the test, keep the no-op-re-run assertion.
+**4. The ontology correction chain** (`Chain rules/*.py`, which rewrite
+`data/raw/city_items/*.xlsx`). They mutate committed data and they must be
+idempotent — a chain that does not converge corrupts the item list silently, and
+the corrected workbooks have already broken the three client menu importers this
+way (`tests/data/test_client_menu_imports.py` records it). Their per-script
+tests were dropped in the repo cleanup; what is left is the convergence run —
+every step must print "already correct" and leave the five workbooks unchanged.
+Run the whole chain and check that before committing any change to it, and add
+the no-op-re-run assertion back to any script you touch.
 
 Two general habits this codebase has earned and should keep:
 

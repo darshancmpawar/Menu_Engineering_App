@@ -30,7 +30,7 @@ attachments and would have been lost.
 | `NCR_menu_items.xlsx` | NCR | pre-mapped item list (already in master schema) for 8 NCR clients, with its own `Mapping_Log` / `Review_Required` / `Data_Quality_Log` sheets. **Its `ACCEPT_REVIEW` fuzzy matches are the provenance for `Chain rules/ncr_fuzzy_unmerge.py`** — the reversal cites the exact merges it undoes | `city_items/ncr.xlsx`, `docs/ncr_client_logic.md` |
 | `booking_menu_3_months.xlsx` | Bangalore | Booking.com's printed 3-month Lunch / Dinner / Breakfast grid. Only Lunch and Dinner are imported; it is where `infused_water` and `nonveg_soup` came from | `Chain rules/import_booking_menu.py` |
 | `corning_chakan_pune_menu.xlsx` | Pune | Corning Chakan's nine weekly sheets, one column per day, identical row layout on every sheet. **The first client menu for a city other than Bangalore or Chennai**, and the first Maharashtrian list. Lunch and dinner only; the salad block is a salad BAR whose components are ingredients, and one sheet carries an unlabelled Independence Day menu below the grid that is read by dish name rather than position | `Chain rules/import_corning_pune_menu.py`, `Chain rules/marathi_ingredient_names.py` |
-| `chennai_client_structure.xlsx` | Chennai | **four clients' rules in their own words**, on `Sheet1`, plus a sample week per client on its own sheet — a different kind of source from Toast Tab's service history, since these are stated rather than inferred. TCL, Gartner, World Bank and ICON Chn. RNTBCI is listed with nothing beside it and an empty sheet: on hold | `docs/chennai_client_logic.md`, `configs/clients/{tcl,gartner,world_bank,icon_chn}.json`, `Chain rules/chennai_client_pools.py` |
+| `chennai_client_structure.xlsx` | Chennai | **four clients' rules in their own words**, on `Sheet1`, plus a sample week per client on its own sheet — a different kind of source from Toast Tab's service history, since these are stated rather than inferred. TCL, Gartner, World Bank and ICON Chn. RNTBCI is listed with nothing beside it and an empty sheet: on hold | `docs/chennai_client_logic.md`, `customisation/client rules/{tcl,gartner,world_bank,icon_chn}.json`, `Chain rules/chennai_client_pools.py` |
 | `quest_hyderabad_menu_2026.xlsx` | Hyderabad | Quest's 41-day grid (31 Mar – 30 Jul 2026), one column per service day. **The source that created the Hyderabad city list.** Two layouts OFFSET from each other — Tue/Thu carry the full menu in rows 2-13, Wed is the biryani day in rows 5-13 with nothing above — so a column is read on the biryani map exactly when row 2 is blank; on the wrong map the Wednesday veg gravy files as a dal. The two non-veg rows are dry and gravy in that order and the biryani row is a third form, which is evidence no name heuristic has. "Chef Choice Desserts" is a placeholder and the fruit row holds serving counts, not dishes | `Chain rules/import_quest_hyderabad_menu.py`, `city_items/hyderabad.xlsx` |
 | `stripe_menu_2026_06_29.xlsx`, `stripe_menu_2026_07_27.xlsx` | Bangalore | Stripe's two sample weeks, three sheets each. **Only the plated lunch and dinner blocks are imported** — the salad bar and the DIY sandwich station are components a diner assembles, not solver slots. The July file's salad-bar block lost a row, so its labels sit one row below their dishes; the importer detects and re-pairs that rather than assuming a layout | `Chain rules/import_stripe_menu.py` |
 
@@ -107,13 +107,6 @@ attachments and would have been lost.
    caught is in `remove_generic_rows.py` (step 5) and their duplicate folds are
    in `canonical_dish_spellings.py` (step 3), which is also why running this
    first cannot undo them.
-0b. `Chain rules/dump_chef_review.py` — a REPORT, so it can run any time, but it is
-   worth running at the end: the enriched files ship 720 Bangalore and 354 NCR
-   low-confidence colours in their own `chef_review` sheet, and once merged
-   those are indistinguishable from the 5,000 the client verified. It writes
-   them to `docs/chef_review_queue.csv` with what the merge actually stored, so
-   the open question stays visible instead of living inside a workbook nobody
-   opens.
 1. `Chain rules/normalize_city_ontology.py` — raw list → `city_items/<city>.xlsx`
 2. `Chain rules/misspelled_protein_names.py` — meat-named rows left in veg pools
 3. `Chain rules/canonical_dish_spellings.py` — one dish, one spelling. NB its
@@ -200,7 +193,7 @@ attachments and would have been lost.
 16. `Chain rules/audit_duplicate_dish_names.py` — a REPORT, so it runs last: it
     reads the names the whole chain has finished settling, and running it
     earlier would propose folding rows that step 3 or step 8c is about to fold
-    anyway. `--check` fails if `docs/duplicate_dish_names.csv` is stale.
+    anyway. `--check` fails if `Chain rules/reports/duplicate_dish_names.csv` is stale.
     (`fold_duplicate_dish_names.py` is **step 3b**, immediately below, and runs
     a SECOND time as step 17.)
 17. `Chain rules/fold_duplicate_dish_names.py` **again**. It is idempotent, so a

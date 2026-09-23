@@ -5,7 +5,7 @@ not:
 
 * **A region is a FLOOR, never a filter.** Bangalore holds zero Punjabi rice and
   zero Punjabi bread; narrowing those slots empties them, which is
-  `scripts/ncr_south_bread.py`'s incident. So the floor's slot list is derived
+  `Chain rules/ncr_south_bread.py`'s incident. So the floor's slot list is derived
   from the region's own measured depth, and a slot the region cannot fill is
   simply not in it.
 * **`only_on_dates` scopes, it does not ban.** `allowed_day_types` forbids the
@@ -116,7 +116,8 @@ class TestTheColumnGatesOnAdminTypeOnly:
 
 
 class TestAWorkbookWithoutTheColumns:
-    """Every committed workbook is in this state today."""
+    """A city whose list has not been given `state_origin` / `admin_type` yet.
+    Every committed workbook used to be in this state; none is now."""
 
     def test_has_region_data_is_false(self):
         assert not has_region_data(pd.DataFrame([{'item': 'a', 'course_type': 'rice'}]))
@@ -124,12 +125,44 @@ class TestAWorkbookWithoutTheColumns:
     def test_measuring_yields_nothing_rather_than_raising(self):
         assert measure_regions(pd.DataFrame([{'item': 'a'}])) == ()
 
-    def test_the_shipped_bangalore_workbook_has_no_regions_yet(self):
-        """Pins the current state deliberately. When the corrected workbooks are
-        installed this test is what says the feature just switched on."""
+
+class TestTheFeatureIsLive:
+    """It is not any more. The corrected workbooks carry `state_origin` and
+    `admin_type`, so every shipped city can be themed — this is the test that
+    said so when it switched on, kept as the assertion that it stays on."""
+
+    @pytest.mark.parametrize('city', ['bangalore', 'chennai', 'hyderabad',
+                                      'ncr', 'pune'])
+    def test_every_shipped_city_can_be_themed(self, city):
         from src.ontology.repository import OntologyRepository
-        df, _ = OntologyRepository().menu_data('bangalore')
-        assert not has_region_data(df)
+        df, _ = OntologyRepository().menu_data(city)
+        assert has_region_data(df)
+        usable = [r for r in measure_regions(df) if r.usable_slots()]
+        assert usable, f'{city} carries the columns but no region clears the floor'
+
+    def test_a_region_is_a_floor_and_never_a_filter(self):
+        """The load-bearing decision, re-measured against the real data rather
+        than restated.
+
+        No region in any city comes close to covering the plate: the best of
+        them, Karnataka in Bangalore, can fill 12 of the 22 base slots, and most
+        manage three to nine. Nobody's regional cooking supplies a curd side and
+        a rasam and a welcome drink — so a region applied as a FILTER empties
+        every slot it does not reach, and applied as a FLOOR it fills what it
+        can and leaves the rest to the city's own list. Half the plate is the
+        margin here, not a rounding error.
+        """
+        from src.constants import BASE_SLOT_NAMES
+        from src.ontology.repository import OntologyRepository
+        best = 0
+        for city in ('bangalore', 'chennai', 'ncr', 'pune'):
+            df, _ = OntologyRepository().menu_data(city)
+            for region in measure_regions(df):
+                covered = set(region.usable_slots())
+                if covered:
+                    assert covered < set(BASE_SLOT_NAMES), (city, region.name)
+                    best = max(best, len(covered))
+        assert best < len(BASE_SLOT_NAMES)
 
 
 class TestTheRepositoryCacheDoesNotDeadlock:

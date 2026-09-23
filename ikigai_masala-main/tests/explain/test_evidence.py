@@ -81,8 +81,8 @@ class TestProvenance:
         assert '26 days' in [x for x in far if x['dish'] == 'veg_kurma'][0]['detail']
 
     def test_rule_comment_is_used_verbatim(self):
-        """`docs/client_rules_index.md` already renders the client's own
-        sentence from `_comment`. Reuse it rather than inventing phrasing."""
+        """`_comment` holds the client's own sentence. Reuse it rather than
+        inventing phrasing."""
         dishes = build_dishes(DAY_ITEMS, ATTRS)
         note = 'client asks for a millet bread on south days'
         p = build_provenance(dishes, rule_notes={'bread': note})

@@ -35,10 +35,22 @@ class TestTheRegionsEndpoint:
         assert isinstance(body['regions'], list)
         assert isinstance(body['theme_compatibility'], dict)
 
-    def test_no_regional_data_reads_as_unavailable_not_as_an_error(
+    def test_a_city_with_region_data_reports_what_it_can_theme(
             self, client, fake_supabase):
-        """The state of every city today. The planner hides the control on
-        this flag, so it has to be a clean False rather than a 500."""
+        """`available` is the flag the planner shows or hides the control on.
+        It was False for every city until the corrected workbooks landed
+        `state_origin` and `admin_type`; Bangalore now themes eight regions."""
+        body = client.get('/api/v1/regions?city=Bangalore').get_json()
+        assert body['available'] is True
+        assert 'Karnataka' in body['themeable']
+
+    def test_a_city_without_the_columns_reads_as_unavailable_not_as_an_error(
+            self, client, fake_supabase, monkeypatch):
+        """The other half, which is the one that must not 500: a city whose
+        list has not been given the columns yet hides the control."""
+        import api.app as api_app
+        monkeypatch.setattr(api_app.ontology_repository, 'regions',
+                            lambda _city=None: ())
         body = client.get('/api/v1/regions?city=Bangalore').get_json()
         assert body['available'] is False
         assert body['themeable'] == []
@@ -68,11 +80,16 @@ class TestWritingARegionMap:
             _validated_region_map(['thursday'], city='Bangalore')
 
     def test_a_region_this_city_cannot_theme_is_refused(self, fake_supabase):
-        """True of every region today, and the message has to say so rather
-        than leave the operator guessing at a spelling."""
+        """The message has to name the day rather than leave the operator
+        guessing at a spelling. `Nagaland` is a real state and a real refusal:
+        no city's list carries enough of its cooking to set a floor."""
         with pytest.raises(ValueError) as e:
-            _validated_region_map({'thursday': 'Tamil Nadu'}, city='Bangalore')
+            _validated_region_map({'thursday': 'Nagaland'}, city='Bangalore')
         assert 'thursday' in str(e.value)
+
+    def test_a_region_this_city_CAN_theme_is_accepted(self, fake_supabase):
+        assert _validated_region_map(
+            {'thursday': 'Karnataka'}, city='Bangalore') == {'thursday': 'Karnataka'}
 
     def test_an_unknown_weekday_is_refused(self, fake_supabase):
         with pytest.raises(ValueError, match='someday'):

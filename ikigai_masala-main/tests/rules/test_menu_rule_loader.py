@@ -363,7 +363,7 @@ class TestCityRules:
 
 
 class TestPerClientRuleFiles:
-    """One file per client (`data/configs/clients/<slug>.json`).
+    """One file per client (`customisation/client rules/<slug>.json`).
 
     The single `client_rules.json` had grown to 2,453 lines across 36 clients,
     so every client edit touched the same document. The loader now reads the

@@ -37,7 +37,7 @@ the one protein the ontology spells four ways and NCR is split nearly in half:
 soyabean 3 / soyabin, soyawadi, soybean 1 each. Against 272 clean `soy` rows in
 the other four cities, so `soy` is canonical by a wide margin. A variety rule
 reading the column raw would see two unrelated ingredients and let a soya chaap
-sit beside a soya keema; `data/configs/clients/siemens.json` already carried
+sit beside a soya keema; `customisation/client rules/siemens.json` already carried
 BOTH spellings as adjacent `any_of` selectors, which is a config working around
 a data defect.
 
