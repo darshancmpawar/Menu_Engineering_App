@@ -107,7 +107,7 @@ SHARE_DONORS = ["bangalore", "chennai", "ncr", "pune"]
 CITY_REGION = {"pune": "north", "ncr": "north",
                "chennai": "south", "bangalore": "south"}
 # `starter` joins the lock because NCR's ruleset forbids a continental starter
-# (scripts/ncr_cuisine_corrections.py) — and Bangalore mislabels pakora / samosa
+# (Chain rules/ncr_cuisine_corrections.py) — and Bangalore mislabels pakora / samosa
 # / vada_pav as continental, so sharing them in imported that mislabel and broke
 # the NCR correction.
 REGION_LOCKED_CATEGORIES = {"bread", "starter"}
@@ -264,21 +264,17 @@ def _readable_name(n: str) -> bool:
 
 
 def _generic_names() -> set:
-    """Names `scripts/remove_generic_rows.py` deliberately deleted — rows named
+    """Names `Chain rules/remove_generic_rows.py` deliberately deleted — rows named
     for a CATEGORY ("rasam", "sweet", "gravy") rather than a dish.
 
     Read from that script's own table so the two can never disagree: sharing
     must not quietly re-import a row the cleanup exists to remove, which it did
     — it put a dish literally called `rasam` back into NCR.
     """
-    GENERIC_ROWS = None
-    try:                       # imported as a package (tests, project root)
-        from scripts.remove_generic_rows import GENERIC_ROWS
-    except Exception:
-        try:                   # run directly: scripts/ is sys.path[0]
-            from remove_generic_rows import GENERIC_ROWS
-        except Exception:  # pragma: no cover
-            GENERIC_ROWS = None
+    try:
+        from remove_generic_rows import GENERIC_ROWS
+    except Exception:  # pragma: no cover
+        GENERIC_ROWS = None
     if not GENERIC_ROWS:
         raise RuntimeError(
             "cannot read GENERIC_ROWS from remove_generic_rows.py — refusing to "
@@ -313,7 +309,7 @@ def _shareable_into(slug):
 
     The second half of "did we put this row here", and the half that catches
     what an id test cannot. Chennai's `sambaram` is a `welcome_drink` added by
-    `scripts/chennai_client_pools.py` — TCL's own grid names SAMBARAM as its
+    `Chain rules/chennai_client_pools.py` — TCL's own grid names SAMBARAM as its
     Monday drink, and Chennai had no welcome drinks at all before that script.
     This script never shares a welcome drink into Chennai (only Pune and NCR ask
     for one), so a blocklisted name in that slot cannot be its doing.

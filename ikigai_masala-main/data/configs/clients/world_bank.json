@@ -35,7 +35,7 @@
         ]
       },
       {
-        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (scripts/chennai_client_pools.py), which is where the client's own grid puts them — its 'Kootu' row sits below the gravies and the poriyal, not among them. Only the Full Lunch counter runs a dal, so this is harmless at client level, but it is scoped anyway so a future counter with a dal does not inherit it silently.",
+        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (Chain rules/chennai_client_pools.py), which is where the client's own grid puts them — its 'Kootu' row sits below the gravies and the poriyal, not among them. Only the Full Lunch counter runs a dal, so this is harmless at client level, but it is scoped anyway so a future counter with a dal does not inherit it silently.",
         "name": "world_bank_dal_is_a_kootu",
         "type": "slot_composition",
         "base_slot": "dal",
@@ -55,7 +55,7 @@
       "Full Lunch Menu": {
         "_comment": "The full meals counter: chapati, steamed rice, a gravy, a sambar, a kuzhambu, rasam, poriyal, kootu, buttermilk, appalam and four non-veg items.",
         "constant_items": {
-          "_comment": "'non veg main will have chicken gravys, \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" daily' — three of the four are the SAME dish every day, so they are pins; the fourth (the chicken gravy) rotates and is handled by the composition below. `boiled_egg` and `bone_salna` are real Chennai rows as of scripts/chennai_client_pools.py, so these pins narrow their cells rather than stamping text, and every other rule still sees the dishes. 'dessert will be \"Sweet/Fruit\" daliy' is the client's own menu wording and no such dish exists, so that one IS stamped verbatim and the dessert cell is skipped — deliberate, but it means the slot serves no rotating sweet. Drop the pin if they would rather it rotated.",
+          "_comment": "'non veg main will have chicken gravys, \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" daily' — three of the four are the SAME dish every day, so they are pins; the fourth (the chicken gravy) rotates and is handled by the composition below. `boiled_egg` and `bone_salna` are real Chennai rows as of Chain rules/chennai_client_pools.py, so these pins narrow their cells rather than stamping text, and every other rule still sees the dishes. 'dessert will be \"Sweet/Fruit\" daliy' is the client's own menu wording and no such dish exists, so that one IS stamped verbatim and the dessert cell is skipped — deliberate, but it means the slot serves no rotating sweet. Drop the pin if they would rather it rotated.",
           "nonveg_main__2": "Chicken Biryani",
           "nonveg_main__3": "Boiled Egg",
           "nonveg_main__4": "Bone Salna",
@@ -69,7 +69,7 @@
         ],
         "rules": [
           {
-            "_comment": "One of the non-veg cells is the day's chicken gravy. Gated at `min_slot_count: 1`, NOT at the four the client's lineup needs: with the live two-slot row the biryani pin takes one cell and the other was unconstrained, so it came back `chicken_lolipop`, `egg_dosa`, `fish_tawa_fry` — none of them on the client's list. At 1 the free cell is a chicken gravy whichever slot count the row carries, so the degraded pre-DB-change menu is a subset of the intended one rather than a different menu. `bone_salna` deliberately carries `is_nonveg_gravy` but NO regional chicken-gravy flag (see scripts/chennai_client_pools.py), so it cannot satisfy this component itself and steal the cell.",
+            "_comment": "One of the non-veg cells is the day's chicken gravy. Gated at `min_slot_count: 1`, NOT at the four the client's lineup needs: with the live two-slot row the biryani pin takes one cell and the other was unconstrained, so it came back `chicken_lolipop`, `egg_dosa`, `fish_tawa_fry` — none of them on the client's list. At 1 the free cell is a chicken gravy whichever slot count the row carries, so the degraded pre-DB-change menu is a subset of the intended one rather than a different menu. `bone_salna` deliberately carries `is_nonveg_gravy` but NO regional chicken-gravy flag (see Chain rules/chennai_client_pools.py), so it cannot satisfy this component itself and steal the cell.",
             "name": "world_bank_nonveg_gravy_alongside_the_three_pins",
             "type": "slot_composition",
             "base_slot": "nonveg_main",

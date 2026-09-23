@@ -19,8 +19,8 @@ drop these corrections. Run it after any such re-import.
 Idempotent — it reports what it changed and writes nothing when there is nothing
 to change.
 
-    python scripts/pune_flag_corrections.py --dry-run
-    python scripts/pune_flag_corrections.py
+    python Chain rules/pune_flag_corrections.py --dry-run
+    python Chain rules/pune_flag_corrections.py
 """
 
 from __future__ import annotations

@@ -1138,7 +1138,7 @@ def saved_plan():
 def _pool_tokens_from_map(city):
     """Pool tokens for *city* from the committed map, or None if unavailable.
 
-    Kept as a thin wrapper so the import stays local: scripts/ is not a runtime
+    Kept as a thin wrapper so the import stays local: Chain rules/ is not a runtime
     dependency of the API, and a missing script must degrade to the slow path
     rather than break the endpoint.
     """

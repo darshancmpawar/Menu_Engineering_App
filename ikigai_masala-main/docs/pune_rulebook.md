@@ -22,7 +22,7 @@ dropped silently.
 
 | | |
 |---|---|
-| Item list | `data/raw/city_items/pune.xlsx` — 272 items, 133 columns (the reference format). Was 274 before `scripts/remove_generic_rows.py` dropped `salad` and `sweet` (rows named for a category, not a dish) |
+| Item list | `data/raw/city_items/pune.xlsx` — 272 items, 133 columns (the reference format). Was 274 before `Chain rules/remove_generic_rows.py` dropped `salad` and `sweet` (rows named for a category, not a dish) |
 | Selected by | `clients.city = 'Pune'` → `api.config.city_excel_path()` |
 | Categories covered | welcome_drink, salad, bread, rice, veg_dry, veg_gravy, dal, dessert, healthy_rice, curd_side (declared in `data/raw/city_items/ontology_categories.json`) |
 | Not covered | soup, starter, sambar, rasam, nonveg_main — the list is fully vegetarian and carries no south-Indian tiffin/sambar section |
@@ -64,7 +64,7 @@ nothing else has to change.
 | R11 | South rice ⇒ prefer south gravy | GAP | as R10 |
 | R12 | Aloo gravies max twice/week | DONE | `aloo_gravy_twice_weekly` |
 | R13 | Max 1 premium veg item per day | DONE | `premium_veg_daily_max_1` (+ `premiums_different_days` soft) |
-| R14 | Black chana gravies max once/week | DONE | `black_chana_gravy_weekly`. `is_black_chana_gravy` was 0 for all 274 rows; `scripts/pune_flag_corrections.py` sets it on `black_chana_malwani` |
+| R14 | Black chana gravies max once/week | DONE | `black_chana_gravy_weekly`. `is_black_chana_gravy` was 0 for all 274 rows; `Chain rules/pune_flag_corrections.py` sets it on `black_chana_malwani` |
 | R15 | Deep-fried veg dry once per 7 days | DONE | `deep_fried_veg_dry_weekly` |
 | R16 | Kabuli chana gravies max once/week | DONE | `kabuli_chana_gravy_weekly` |
 | R17 | Maida breads max once/week | N/A (no such dish) | `maida_bread_weekly` is configured but the Pune bread pool is chapati + phulka, so it has nothing to cap |
@@ -81,7 +81,7 @@ nothing else has to change.
 | R28 | Dessert form must not repeat on consecutive days | DONE | `dessert_form_non_consecutive` |
 | R29 | Curd is exempt from repeat bans | DONE | built in: `curd` is in `REPEATABLE_SLOTS`, exempt from `unique_items` and the cooldown |
 | R30 | Kadhi-style dal once in 15 days | DONE (projected) | `kadhi_weekly` — once per horizon; the 20-day item cooldown carries the rest of the window for the same dish |
-| R31 | Leafy veg dry once in 15 days | DONE | `leafy_veg_dry_weekly`. `is_leafy_based_dish` covered no veg dry at all; `scripts/pune_flag_corrections.py` adds the palak / methi / hariyali dishes |
+| R31 | Leafy veg dry once in 15 days | DONE | `leafy_veg_dry_weekly`. `is_leafy_based_dish` covered no veg dry at all; `Chain rules/pune_flag_corrections.py` adds the palak / methi / hariyali dishes |
 | R32 | Kofta needs a 7-day gap, not on consecutive weeks | DONE / partial | the 7-day gap is `veg_kofta_gravy_weekly`; "not on consecutive weeks" needs cross-horizon state the weekly signature does not model |
 | R33 | Dal colour must not repeat on consecutive days | DONE | `dal_colour_non_consecutive` |
 | R34 | Multigrain breads not on consecutive days | N/A (no such dish) | `multigrain_bread_non_consecutive` is configured; no multigrain bread in the list |
@@ -225,7 +225,7 @@ if Pune wants it:
 
 ## Data corrections applied
 
-`scripts/pune_flag_corrections.py` sets nine flags the raw workbook left at 0.
+`Chain rules/pune_flag_corrections.py` sets nine flags the raw workbook left at 0.
 Both affected rules were silently inert without them, and re-importing a fresh
 workbook drops the corrections again — so the script is committed and
 `tests/test_pune_rules.py::test_flag_corrections_are_applied` fails if they are

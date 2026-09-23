@@ -58,7 +58,7 @@ have meant its global 8/0.85 and no value restriction.
 
 Idempotent, monotone (a value is never overwritten, only a blank filled), and it
 runs to a fixed point because a filled row is evidence for the next pass.
-Leftovers go to `docs/cuisines_to_confirm.csv`.
+Leftovers go to `Chain rules/reports/cuisines_to_confirm.csv`.
 """
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ from complete_ontology import TOKEN_STOPWORDS, distinct_dishes  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 COLUMN = "cuisine_family"
-REPORT = ROOT / "docs" / "cuisines_to_confirm.csv"
+REPORT = Path(__file__).resolve().parent / "reports" / "cuisines_to_confirm.csv"
 
 #: Measured on held-out data — see the module docstring.
 MIN_ROWS = 6

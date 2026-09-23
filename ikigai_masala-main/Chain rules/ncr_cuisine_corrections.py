@@ -30,7 +30,7 @@ workbook through the normaliser drops the edit, so re-run this afterwards.
 `tests/test_ncr_cuisine.py` fails if the misfiles reappear.
 
 Usage:
-    python scripts/ncr_cuisine_corrections.py [--dry-run]
+    python Chain rules/ncr_cuisine_corrections.py [--dry-run]
 """
 
 from __future__ import annotations

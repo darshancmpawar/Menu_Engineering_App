@@ -45,7 +45,7 @@ re-importing a workbook through the normaliser drops the edits, so re-run this
 afterwards.
 
 Usage:
-    python scripts/dessert_cuisine_corrections.py [--dry-run]
+    python Chain rules/dessert_cuisine_corrections.py [--dry-run]
 """
 
 from __future__ import annotations

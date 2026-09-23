@@ -9,7 +9,7 @@ a nonsense ``key_ingredient`` lifted from the first word of the name
 (``key_ingredient=jaipuri``), which is the fingerprint of the bad mapping.
 
 `course_type` picks the slot pool, so a misfile makes a dish servable in the
-wrong position — the same class of bug `scripts/audit_course_types.py` guards,
+wrong position — the same class of bug `Chain rules/audit_course_types.py` guards,
 which its name-token matcher missed here because "jaipuri"/"jodhpuri" are place
 names, not dish words.
 
@@ -18,7 +18,7 @@ Two actions:
     that category's pool, which is where NCR is actually thin).
   * **Remove** a row that is a duplicate of one already present, or that names a
     category rather than a dish (``breads``) — the rule
-    `scripts/remove_generic_rows.py` applies elsewhere.
+    `Chain rules/remove_generic_rows.py` applies elsewhere.
 
 Idempotent; re-run after any NCR re-import. `test_ncr_bread_misfiles.py`
 fails if any of them creep back into the bread pool.

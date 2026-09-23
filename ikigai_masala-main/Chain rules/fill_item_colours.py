@@ -77,7 +77,7 @@ saying plainly rather than filling it badly:
   gap and the attribute gap are the same rows. `nilgiri_veg_korma` and
   `yakhni_pulao` have neither.
 
-So the remainder goes to `docs/dishes_needing_a_colour.csv`, **grouped by dish
+So the remainder goes to `Chain rules/reports/dishes_needing_a_colour.csv`, **grouped by dish
 family** rather than listed flat: the client can answer ~200 families instead of
 ~1,700 rows, which is the difference between a request that gets done and one
 that does not.
@@ -103,8 +103,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 from city_list import CITIES  # noqa: E402
-REPORT = ROOT / "docs" / "dishes_needing_a_colour.csv"
-GROUPED_REPORT = ROOT / "docs" / "colours_to_confirm_by_family.csv"
+REPORT = Path(__file__).resolve().parent / "reports" / "dishes_needing_a_colour.csv"
+GROUPED_REPORT = Path(__file__).resolve().parent / "reports" / "colours_to_confirm_by_family.csv"
 
 #: A token must appear in this many coloured dish names, and agree on one
 #: colour this often, before the vote trusts it. Chosen by held-out measurement

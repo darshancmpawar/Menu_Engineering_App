@@ -18,7 +18,7 @@
     ],
     "rules": [
       {
-        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and — as of scripts/chennai_client_pools.py — `course_type = dal`, which is the position the client's own grid puts them in. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20).",
+        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and — as of Chain rules/chennai_client_pools.py — `course_type = dal`, which is the position the client's own grid puts them in. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20).",
         "name": "tcl_dal_is_a_kootu",
         "type": "slot_composition",
         "base_slot": "dal",
@@ -96,7 +96,7 @@
         ]
       },
       {
-        "_comment": "'in salad need to give only KUZHAMBU item'. The client categorises a kuzhambu as a SALAD, not a gravy — their words — and the sample week proves the two are different rows rather than one mislabelled: Sunday's stated menu lists 'veg gravy' and 'salad' separately, and the grid serves VEG KURMA beside KARA KUZHAMBU. scripts/chennai_client_pools.py re-files Chennai's twelve kuzhambus `veg_gravy` -> `salad` accordingly, so this composition has a pool to draw on; before that the salad pool held none and the rule was unsatisfiable. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). Selected by NAME because `sub_category` is `mixed_veg_curry`, which also holds the kurmas the veg_gravy slot serves, and because the ontology spells the word five ways.",
+        "_comment": "'in salad need to give only KUZHAMBU item'. The client categorises a kuzhambu as a SALAD, not a gravy — their words — and the sample week proves the two are different rows rather than one mislabelled: Sunday's stated menu lists 'veg gravy' and 'salad' separately, and the grid serves VEG KURMA beside KARA KUZHAMBU. Chain rules/chennai_client_pools.py re-files Chennai's twelve kuzhambus `veg_gravy` -> `salad` accordingly, so this composition has a pool to draw on; before that the salad pool held none and the rule was unsatisfiable. A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). Selected by NAME because `sub_category` is `mixed_veg_curry`, which also holds the kurmas the veg_gravy slot serves, and because the ontology spells the word five ways.",
         "name": "tcl_salad_is_a_kuzhambu",
         "type": "slot_composition",
         "base_slot": "salad",
@@ -135,7 +135,7 @@
         ]
       },
       {
-        "_comment": "'liquid based sweet 3 a week'. `exact` counts DAYS, and dessert runs Mon-Fri only (Saturday and Sunday drop it), so this is 3 of the 5 dessert days. Chennai carries 17 liquid sweets after scripts/chennai_client_pools.py, against ~10 the 20-day cooldown needs at this rate.",
+        "_comment": "'liquid based sweet 3 a week'. `exact` counts DAYS, and dessert runs Mon-Fri only (Saturday and Sunday drop it), so this is 3 of the 5 dessert days. Chennai carries 17 liquid sweets after Chain rules/chennai_client_pools.py, against ~10 the 20-day cooldown needs at this rate.",
         "name": "tcl_liquid_sweet_three_days",
         "type": "selector_frequency",
         "selector": {

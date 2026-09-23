@@ -79,7 +79,7 @@
       "max_per_week": 2
     },
     {
-      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; scripts/pune_flag_corrections.py sets it on black_chana_malwani.",
+      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; Chain rules/pune_flag_corrections.py sets it on black_chana_malwani.",
       "name": "black_chana_gravy_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -197,7 +197,7 @@
       "max_per_week": 1
     },
     {
-      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; scripts/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
+      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; Chain rules/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
       "name": "leafy_veg_dry_weekly",
       "type": "selector_frequency",
       "selector": {

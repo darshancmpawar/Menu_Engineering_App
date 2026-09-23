@@ -35,7 +35,7 @@ so re-run this afterwards. `tests/test_ncr_fuzzy_unmerge.py` fails if any merged
 name reappears or a restored one goes missing.
 
 Usage:
-    python scripts/ncr_fuzzy_unmerge.py [--dry-run]
+    python Chain rules/ncr_fuzzy_unmerge.py [--dry-run]
 """
 
 from __future__ import annotations

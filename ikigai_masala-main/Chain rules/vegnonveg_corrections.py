@@ -60,7 +60,7 @@ Corrections are **conservative in the direction that matters**: a dish whose
 status is genuinely arguable is left non-veg and reported, because a vegetarian
 dish withheld is a menu that is worse, and a meat dish served is a promise
 broken. What is reported rather than applied goes to
-`docs/vegnonveg_to_confirm.csv`.
+`Chain rules/reports/vegnonveg_to_confirm.csv`.
 
 Idempotent; re-run after any re-import. `tests/data/test_vegnonveg_corrections.py`.
 """
@@ -78,7 +78,7 @@ from city_list import CITIES  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ITEMS = _ROOT / 'data' / 'raw' / 'city_items'
-_REPORT = _ROOT / 'docs' / 'vegnonveg_to_confirm.csv'
+_REPORT = Path(__file__).resolve().parent / 'reports' / 'vegnonveg_to_confirm.csv'
 
 # Every column that marks a row non-veg. A correction to the veg side has to
 # clear all of them: `_nonveg_mask` reads `primary_protein` and `is_egg_dish`,
@@ -160,7 +160,7 @@ VEG_CORRECTIONS = {
 #    Re-filed rather than deleted: a removal is the one step the correction
 #    chain cannot undo, and whether a near-duplicate should also go is a menu
 #    decision — every one of these is reported alongside its correctly-spelled
-#    twin in `docs/vegnonveg_to_confirm.csv`.
+#    twin in `Chain rules/reports/vegnonveg_to_confirm.csv`.
 # --------------------------------------------------------------------------
 NONVEG_CORRECTIONS = {
     'ncr': {

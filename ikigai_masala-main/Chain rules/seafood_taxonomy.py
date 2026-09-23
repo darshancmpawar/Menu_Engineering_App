@@ -35,7 +35,7 @@ re-importing a workbook through the normaliser drops these edits, so re-run it
 afterwards. `tests/test_seafood_taxonomy.py` fails if the corrections are missing.
 
 Usage:
-    python scripts/seafood_taxonomy.py [--dry-run]
+    python Chain rules/seafood_taxonomy.py [--dry-run]
 """
 
 from __future__ import annotations

@@ -159,7 +159,7 @@ owns the ontology; the rule should not wait on it.
 **Two Pune soya dishes needed a tag fix.** `aloo_soya_sukha` and
 `soya_capsicum_chatpata` sat on their vegetable's `key_ingredient` (`potato`,
 `bell_pepper`), so the rule could not see them while the list's other four soya
-dishes carried `soy`. Corrected in `scripts/pune_flag_corrections.py`, and
+dishes carried `soy`. Corrected in `Chain rules/pune_flag_corrections.py`, and
 `tests/test_same_day_exclusion.py` now asserts every soya-named Pune dish carries
 the tag.
 

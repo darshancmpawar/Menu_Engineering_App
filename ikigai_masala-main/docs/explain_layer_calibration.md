@@ -5,7 +5,7 @@ which verdicts are wrong, tune the thresholds against their judgement."*
 
 This is the measurement to hand them. **49 real menu days, 10 clients across all
 four cities**, generated through `/plan` and scored with `src/explain/checks.py`
-as shipped. Reproduce with `scripts/` + the probe in the commit that added this.
+as shipped. Reproduce with `Chain rules/` + the probe in the commit that added this.
 
 Nothing here is tuned yet. Three of the six checks have a defect that is not a
 matter of taste, and those are separated below from the ones that need a chef.

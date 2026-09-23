@@ -54,7 +54,7 @@ and `seafood_taxonomy.py` decides seafood.
 
 Idempotent, and monotone: a cell that already holds a value is never
 overwritten and a flag is only ever set 0 -> 1. Whatever the evidence cannot
-settle goes to `docs/ontology_gaps.csv`.
+settle goes to `Chain rules/reports/ontology_gaps.csv`.
 """
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CITY_DIR = ROOT / "data" / "raw" / "city_items"
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 from city_list import CITIES  # noqa: E402
-REPORT = ROOT / "docs" / "ontology_gaps.csv"
+REPORT = Path(__file__).resolve().parent / "reports" / "ontology_gaps.csv"
 
 #: A token must appear in this many classified rows of the same course, and
 #: agree this often, before it is trusted.

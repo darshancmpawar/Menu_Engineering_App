@@ -85,7 +85,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 _ITEMS = _ROOT / 'data' / 'raw' / 'city_items'
 #: The adjudicated groups, written out so an approval has something to be
 #: an approval OF. The audit's own CSV is empty once these are applied.
-_VERDICTS = _ROOT / 'docs' / 'duplicate_dish_misfile_verdicts.csv'
+_VERDICTS = Path(__file__).resolve().parent / 'reports' / 'duplicate_dish_misfile_verdicts.csv'
 
 #: `(city -> {surviving item: (rename_to | None, reason)})`. The survivor is the
 #: correctly-filed row; everything else in its group is dropped. `rename_to` is
@@ -495,7 +495,7 @@ def main() -> None:
         if current != text:
             raise SystemExit(
                 f'{_VERDICTS.relative_to(_ROOT)} is stale — re-run '
-                f'`python scripts/{Path(__file__).name}`')
+                f'`python Chain rules/{Path(__file__).name}`')
         print(f'{_VERDICTS.relative_to(_ROOT)} is current')
         return
 

@@ -6,7 +6,7 @@ clients are in [`client_logics.md`](client_logics.md) and Pune's in
 [`pune_client_logic.md`](pune_client_logic.md).
 
 **Sources:** `data/raw/source_workbooks/chennai_menu_items_raw.xlsx` (361 raw items, normalised to
-`data/raw/city_items/chennai.xlsx`; now 352 after `scripts/remove_generic_rows.py` dropped 9 rows
+`data/raw/city_items/chennai.xlsx`; now 352 after `Chain rules/remove_generic_rows.py` dropped 9 rows
 named for a category, not a dish) and `data/raw/source_workbooks/chennai_sample_menu.xlsx`, sheet
 `Toasttab`. Scope is **lunch**.
 
@@ -140,7 +140,7 @@ Findings that are not bugs in this client's config but are worth knowing.
   import filed all 8 fish dishes under the nearest chicken bucket:
   `fish_kuzhambu` came through as `sub_category: chicken_south_coastal`,
   `key_ingredient: chicken`, carrying `is_south_chicken_gravy`. Only
-  `primary_protein` was right. `scripts/seafood_taxonomy.py` adds `is_seafood` +
+  `primary_protein` was right. `Chain rules/seafood_taxonomy.py` adds `is_seafood` +
   `is_fish_dish` to every city workbook and repairs the rows — see the seafood
   section below.
 * **26 of 28 desserts are tagged `cuisine_family: north_indian`**, only badusha
@@ -265,7 +265,7 @@ and "Kootu" as three separate rows; ICON's is labelled "Kootu or Poriyal",
 pairing it with the dry rather than the gravy. A kootu is a vegetable simmered
 with moong or toor dal, so `dal` is the position it occupies on a Tamil plate.
 
-`scripts/chennai_client_pools.py` re-files the eight and imports eight more, and
+`Chain rules/chennai_client_pools.py` re-files the eight and imports eight more, and
 `sub_category = kootu` is preserved so the city's `kootu_twice_weekly` cap still
 selects them. This is a **deliberate per-city divergence**: Bangalore files 43
 kootus as `veg_gravy` and two as `dal`, and stays as it is.
@@ -287,7 +287,7 @@ everything else. The import therefore filed all 8 fish dishes under the nearest
 chicken bucket. Only `primary_protein` was correct, which is why the dishes still
 rendered red and `NONVEG_PROTEINS` already matched them.
 
-`scripts/seafood_taxonomy.py` (idempotent, re-run after any re-import) fixes it:
+`Chain rules/seafood_taxonomy.py` (idempotent, re-run after any re-import) fixes it:
 
 | What | Before | After |
 |---|---|---|

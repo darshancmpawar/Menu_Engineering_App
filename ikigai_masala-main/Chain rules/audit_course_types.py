@@ -34,8 +34,8 @@ runs this, so a re-import that introduces a new mismatch fails the build instead
 surfacing months later as a dessert in the gravy slot.
 
 Usage:
-    python scripts/audit_course_types.py            # all cities
-    python scripts/audit_course_types.py --verbose  # also list what was allowed
+    python Chain rules/audit_course_types.py            # all cities
+    python Chain rules/audit_course_types.py --verbose  # also list what was allowed
 """
 
 from __future__ import annotations
@@ -267,7 +267,7 @@ def main(argv=None) -> int:
 
     if total:
         print(f'\n{total} unadjudicated mismatch(es). Either the row is misfiled — '
-              f'fix it in scripts/course_type_corrections.py — or it is fine, in '
+              f'fix it in Chain rules/course_type_corrections.py — or it is fine, in '
               f'which case add it to ADJUDICATED here WITH THE REASON.',
               file=sys.stderr)
         return 1

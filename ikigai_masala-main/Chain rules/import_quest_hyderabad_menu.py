@@ -56,7 +56,7 @@ FOUR SOURCE-SPECIFIC READINGS, each of which would be a silent wrong import:
    evidence a name heuristic cannot match, and it matters: a non-veg dish
    carrying neither `is_nonveg_dry` nor a chicken-gravy flag cannot be placed by
    `nonveg_main_daily_pair` at all — it sits in the pool and is never chosen
-   (`scripts/nonveg_structural_flags.py`). `style_by_label` feeds the row's own
+   (`Chain rules/nonveg_structural_flags.py`). `style_by_label` feeds the row's own
    label in.
 
 2. **"Chef Choice Desserts" is a placeholder, not a dish.** It appears on 14 of
@@ -94,8 +94,9 @@ from typing import Dict, List
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling scripts
 
-from scripts.menu_import import (          # noqa: E402
+from menu_import import (          # noqa: E402
     ImportSpec, refile_lentils, run_import, to_item,
 )
 
@@ -225,7 +226,7 @@ SPEC = ImportSpec(
     # kept out of the master's number space — but that guarantee does not exist
     # anyway: `item_id` is unique only WITHIN a city, and Chennai, NCR and Pune
     # already overlap Bangalore's range. A second convention is just a second
-    # thing to know. See `scripts/normalize_item_ids.py`.
+    # thing to know. See `Chain rules/normalize_item_ids.py`.
     id_prefix="MENU",
 )
 

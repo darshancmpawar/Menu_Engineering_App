@@ -122,8 +122,8 @@ without them falls back to the default city (`bangalore`) for that half.
    set, coerces flags to 0/1 and reports what the list does not cover:
 
    ```bash
-   python scripts/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx --dry-run
-   python scripts/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
+   python Chain rules/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx --dry-run
+   python Chain rules/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
    ```
 
    Then declare the categories the list covers in
@@ -194,7 +194,7 @@ ikigai_masala-main/
 │   ├── raw/city_items/<city>.xlsx   one item list per city + ontology_categories.json
 │   ├── configs/city_rules/<city>.json  one ruleset per city
 │   └── configs/clients/<slug>.json  one overrides file per client
-├── scripts/                  Supabase seeders + SQL schema
+├── Chain rules/                  Supabase seeders + SQL schema
 ├── tests/                    Pytest suite
 ├── docs/                     setup, architecture, api, operations
 ├── pytest.ini

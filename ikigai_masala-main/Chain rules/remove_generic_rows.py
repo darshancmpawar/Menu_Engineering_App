@@ -30,7 +30,7 @@ re-importing a workbook through the normaliser brings the rows back, so re-run t
 afterwards. ``tests/test_generic_rows.py`` fails if any of them reappear.
 
 Usage:
-    python scripts/remove_generic_rows.py [--dry-run]
+    python Chain rules/remove_generic_rows.py [--dry-run]
 """
 
 from __future__ import annotations

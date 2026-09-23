@@ -48,7 +48,7 @@
         "exact": 1
       },
       {
-        "_comment": "One soya a week (soya chaap, in the veg gravy). This used to be an any_of over primary_protein soya AND soy, because NCR spelled the protein both ways — 37 rows soya against 21 soy — so either selector alone missed most of the family. scripts/protein_key_ingredients.py folded the column to the canonical `soy`, so one selector now reaches all 58 NCR rows and the workaround is gone.",
+        "_comment": "One soya a week (soya chaap, in the veg gravy). This used to be an any_of over primary_protein soya AND soy, because NCR spelled the protein both ways — 37 rows soya against 21 soy — so either selector alone missed most of the family. Chain rules/protein_key_ingredients.py folded the column to the canonical `soy`, so one selector now reaches all 58 NCR rows and the workaround is gone.",
         "name": "siemens_soya_1x",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",

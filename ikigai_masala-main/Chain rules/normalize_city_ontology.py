@@ -25,8 +25,8 @@ Nothing is written unless the result validates: the script builds the pools the
 way the API does and reports every category the workbook does not cover.
 
 Usage:
-    python scripts/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
-    python scripts/normalize_city_ontology.py pune src.xlsx --sheet Sheet1 --dry-run
+    python Chain rules/normalize_city_ontology.py pune ~/Downloads/pune_menu_items.xlsx
+    python Chain rules/normalize_city_ontology.py pune src.xlsx --sheet Sheet1 --dry-run
 """
 
 from __future__ import annotations

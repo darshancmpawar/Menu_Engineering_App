@@ -17,7 +17,7 @@ omit =
     # but the units inside are thin glue.
     app.py
     # Scripts and tests are not application code.
-    scripts/*
+    Chain rules/*
     tests/*
 
 [report]

@@ -18,7 +18,7 @@ files the sibling dishes correctly:
     kalkandu pongal in the dessert position. Savoury `pongal` and
     `semiya_kichadi` stay as rice, which is correct.
 
-`scripts/audit_course_types.py` is the other half: it flags name/course_type
+`Chain rules/audit_course_types.py` is the other half: it flags name/course_type
 disagreements so a new import cannot introduce this class of error unnoticed. Every
 correction below started as one of its findings.
 
@@ -27,7 +27,7 @@ Idempotent and committed for the same reason as `seafood_taxonomy.py` and
 the edits, so re-run this afterwards.
 
 Usage:
-    python scripts/course_type_corrections.py [--dry-run]
+    python Chain rules/course_type_corrections.py [--dry-run]
 """
 
 from __future__ import annotations
@@ -104,7 +104,10 @@ CORRECTIONS = {
         # inference learns from it — `fill_cuisine_family.py` refuses to give it
         # a region precisely because it is 77% north and 21% south, and rows
         # like these are part of why.
-        'rajbhog':   ('dessert', 'bengali_sweet', 'semi_dry'),
+        # `rajbhog` used to be corrected here. The corrected source workbooks
+        # spell it `raj_bhog` in every city but NCR and already file it as a
+        # dessert, so the entry matched nothing — the same stale-entry case as
+        # `idly_vada` below. NCR keeps its own entry, where the spelling stands.
         'jal_jeera': ('welcome_drink', 'indian_regional_drink', None),
         # A cham cham is a Bengali sweet, and this one sat in `veg_gravy` in the
         # MASTER list — the same misfile as NCR's two, found only once the
@@ -177,7 +180,8 @@ CORRECTIONS = {
         'massor_pak':             ('dessert', 'burfi', 'semi_dry'),
         'mathura_peda':           ('dessert', 'burfi', 'semi_dry'),
         'pudding_ala_cream':      ('dessert', 'custard_/_pudding', 'wet'),
-        'sweet_laddoo':           ('dessert', 'laddu', 'semi_dry'),
+        # (`sweet_laddoo` was a generic row the corrected workbooks dropped; the
+        # named laddus it stood in for are filed correctly on their own.)
         # Drinks filed as veg_gravy/dessert.
         'gulab_sherbat':       ('welcome_drink', 'indian_regional_drink', None),
         'jaljeera_treat':      ('welcome_drink', 'indian_regional_drink', None),
@@ -213,9 +217,10 @@ CORRECTIONS = {
         'white_cham_cham':          ('dessert', 'bengali_sweet', 'semi_dry'),
         'coconut_coated_cham_cham': ('dessert', 'bengali_sweet', 'semi_dry'),
         'rajbhog':                  ('dessert', 'bengali_sweet', 'semi_dry'),
-        # Frozen and set desserts.
-        'custerd':           ('dessert', 'custard_/_pudding', 'wet'),
-        'icecream':          ('dessert', 'custard_/_pudding', 'wet'),
+        # Frozen and set desserts. `custerd` and the bare `icecream` are no
+        # longer here to correct: the corrected workbooks spell the first
+        # `fruit_custard` / `mango_custard` / `mixed_fruit_custard` and fold the
+        # second into `assorted_icecream`, all already desserts.
         'assorted_icecream': ('dessert', 'custard_/_pudding', 'wet'),
         'vanilla_icecream':  ('dessert', 'custard_/_pudding', 'wet'),
         # Drinks. Bangalore already files thandai and jal jeera as welcome
@@ -245,8 +250,9 @@ CORRECTIONS = {
         # that widens the map for a dish that no longer exists —
         # test_rerunning_the_corrections_changes_nothing catches exactly that.
         # Raitas filed as `dessert / payasam_/_kheer` — a raita served as sweet.
-        'kheera_raita':             ('curd_side', 'raita', None),
-        'kheera_raita_lemon_water': ('curd_side', 'raita', None),
+        # (`kheera_raita_lemon_water` was a fuzzy merge of two dishes; the
+        # corrected workbooks carry them apart, so only the raita needs filing.)
+        'kheera_raita': ('curd_side', 'raita', None),
     },
 }
 

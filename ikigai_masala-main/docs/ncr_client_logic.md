@@ -8,7 +8,7 @@ corrections it needed, and how its pools and per-client logics are wired.
 
 `data/raw/city_items/ncr.xlsx` — **1,630 items** (1,544 as imported, plus the
 sambar / north rice / south bread the corrections below added), derived by
-`scripts/normalize_city_ontology.py` from `source_workbooks/NCR_menu_items.xlsx`.
+`Chain rules/normalize_city_ontology.py` from `source_workbooks/NCR_menu_items.xlsx`.
 Unlike Pune/Chennai, the raw file arrived already in the master 135-column schema
 (a mapping pipeline had run — it carries `Mapping_Log`, `Review_Required` and
 `Data_Quality_Log` sheets), so normalisation was a light pass (`--client-pool
@@ -183,7 +183,7 @@ five NCR sites. Sheet → client-name mapping (they differ): `Stryker Sector 59`
 
 | Client | Encoded (lunch) | Deferred / out of scope |
 |---|---|---|
-| Stryker NCR | salad 1 = green salad daily (salad 2 varies); bread 1 = tawa roti daily (bread 2 varies); rice split — flavour rice Mon/Wed/Thu/Fri, white rice Tue only; 2 paneer gravies + 1 kofta gravy/wk; egg gravy 1×/wk; fish ≤1/wk; fish/biryani/sambar **once per 15 days** (history-checked at generation via `selector_history_window`); **'biryani not the same week as fish'** (`same_day_exclusion` `scope: week`) | positive 'serve a biryani day once/15 days' (the min direction across plans, not expressible from history bans); **10 sambar were imported into NCR** (`scripts/add_ncr_sambar.py`) — serving them still needs a sambar/dal_sambar slot on the counter plus the 15-day cadence rule; 'Thursday special' (undefined); cut fruit (breakfast) |
+| Stryker NCR | salad 1 = green salad daily (salad 2 varies); bread 1 = tawa roti daily (bread 2 varies); rice split — flavour rice Mon/Wed/Thu/Fri, white rice Tue only; 2 paneer gravies + 1 kofta gravy/wk; egg gravy 1×/wk; fish ≤1/wk; fish/biryani/sambar **once per 15 days** (history-checked at generation via `selector_history_window`); **'biryani not the same week as fish'** (`same_day_exclusion` `scope: week`) | positive 'serve a biryani day once/15 days' (the min direction across plans, not expressible from history bans); **10 sambar were imported into NCR** (`Chain rules/add_ncr_sambar.py`) — serving them still needs a sambar/dal_sambar slot on the counter plus the 15-day cadence rule; 'Thursday special' (undefined); cut fruit (breakfast) |
 | Siemens | salad = green salad daily; bread = plain chapati daily; non-veg pair — Tue one egg + one chicken, other days two chicken; 1 paneer + 1 soya/wk; kofta ≤1/wk | kofta 'once per 2 weeks' (capped to ≤1/wk; fortnightly is history-checked); tetrapack juice (snacks); brown bread / cut fruit / boiled egg (breakfast) |
 | Airtel Noida | paneer 2×/wk; non-veg Wed & Fri only; potato ≤2×/wk | fish / paratha monthly (long-horizon); 'no repeat in 15 days' (already covered by cooldown 20); Wed 'regional theme' (needs the cuisine named) |
 | Sinch NCR | bread = tawa roti daily; flavour rice Mon/Wed, white rice Tue/Thu/Fri; raita Mon/Fri only; welcome drink Tue/Thu only; **starter Wednesday only + chaats only**; chicken Mon/Wed/Fri, egg curry Tue/Thu; paneer 1×/wk | the starter rules are **inert until a starter category (count 1) is added** to this counter in the editor — then they activate (verified in the tests); only 3 chaat starters exist today (dhokla/kachori/samosa_chaat), add more for a 4th consecutive week |

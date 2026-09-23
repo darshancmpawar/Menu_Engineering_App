@@ -79,7 +79,7 @@ Distinct dishes per slot, Bangalore, single-state rows only:
 
 **Bangalore holds zero Punjabi rice and zero Punjabi bread.** A
 `ThemeSlotFilterRule`-style narrowing on a Punjabi Thursday empties both slots.
-That is `scripts/ncr_south_bread.py`'s incident verbatim — NCR had three south
+That is `Chain rules/ncr_south_bread.py`'s incident verbatim — NCR had three south
 breads, the cuisine lock narrowed to them, the cooldown drained them, and the
 solve went INFEASIBLE with no starved slot to point at.
 

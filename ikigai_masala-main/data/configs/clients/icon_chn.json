@@ -37,7 +37,7 @@
         ]
       },
       {
-        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (scripts/chennai_client_pools.py). Client-level because both counters that run a dal want it. NB chennai.json's `kootu_twice_weekly` is NOT disabled here, unlike TCL and World Bank: this client's kootu runs on two days a week (see the alternation below), which is exactly what the city cap allows.",
+        "_comment": "'in dal need to give only Kootu item'. Chennai's kootus are `sub_category = kootu` and `course_type = dal` (Chain rules/chennai_client_pools.py). Client-level because both counters that run a dal want it. NB chennai.json's `kootu_twice_weekly` is NOT disabled here, unlike TCL and World Bank: this client's kootu runs on two days a week (see the alternation below), which is exactly what the city cap allows.",
         "name": "icon_chn_dal_is_a_kootu",
         "type": "slot_composition",
         "base_slot": "dal",
@@ -73,7 +73,7 @@
       "Premium Lunch": {
         "_comment": "'in Premium Lunch and Economy Lunch counter we have give dal and veg dry alternative days not both on same day'. The counter runs BOTH as mandatory daily slots, so 'alternate' can only be expressed by standing each down on the other's days. The sample settles which is which 5/5: its single 'Kootu or Poriyal' row is a poriyal on Monday, Wednesday and Friday and a kootu on Tuesday and Thursday.",
         "constant_items": {
-          "_comment": "'in Premium Lunch counter we have 3 non veg main which will only serve \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" on Monday, Wednesday and Friday' — three fixed dishes, so three pins. All three are real Chennai rows (`boiled_egg` and `bone_salna` as of scripts/chennai_client_pools.py), so the pins narrow their cells and the dishes stay visible to every other rule. The day restriction below is what confines them to Monday, Wednesday and Friday.",
+          "_comment": "'in Premium Lunch counter we have 3 non veg main which will only serve \"chicken biryani\", \"boiled egg\" and \"Bone Salna\" on Monday, Wednesday and Friday' — three fixed dishes, so three pins. All three are real Chennai rows (`boiled_egg` and `bone_salna` as of Chain rules/chennai_client_pools.py), so the pins narrow their cells and the dishes stay visible to every other rule. The day restriction below is what confines them to Monday, Wednesday and Friday.",
           "nonveg_main__1": "Chicken Biryani",
           "nonveg_main__2": "Boiled Egg",
           "nonveg_main__3": "Bone Salna"

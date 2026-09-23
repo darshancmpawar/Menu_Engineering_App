@@ -64,7 +64,7 @@ under-enforce on purpose; every one stamps the relaxation channel so the
 explanation names the rule that did not hold. A silent relaxation is
 indistinguishable from a satisfied rule, which is worse than a failure. Note 31.
 
-**4. The ontology correction scripts** (`scripts/*.py` that rewrite
+**4. The ontology correction scripts** (`Chain rules/*.py` that rewrite
 `data/raw/city_items/*.xlsx`). They mutate committed data, they must be
 idempotent, and their tests are the only thing standing between a re-run and a
 silently corrupted item list. Keep the test, keep the no-op-re-run assertion.

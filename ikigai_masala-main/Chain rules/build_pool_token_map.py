@@ -15,7 +15,7 @@ from the workbooks and fails if the committed file disagrees. Re-run this after 
 re-import, alongside the correction scripts; the source_workbooks README lists it.
 
 Usage:
-    python scripts/build_pool_token_map.py [--check]
+    python Chain rules/build_pool_token_map.py [--check]
 
 ``--check`` writes nothing and exits non-zero if the committed map is stale, which
 is what CI and the test use.
@@ -87,7 +87,7 @@ def main(argv=None) -> int:
         if committed == fresh:
             print(f'up to date ({len(fresh)} workbook(s))')
             return 0
-        print('STALE — re-run scripts/build_pool_token_map.py', file=sys.stderr)
+        print('STALE — re-run Chain rules/build_pool_token_map.py', file=sys.stderr)
         for k in sorted(set(fresh) | set(committed or {})):
             if (committed or {}).get(k) != fresh.get(k):
                 print(f'  {k}: committed={(committed or {}).get(k)} '

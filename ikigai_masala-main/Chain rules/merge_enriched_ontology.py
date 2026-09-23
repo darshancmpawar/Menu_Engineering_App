@@ -9,7 +9,7 @@ overwrites.
 WHAT THEY BRING, measured against the workbooks before this ran:
 
   * `item_color` 0% blank in all four (was 15.7% Bangalore, 35.7% NCR, 11.1%
-    Pune). This is the backlog `docs/colours_to_confirm_by_family.csv` asked the
+    Pune). This is the backlog `Chain rules/reports/colours_to_confirm_by_family.csv` asked the
     client to answer, answered. Of the 5,186 Bangalore dishes coloured in both
     files only SIX disagree, and all six are rows `fill_item_colours.py` had
     just inferred — their value is the better one each time (`chicken_65` is
@@ -42,8 +42,8 @@ row that is both misspelled and misfiled as a `veg_gravy`.
 CONFIDENCE IS NOT CERTAINTY. The enriched files carry `provenance`,
 `confidence` and `chef_review` sheets. `item_color` is 0% blank but **720
 Bangalore and 354 NCR values are low-confidence**, which is exactly what their
-`chef_review` queue lists. `scripts/dump_chef_review.py` turns that into
-`docs/chef_review_queue.csv` so the open question stays visible.
+`chef_review` queue lists — read the sheet directly when that question comes
+back up.
 
 Only blanks are filled and only from a non-blank source value, except for the
 columns listed in `OVERWRITE`, where the client's reviewed value wins outright.

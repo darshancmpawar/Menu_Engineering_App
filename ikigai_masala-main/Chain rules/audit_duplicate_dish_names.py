@@ -55,7 +55,7 @@ already earned its place: grouping by a synonym-normalised key is what found
 similarity scored those two names at ~0.5 and no English or Hindi meat-word list
 carries `kori`, so both of the channels in `vegnonveg_corrections.py` missed it.
 
-Writes `docs/duplicate_dish_names.csv`, one row per group, with a proposed
+Writes `Chain rules/reports/duplicate_dish_names.csv`, one row per group, with a proposed
 canonical name to approve or edit. `--check` fails if the CSV is stale.
 """
 
@@ -74,7 +74,7 @@ from city_list import CITIES  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ITEMS = _ROOT / 'data' / 'raw' / 'city_items'
-_REPORT = _ROOT / 'docs' / 'duplicate_dish_names.csv'
+_REPORT = Path(__file__).resolve().parent / 'reports' / 'duplicate_dish_names.csv'
 
 # Multi-word forms are rewritten first, because a token rule gets them wrong:
 # `kodi` alone is Telugu for chicken but `kodi_guddu` is its EGG, and folding
@@ -313,7 +313,7 @@ def main() -> None:
         if current != text:
             raise SystemExit(
                 f'{_REPORT.relative_to(_ROOT)} is stale — re-run '
-                f'`python scripts/{Path(__file__).name}`')
+                f'`python Chain rules/{Path(__file__).name}`')
         print(f'{_REPORT.relative_to(_ROOT)} is current')
         return
     _REPORT.parent.mkdir(parents=True, exist_ok=True)

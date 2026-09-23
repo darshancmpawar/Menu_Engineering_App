@@ -1,3 +1,6 @@
 
 # atomic-write temp files from the ontology correction scripts
 *.xlsx.tmp
+
+# generated reports from the ontology correction chain
+Chain rules/reports/

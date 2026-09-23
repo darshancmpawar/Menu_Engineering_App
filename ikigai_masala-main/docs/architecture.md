@@ -118,7 +118,7 @@ Streamlit → `POST /api/v1/regenerate` → `MenuRegenerator` locks every cell n
 ## Schema migrations
 
 The schema is four tables (`clients`, `app_settings`, `menu_history`,
-`week_signatures`). SQL under `scripts/`:
+`week_signatures`). SQL under `Chain rules/`:
 
 - `setup_all.sql` — **the master, idempotent script.** Creates every table,
   backfills `clients.counters` from an older normalized database, adds the

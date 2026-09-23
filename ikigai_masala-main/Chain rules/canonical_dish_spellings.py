@@ -119,7 +119,7 @@ KNOWN_SPLITS = {
 #: The dropped row's `client` tokens are merged into the survivor, so no client
 #: silently loses a dish it makes.
 #: `dal_rajma` / `rajma_dal` is the first group actioned out of
-#: `docs/duplicate_dish_names.csv`, and it is the shape that audit exists to
+#: `Chain rules/reports/duplicate_dish_names.csv`, and it is the shape that audit exists to
 #: find: the same dish written in two word orders, and the two rows DISAGREED
 #: about what is in it — `dal_rajma` carried `primary_protein: toor_dal` while
 #: `rajma_dal` carried `kidney_bean`. The client settled it ("its rajma"), so
