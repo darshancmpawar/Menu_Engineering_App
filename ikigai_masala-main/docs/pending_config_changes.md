@@ -140,7 +140,7 @@ counter rows and the Pune list can currently carry.
 | Missing | Blocks |
 |---|---|
 | `boiled_egg`, `boiled_chicken` | 'Non Veg 2 & 3 will serve Boiled egg and boiled chicken daily as staple'. Both are pinned and print correctly, but as TEXT — invisible to colour, variety and the cooldown. Adding the two rows upgrades the same pins to solved cells with no config change. |
-| a `masala_buttermilk` row | '2 welcome drinks … mon,wed,fri plain buttermilk and tue,thur masala buttermilk, both staple'. Pune has one buttermilk row, so the rule cannot be written at all. What IS written is a cap of one dairy drink per day. |
+| a `masala_buttermilk` row | '2 welcome drinks … mon,wed,fri plain buttermilk and tue,thur masala buttermilk, both staple'. Both halves are pinned in `constant_items.welcome_drink__2`; `buttermilk` is a real Pune row and solves, `masala buttermilk` is not and prints as text. Adding the row upgrades it to a solved cell with no config change — and the no-repeat-colour rule is already scoped to drink 1 (`slot_indices`), which it has to be: a buttermilk is white every day, and unscoped that rule makes the counter INFEASIBLE the moment this row exists. Measured. |
 | a `chaat` course_type, in any city | 'Tuesday and Thursday, chaat will be served instead of salad, with 2 chaat items'. No city carries one. |
 
 **Flags that made a rule miss.** `is_pulao` is set on 10 of Pune's 110 rices while
