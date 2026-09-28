@@ -186,6 +186,53 @@ that still carry spellings Bangalore has changed.
 
 ---
 
+## 3e. Two compositions can stack on one slot, and nothing says so
+
+Rules merge by **name**. A client composition on `nonveg_main` written under the
+client's own name therefore **stacks** on the city's `nonveg_main_daily_pair`
+(one non-veg dry + one gravy daily) instead of replacing it, and what the solver
+must satisfy is the *intersection* of the two. Usually that is harmless and even
+desirable — the city rule is about ROLE, a client rule is usually about PROTEIN,
+so "two chicken, one dry one gravy" is a good plate. It bites where the
+intersection is thin, and there is no warning of any kind: the pre-flight gate
+reports `would_succeed: true` and the solve then returns INFEASIBLE naming no
+rule, because no individual *slot* is starved.
+
+Siemens is the live case. It serves two non-veg, and week 3 is INFEASIBLE from
+three separate start Mondays (3 Aug, 7 Sep, 5 Oct) with weeks 1-2 saved. With
+the history pinned so each trial differs by exactly one rule, **three single
+removals fix it**: the city `nonveg_main_daily_pair`, the client
+`siemens_nonveg_pair_by_weekday`, or `item_cooldown_20d`. Its own sentence
+("Tue one egg + one chicken, other days two chicken") fully specifies both cells
+and says nothing about dry/gravy, so the city composition is now disabled for
+that client. **The mechanism is still unexplained** — the obvious story, that the
+chicken-dry pool empties, is disproven: NCR has 10 chicken dry rows and week 3
+still has 6 available, so the dry half is not what runs out.
+
+| Client | Composition | Stacks on | Counter's nonveg_main |
+|---|---|---|---|
+| Siemens | `siemens_nonveg_pair_by_weekday` | `nonveg_main_daily_pair` | 2 — **fixed, city rule disabled** |
+| Citrix, Cloudera, Infenion, Konsberg, Plum, Sinch, Sinch NCR, Tekion, Thales | `*_nonveg_by_weekday` | `nonveg_main_daily_pair` | 1, so the city pair is inactive — latent |
+| Bakertilly | `bakertilly_two_chicken_dry_on_the_biryani_day` | `nonveg_main_five_dish` | 5 |
+| Cigna, F5 | named `nonveg_main_daily_pair` | — | correctly REPLACE it |
+
+Cigna and F5 show the intended shape: reuse the city rule's name and it
+overrides. Worth a guard test that a client composition sharing a `base_slot`
+with an active city composition either reuses its name or disables it.
+
+## 3f. NCR is thin on non-veg dry
+
+`is_nonveg_dry` is set on **12** NCR rows (10 of them chicken) against **108**
+non-veg gravies. Any counter whose composition wants a dry dish daily draws on
+those 12 under a 20-day cooldown. Not the cause of the Siemens failure above,
+but the same shape as the north-rice shortage that `add_ncr_north_rice.py` was
+written for, and worth an import while the item list is being cleaned.
+
+Also in NCR's bread pool and reached by the unpinned bread slots: `bhelpuri`,
+`bhel_poori` and `cholay_poori` are filed as **bread**. A bhel puri is a chaat.
+
+---
+
 ## 4. Decisions still open
 
 | Topic | Question | Where it bites |

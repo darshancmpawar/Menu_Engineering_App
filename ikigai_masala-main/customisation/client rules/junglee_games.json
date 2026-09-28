@@ -1,6 +1,6 @@
 {
   "Junglee Games": {
-    "_comment": "NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main across the week; paneer once. Deferred: 'one chaat item once a week' has no slot on this counter (no starter/salad category) — add a starter slot to serve it.",
+    "_comment": "NCR site 'Junglee'. Chicken 4 days + egg curry once fills the single nonveg_main across the week; paneer once. Deferred: 'one chaat item once a week' has no slot on this counter (no starter/salad category) \u2014 add a starter slot to serve it.",
     "disable": [],
     "use": [
       {
@@ -28,6 +28,10 @@
         },
         "exact": 1
       }
-    ]
+    ],
+    "constant_items": {
+      "_comment": "Indian bread is a STAPLE here, not a family. The sheet never named a bread, so the slot rotated the whole 43-60 dish pool and served a different one every day. Junglee Games's own served history in data/raw/source_workbooks/NCR_menu_items.xlsx::Menu_Daily is `tawa_roti` on 34 of 34 days (100%); the handful of other rows are idli/poori/thepla one-offs on festival and south days, not a rotation. Every other NCR site pins the same staple.",
+      "bread": "tawa roti"
+    }
   }
 }
