@@ -181,14 +181,22 @@ MUTUALLY_EXCLUSIVE_SLOT_GROUPS: List[frozenset] = [frozenset({'curd', 'curd_side
 
 def combo_minority_count(n_days: int) -> int:
     """Days the *minority* variant of a combination category gets over an
-    ``n_days`` horizon. Anchored to 2-of-5 (so 5 days → 3 majority + 2 minority)
-    and scaled for other lengths; the majority variant always gets at least as
-    many days as the minority.
+    ``n_days`` horizon — as many as it can have without outnumbering the
+    majority, which is ``n_days // 2``.
+
+    That is the client's own week: "dal Mon/Wed/Fri, sambar Tue/Thu" is three
+    and two, and three and two is what five days give. What it also does, and
+    the 2-of-5 ratio this used to scale did not, is **alternate**. Two majority
+    days can avoid being adjacent only while ``majority <= minority + 1``, and
+    the old formula broke that on every horizon from six days up except seven
+    and nine — a six-day week came out dal / sambar / dal / **dal** / sambar /
+    dal, and a ten-day one was worse. Six was the one anybody noticed because
+    six is a week with Saturday service.
+
+    The majority still never has fewer days than the minority, since
+    ``n_days // 2 <= n_days - n_days // 2`` for every ``n_days``.
     """
-    if n_days < 2:
-        return 0
-    minority = max(1, round(n_days * 2 / 5))
-    return min(minority, n_days // 2)
+    return 0 if n_days < 2 else n_days // 2
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
@@ -328,10 +336,26 @@ THEME_FALLBACK_SLOTS: Set[str] = {'starter', 'veg_dry', 'dessert', 'curd_side'}
 # tagged `quest`. The tokens are an artefact of where the list came from; the
 # dishes are simply the city's list.
 #
+# Pune is the last to join, and the client's own words are the reason: the full
+# Pune list is the common menu for every Pune site, as NCR's is. The corrected
+# workbook made that a live problem rather than a tidiness one — it tripled the
+# list to 1,315 rows and tagged only 512 of them `common`, so a Pune client was
+# still planning from the old 512 while 656 new VEG dishes sat unreachable. The
+# other 147 untagged rows are non-veg, and PhonePe (3 non-veg mains a day) and
+# ChrysCapital Advisors (1) could not produce a menu at all without them: the
+# solve came back INFEASIBLE on `nonveg_main (0 distinct items)`.
+#
+# Widening the pool cannot put meat on a vegetarian counter. Amadeus Pune and
+# Corning Chakan declare no `nonveg_main` slot, so there is no cell for a
+# non-veg dish to land in, and `PoolBuilder._nonveg_mask` keeps non-veg out of
+# every veg slot regardless of pool. The vegetarian line is held by the slot and
+# the mask, not by a missing pool token — which is the right place for it, since
+# a pool token is a menu decision and this is a dietary one.
+#
 # Deliberately a city-level switch, not a per-client edit: it is reversible in
 # one line and leaves every client row untouched. Remove a city from this set to
 # restore per-client pools.
-FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'hyderabad', 'ncr'}
+FULL_POOL_CITIES: Set[str] = {'bangalore', 'chennai', 'hyderabad', 'ncr', 'pune'}
 
 # Items that must never appear in a flavored-rice slot — plain/steamed rice
 # variants belong in the CONST_SLOTS 'white_rice' slot instead.

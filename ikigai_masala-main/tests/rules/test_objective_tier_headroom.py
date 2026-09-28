@@ -11,8 +11,8 @@ still returns OPTIMAL, having optimised the wrong priority, with nothing logged.
 Same shape as the failure in design note 27: the quiet outcome is the dangerous
 one.
 
-`docs/EXPLAIN_LAYER_WORKORDER.md` (known issue 5) put the headroom at 1.75x from
-an estimate of the term count. This measures it instead, on the model the real
+The explain-layer work order that raised this put the headroom at 1.75x from an
+estimate of the term count. This measures it instead, on the model the real
 solver builds for a real client config at `MAX_NUM_DAYS`.
 
 **The measurement says the theme tier is inverted.** CP-SAT finds a feasible

@@ -196,18 +196,29 @@ def rules_and_skip_for_client(
             # a pinned curd still removes curd_side.
             skip_cells.update((d, sib) for sib in siblings)
             canonical = _canonical_item_name(value, slot_items)
-            # A pin that replaces the slot for the WHOLE horizon must still be
-            # stamped, even when it names a real dish. Its base slot is dropped
-            # from the model (`whole_slot_bases`), so there is no cell to narrow
-            # — and solving one anyway would be INFEASIBLE under unique_items,
-            # which is why the slot is dropped in the first place: the same dish
-            # cannot occupy five days unless it is a staple.
             solvable = (not solved_slots) or slot_id in solved_slots
-            if (canonical is not None and base not in whole_slot_bases
-                    and solvable):
+            if canonical is not None and solvable:
                 forced_items[(d, slot_id)] = canonical
             else:
                 skip_cells.add((d, slot_id))
+
+    # A pin that replaces its slot for the WHOLE horizon used to be stamped even
+    # when it named a real dish, because solving the same dish on five days is
+    # INFEASIBLE under `unique_items` — "the same dish cannot occupy five days
+    # unless it is a staple". That objection stopped holding when
+    # `MenuSolver._repeatable_declarations` was added for World Bank's daily
+    # pins: a dish forced into one base slot on two or more dates now DECLARES
+    # itself a staple, which is what pinning it every day meant all along.
+    #
+    # So a base leaves `whole_slot_bases` the moment any of its dates resolved
+    # to a real candidate — the slot stays in the model, the cell is narrowed
+    # rather than dropped, and the dish counts toward the day's colour variety,
+    # cuisine variety and no-repeat instead of being invisible to all three.
+    # Ather's `mixed veg salad` and twenty others were in that state. A base
+    # whose pin resolves on some days and not others keeps its cells too: the
+    # unresolved days are already in `skip_cells` and stamp as before.
+    forced_bases = {_base_slot(sid) for _d, sid in forced_items}
+    whole_slot_bases = {b for b in whole_slot_bases if b not in forced_bases}
     return rules, skip_cells, constant_items, whole_slot_bases, forced_items
 
 
@@ -390,7 +401,7 @@ def _apply_region_days(rules, data, dates, client_cfg, city, row):
 def build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
     constant_items=None, whole_slot_bases=None, forced_items=None,
-    rules=None, worker_count=None,
+    rules=None, worker_count=None, combo_majority=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -400,6 +411,8 @@ def build_solver_config(
     solving them would burn items against unique_items / colour variety and
     then discard the result. *rules* is the resolved ruleset, read only for the
     colour parameters a city may override (see ``_rule_solver_overrides``).
+    *combo_majority* names which half of a combination category leads on this
+    counter, defaulting to the global `COMBO_CATEGORIES` order.
     """
     active_base = _client_base_slots(client_cfg)
     if whole_slot_bases:
@@ -420,6 +433,7 @@ def build_solver_config(
         active_base_slots=active_base or None,
         const_slots=const_selected,
         client_constant_items=dict(constant_items or {}),
+        combo_majority=dict(combo_majority or {}),
         forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
@@ -608,6 +622,8 @@ def prepare_solver_inputs(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
         forced_items=forced_items, rules=rules, worker_count=worker_count,
+        combo_majority=MenuRuleLoader().get_client_combo_majority(
+            client_name, getattr(client_cfg, 'counter_name', None)),
     )
 
     return SolverInputs(

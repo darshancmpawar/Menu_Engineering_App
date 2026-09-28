@@ -97,7 +97,10 @@ class TestRule:
             'selector': {'flag': 'is_leafy_based_dish'}, 'window_days': 15})
         items = r.matching_items(df)
         assert items, "expected some leafy veg_dry items"
-        assert 'dal_palak' not in items  # a leafy dal, not a veg_dry
+        # `dal_coriander` is the concrete case: leafy, and a DAL. (It used to be
+        # `dal_palak`, which the corrected Pune list re-filed as a veg_dry — so
+        # the rule is right to match that one now.)
+        assert 'dal_coriander' not in items
         # every matched item really is a veg_dry
         vd = set(df[df['course_type'] == 'veg_dry']['item'].astype(str).str.strip())
         assert items <= {v.lower() for v in vd}

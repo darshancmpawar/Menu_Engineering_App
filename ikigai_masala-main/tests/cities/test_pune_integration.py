@@ -35,6 +35,7 @@ def _pune_row_count():
     The counts below used to be literals and broke every time the ontology
     gained a dish; what they are actually asserting is "this endpoint counted
     PUNE's list, not Bangalore's", which the derived number states directly.
+    Pune is full-pool, so this is also what a client can be served.
     """
     import pandas as pd
     from src.ontology.paths import city_excel_path
@@ -320,13 +321,19 @@ class TestPerCityIsolation:
         assert not any(n.startswith('amadeus_pune_') for n in amadeus), amadeus
 
     def test_nonveg_name_set_is_per_city(self, pune_api):
-        assert pune_api._get_nonveg_items('Pune') == set()
-        assert len(pune_api._get_nonveg_items('Bangalore')) > 0
+        """A red-rendering lookup over each city's whole list, so the assertion
+        is that the two do not share one — not that Pune's is empty, which stopped
+        being a property of the workbook and is tested where it belongs, over the
+        eligible pool (`test_city_ontology.py`)."""
+        pune = pune_api._get_nonveg_items('Pune')
+        blr = pune_api._get_nonveg_items('Bangalore')
+        assert blr and pune and blr != pune
+        assert 'achari_chicken' in blr and 'achari_chicken' not in pune
 
     def test_pin_resolution_is_per_city(self, pune_api):
         blr = ontology_repository.item_names('Bangalore')
         pune = ontology_repository.item_names('Pune')
-        assert 'chicken_biryani' in blr and 'chicken_biryani' not in pune
+        assert 'akki_roti' in blr and 'akki_roti' not in pune
         assert 'phodnicha_bhat' in pune and 'phodnicha_bhat' not in blr
 
 class TestNoCrossCityWorkbookReads:
@@ -405,7 +412,7 @@ class TestNoCrossCityWorkbookReads:
         strings.
 
         The answer is now precomputed into `city_items/pool_tokens.json`
-        (scripts/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
+        (Chain rules/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
         cross-city test rather than deleted: reading zero workbooks is a strictly
         stronger statement of "no cross-city read" than reading both was.
         """
@@ -414,7 +421,7 @@ class TestNoCrossCityWorkbookReads:
         assert traced == [], (
             'expected no workbook reads — is pool_tokens.json missing? The '
             'endpoint falls back to parsing every workbook when it is, which is '
-            'slow but not wrong: run scripts/build_pool_token_map.py')
+            'slow but not wrong: run Chain rules/build_pool_token_map.py')
 
     def test_it_still_reports_pool_tokens_for_both_cities(self, fleet_api):
         """The speed change must not have cost the information. Bangalore has real
@@ -428,7 +435,7 @@ class TestNoCrossCityWorkbookReads:
             self, fleet_api, monkeypatch):
         """The map is a cache, so prove it agrees with the thing it caches."""
         with_map = _get(fleet_api, '/api/v1/editor-metadata').get_json()
-        monkeypatch.setattr(fleet_api, '_pool_tokens_from_map', lambda _c: None)
+        monkeypatch.setattr(fleet_api, 'pool_tokens_for_city', lambda _c: None)
         fleet_api.reset_caches()
         without = _get(fleet_api, '/api/v1/editor-metadata').get_json()
         assert with_map['client_pools_by_city'] == without['client_pools_by_city']

@@ -27,7 +27,7 @@ CLIENT_RULES_CONFIG_PATH = os.getenv(
 # 36 clients, which made every client edit touch the same document.
 CLIENT_RULES_DIR = os.getenv(
     'CLIENT_RULES_DIR',
-    str(Path(__file__).resolve().parent.parent.parent / 'data' / 'configs' / 'clients'),
+    str(Path(__file__).resolve().parent.parent.parent / 'customisation' / 'client rules'),
 )
 
 # Directory holding one rules file per city (``<city>.json``). A city file may
@@ -331,7 +331,8 @@ class MenuRuleLoader:
         Counter entries are layered over the client-level ones, so shared
         overrides stay declared once.
         """
-        empty = {'disable': [], 'rules': [], 'constant_items': {}}
+        empty = {'disable': [], 'rules': [], 'constant_items': {},
+                 'combo_majority': {}}
         if isinstance(client_block, list):
             return {**empty, 'rules': list(client_block)}
         if not isinstance(client_block, dict):
@@ -347,6 +348,7 @@ class MenuRuleLoader:
                 'disable': list(block.get('disable') or []),
                 'rules': shelf + list(rules or []),
                 'constant_items': dict(block.get('constant_items') or {}),
+                'combo_majority': dict(block.get('combo_majority') or {}),
             }
 
         merged = _layer(client_block)
@@ -359,6 +361,9 @@ class MenuRuleLoader:
                 merged['rules'] = merged['rules'] + layer['rules']
                 merged['constant_items'] = {
                     **merged['constant_items'], **layer['constant_items'],
+                }
+                merged['combo_majority'] = {
+                    **merged['combo_majority'], **layer['combo_majority'],
                 }
         return merged
 
@@ -480,6 +485,27 @@ class MenuRuleLoader:
         if not block:
             return {}
         return self._parse_client_block(block, counter_name)['constant_items']
+
+    def get_client_combo_majority(
+        self, client_name: str, counter_name: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """``{combo slot: component}`` for *client_name* (empty dict if unset).
+
+        Which half of a combination category gets the majority of the days on
+        this counter. `COMBO_CATEGORIES` picks one globally — dal leads
+        `dal_sambar`, rasam leads `sambar_rasam` — and a site wanting the other
+        half on three days had no way to say so.
+
+        Returned as written and validated where it is used, not here: a bad key
+        must not stop a client loading, and `_combo_day_variant` falls back to
+        the global order for anything that is not one of the slot's own two
+        components. `tests/clients/test_client_combo_majority.py` is what makes
+        a typo visible instead of silent.
+        """
+        block = self._read_client_blob().get(client_name)
+        if not block:
+            return {}
+        return self._parse_client_block(block, counter_name)['combo_majority']
 
     def get_counter_scoped_constant_keys(
         self, client_name: str, counter_name: Optional[str] = None,

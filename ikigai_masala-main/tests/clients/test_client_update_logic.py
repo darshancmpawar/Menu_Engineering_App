@@ -194,7 +194,7 @@ class TestAttAndT:
 
     def test_bread_is_always_a_chapati_or_phulka(self, api, blr_df):
         """Asserted on the FLAG, not the dish name. `bread_chapati_only` selects
-        on `is_plain_phulka_chapathi`, which `scripts/bread_form_flags.py` made
+        on `is_plain_phulka_chapathi`, which `Chain rules/bread_form_flags.py` made
         definitional in both directions — so a `tawa_roti` or `wheat_palak_roti`
         is a chapati-class bread with no "chapati" in its name, while an
         `appam_chapati` has the word and is not one."""

@@ -14,7 +14,7 @@ here is `admin_type`, never confidence or authority.
 **A region is a floor, never a filter.** Bangalore holds 47 Punjabi veg gravies
 and *zero* Punjabi rice and *zero* Punjabi bread. Narrowing those slots the way
 `ThemeSlotFilterRule` narrows a cuisine would empty them — which is
-`scripts/ncr_south_bread.py`'s incident exactly, where three south breads became
+`Chain rules/ncr_south_bread.py`'s incident exactly, where three south breads became
 none under the cooldown and the solve went INFEASIBLE with no starved slot to
 point at. So this module's job is to say, per region, *which slots can carry it*
 — and the rule built from that asks for N dishes across those slots and nothing

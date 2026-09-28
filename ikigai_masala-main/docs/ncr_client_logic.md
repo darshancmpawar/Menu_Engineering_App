@@ -8,7 +8,7 @@ corrections it needed, and how its pools and per-client logics are wired.
 
 `data/raw/city_items/ncr.xlsx` — **1,630 items** (1,544 as imported, plus the
 sambar / north rice / south bread the corrections below added), derived by
-`scripts/normalize_city_ontology.py` from `source_workbooks/NCR_menu_items.xlsx`.
+`Chain rules/normalize_city_ontology.py` from `source_workbooks/NCR_menu_items.xlsx`.
 Unlike Pune/Chennai, the raw file arrived already in the master 135-column schema
 (a mapping pipeline had run — it carries `Mapping_Log`, `Review_Required` and
 `Data_Quality_Log` sheets), so normalisation was a light pass (`--client-pool
@@ -19,10 +19,6 @@ bread, rice, veg_dry, veg_gravy, starter, dal, dessert, healthy_rice, curd_side,
 nonveg_main. No rasam/sambar — see corrections below.
 
 Ruleset: `configs/city_rules/ncr.json` `extends` Bangalore and adds one
-NCR-specific rule, `ncr_south_bread_cadence` (see "Two pools that ran dry").
-A real solve produces a coherent North Indian menu from the list with
-non-veg tagged and zero blocking diagnostics (`tests/test_ncr_plan.py`).
-
 ## Data corrections applied
 
 Every correction is an idempotent script with a test, run in this order after the
@@ -176,18 +172,26 @@ site's 504 dishes. The per-client `client` tags stay in the workbook; remove
 ## Client-specific logics
 
 The client's `Site_Specific_Menu_items_logic` workbook carries per-site rules for
-five NCR sites. Sheet → client-name mapping (they differ): `Stryker Sector 59` →
+five NCR sites, and a later rulebook added Carelon, Corning and SAEL. Sheet → client-name mapping (they differ): `Stryker Sector 59` →
 **Stryker NCR**, `Seimens` → **Siemens**, `Airtel Plot 5` → **Airtel Noida**,
 `Sinch` → **Sinch NCR**, `Junglee` → **Junglee Games**. Encoded in
-`data/configs/clients/<slug>.json`, tested in `tests/test_ncr_client_logic.py`:
+`customisation/client rules/<slug>.json`, tested in `tests/test_ncr_client_logic.py`:
 
 | Client | Encoded (lunch) | Deferred / out of scope |
 |---|---|---|
-| Stryker NCR | salad 1 = green salad daily (salad 2 varies); bread 1 = tawa roti daily (bread 2 varies); rice split — flavour rice Mon/Wed/Thu/Fri, white rice Tue only; 2 paneer gravies + 1 kofta gravy/wk; egg gravy 1×/wk; fish ≤1/wk; fish/biryani/sambar **once per 15 days** (history-checked at generation via `selector_history_window`); **'biryani not the same week as fish'** (`same_day_exclusion` `scope: week`) | positive 'serve a biryani day once/15 days' (the min direction across plans, not expressible from history bans); **10 sambar were imported into NCR** (`scripts/add_ncr_sambar.py`) — serving them still needs a sambar/dal_sambar slot on the counter plus the 15-day cadence rule; 'Thursday special' (undefined); cut fruit (breakfast) |
+| Stryker NCR | salad 1 = green salad daily (salad 2 varies); bread 1 = tawa roti daily (bread 2 varies); rice split — flavour rice Mon/Wed/Thu/Fri, white rice Tue only; 2 paneer gravies + 1 kofta gravy/wk; egg gravy 1×/wk; fish ≤1/wk; fish/biryani/sambar **once per 15 days** (history-checked at generation via `selector_history_window`); **'biryani not the same week as fish'** (`same_day_exclusion` `scope: week`) | positive 'serve a biryani day once/15 days' (the min direction across plans, not expressible from history bans); **10 sambar were imported into NCR** (`Chain rules/add_ncr_sambar.py`) — serving them still needs a sambar/dal_sambar slot on the counter plus the 15-day cadence rule; 'Thursday special' (undefined); cut fruit (breakfast) |
 | Siemens | salad = green salad daily; bread = plain chapati daily; non-veg pair — Tue one egg + one chicken, other days two chicken; 1 paneer + 1 soya/wk; kofta ≤1/wk | kofta 'once per 2 weeks' (capped to ≤1/wk; fortnightly is history-checked); tetrapack juice (snacks); brown bread / cut fruit / boiled egg (breakfast) |
 | Airtel Noida | paneer 2×/wk; non-veg Wed & Fri only; potato ≤2×/wk | fish / paratha monthly (long-horizon); 'no repeat in 15 days' (already covered by cooldown 20); Wed 'regional theme' (needs the cuisine named) |
 | Sinch NCR | bread = tawa roti daily; flavour rice Mon/Wed, white rice Tue/Thu/Fri; raita Mon/Fri only; welcome drink Tue/Thu only; **starter Wednesday only + chaats only**; chicken Mon/Wed/Fri, egg curry Tue/Thu; paneer 1×/wk | the starter rules are **inert until a starter category (count 1) is added** to this counter in the editor — then they activate (verified in the tests); only 3 chaat starters exist today (dhokla/kachori/samosa_chaat), add more for a 4th consecutive week |
 | Junglee Games | chicken 4×/wk; egg curry 1×/wk; paneer 1×/wk | one chaat item 1×/wk (no starter/salad slot on this counter — add one to serve it) |
+| Carelon | 2 breads — tawa roti pinned to cell 1, cell 2 held to a flavoured bread; paneer gravy 2×/wk and never consecutive; 1 kofta/wk; no non-veg Tue or Sat (it serves 7 days); egg gravy ≤1/wk; curd side is a raita; white rice Mon/Thu/Sat with flavour rice on the other four | — |
+| Corning | roti pinned daily; paneer 2×/wk; curd side is a raita; white rice Thu with flavour rice on the other four | the grid's Seasonal Greens / Green Base / Cyclic Toppings rows are a salad BAR the diner assembles, not a slot — the same reading Corning Chakan's Pune menu got — and Fruit 1 / Fruit 2 likewise |
+| SAEL | tawa roti pinned daily; veg dry Mon/Wed/Fri and veg gravy Tue/Thu, which is also 'veg dry and Veg Gravy cant come together'; paneer 1×/wk; curd side is a raita; white rice Wed with flavour rice on the other four | the counter's row declares BOTH veg slots daily, so the day split is what cuts the plate to the one veg dish the sample grids print — confirm that is intended |
+
+"When white rice is served we will not serve flavour rice and vice verse" is in
+all three of the new sheets with a count but never a weekday, so each site gets a
+fixed split copied from its own sample week. The days are a CHOICE, each
+`_comment` says so, and the two rules of a pair move together.
 
 Selectors: `primary_protein` = paneer/chicken/soya, `is_egg_dish`,
 `is_fish_dish`, `is_veg_kofta_gravy`, `key_ingredient` = potato, `item` =

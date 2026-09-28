@@ -204,3 +204,74 @@ class TestThemeFilterNonvegUnion:
         b = rule.pre_filter_pool(vd.copy(), None, 'veg_dry', 'chinese',
                                  {'cfg': self._Cfg(2)})
         assert len(a) == len(b)
+
+
+class TestSlotIndices:
+    """A composition can describe ONE expansion of a multi-slot.
+
+    `slot_day_restriction` could already stand down `rice__2` alone; a
+    composition could only speak about the whole family, which is why PhonePe's
+    "Welcome drink 1 is non dairy" had to be written as the weaker "at most one
+    dairy drink a day". Both rules now read `slot_indices` through the same
+    parser so the two cannot drift.
+    """
+
+    def test_the_parser_is_shared_and_normalises(self):
+        from src.menu_rules.base_menu_rule import parse_slot_indices
+        assert parse_slot_indices([2]) == [2]
+        assert parse_slot_indices(['2', 2, '1']) == [2, 1]   # deduped, order kept
+        assert parse_slot_indices([0, -1, 'x']) is None      # nothing usable
+        assert parse_slot_indices([]) is None                # not "no expansions"
+        assert parse_slot_indices(None) is None
+
+    def test_unset_still_means_the_whole_family(self):
+        from src.menu_rules.slot_composition_rule import SlotCompositionRule
+        rule = SlotCompositionRule({
+            'name': 'x', 'type': 'slot_composition', 'base_slot': 'welcome_drink',
+            'components': [{'selector': {'flag': 'is_buttermilk'}, 'count': 1}]})
+        assert rule.slot_indices is None
+
+    def test_named_expansions_scope_the_cells(self):
+        """The behaviour, on the cell filter itself — building a whole solve to
+        show one list comprehension would test the solver, not this."""
+        from src.menu_rules.slot_composition_rule import SlotCompositionRule
+
+        class _C:                                   # the three fields it reads
+            def __init__(self, slot_id):
+                self.d_idx = 0
+                self.slot_id = slot_id
+                self.base_slot = slot_id.split('__')[0]
+
+        cells = [_C('welcome_drink__1'), _C('welcome_drink__2'), _C('soup__1')]
+        base = {'name': 'x', 'type': 'slot_composition',
+                'base_slot': 'welcome_drink',
+                'components': [{'selector': {'flag': 'is_buttermilk'}, 'count': 1}]}
+        whole = SlotCompositionRule(base)
+        assert [c.slot_id for c in whole._my_cells(cells, 0)] == [
+            'welcome_drink__1', 'welcome_drink__2']
+        first = SlotCompositionRule({**base, 'slot_indices': [1]})
+        assert [c.slot_id for c in first._my_cells(cells, 0)] == ['welcome_drink__1']
+        # An index the counter does not run yields nothing, which is a rule that
+        # does nothing — `test_client_combo_majority`-style config guards are
+        # what catch that, not a runtime raise.
+        absent = SlotCompositionRule({**base, 'slot_indices': [9]})
+        assert absent._my_cells(cells, 0) == []
+
+
+class TestNoneOfSelector:
+    """The negation `any_of` and `all_of` cannot express. Needed because the
+    positive form of "non dairy" is unstatable here: Pune files `masala_milk`
+    and `badam_milk` as `drink_rule_group: fruit_drink`, so listing the
+    non-dairy groups lets both through."""
+
+    def test_none_of_excludes_every_listed_matcher(self):
+        from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule as S
+        m = S._parse_matcher({'none_of': [{'flag': 'is_lassi'},
+                                          {'name_contains': ['milk']}]})
+        assert S._matches({'item': 'aam_panna', 'is_lassi': 0}, m)
+        assert not S._matches({'item': 'rose_lassi', 'is_lassi': 1}, m)
+        assert not S._matches({'item': 'badam_milk', 'is_lassi': 0}, m)
+
+    def test_an_empty_none_of_is_not_a_matcher(self):
+        from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule as S
+        assert S._parse_matcher({'none_of': []}) is None

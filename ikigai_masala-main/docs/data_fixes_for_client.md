@@ -6,7 +6,7 @@ generating real menus and reading them dish by dish, not by inspecting data.
 **Why this list exists even though most of it is already "fixed."** The fixes are
 applied to `data/raw/city_items/<city>.xlsx`, which is *derived*. The source
 workbooks in `data/raw/source_workbooks/` still contain the original values, so
-**re-importing a city through `scripts/normalize_city_ontology.py` throws every fix
+**re-importing a city through `Chain rules/normalize_city_ontology.py` throws every fix
 away.** Correction scripts exist to re-apply them, and tests fail if you forget —
 but the durable fix is in the source data, which is what this document asks for.
 
@@ -157,7 +157,7 @@ days, we will add them back as proper dishes.
 | `curd` | 1 | 3 | repeats by design |
 | `curd_rice` | 2 | 2 | repeats by design |
 
-`scripts/expand_side_pools.py` and `scripts/chennai_client_pools.py` closed the
+`Chain rules/expand_side_pools.py` and `Chain rules/chennai_client_pools.py` closed the
 three that mattered — a rasam station now has more distinct dishes than a
 cooldown window needs, so no rasam repeats inside a week.
 
@@ -191,7 +191,7 @@ and menu history stores dish *names*, which is also why `/save` canonicalises
 them (design note 28). But if you intend `item_id` to be a global key — a
 cross-city report, a shared price list, anything joining two cities — these must
 be re-issued first. Current high-water across all five lists is `MENU006428`.
-`scripts/normalize_item_ids.py` already guarantees the format is `MENU######`
+`Chain rules/normalize_item_ids.py` already guarantees the format is `MENU######`
 everywhere and unique *within* each city; making it unique *across* them is the
 change that has not been made.
 

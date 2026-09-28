@@ -8,8 +8,18 @@ clients are in [`client_logics.md`](client_logics.md).
 nine stated rules. Scope is **lunch**.
 
 **Implementation:** the `"Amadeus Pune"` entry in
-`data/configs/clients/<slug>.json`. Asserted end to end by
+`customisation/client rules/<slug>.json`. Asserted end to end by
 `tests/test_pune_client_logic.py`.
+
+**The other Pune sites** — Corning Chakan, PhonePe and ChrysCapital Advisors —
+are not transcribed here. Each rule's own `_comment` in
+`customisation/client rules/<slug>.json` carries the client's sentence and why it
+is wired the way it is, and a second copy in a doc is a second thing to keep in
+step (which is the argument that retired the generated rules index). What the
+two newest sites still NEED — a `working_days` column, four more slots on
+PhonePe's counter, and three missing Pune dishes — is in
+[`pending_config_changes.md`](pending_config_changes.md) §3c, because those are
+open items rather than a record.
 
 ---
 
@@ -159,7 +169,7 @@ owns the ontology; the rule should not wait on it.
 **Two Pune soya dishes needed a tag fix.** `aloo_soya_sukha` and
 `soya_capsicum_chatpata` sat on their vegetable's `key_ingredient` (`potato`,
 `bell_pepper`), so the rule could not see them while the list's other four soya
-dishes carried `soy`. Corrected in `scripts/pune_flag_corrections.py`, and
+dishes carried `soy`. Corrected in `Chain rules/pune_flag_corrections.py`, and
 `tests/test_same_day_exclusion.py` now asserts every soya-named Pune dish carries
 the tag.
 
@@ -171,7 +181,7 @@ drops such a dish from the exclude side only, so a chole-paneer curry stays
 servable and still blocks a *separate* soya dish that day.
 
 Fleet check (at the time of that change, when the fleet was 57 counters; it is
-85 now — see `docs/menu_generation_25day_sweep.md` for the current run): all 57
+85 now): all 57
 counters still generated and no paneer day anywhere carried an
 excluded dish. Bangalore menus do move — 11 of the 57 counters were serving an
 excluded pairing before these rules — which is expected, since the client asked

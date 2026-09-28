@@ -60,8 +60,9 @@ from .base_menu_rule import (
     DiagnosticPhase,
     DiagnosticSeverity,
     MenuRuleType,
+    parse_slot_indices,
 )
-from src.constants import repeatable_row
+from src.constants import SLOT_SUFFIX_SEP, repeatable_row
 from .selector_frequency_rule import SelectorFrequencyRule
 from .slot_day_restriction_rule import _WEEKDAY_TOKENS
 from .unique_items_menu_rule import matches_declared
@@ -234,6 +235,14 @@ class SlotCompositionRule(BaseMenuRule):
         self.min_slot_count: Optional[int] = int(msc) if msc is not None else None
         xsc = rule_config.get('max_slot_count')
         self.max_slot_count: Optional[int] = int(xsc) if xsc is not None else None
+        # Which expansions of the family these components describe. None (the
+        # default) is all of them, which is what every shipped config means.
+        # Naming one is how a rule describes ONE cell of a multi-slot — PhonePe's
+        # "Welcome drink 1 is non dairy" is about `welcome_drink__1` and not
+        # about the pair, and without this it had to be written as the weaker
+        # "at most one dairy drink a day".
+        self.slot_indices: Optional[List[int]] = parse_slot_indices(
+            rule_config.get('slot_indices'))
         self.components: List[_Component] = self._parse_components(
             rule_config.get('components'))
         self.components_by_theme: Dict[str, List[_Component]] = {
@@ -381,6 +390,20 @@ class SlotCompositionRule(BaseMenuRule):
             return []
         return self._components_for(date, day_type)
 
+    def _my_cells(self, cells, di):
+        """This day's cells of the family, narrowed to `slot_indices` if set.
+
+        The gate above still reads the counter's CONFIGURED slot count, not the
+        number of cells this returns — narrowing to one expansion must not read
+        as "the counter only runs one of these".
+        """
+        mine = [c for c in cells
+                if c.d_idx == di and c.base_slot == self.base_slot]
+        if not self.slot_indices:
+            return mine
+        wanted = {f'{self.base_slot}{SLOT_SUFFIX_SEP}{i}' for i in self.slot_indices}
+        return [c for c in mine if c.slot_id in wanted]
+
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         cells = context.get('cells', [])
@@ -400,10 +423,7 @@ class SlotCompositionRule(BaseMenuRule):
         limited = self._horizon_limited_components(cells, dates, day_types, context)
 
         for di in range(len(dates)):
-            day_cells = [
-                c for c in cells
-                if c.d_idx == di and c.base_slot == self.base_slot
-            ]
+            day_cells = self._my_cells(cells, di)
             if not day_cells:
                 continue
             # Self-gate: only compose when the *counter* is configured with the
@@ -493,8 +513,7 @@ class SlotCompositionRule(BaseMenuRule):
         seen: Dict[Any, Dict[str, Any]] = {}
 
         for di in range(len(dates)):
-            day_cells = [c for c in cells
-                         if c.d_idx == di and c.base_slot == self.base_slot]
+            day_cells = self._my_cells(cells, di)
             if not day_cells:
                 continue
             if self.requires_slot_count is not None or self.min_slot_count is not None \

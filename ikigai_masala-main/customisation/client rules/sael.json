@@ -1,0 +1,58 @@
+{
+  "SAEL": {
+    "_comment": "NCR site, one counter, from the client's own rule sheet plus two sample weeks (6-10 and 13-17 July). The shape of the day is one carb and one veg: a tawa roti every day, exactly one of flavoured rice / white rice, and exactly one of veg dry / veg gravy. The counter's row declares veg_dry AND veg_gravy daily, so the two day restrictions below are what reduce the plate to the single veg dish the sample grids print — say the word if both were meant to run.",
+    "disable": [],
+    "rules": [
+      {
+        "_comment": "'veg dry will be given on Mon,wed, Friday'. With the gravy rule below this is also 'veg dry and Veg Gravy cant come together' — the two never share a day because neither slot is active on the other's days.",
+        "name": "sael_veg_dry_mon_wed_fri",
+        "type": "slot_day_restriction",
+        "base_slot": "veg_dry",
+        "allowed_weekdays": ["mon", "wed", "fri"]
+      },
+      {
+        "_comment": "'Veg Gravy on tue and thurday'.",
+        "name": "sael_veg_gravy_tue_thu",
+        "type": "slot_day_restriction",
+        "base_slot": "veg_gravy",
+        "allowed_weekdays": ["tue", "thu"]
+      },
+      {
+        "_comment": "'panneer once a week'. Scoped to the gravy, which is the slot a paneer dish lands in, and the gravy only runs Tue/Thu — so this is one of those two days.",
+        "name": "sael_paneer_1x",
+        "type": "selector_frequency",
+        "base_slot": "veg_gravy",
+        "selector": { "primary_protein": "paneer" },
+        "exact": 1
+      },
+      {
+        "_comment": "'when white rice is there there is not flavour rice and vice verse' + 'white rice will be atleast weekly once'. Expressed as a weekday split, the same way Sinch NCR's is: the flavoured rice slot stands down on the white-rice day and nowhere else, so exactly one carb is served every day and white rice lands once a week. WEDNESDAY IS A CHOICE, NOT A STATED RULE — the client fixed the counts, not the day, and their two sample weeks put steamed rice on the Wednesday of one and the Tuesday of the other. Move both rules together to change it.",
+        "name": "sael_flavour_rice_not_wed",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": ["mon", "tue", "thu", "fri"]
+      },
+      {
+        "_comment": "The other half of the split: white rice (the const steamed-rice slot) on Wednesday alone.",
+        "name": "sael_white_rice_wed",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": ["wed"]
+      },
+      {
+        "_comment": "'only different types of raita will be served.' A one-slot component with count 1 IS 'this slot must be a matching dish' (note 20). `is_raita` covers 34 of NCR's 38 curd sides; the two plain curds are what it excludes, which is the point. The cooldown supplies the 'different types' half.",
+        "name": "sael_curd_side_raita_only",
+        "type": "slot_composition",
+        "base_slot": "curd_side",
+        "min_slot_count": 1,
+        "components": [
+          { "selector": { "flag": "is_raita" }, "count": 1 }
+        ]
+      }
+    ],
+    "constant_items": {
+      "_comment": "'indian bread will have only tawa roti' — one dish every day, so a pin rather than a rule. Both sample weeks print Tawa Roti on every row but one.",
+      "bread": "tawa roti"
+    }
+  }
+}

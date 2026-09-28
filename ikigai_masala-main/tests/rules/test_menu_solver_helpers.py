@@ -5,16 +5,26 @@ from src.constants import combo_minority_count
 
 
 class TestComboSplit:
-    def test_minority_count_anchored_to_2_of_5(self):
+    def test_minority_count_is_half_the_horizon(self):
         assert combo_minority_count(5) == 2   # 3 majority + 2 minority
         assert combo_minority_count(7) == 3   # 4 majority + 3 minority
-        assert combo_minority_count(6) == 2
+        assert combo_minority_count(6) == 3   # was 2, which could not alternate
         assert combo_minority_count(1) == 0   # single day → all majority
         assert combo_minority_count(0) == 0
 
     def test_minority_never_exceeds_majority(self):
         for n in range(1, 21):
-            assert combo_minority_count(n) <= n // 2
+            assert combo_minority_count(n) <= n - combo_minority_count(n)
+
+    def test_the_majority_can_always_avoid_two_days_in_a_row(self):
+        """The property the old 2-of-5 ratio broke, and the reason for the
+        change. Majority days can be kept apart exactly while
+        ``majority <= minority + 1``; the ratio failed that on every horizon
+        from six days up but seven and nine, which is why a six-day week came
+        out dal / sambar / dal / **dal** / sambar / dal."""
+        for n in range(2, 32):
+            minority = combo_minority_count(n)
+            assert n - minority <= minority + 1, (n, minority)
 
     def test_dal_rasam_alternates_across_the_week(self):
         """Client rule: "when the combined slots are used it should alternate".

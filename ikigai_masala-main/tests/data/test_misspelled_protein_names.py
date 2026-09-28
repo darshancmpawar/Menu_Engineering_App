@@ -1,4 +1,4 @@
-"""Meat-named dishes sitting in veg pools (`scripts/misspelled_protein_names.py`).
+"""Meat-named dishes sitting in veg pools (`Chain rules/misspelled_protein_names.py`).
 
 Four rows across Bangalore and NCR were named for chicken or mutton while every
 attribute said vegetarian, so the solver served them from the veg `starter`,
@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "Chain rules"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
@@ -162,6 +162,32 @@ def test_no_city_carries_a_misspelled_protein_word(city):
     assert not offenders, f"{city} carries meat-name typos: {sorted(offenders)}"
 
 
+#: ``(city, item)`` looked up individually and found vegetarian despite a meat
+#: word in the name — the verdict, not a widening of `veg_qualifiers`, because a
+#: broader token rule would let a real meat dish through with it.
+#:
+#: Both are Pune `kheema` rows, and `kheema` is a veg word far more often than
+#: not in this data: eight of Pune's ten and twelve of NCR's fourteen are soya
+#: or vegetable. What a Pune MEAT row looks like is `chicken_kheema` —
+#: `primary_protein: chicken`, `sub_category: chicken_north_masala`,
+#: `is_nonveg_gravy: 1`, `course_type: nonveg_main`. Neither of these carries
+#: any of that:
+#:
+#:   * `kheema_mutter_masala` is `sub_category: soya_curry` with
+#:     `key_ingredient: green_peas` — the soya-and-pea keema. NCR carries the
+#:     same dish as `mutter_keema` with `primary_protein: green_peas`, in a veg
+#:     pool a client serves.
+#:   * `hyderabadi_kheema_pulao` is `sub_category: north_simple_veg_pulao`, the
+#:     same sub-category as the `veg_kheema_pulao` beside it.
+#:
+#: Each is still missing the `primary_protein` its own sub_category implies
+#: (`soy` and `mixed_vegetables`); that is a data gap, not a safety one.
+ADJUDICATED_VEG = {
+    ("Pune", "kheema_mutter_masala"),
+    ("Pune", "hyderabadi_kheema_pulao"),
+}
+
+
 @pytest.mark.parametrize("city", CITIES)
 def test_no_meat_named_dish_sits_in_a_veg_pool(city):
     """The defect itself, stated directly and checked pan-India.
@@ -170,7 +196,8 @@ def test_no_meat_named_dish_sits_in_a_veg_pool(city):
     the row too — otherwise `_nonveg_mask` leaves it in the veg pools and a
     vegetarian is served it. Veg dishes that borrow a meat word for a meat-free
     version (`veg_seekh_kabab`, `soya_keema`, `keema_veg_biryani`,
-    `red_velvet_pastry_egg_less`) say so in the same name, so they are exempt.
+    `red_velvet_pastry_egg_less`) say so in the same name, so they are exempt;
+    the ones that do not are adjudicated one at a time above.
     """
     df = _frame(city)
     veg_qualifiers = ("veg", "soya", "soyabean", "mushroom", "less", "paneer")
@@ -181,6 +208,8 @@ def test_no_meat_named_dish_sits_in_a_veg_pool(city):
         meat = toks & NONVEG_PROTEINS
         if not meat or toks & set(veg_qualifiers):
             continue
+        if (city, name) in ADJUDICATED_VEG:
+            continue
         protein = str(r.get("primary_protein") or "").strip().lower()
         if protein and protein != "nan":
             continue
@@ -188,3 +217,12 @@ def test_no_meat_named_dish_sits_in_a_veg_pool(city):
     assert not offenders, (
         f"{city}: meat-named dishes with no protein declared — they sit in the "
         f"veg pools: {sorted(offenders)}")
+
+
+def test_every_adjudicated_row_is_still_there():
+    """An adjudication for a dish that no longer exists is a widened exemption
+    nobody is watching — the same stale-entry case the course-type corrections
+    keep hitting."""
+    for city, item in sorted(ADJUDICATED_VEG):
+        names = set(_frame(city)["item"].astype(str).str.strip().str.lower())
+        assert item in names, f"{city} no longer carries {item}"

@@ -29,7 +29,7 @@ from src.menu_rules.menu_rule_loader import MenuRuleLoader
 from tests.client_fixtures import CLIENTS as CLIENT_ROWS
 
 ROOT = Path(__file__).resolve().parents[2]
-CLIENT_DIR = ROOT / "data" / "configs" / "clients"
+CLIENT_DIR = ROOT / "customisation" / "client rules"
 RULE_LIBRARY = ROOT / "data" / "configs" / "rule_library.json"
 
 DEFAULT_CITY = "bangalore"

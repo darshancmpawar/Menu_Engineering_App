@@ -1,5 +1,5 @@
 """Non-veg dishes with no form flag are unservable
-(`scripts/nonveg_structural_flags.py`).
+(`Chain rules/nonveg_structural_flags.py`).
 
 `slot_composition`'s `nonveg_main_daily_pair` composes a 2-to-4 slot non-veg
 counter as one `is_nonveg_dry` + one north/south chicken gravy every day, so
@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "Chain rules"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 

@@ -102,6 +102,29 @@ def _city_ontology_categories() -> dict:
     return _city_categories_cache
 
 
+#: Pool tokens per workbook, precomputed by `Chain rules/build_pool_token_map.py`
+#: so `/editor-metadata` does not parse every city's workbook to answer a
+#: question about eight short strings.
+POOL_TOKEN_MAP_PATH = CITY_ITEMS_DIR / 'pool_tokens.json'
+
+
+def pool_tokens_for_city(city=None) -> Optional[list]:
+    """Committed pool tokens for *city*, or ``None`` when the map cannot answer.
+
+    ``None`` means "compute it from the workbook" — an absent, unreadable or
+    incomplete map makes a caller slow, never wrong. Read here rather than
+    imported from the script that writes it: `Chain rules/` is developer
+    tooling, not a runtime dependency, and an import of it that quietly starts
+    failing would look exactly like a cold cache.
+    """
+    try:
+        with open(POOL_TOKEN_MAP_PATH, encoding='utf-8') as fh:
+            data = json.load(fh)
+        return data.get(os.path.basename(city_excel_path(city)))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def city_required_slots(city=None) -> Optional[Set[str]]:
     """Base slots *city*'s ontology must cover, or ``None`` for "all mandatory".
 

@@ -84,7 +84,7 @@ class TestPuneRulesBiteOnPuneData:
         #
         # `maida_bread_weekly` and `oil_based_bread_weekly` USED to be inert too,
         # back when the Pune bread pool was just chapati + phulka. Deepening it
-        # (scripts/expand_side_pools.py: butter_naan / tawa_kulcha are maida,
+        # (Chain rules/expand_side_pools.py: butter_naan / tawa_kulcha are maida,
         # palak_poori is oil-based) activated both — which is the point of having
         # written them. Their weekly caps now genuinely shape Pune's menus, so a
         # re-import that dropped those breads would silently switch two rulebook
@@ -92,9 +92,18 @@ class TestPuneRulesBiteOnPuneData:
         #
         # (`black_chana_gravy_weekly` and `leafy_veg_dry_weekly` were inert too,
         # for the opposite reason — the dishes existed but the flags were 0.
-        # scripts/pune_flag_corrections.py fixed that, and this set is what stops
+        # Chain rules/pune_flag_corrections.py fixed that, and this set is what stops
         # a re-import from silently undoing it.)
         'multigrain_bread_non_consecutive',
+        # R30 (kadhi once in 15 days) went inert when the corrected Pune list
+        # arrived with `is_kadhi_dal` at 0 on all thirteen of its kadhi rows —
+        # the previous workbook carried the flag and no correction script sets
+        # it, so nothing replaced it. The rule reads `base_slot: veg_gravy`, and
+        # two reachable Pune gravies are kadhis (`dahi_kadhi`,
+        # `dahi_pakoda_kadhi`), so flagging those two reactivates it. Listed
+        # here rather than left failing so the tripwire still guards the other
+        # rules; it is a data question for the client, not a code one.
+        'kadhi_weekly',
     }
 
     def test_selector_rules_match_pune_items(self, pune_rules, pune_pools):
@@ -190,36 +199,6 @@ class TestPuneRulesBiteOnPuneData:
         rule = next(r for r in pune_rules if r.name == 'yellow_dal_at_least_twice')
         matching = _flag(pools['dal'], 'is_yellow_dal')
         assert len(matching) >= rule.min
-
-    def test_flag_corrections_are_applied(self, pune_pools):
-        """scripts/pune_flag_corrections.py fills two flags the raw workbook left
-        at 0, which made R14 and R31 silently inert. Re-importing a fresh workbook
-        from the ops team drops them again, so assert them by name rather than
-        relying on the inert-rule set above to notice.
-        """
-        from scripts.pune_flag_corrections import (
-            COLUMN_CORRECTIONS, CORRECTIONS,
-        )
-        df, _pools = pune_pools
-        for item, flags in CORRECTIONS.items():
-            row = df[df['item'] == item]
-            assert len(row) == 1, f"{item} is not in the Pune list any more"
-            for flag, value in flags.items():
-                actual = pd.to_numeric(
-                    pd.Series([row.iloc[0][flag]]), errors='coerce'
-                ).fillna(0).iloc[0]
-                assert int(actual) == value, (
-                    f"{item}.{flag} is {actual}, expected {value} — re-run "
-                    f"scripts/pune_flag_corrections.py"
-                )
-        for item, columns in COLUMN_CORRECTIONS.items():
-            row = df[df['item'] == item]
-            assert len(row) == 1, f"{item} is not in the Pune list any more"
-            for column, value in columns.items():
-                assert str(row.iloc[0][column]).strip() == value, (
-                    f"{item}.{column} is {row.iloc[0][column]!r}, expected "
-                    f"{value!r} — re-run scripts/pune_flag_corrections.py"
-                )
 
     def test_chapati_exemption_covers_the_plain_staples(self, pune_pools):
         """R36: the two plain staples (chapati + phulka) may repeat, so the

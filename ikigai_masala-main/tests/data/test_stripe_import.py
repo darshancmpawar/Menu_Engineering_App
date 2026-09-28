@@ -1,5 +1,5 @@
 """Stripe's two sample menus, imported into Bangalore
-(`scripts/import_stripe_menu.py`).
+(`Chain rules/import_stripe_menu.py`).
 
 The import reuses the shared three-pass machinery, so what this file pins is
 what is specific to Stripe — the parts that were wrong on the first run and
@@ -27,7 +27,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "Chain rules"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
