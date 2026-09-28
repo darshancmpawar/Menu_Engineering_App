@@ -88,36 +88,12 @@
         }
       },
       {
-        "_comment": "'indian bread will serve chapati as staple on mon,wed and fri . Then tue and thur will serve paratas'. The sheet's other wording, '3 days Chapati and 3 days Paratha', adds to six over a five-day week; the weekday split is the one that is actionable and it is what the sample grid prints (Chapati / Ajwain Paratha / Chapati / Plain Paratha / Chapati). Pune has 10 plain chapatti/phulka rows and 14 parathas across `flavoured_paratha`, `tandoor` and `thepla`.",
-        "name": "phonepe_bread_by_weekday",
+        "_comment": "'Then tue and thur will serve paratas' \u2014 the ROTATING half of the bread rule. The chapati half is not here: 'indian bread will serve chapati as staple on mon,wed and fri' makes it a STAPLE, which in this rulebook means the same dish every day it is served, like white rice and pickle. It is pinned in `constant_items` below. This was written as one composition over `is_plain_phulka_chapathi` for all five days, which rotated Monday through Friday across ten breads \u2014 `beetroot_chapati`, `carrot_chapati`, `jeera_roti` among them \u2014 and that is a chapati VARIETY rule, not a staple. 'Paratas' is plural and carries no staple, so Tue/Thu do rotate.",
+        "name": "phonepe_paratha_tue_thu",
         "type": "slot_composition",
         "base_slot": "bread",
         "min_slot_count": 1,
         "components_by_weekday": {
-          "mon": [
-            {
-              "selector": {
-                "flag": "is_plain_phulka_chapathi"
-              },
-              "count": 1
-            }
-          ],
-          "wed": [
-            {
-              "selector": {
-                "flag": "is_plain_phulka_chapathi"
-              },
-              "count": 1
-            }
-          ],
-          "fri": [
-            {
-              "selector": {
-                "flag": "is_plain_phulka_chapathi"
-              },
-              "count": 1
-            }
-          ],
           "tue": [
             {
               "selector": {
@@ -253,7 +229,19 @@
       }
     ],
     "constant_items": {
-      "_comment": "'Non Veg 2 & 3 will serve Boiled egg and boiled chicken daily as staple' \u2014 the same dish every day, so pins rather than rules. Indexed so the FIRST non-veg cell still solves and keeps its weekday composition above. Pune carries neither dish today, so both are stamped as text post-solve and are invisible to colour, variety and cooldown; add a `boiled_egg` and a `boiled_chicken` row to the Pune list and the same pins start being solved instead, with no config change.",
+      "_comment": "Staples: the same dish on every day they are served, which is what this rulebook means by the word \u2014 'like white rice and pickle'. A weekday map leaves the other days to solve, so Tue/Thu bread still rotates and the paratha rule above still applies to them.",
+      "bread": {
+        "mon": "chapati",
+        "wed": "chapati",
+        "fri": "chapati"
+      },
+      "welcome_drink__2": {
+        "mon": "buttermilk",
+        "wed": "buttermilk",
+        "fri": "buttermilk",
+        "tue": "masala buttermilk",
+        "thu": "masala buttermilk"
+      },
       "nonveg_main__2": "boiled egg",
       "nonveg_main__3": "boiled chicken"
     }
