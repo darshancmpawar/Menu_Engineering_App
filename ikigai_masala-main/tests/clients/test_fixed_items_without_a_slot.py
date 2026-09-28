@@ -157,9 +157,8 @@ class TestTheStampWinsWhenThereIsNoCell:
         """The counter-case: forcing is how a pin stays visible to every other
         rule, so it must not have been broken for the slots that have a cell.
 
-        A weekday MAP, not a bare string: a bare string replaces the slot for the
-        whole horizon and is stamped by design (`whole_slot_bases`), so it would
-        not distinguish the fix from the bug.
+        A weekday MAP rather than a bare string, because the two took different
+        paths when this was written — see the bare-string test below.
         """
         constants, forced = self._run(
             {'rice': {'monday': 'Jeera Rice'}}, ['rice'])
@@ -172,11 +171,29 @@ class TestTheStampWinsWhenThereIsNoCell:
         assert 'rice' in constants
         assert not [k for k in forced if k[1] == 'rice'], forced
 
-    def test_a_whole_slot_string_is_stamped_even_on_a_served_slot(self):
-        """Pre-existing behaviour, pinned so the fix above is not confused with
-        it: a bare string drops the base slot from the model, so there is no cell
-        to narrow whatever the dish is. See docs/pending_config_changes.md."""
+    def test_a_whole_slot_string_is_now_forced_when_the_dish_is_real(self):
+        """A bare string used to drop the base slot from the model and stamp the
+        text even when it named a real dish, "because the same dish cannot
+        occupy five days unless it is a staple" — `unique_items` would have made
+        it INFEASIBLE.
+
+        That stopped being true when `MenuSolver._repeatable_declarations` was
+        added for World Bank's daily pins: a dish forced into one base slot on
+        two or more dates now declares itself a staple, which is what pinning it
+        every day meant. So the cell is narrowed instead, and the dish counts
+        toward the day's colour variety, cuisine variety and no-repeat rather
+        than being invisible to all three. Twenty-one pins across sixteen
+        clients were in that state — Ather's `mixed veg salad`, H&M's
+        buttermilk, every `plain chapati`."""
         constants, forced = self._run({'rice': 'Jeera Rice'}, ['rice'])
+        assert 'rice' in constants
+        assert [v for k, v in forced.items() if k[1] == 'rice'] == ['jeera_rice']
+
+    def test_a_whole_slot_string_naming_no_real_dish_is_still_stamped(self):
+        """The other half, unchanged: with nothing to narrow to, the slot is
+        still dropped and the text still prints. Cloudera's `curd rice` and
+        World Bank's `Sweet/Fruit` are the two live ones."""
+        constants, forced = self._run({'rice': 'Sweet/Fruit'}, ['rice'])
         assert 'rice' in constants
         assert not [k for k in forced if k[1] == 'rice'], forced
 
@@ -213,3 +230,64 @@ class TestTheLoaderReportsCounterScopedKeys:
             'papad': 'Appalam'}}}}})
         assert loader.get_counter_scoped_constant_keys('C', 'Nope') == set()
         assert loader.get_counter_scoped_constant_keys('Nope', 'A') == set()
+
+
+class TestAWholeSlotPinKeepsItsCell:
+    """The consequence the resolver change is actually for, on the LIVE rows.
+
+    A bare daily pin used to drop its base slot from `SolverConfig`, so there
+    was no cell at all and the dish reached the menu as post-solve text —
+    invisible to colour variety, cuisine variety and no-repeat. Twenty-one pins
+    across sixteen clients were in that state.
+    """
+
+    @pytest.fixture
+    def live_rows(self, monkeypatch):
+        """The production client set — this is about real pins on real rows."""
+        import src.db as db_mod
+        import api.app as api_app
+        from tests.client_fixtures import APP_SETTINGS, CLIENTS
+        from tests.fake_supabase import FakeSupabase
+        monkeypatch.setattr(db_mod, '_sb_client', FakeSupabase(seed={
+            'clients': [dict(c) for c in CLIENTS],
+            'app_settings': [dict(s) for s in APP_SETTINGS],
+            'menu_history': [], 'week_signatures': []}), raising=False)
+        monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
+        api_app.reset_caches()
+
+    def _inputs(self, client, city):
+        import datetime as dt
+        from src.application import solve_inputs as SI
+        from src.client import ClientConfigLoader
+        from src.ontology.repository import OntologyRepository
+
+        _label, cfg = ClientConfigLoader().get_client_configs(client)[0]
+        df, pools = OntologyRepository().filtered_menu_data(city, [])
+        dates = [dt.date(2026, 8, 3) + dt.timedelta(days=i) for i in range(5)]
+        rules, _skip, consts, whole, forced = SI.rules_and_skip_for_client(
+            client, dates, city=city, client_cfg=cfg, pools=pools)
+        cfg_out = SI.build_solver_config(
+            df, cfg, dates[0], 5, 60, dates, constant_items=consts,
+            whole_slot_bases=whole, forced_items=forced, rules=rules)
+        return cfg_out, whole, forced
+
+    @pytest.mark.parametrize('client,city,slot', [
+        ('Ather', 'Bangalore', 'salad'),            # 'mixed veg salad'
+        ('H&M', 'Bangalore', 'welcome_drink'),      # 'buttermilk'
+        ('Plan View', 'Bangalore', 'welcome_drink'),
+    ])
+    def test_a_resolving_pin_is_solved_on_every_day(
+            self, live_rows, client, city, slot):
+        cfg, whole, forced = self._inputs(client, city)
+        assert slot not in whole
+        assert slot in (cfg.active_base_slots or []), 'no cell to narrow'
+        assert len([k for k in forced if k[1].split('__')[0] == slot]) == 5
+
+    def test_a_pin_with_no_ontology_match_still_drops_its_slot(self, live_rows):
+        """Cloudera pins `curd rice` into `healthy_rice`, which Bangalore does
+        not carry under that course. Nothing to narrow to, so the slot is still
+        dropped and the text still prints."""
+        cfg, whole, forced = self._inputs('Cloudera', 'Bangalore')
+        assert 'healthy_rice' in whole
+        assert 'healthy_rice' not in (cfg.active_base_slots or [])
+        assert not [k for k in forced if k[1].split('__')[0] == 'healthy_rice']
