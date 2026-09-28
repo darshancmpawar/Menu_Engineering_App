@@ -152,6 +152,40 @@ Correcting the flags would let both be written as stated.
 
 ---
 
+## 3d. `menu_history` has drifted off the ontology
+
+**38 of 392 dish placements (10%) in the 2026-09 `menu_history` export match no
+row in the current Bangalore list** — 28 distinct dishes across Clario, H&M,
+Siemens Technology and Zscaler. A dish stored under a spelling the ontology does
+not use matches no pool row, so it is never banned by the 20-day item cooldown,
+never ages for the freshness objective and never counts toward a cross-week
+cadence — with no log line and a plausible menu every week (note 28). Those
+dishes can be re-served tomorrow.
+
+Two causes, mixed together:
+
+* **Spelling drift from the workbook swap** — `plain_chapatti` → `plain_chapati`,
+  `tempared_buttermilk` → `tempered_buttermilk`, `malasa_buttermilk` →
+  `masala_buttermilk`, `motichoor_laddu` → `motichur_laddu`, and the other
+  `_chapatti` → `_chapati` rows.
+* **Dishes the corrected list no longer carries** — `dal_adraki`, `lasooni_dal`,
+  `panchmel_dal`, `rava_ladoo`, `hyd mutton biryani`, `lahori_murgh`.
+
+**Do not fuzzy-match these automatically.** The nearest names to
+`awadhi_murgh_korma` and `punjabi_anda_curry` are `awadhi_veg_korma` and
+`punjabi_paneer_curry` — an automated backfill would quietly rewrite chicken as
+veg and egg as paneer in the history the cooldown reads, which is the one error
+whose consequence is outside the software (note 34).
+
+Two ways to close it, both the client's call: a REVIEWED rename map applied to
+`menu_history` (the candidates can be generated, each verdict approved), or leave
+the pre-swap history and accept that the cooldown restarts from the swap date.
+
+Same root cause as the client-importer drift in §4 and the twelve Hyderabad rows
+that still carry spellings Bangalore has changed.
+
+---
+
 ## 4. Decisions still open
 
 | Topic | Question | Where it bites |
