@@ -10,6 +10,22 @@
     ],
     "rules": [
       {
+        "_comment": "Overrides the city rule of the same name (merged by NAME, so this REPLACES its `exempt_slots`) by adding `bread` \u2014 the same override World Bank uses for `nonveg_main`. Junglee is the only NCR counter with a south weekday, and on it the bread cuisine lock narrows the slot to the 17 south breads, which do not include `tawa_roti`. The pin is then SILENTLY dropped: measured, the Thursday cell holds 17 candidates while Mon/Tue/Wed/Fri hold exactly 1, and the week serves `wheat_dosa` on Thursday while /plan still answers 200. It looked right in weeks 2-3 only because `ncr_south_bread_cadence` then bans the south family for 15 days and the lock falls back to the whole pool \u2014 the staple held by accident, not by configuration. Junglee's own history is `tawa_roti` on 34 of 34 days, Thursdays included, so the client does not swap to a dosa on their south day. The other eight exempt slots are copied from the city rule unchanged.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "exempt_slots": [
+          "welcome_drink",
+          "dal",
+          "sambar",
+          "rasam",
+          "starter",
+          "soup",
+          "salad",
+          "healthy_rice",
+          "bread"
+        ]
+      },
+      {
         "_comment": "Chicken dish to be served 4 days a week.",
         "name": "junglee_chicken_4x",
         "type": "selector_frequency",
