@@ -181,14 +181,22 @@ MUTUALLY_EXCLUSIVE_SLOT_GROUPS: List[frozenset] = [frozenset({'curd', 'curd_side
 
 def combo_minority_count(n_days: int) -> int:
     """Days the *minority* variant of a combination category gets over an
-    ``n_days`` horizon. Anchored to 2-of-5 (so 5 days → 3 majority + 2 minority)
-    and scaled for other lengths; the majority variant always gets at least as
-    many days as the minority.
+    ``n_days`` horizon — as many as it can have without outnumbering the
+    majority, which is ``n_days // 2``.
+
+    That is the client's own week: "dal Mon/Wed/Fri, sambar Tue/Thu" is three
+    and two, and three and two is what five days give. What it also does, and
+    the 2-of-5 ratio this used to scale did not, is **alternate**. Two majority
+    days can avoid being adjacent only while ``majority <= minority + 1``, and
+    the old formula broke that on every horizon from six days up except seven
+    and nine — a six-day week came out dal / sambar / dal / **dal** / sambar /
+    dal, and a ten-day one was worse. Six was the one anybody noticed because
+    six is a week with Saturday service.
+
+    The majority still never has fewer days than the minority, since
+    ``n_days // 2 <= n_days - n_days // 2`` for every ``n_days``.
     """
-    if n_days < 2:
-        return 0
-    minority = max(1, round(n_days * 2 / 5))
-    return min(minority, n_days // 2)
+    return 0 if n_days < 2 else n_days // 2
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',

@@ -390,7 +390,7 @@ def _apply_region_days(rules, data, dates, client_cfg, city, row):
 def build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
     constant_items=None, whole_slot_bases=None, forced_items=None,
-    rules=None, worker_count=None,
+    rules=None, worker_count=None, combo_majority=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -400,6 +400,8 @@ def build_solver_config(
     solving them would burn items against unique_items / colour variety and
     then discard the result. *rules* is the resolved ruleset, read only for the
     colour parameters a city may override (see ``_rule_solver_overrides``).
+    *combo_majority* names which half of a combination category leads on this
+    counter, defaulting to the global `COMBO_CATEGORIES` order.
     """
     active_base = _client_base_slots(client_cfg)
     if whole_slot_bases:
@@ -420,6 +422,7 @@ def build_solver_config(
         active_base_slots=active_base or None,
         const_slots=const_selected,
         client_constant_items=dict(constant_items or {}),
+        combo_majority=dict(combo_majority or {}),
         forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
@@ -608,6 +611,8 @@ def prepare_solver_inputs(
         df, client_cfg, start_date, num_days, time_limit, weekday_dates,
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
         forced_items=forced_items, rules=rules, worker_count=worker_count,
+        combo_majority=MenuRuleLoader().get_client_combo_majority(
+            client_name, getattr(client_cfg, 'counter_name', None)),
     )
 
     return SolverInputs(

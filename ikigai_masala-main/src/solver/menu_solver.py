@@ -176,6 +176,13 @@ class SolverConfig:
     # pinned item, so the rules see it; pins with no ontology match are stamped
     # post-solve via ``client_constant_items`` instead.
     forced_items: Optional[Dict[Any, str]] = None
+    # ``{combo slot: component}`` naming which half of a combination category
+    # gets the MAJORITY of the days for this counter. `COMBO_CATEGORIES` picks
+    # one globally — dal leads `dal_sambar`, rasam leads `sambar_rasam` — and a
+    # site that wants the other half on three days had no way to say so. Unset
+    # (the default) keeps the global choice, so this changes nothing until a
+    # client asks.
+    combo_majority: Optional[Dict[str, str]] = None
     # Client-level weekday filter (lowercase full names). None = unrestricted.
     working_days: Optional[List[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
@@ -298,9 +305,22 @@ def _combo_minority_days(n_days: int) -> frozenset:
                      for i in range(n_minority))
 
 
-def _combo_day_variant(base_slot: str, di: int, n_days: int) -> str:
-    """Return the component course_type a combination slot uses on day *di*."""
-    majority, minority = COMBO_CATEGORIES[base_slot]
+def _combo_day_variant(base_slot: str, di: int, n_days: int,
+                       majority_by_slot: Optional[Dict[str, str]] = None) -> str:
+    """Return the component course_type a combination slot uses on day *di*.
+
+    *majority_by_slot* is the counter's own choice of which half leads
+    (``SolverConfig.combo_majority``); omitted or naming something that is not
+    one of this slot's two components, the global `COMBO_CATEGORIES` order
+    stands. Falling back rather than raising is deliberate — a typo in a client
+    file must not take planning down — and `test_client_combo_majority.py`
+    is what stops the typo going unnoticed.
+    """
+    pair = COMBO_CATEGORIES[base_slot]
+    majority, minority = pair
+    wanted = (majority_by_slot or {}).get(base_slot)
+    if wanted in pair and wanted != majority:
+        majority, minority = minority, majority
     return minority if di in _combo_minority_days(n_days) else majority
 
 
@@ -725,7 +745,9 @@ class MenuSolver:
                 # majority or minority component by course_type, so the combo
                 # slot splits across the week (e.g. dal 3 days, rasam 2 days).
                 if base in COMBO_CATEGORIES and len(pool2) > 0:
-                    variant = _combo_day_variant(base, di, len(dates))
+                    variant = _combo_day_variant(
+                        base, di, len(dates),
+                        getattr(self.cfg, 'combo_majority', None))
                     v = pool2[pool2['course_type'] == variant]
                     if len(v) > 0:
                         pool2 = v
