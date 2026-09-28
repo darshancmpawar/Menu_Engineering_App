@@ -205,13 +205,18 @@ def test_the_lentil_family_is_filed_by_name(item, expected):
 # --------------------------------------------------------------------------
 
 @pytest.mark.xfail(strict=True, reason=(
-    "The corrected Bangalore workbook respells dishes these imports added — "
-    "`bahji`, `jilebi`, `ennagai`, `boondi_ladoo` and others — so a re-run no "
-    "longer recognises its own rows and would add each one back under the old "
-    "spelling. Fold the new spellings into `menu_import.CANONICAL_SPELLINGS` "
-    "before re-running any client import; until then these are run-once. "
-    "Hyderabad shows the same drift: twelve of its seeded rows still carry "
-    "spellings Bangalore has changed."))
+    "Down from 49 rows to 23. `_same_dish_by_meaning` now compares the letters "
+    "alone as a second pass, which closed the whole compound-written-as-one-word "
+    "class (`babycorn_chilli_dry` vs `baby_corn_chilli_dry`, `curdrice` vs "
+    "`curd_rice`, `tamilnadu_rasam` vs `tamil_nadu_rasam`), and five token "
+    "rewrites were added to `SPELLING`. What is left is a DATA problem the "
+    "importers cannot fix: the ontology carries four spellings of one word — "
+    "`laddu` on 23 rows, `ladoo` on 15, `ladhu` on 2, `laddo` on 1 — so an "
+    "incoming `ladoo` cannot be rewritten without orphaning the rows that use "
+    "it, and `bahji`, `jilebi`, `ennagai` and `nicchinunde` are each still one "
+    "live Hyderabad row. Fold those in `canonical_dish_spellings.py` and the "
+    "vocabulary check in `_existing_twin` resolves the rest with no table entry "
+    "at all. Until then the importers stay run-once."))
 @pytest.mark.parametrize("client", sorted(MODULES))
 def test_rerunning_the_import_adds_nothing(blr, client):
     mod = MODULES[client]

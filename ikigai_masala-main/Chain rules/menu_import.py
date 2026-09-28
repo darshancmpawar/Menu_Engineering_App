@@ -98,6 +98,28 @@ SPELLING = [
     (_tok("enchilladas", "enchillada", "enchiladas"), "enchilada"),
     (_tok("chat"), "chaat"),
     (_tok("coullie", "coulli"), "coulis"),
+    # Five more, each checked against the committed lists first: a rewrite is
+    # only safe when NO row in any city still uses the incoming spelling, or the
+    # import stops recognising a dish that is really there. `panner` (0 rows),
+    # `majige`/`majje` (0), `laddoo` (0) and `motichoor` (0) all clear that.
+    #
+    # Their siblings do NOT and are deliberately absent: `ladoo` is on 15 rows
+    # (three in every city), `ladhu` on 2 and `laddo` on 1, so folding those
+    # onto `laddu` here would send an incoming `coconut_rava_ladoo` looking for
+    # a `coconut_rava_laddu` that does not exist and mint the row anyway. The
+    # ontology carrying four spellings of one word is what has to be fixed, and
+    # `canonical_dish_spellings.py` is where — once it is, the vocabulary check
+    # in `_existing_twin` folds these without a table entry at all. Same for
+    # `bahji`, `jilebi`, `ennagai` and `nicchinunde`, which are each still one
+    # live Hyderabad row (the seeded-from-Bangalore drift).
+    #
+    # `panner` is the one to keep whatever else changes: it is a PROTEIN
+    # misspelling, and those are the typos that put a dish on the wrong side of
+    # the vegetarian line.
+    (_tok("panner", "pannner"), "paneer"),
+    (_tok("majige", "majje"), "majjige"),
+    (_tok("laddoo"), "laddu"),
+    (_tok("motichoor"), "motichur"),
     (r"blue_berry", "blueberry"),
     (_tok("dryfruit"), "dry_fruit"),
     (_tok("hydrabadi", "hyderabadi"), "hyderabadi"),
@@ -731,6 +753,11 @@ def fold_similar(names: Iterable[str], vocab: Optional[dict] = None,
 NOISE_MODIFIERS = {"plain", "simple", "regular", "normal", "home_style"}
 
 
+def _letters(name: str) -> str:
+    """*name* with every separator removed — `baby_corn` and `babycorn` alike."""
+    return re.sub(r'[^a-z0-9]', '', str(name).strip().lower())
+
+
 def _same_dish_by_meaning(candidate: str, existing_names: Sequence[str]):
     """The ontology dish *candidate* MEANS, found by word order and language.
 
@@ -752,11 +779,31 @@ def _same_dish_by_meaning(candidate: str, existing_names: Sequence[str]):
     than picking: two rows sharing a key is exactly the state the audit reports
     for a verdict, and guessing between them is how a client's gravy gets
     imported onto their dry row.
+
+    `dish_key` splits on the underscore, so a COMPOUND WRITTEN AS ONE WORD has a
+    different token count and can never match its split form — `babycorn_chilli_dry`
+    against `baby_corn_chilli_dry`, `curdrice` against `curd_rice`, `tamilnadu_rasam`
+    against `tamil_nadu_rasam`. That is not a spelling difference the vocabulary
+    check can see either, because `babycorn` is one unknown token rather than a
+    one-character typo. Seventeen of the 49 rows a re-import would have added back
+    were this, so the letters alone are compared as a second pass.
+
+    Safe by measurement, not by argument: across all five committed city lists —
+    15,279 distinct dish names — there is **not one pair** that collapses to the
+    same string once the separators come out. The predicate therefore cannot merge
+    two dishes that are distinct today, and it is deliberately letters-only rather
+    than fuzzy, so `dosa_chutney` still does not reach `dosa_with_chutney`.
     """
     key = dish_key(candidate)
     if not key[0]:                                  # nothing but form words
         return None
     hits = sorted({n for n in existing_names if dish_key(n) == key})
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        return None                                 # ambiguous — see above
+    flat = _letters(candidate)
+    hits = sorted({n for n in existing_names if _letters(n) == flat})
     return hits[0] if len(hits) == 1 else None
 
 
