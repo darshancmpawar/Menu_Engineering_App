@@ -30,6 +30,31 @@ if TYPE_CHECKING:  # avoid runtime import cycle solver→rules
     from src.solver.menu_solver import SolverConfig
 
 
+def parse_slot_indices(raw: Any) -> Optional[List[int]]:
+    """``slot_indices`` from a rule config, or None for "the whole family".
+
+    A rule that takes a `base_slot` usually means every expansion of it. Both
+    `slot_day_restriction` and `slot_composition` can be narrowed to named
+    expansions instead — `rice__2` alone, so a counter serves fewer of a slot on
+    some days rather than none, or `welcome_drink__1` alone, so a composition
+    describes one cell of a pair. One parser so the two cannot drift: indices
+    are 1-based, non-integers and anything below 1 are dropped, order and
+    duplicates are normalised away, and an empty result reads as None rather
+    than "no expansions", which would silently switch the rule off.
+    """
+    if not isinstance(raw, (list, tuple)):
+        return None
+    kept: List[int] = []
+    for tok in raw:
+        try:
+            n = int(tok)
+        except (TypeError, ValueError):
+            continue
+        if n >= 1 and n not in kept:
+            kept.append(n)
+    return kept or None
+
+
 class MenuRuleType(Enum):
     """Types of menu rules supported."""
     # Original MVP rules

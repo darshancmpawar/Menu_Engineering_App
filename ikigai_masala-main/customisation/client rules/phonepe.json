@@ -217,31 +217,39 @@
         "type": "welcome_drink_color"
       },
       {
-        "_comment": "'Welcome drink 1 is non dairy' \u2014 as a per-day cap across the two cells, which is what it amounts to on a counter whose other drink is meant to be the buttermilk. Written this way because a composition cannot target one cell of a slot, and it is worth writing rather than assuming: the first plan this file produced put `masala_milk` in a drink cell on Wednesday. Dairy is matched by flag OR name \u2014 `drink_rule_group` cannot be trusted for it, since Pune files `masala_milk` and `badam_milk` as `fruit_drink`. The pair catches 10 of 39, which is the lassis, the milks, taak and the buttermilk.",
-        "name": "phonepe_welcome_drink_max_one_dairy",
-        "type": "selector_frequency",
+        "_comment": "'Welcome drink 1 is non dairy'. Scoped to the FIRST drink cell with `slot_indices`, which is what the client said \u2014 it was written as the weaker 'at most one dairy drink a day' while a composition could only describe a whole slot family. Worth stating rather than assuming: the first plan this file produced put `masala_milk` in a drink cell. Dairy is matched by flag OR name because `drink_rule_group` cannot answer it \u2014 Pune files `masala_milk` and `badam_milk` as `fruit_drink` \u2014 and the component is the NON-dairy side, since a composition says what a cell must be.",
+        "name": "phonepe_welcome_drink_1_is_non_dairy",
+        "type": "slot_composition",
         "base_slot": "welcome_drink",
-        "selector": {
-          "any_of": [
-            {
-              "flag": "is_buttermilk"
-            },
-            {
-              "flag": "is_lassi"
-            },
-            {
-              "name_contains": [
-                "milk",
-                "lassi",
-                "shake",
-                "badam",
-                "taak",
-                "chaas"
+        "slot_indices": [
+          1
+        ],
+        "min_slot_count": 2,
+        "components": [
+          {
+            "selector": {
+              "none_of": [
+                {
+                  "flag": "is_buttermilk"
+                },
+                {
+                  "flag": "is_lassi"
+                },
+                {
+                  "name_contains": [
+                    "milk",
+                    "lassi",
+                    "shake",
+                    "badam",
+                    "taak",
+                    "chaas"
+                  ]
+                }
               ]
-            }
-          ]
-        },
-        "daily_max": 1
+            },
+            "count": 1
+          }
+        ]
       }
     ],
     "constant_items": {

@@ -19,7 +19,7 @@ import datetime as dt
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 from ortools.sat.python import cp_model
-from .base_menu_rule import BaseMenuRule, MenuRuleType
+from .base_menu_rule import BaseMenuRule, MenuRuleType, parse_slot_indices
 
 
 from ..constants import WEEKDAY_INDEX as _WEEKDAY_TOKENS
@@ -59,18 +59,8 @@ class SlotDayRestrictionRule(BaseMenuRule):
                 idx = _WEEKDAY_TOKENS.get(tok.strip().lower())
                 if idx is not None:
                     self.allowed_weekdays.add(idx)
-        self.slot_indices: Optional[List[int]] = None
-        raw_idx = rule_config.get('slot_indices')
-        if isinstance(raw_idx, (list, tuple)):
-            kept = []
-            for tok in raw_idx:
-                try:
-                    n = int(tok)
-                except (TypeError, ValueError):
-                    continue
-                if n >= 1 and n not in kept:
-                    kept.append(n)
-            self.slot_indices = kept or None
+        self.slot_indices: Optional[List[int]] = parse_slot_indices(
+            rule_config.get('slot_indices'))
 
     def validate_config(self) -> bool:
         return bool(self.base_slot) and len(self.allowed_weekdays) > 0

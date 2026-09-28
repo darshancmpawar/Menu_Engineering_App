@@ -14,7 +14,9 @@ Both of PhonePe's did, on the first plan its config produced:
   the rule was satisfied.
 * "Welcome drink 1 is non dairy" was left out as trivially true, and a
   `masala_milk` promptly turned up in a drink cell. Pune files it
-  `drink_rule_group: fruit_drink`.
+  `drink_rule_group: fruit_drink`. It was then written as the weaker "at most
+  one dairy drink a day", because a composition could only describe a whole
+  slot family; `slot_indices` now scopes it to the cell the client named.
 
 So these assert the OUTCOME on the plate, by the same reading the client used,
 rather than that a rule object exists. Read against the live `clients` rows, not
@@ -96,20 +98,22 @@ def test_phonepe_serves_exactly_two_pulaos(api):
     assert len(pulao) == 2, (pulao, rice)
 
 
-def test_phonepe_never_serves_two_dairy_drinks_in_a_day(api):
-    """'Welcome drink 1 is non dairy' on a two-drink counter. Dairy by flag OR
-    name: `drink_rule_group` files `masala_milk` and `badam_milk` as
-    `fruit_drink`, so it cannot answer this."""
+def test_phonepe_welcome_drink_1_is_never_dairy(api):
+    """'Welcome drink 1 is non dairy' on a two-drink counter, asserted on the
+    CELL the client named. It was 'at most one dairy drink a day' until
+    `slot_composition` could be scoped with `slot_indices` — the weaker reading
+    of the same sentence, and one that let a dairy drink sit in cell 1.
+
+    Dairy by flag OR name: `drink_rule_group` files `masala_milk` and
+    `badam_milk` as `fruit_drink`, so it cannot answer this."""
     solution = _plan(api, 'PhonePe')
     dairy = {'any_of': [{'flag': 'is_buttermilk'}, {'flag': 'is_lassi'},
                         {'name_contains': ['milk', 'lassi', 'shake', 'badam',
                                            'taak', 'chaas']}]}
-    for date, day in solution.items():
-        drinks = [str(e['item_base']).strip().lower()
-                  for s, e in day['items'].items()
-                  if s.startswith('welcome_drink') and e]
-        assert len(_matches('Pune', 'welcome_drink', drinks, dairy)) <= 1, \
-            (date, drinks)
+    first = _by_weekday(solution, 'welcome_drink__1')
+    assert first, 'the counter runs two drinks; cell 1 should be filled'
+    assert not _matches('Pune', 'welcome_drink', list(first.values()), dairy), \
+        first
 
 
 # --- the weekday splits, which are the rest of the rulebook ----------------

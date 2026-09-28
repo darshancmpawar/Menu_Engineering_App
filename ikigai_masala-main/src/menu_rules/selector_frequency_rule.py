@@ -262,6 +262,17 @@ class SelectorFrequencyRule(BaseMenuRule):
             parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
             parts = [p for p in parts if p is not None]
             return ('all_of', parts) if parts else None
+        # `none_of` is the negation the other two cannot express. "Welcome
+        # drink 1 is non dairy" is a real client rule and the positive form
+        # cannot state it: `drink_rule_group` files Pune's `masala_milk` and
+        # `badam_milk` as `fruit_drink`, so listing the non-dairy groups would
+        # let both through. Sub-selectors nest, so this negates a disjunction.
+        if 'none_of' in sel:
+            raw = sel['none_of']
+            raw = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            parts = [SelectorFrequencyRule._parse_matcher(s) for s in raw]
+            parts = [p for p in parts if p is not None]
+            return ('none_of', parts) if parts else None
         if 'any_flag' in sel:
             flags = sel['any_flag']
             flags = list(flags) if isinstance(flags, (list, tuple)) else [flags]
@@ -286,6 +297,8 @@ class SelectorFrequencyRule(BaseMenuRule):
             return any(SelectorFrequencyRule._matches(row, m) for m in val)
         if kind == 'all_of':
             return all(SelectorFrequencyRule._matches(row, m) for m in val)
+        if kind == 'none_of':
+            return not any(SelectorFrequencyRule._matches(row, m) for m in val)
         if kind == 'name_contains':
             name = _norm_str(str(row.get('item', '')))
             return bool(name) and any(nd in name for nd in val)
