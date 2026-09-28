@@ -233,6 +233,40 @@ Also in NCR's bread pool and reached by the unpinned bread slots: `bhelpuri`,
 
 ---
 
+## 3g. A pin a theme filter removes is dropped SILENTLY — six live cases
+
+`theme_slot_filter` narrows a day's pool before cells are built. When the
+narrowing removes a `constant_items` dish, the pin is dropped with **no warning,
+no relaxation stamp and HTTP 200** — note 31's failure mode exactly. Junglee
+Games served `wheat_dosa` on its south Thursday this way while its `tawa_roti`
+staple looked configured (fixed: a client `theme_cuisine_filter` override adding
+`bread` to `exempt_slots`, the same shape World Bank uses for `nonveg_main`).
+
+Swept fleet-wide and **confirmed on real solves**, not on the pool check alone —
+a pool-level hit does not always reach the plate, because `_filter_cuisine` falls
+back when narrowing would empty a slot. Three of the nine pool hits held fine.
+
+| Client | Pin | Day | Served instead |
+|---|---|---|---|
+| Ather | `bread` = plain chapati | Tue (south) | `millet_dosa` |
+| Ather | `bread` = plain chapati | Thu (south) | `plain_dosa_with_red_chutney` |
+| Astrazeneca | `bread` = plain chapati | Thu (south) | `ragi_roti_with_khara_chutney` |
+| Booking.com | `starter__2` = veg kathi roll | Tue (continental) | `karela_kurkure` |
+| Quince | `curd` = Curd | Wed (north) | `mint_curd` |
+| Sinch | `curd` = Curd | Fri (north) | `mixed_curd` |
+
+Booking.com/Telstra/Tessolve `curd` were pool hits that **held** on the plate.
+
+All six are Bangalore. The curd and starter cases have an obvious reading — the
+client pinned a specific dish and got a different one — while the two bread cases
+are a genuine question: is a dosa wanted on a south day, or the chapati staple?
+
+**The underlying defect is not fixed.** Per-client `exempt_slots` overrides close
+each case one at a time; what would stop it recurring is stamping a dropped pin
+as a relaxation so it reaches the explanation instead of vanishing.
+
+---
+
 ## 4. Decisions still open
 
 | Topic | Question | Where it bites |
