@@ -41,12 +41,37 @@ TINT_PURPLE = "#F3ECFF"
 TINT_YELLOW = "#FFF6E3"
 TINT_TEAL = "#E4F7F4"
 
+# --- Shape (from the Planner design mockup) ---
+# One place for the radii and shadows, so a card added later matches the ones
+# already on the page instead of being eyeballed.
+RADIUS_CARD = "14px"        # KPI cards, table panels, the regional strip
+RADIUS_CONTROL = "10px"     # grouped inputs, toggles
+RADIUS_INPUT = "8px"        # selects, buttons, date fields
+RADIUS_PILL = "99px"        # theme tags, service chips, counts
+
+SHADOW_CARD = "0 1px 2px rgba(19,19,19,0.05)"
+SHADOW_PANEL = "0 1px 3px rgba(19,19,19,0.05)"
+SHADOW_TOAST = "0 8px 30px rgba(19,19,19,0.25)"
+SHADOW_YELLOW = "0 1px 3px rgba(254,191,52,0.4)"
+
+# The menu table draws its grid in near-black rather than the page border grey:
+# the cells are interactive targets and the heavier rule is what separates a
+# clickable cell from a card.
+GRID_LINE = "#131313"
+TABLE_HEAD_BG = "#000000"
+EXPLAIN_BG = "#FFFBF2"      # the "Why this menu" panel
+INFO_BG = "#EBF3FF"         # info strip under the regional row
+INFO_BORDER = "#D6E6FF"
+
 # Cuisine-theme badges, keyed by theme name → (background tint, foreground).
+# The mix and chinese foregrounds are DARKER than the status colours they come
+# from (#137A43 vs GREEN, #A35800 vs #C56A00): these sit as small uppercase
+# text on a tint, where the lighter pair does not carry enough contrast.
 PULSE_THEME_COLORS = {
-    "mix":     (TINT_GREEN, GREEN),
-    "chinese": (TINT_ORANGE, "#C56A00"),
+    "mix":     (TINT_GREEN, "#137A43"),
+    "chinese": (TINT_ORANGE, "#A35800"),
     "biryani": (TINT_RED, "#C40D1B"),
-    "south":   (TINT_BLUE, BLUE),
+    "south":   (TINT_BLUE, BLUE_HOVER),
     "north":   (TINT_PURPLE, PURPLE),
     "continental": (TINT_TEAL, "#0F8E80"),
     # Weekly-alternating meta-theme (shown in the editor; resolves to

@@ -605,6 +605,9 @@ def plan_menu():
                 theme_map=inputs.client_cfg.theme_map or None,
                 nonveg_items=nonveg_items,
                 served_dates=set(inputs.weekday_dates),
+                # Read at CALL time, not definition time — the closure runs
+                # after solve(), which is what fills it.
+                pinned_cells=solver.pinned_cells,
             ).to_dict()
 
         # The solver's own "I could not fully enforce this" lines are only
@@ -787,6 +790,7 @@ def regenerate_cells():
             theme_map=inputs.client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(inputs.city),
             served_dates=set(inputs.weekday_dates),
+            pinned_cells=regen.pinned_cells,
         )
         response = {
             'success': True,
@@ -1118,6 +1122,11 @@ def saved_plan():
             theme_map=client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(city),
             served_dates=set(weekday_dates),
+            # No `pinned_cells`: a replayed plan is read back from history and
+            # nothing solved it, so which cells were pinned AT THE TIME is not
+            # knowable here. Re-deriving it from today's config would mark
+            # cells a config change has since unpinned. No markers beats wrong
+            # ones.
         )
         covered = sorted(d.isoformat() for d in enriched.keys())
         exists = len(enriched) == len(weekday_dates) and len(enriched) > 0

@@ -33,7 +33,8 @@ class SolutionFormatter:
     def __init__(self, week_plan: Dict[dt.date, Dict[str, str]], dates: List[dt.date],
                  theme_map: Optional[Dict[str, str]] = None,
                  nonveg_items: Optional[Set[str]] = None,
-                 served_dates: Optional[Set[dt.date]] = None):
+                 served_dates: Optional[Set[dt.date]] = None,
+                 pinned_cells: Optional[Set[Any]] = None):
         self.week_plan = week_plan
         self.dates = dates
         self._theme_map = theme_map
@@ -52,6 +53,12 @@ class SolutionFormatter:
         # item with ``is_nonveg`` so the UI / export can colour them. ``None``
         # means "unknown" → everything reported as veg.
         self._nonveg_items = nonveg_items or set()
+        # ``{(date, slot_id)}`` the solve did not choose -- a global staple or a
+        # ``constant_items`` pin. The planner sees a pin marker on these, which
+        # is the difference between "the solver picked curd again" and "you
+        # told it to". Empty means "not reported" (no markers), never
+        # "nothing is pinned".
+        self._pinned_cells = pinned_cells or set()
 
     def _is_nonveg(self, item_base: str, slot_id: str = '') -> bool:
         """Is this dish non-vegetarian?
@@ -97,5 +104,6 @@ class SolutionFormatter:
                     'item': item_str,
                     'item_base': item_base,
                     'is_nonveg': self._is_nonveg(item_base, slot_id),
+                    'is_pinned': (d, slot_id) in self._pinned_cells,
                 }
         return result

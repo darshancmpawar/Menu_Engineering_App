@@ -32,6 +32,15 @@ from src.constants import (
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
     COMBO_CATEGORIES, combo_minority_count, REPEATABLE_SLOTS,
 )
+from ..menu_rules.relaxations import RELAXATION, RULES_LOGGER
+
+# `RelaxationCapture` listens on the `src.menu_rules` tree and nowhere else, so
+# a relaxation stamped on THIS module's logger is collected by nobody and the
+# response comes back with an empty `relaxations` list — a degrade that is
+# indistinguishable from a satisfied rule, which is the one thing note 31 says
+# must not happen. The combination split below is solver machinery rather than
+# a rule, but it is a relaxation, so it is stamped on the relaxation channel.
+relax_logger = logging.getLogger(f'{RULES_LOGGER}.combination')
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
 from .solver_context import SolverContext
@@ -324,6 +333,21 @@ def _combo_day_variant(base_slot: str, di: int, n_days: int,
     return minority if di in _combo_minority_days(n_days) else majority
 
 
+def _combo_variant_cells(base_slot: str, variant: str, n_days: int,
+                         slot_count: int = 1,
+                         majority_by_slot: Optional[Dict[str, str]] = None) -> int:
+    """How many cells of *base_slot* across the horizon take *variant*.
+
+    What the narrowing below has to be able to cover. No repetition is hard
+    here, so a component with fewer distinct dishes than it has cells cannot
+    fill them, whatever else the solver does.
+    """
+    days = sum(1 for di in range(n_days)
+               if _combo_day_variant(base_slot, di, n_days,
+                                     majority_by_slot) == variant)
+    return days * max(1, int(slot_count or 1))
+
+
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
     """Linear-scan lookup — kept for tests / ad-hoc use. Production uses
     ``_make_find_cells`` which backs the lookup with a dict."""
@@ -415,6 +439,10 @@ class MenuSolver:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        # Filled by `_rows_to_week_plan`: the cells this solve did not choose.
+        # Empty until a plan is built, so reading it before `solve()` reports
+        # "nothing pinned" rather than raising.
+        self.pinned_cells: set = set()
         # {item_base(norm): days-since-last-served}. Drives the soft freshness
         # objective — a dish served long ago (large value) or absent from the
         # map (never served in the window) is preferred over a recently-served
@@ -745,12 +773,37 @@ class MenuSolver:
                 # majority or minority component by course_type, so the combo
                 # slot splits across the week (e.g. dal 3 days, rasam 2 days).
                 if base in COMBO_CATEGORIES and len(pool2) > 0:
+                    majority_by = getattr(self.cfg, 'combo_majority', None)
                     variant = _combo_day_variant(
-                        base, di, len(dates),
-                        getattr(self.cfg, 'combo_majority', None))
+                        base, di, len(dates), majority_by)
                     v = pool2[pool2['course_type'] == variant]
-                    if len(v) > 0:
+                    # Narrow only if the component can COVER the cells it is
+                    # given. `> 0` was the wrong threshold and made one dish
+                    # worse than none: with zero the slot fell back to the
+                    # whole pair and planned, with one it was pinned to a
+                    # single dish across two minority days and no-repetition
+                    # made the whole counter INFEASIBLE — while pre-flight
+                    # reported `would_succeed: True` and zero warnings,
+                    # because `pool_size_diagnostics` walks BASE_SLOT_NAMES
+                    # and `dal_sambar` is not one of them. NCR's corrected
+                    # list, which leaves one sambar row, is what found it.
+                    needed = _combo_variant_cells(
+                        base, variant, len(dates),
+                        (self.cfg.slot_counts or {}).get(base, 1), majority_by)
+                    if len(v) >= needed:
                         pool2 = v
+                    elif len(v) > 0:
+                        # Degrading, not satisfying: the split the client asked
+                        # for does not happen on this day. Stamped so the
+                        # explanation says so rather than showing a plausible
+                        # plan (note 31).
+                        relax_logger.info(
+                            "%s: %s has %d dish(es) for %d cell(s) this "
+                            "horizon, so the combination is not split on %s — "
+                            "the whole %s pool is used instead.",
+                            base, variant, len(v), needed, d.isoformat(), base,
+                            extra={RELAXATION: f'{base}_combination'},
+                        )
 
                 base_pools[base] = pool2
 
@@ -1317,6 +1370,13 @@ class MenuSolver:
     def _rows_to_week_plan(self, chosen_rows, dates, expanded_slots):
         week_plan = {}
         client_consts = getattr(self.cfg, 'client_constant_items', None) or {}
+        # ``{(date, slot_id)}`` for every cell this plan did NOT freely choose:
+        # a global staple, a `constant_items` pin the solver narrowed to, and a
+        # pin stamped verbatim. Recorded HERE, by the code that does the
+        # pinning, because that is the only place all three are visible at
+        # once — anything downstream would have to re-derive it from config and
+        # would go quietly stale the first time a fourth pinning path appears.
+        pinned = set()
         for d in dates:
             day_out = {}
             for slot_id in expanded_slots:
@@ -1343,11 +1403,13 @@ class MenuSolver:
                 if _cell_is_skipped(self.skip_cells, d, k):
                     continue
                 day_out[k] = CONSTANT_ITEMS[k]
+                pinned.add((d, k))
             # Per-client overlay (after globals). Day-specific maps only stamp
             # on matching weekdays; daily strings stamp every day.
+            forced = self.cfg.forced_items or {}
+            pinned.update((d, s) for (fd, s) in forced if fd == d and s in day_out)
             if client_consts:
                 weekday = _weekday_name(d)
-                forced = self.cfg.forced_items or {}
                 for slot, spec in client_consts.items():
                     # A pin the solver placed itself is already in day_out with
                     # its colour suffix; stamping the raw text over it would
@@ -1359,5 +1421,7 @@ class MenuSolver:
                         spec, weekday, d.isocalendar()[1])
                     if value is not None:
                         day_out[slot] = value
+                        pinned.add((d, slot))
             week_plan[d] = day_out
+        self.pinned_cells = pinned
         return week_plan

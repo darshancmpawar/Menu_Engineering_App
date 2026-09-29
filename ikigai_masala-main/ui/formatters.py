@@ -78,24 +78,40 @@ def format_item_html(item_str: str, is_nonveg: bool = False) -> str:
     return f'<span class="{name_cls}">{name}</span>'
 
 
-def nonveg_slots_from_solution(
-    raw_solution: Dict[str, Any],
+def flagged_slots_from_solution(
+    raw_solution: Dict[str, Any], flag: str,
 ) -> Dict[str, Set[str]]:
-    """Return ``{date_iso: {slot_id, …}}`` for slots holding a non-veg dish.
+    """Return ``{date_iso: {slot_id, …}}`` for slots whose item has *flag* set.
 
-    Reads the ``is_nonveg`` flag the API attaches to each item so both the
-    on-screen table and the Excel export can colour non-veg dishes red.
+    One reader for every per-cell boolean the API attaches (``is_nonveg``,
+    ``is_pinned``): each one is the same walk over the same two possible
+    shapes, and a second copy of that walk is a second place to get the
+    ``items`` unwrapping wrong.
     """
     out: Dict[str, Set[str]] = {}
     for date_key, day_data in raw_solution.items():
         source = day_data.get('items') if isinstance(day_data, dict) and 'items' in day_data else (day_data or {})
-        nv = {
+        hit = {
             slot_id for slot_id, val in source.items()
-            if isinstance(val, dict) and val.get('is_nonveg')
+            if isinstance(val, dict) and val.get(flag)
         }
-        if nv:
-            out[date_key] = nv
+        if hit:
+            out[date_key] = hit
     return out
+
+
+def nonveg_slots_from_solution(
+    raw_solution: Dict[str, Any],
+) -> Dict[str, Set[str]]:
+    """Slots holding a non-veg dish, so the table and the export can mark them."""
+    return flagged_slots_from_solution(raw_solution, 'is_nonveg')
+
+
+def pinned_slots_from_solution(
+    raw_solution: Dict[str, Any],
+) -> Dict[str, Set[str]]:
+    """Slots the solve did not choose — a staple or a ``constant_items`` pin."""
+    return flagged_slots_from_solution(raw_solution, 'is_pinned')
 
 
 def shared_items_from_solution(

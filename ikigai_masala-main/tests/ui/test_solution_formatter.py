@@ -62,3 +62,22 @@ class TestSolutionFormatter:
         plan, dates = sample_plan
         out = SolutionFormatter(plan, dates).to_dict()
         assert out['2026-03-23']['items']['rice']['is_nonveg'] is False
+
+    def test_is_pinned_is_per_cell_not_per_slot(self, sample_plan):
+        """A Monday-only pin must not mark Tuesday's cell of the same slot —
+        the table's pin marker is what tells a planner which dishes the solver
+        was free to choose, and a wrong one sends them looking for a rule that
+        does not exist."""
+        plan, dates = sample_plan
+        out = SolutionFormatter(
+            plan, dates, pinned_cells={(dates[0], 'rice')}).to_dict()
+        assert out['2026-03-23']['items']['rice']['is_pinned'] is True
+        assert out['2026-03-24']['items']['rice']['is_pinned'] is False
+        assert out['2026-03-23']['items']['dal']['is_pinned'] is False
+
+    def test_is_pinned_defaults_false_when_not_reported(self, sample_plan):
+        """A replayed saved plan passes nothing: no markers, not "nothing is
+        pinned" — the two look the same on screen and only one is a claim."""
+        plan, dates = sample_plan
+        out = SolutionFormatter(plan, dates).to_dict()
+        assert out['2026-03-23']['items']['rice']['is_pinned'] is False

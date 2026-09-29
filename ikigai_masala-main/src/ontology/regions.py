@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, Mapping, Optional, Sequence, Tuple
 
+from src.constants import BASE_SLOT_NAMES
 from ..preprocessor.column_mapper import _norm_cell
 
 #: The column naming the state, and the one saying whether that name IS a state.
@@ -91,9 +92,21 @@ class Region:
 
     @property
     def deep_slots(self) -> Tuple[str, ...]:
-        """Slots that can carry this region every week."""
+        """Slots that can carry this region every week.
+
+        Restricted to the slots the SOLVER plans. `slot_counts` is measured
+        from `course_type`, which also carries the stamped constants
+        (`chutney`, `papad`, `pickle`, `white_rice`) and the off-plate
+        `accompaniment` — none of which the solver creates a cell for. The
+        corrected Bangalore list took Karnataka's chutneys past the depth
+        floor, which would have put `chutney` in a regional floor's
+        `base_slot`: a rule loading fine, `/plan` answering 200, and the floor
+        counting a slot with no cells in it. Measured, not assumed — the
+        depth is still reported in full by `total_dishes` and the picker.
+        """
         return tuple(sorted(
-            s for s, n in self.slot_counts.items() if n >= SLOT_DISH_FLOOR))
+            s for s, n in self.slot_counts.items()
+            if n >= SLOT_DISH_FLOOR and s in BASE_SLOT_NAMES))
 
     @property
     def total_dishes(self) -> int:

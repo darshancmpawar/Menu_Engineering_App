@@ -2,6 +2,7 @@
 
 import datetime as dt
 
+import pandas as pd
 import pytest
 
 from src.client.client_config import ClientConfig
@@ -82,6 +83,48 @@ class TestClientConstantItemsInPlan:
         assert plan[dates[2]]['curd_side'] == 'raita'
         assert 'curd' not in plan[dates[2]]
         assert plan[dates[0]]['papad'] == 'Papad'
+
+    def test_pinned_cells_records_exactly_what_was_pinned(self):
+        """The table's pin marker is read from this set.
+
+        It is recorded by the stamping code itself because it is the only
+        place the three pinning paths are visible at once. If a fourth is
+        added and does not record, the pin simply stops showing — the menu is
+        still correct and nothing logs, so this is the thing that notices.
+        """
+        dates = [dt.date(2026, 3, 25), dt.date(2026, 3, 26)]  # Wed, Thu
+        cfg = SolverConfig(
+            days=2, start_date=dates[0], explicit_dates=dates,
+            active_base_slots=['rice'], const_slots=['papad'],
+            client_constant_items={'curd': {'wednesday': 'Curd'}},
+        )
+        solver = MenuSolver(pools={}, solver_config=cfg, menu_rules=[])
+        assert solver.pinned_cells == set()      # nothing until a plan exists
+        solver._rows_to_week_plan({d: {} for d in dates}, dates,
+                                  expanded_slots=[])
+        assert solver.pinned_cells == {
+            (dates[0], 'papad'), (dates[1], 'papad'),   # global staple, daily
+            (dates[0], 'curd'),                         # Wednesday only
+        }
+
+    def test_a_pin_the_solver_placed_itself_still_counts_as_pinned(self):
+        """`forced_items` narrows the cell instead of stamping over it, so the
+        dish is solver-placed — but the planner did not get a choice, and that
+        is what the marker means."""
+        dates = [dt.date(2026, 3, 25)]
+        cfg = SolverConfig(
+            days=1, start_date=dates[0], explicit_dates=dates,
+            active_base_slots=['rice'], const_slots=[],
+            client_constant_items={'rice': 'jeera rice'},
+            forced_items={(dates[0], 'rice'): 'jeera rice'},
+        )
+        solver = MenuSolver(pools={}, solver_config=cfg, menu_rules=[])
+        row = pd.Series({'item': 'jeera rice', cfg.color_col: 'white'})
+        plan = solver._rows_to_week_plan(
+            {dates[0]: {'rice': row}}, dates, expanded_slots=['rice'])
+        # Not re-stamped over (the colour suffix survives) and still marked.
+        assert plan[dates[0]]['rice'] == 'jeera rice(W)'
+        assert solver.pinned_cells == {(dates[0], 'rice')}
 
 
 def _cfg(name, active_slots, counter_count=1):

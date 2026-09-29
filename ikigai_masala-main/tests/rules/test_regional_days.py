@@ -102,6 +102,26 @@ class TestTheColumnGatesOnAdminTypeOnly:
                    {'rice': SLOT_DISH_FLOOR - 1, 'dal': SLOT_DISH_FLOOR})
         assert r.deep_slots == ('dal',)
 
+    def test_a_stamped_constant_is_never_deep_however_many_dishes_it_has(self):
+        """`deep_slots` becomes a floor rule's `base_slot`, and the solver has
+        no cell for a stamped slot.
+
+        The corrected Bangalore list took Karnataka's chutneys past the depth
+        floor, which would have put `chutney` in a regional floor: a rule that
+        loads fine, a `/plan` that answers 200, and a floor counting a slot
+        with no cells in it. The count is still reported — the depth is real,
+        it is just not plannable.
+        """
+        r = Region('X', frozenset({'south_indian'}),
+                   {'chutney': SLOT_DISH_FLOOR + 10,
+                    'papad': SLOT_DISH_FLOOR + 10,
+                    'pickle': SLOT_DISH_FLOOR + 10,
+                    'white_rice': SLOT_DISH_FLOOR + 10,
+                    'accompaniment': SLOT_DISH_FLOOR + 10,
+                    'dal': SLOT_DISH_FLOOR})
+        assert r.deep_slots == ('dal',)
+        assert r.total_dishes > SLOT_DISH_FLOOR   # still measured in full
+
     def test_a_thin_region_is_measured_but_not_themeable(self, regions):
         goa = region_by_name(regions, 'Goa')
         assert goa is not None, 'a thin region must still be reported'

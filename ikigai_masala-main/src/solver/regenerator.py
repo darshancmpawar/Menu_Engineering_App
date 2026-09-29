@@ -56,6 +56,10 @@ class MenuRegenerator:
         # Mirror of MenuSolver.rule_failures from the last regenerate() call
         # so the API can forward soft-rule failures to the client.
         self.rule_failures: List[Dict[str, str]] = []
+        # Same mirror for the cells the solve did not choose, so a
+        # regenerated table keeps its pin markers instead of losing them
+        # the first time somebody regenerates one cell.
+        self.pinned_cells: set = set()
 
     def regenerate(
         self,
@@ -148,6 +152,7 @@ class MenuRegenerator:
         try:
             result = solver.solve(locked=locked, forbidden=forbidden, similarity=None)
             self.rule_failures = list(solver.rule_failures)
+            self.pinned_cells = set(solver.pinned_cells)
             return result
         except RuntimeError as exc:
             # Hard-blocking the old items left no feasible solution.
@@ -168,6 +173,7 @@ class MenuRegenerator:
         try:
             result = solver.solve(locked=locked, forbidden=None, similarity=similarity_penalties)
             self.rule_failures = list(solver.rule_failures)
+            self.pinned_cells = set(solver.pinned_cells)
             return result
         except RuntimeError as e:
             raise RuntimeError(f'Regeneration failed: {e}') from e
