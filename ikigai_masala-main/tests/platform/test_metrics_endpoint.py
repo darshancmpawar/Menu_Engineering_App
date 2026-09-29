@@ -118,6 +118,9 @@ class TestRuleFailureWiring:
                     {'rule': 'theme_day', 'phase': 'get_objective_terms', 'error': '...'},
                     {'rule': 'cuisine', 'phase': 'get_objective_terms', 'error': '...'},
                 ]
+                # The API reads this to tag pinned cells; a double that
+                # stands in for the solver carries the solver's surface.
+                self.pinned_cells = set()
 
             def solve(self, *_a, **_kw):
                 # Return an empty-but-valid shape so the formatter can run.
@@ -161,6 +164,7 @@ class TestRegenerateWiring:
         class _StubRegen:
             def __init__(self, *_a, **_kw):
                 self.rule_failures = []
+                self.pinned_cells = set()
 
             def regenerate(self, *_a, **_kw):
                 import datetime as dt

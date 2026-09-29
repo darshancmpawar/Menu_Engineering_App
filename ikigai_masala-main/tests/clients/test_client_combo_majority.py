@@ -23,7 +23,7 @@ import pytest
 
 from src.constants import COMBO_CATEGORIES
 from src.menu_rules.menu_rule_loader import CLIENT_RULES_DIR, MenuRuleLoader
-from src.solver.menu_solver import _combo_day_variant
+from src.solver.menu_solver import _combo_day_variant, _combo_variant_cells
 
 
 def _client_blocks():
@@ -128,3 +128,35 @@ def test_it_reaches_the_solver_config_from_a_client_block(monkeypatch, tmp_path)
     assert loader.get_client_combo_majority('Acme', 'Counter 2') == {
         'dal_sambar': 'dal'}
     assert loader.get_client_combo_majority('Nobody') == {}
+
+
+class TestAThinComponentMustNotPinTheSlot:
+    """The split is a preference; it must never make the counter impossible.
+
+    NCR's corrected list leaves ONE sambar row. A five-day week gives
+    `dal_sambar` two minority days, the narrowing pinned both to that single
+    dish, and no-repetition made the whole Junglee counter INFEASIBLE — while
+    pre-flight reported `would_succeed: True` with zero warnings, because
+    `pool_size_diagnostics` walks `BASE_SLOT_NAMES` and `dal_sambar` is not
+    one of them. One dish was strictly worse than none, since at zero the old
+    `len(v) > 0` guard already fell back to the whole pair.
+    """
+
+    def test_the_minority_day_count_is_what_must_be_covered(self):
+        # Five days: dal on three, sambar on two.
+        assert _combo_variant_cells('dal_sambar', 'sambar', 5) == 2
+        assert _combo_variant_cells('dal_sambar', 'dal', 5) == 3
+        # Two cells of the slot doubles both.
+        assert _combo_variant_cells('dal_sambar', 'sambar', 5, slot_count=2) == 4
+        # and the counter's own choice of leader swaps them
+        assert _combo_variant_cells(
+            'dal_sambar', 'sambar', 5, majority_by_slot={'dal_sambar': 'sambar'}) == 3
+
+    def test_every_combo_day_is_accounted_for(self):
+        """The two components must add up to the horizon, or a day is being
+        planned from a component nobody counted."""
+        for combo, (majority, minority) in COMBO_CATEGORIES.items():
+            for n in (3, 5, 6, 7):
+                got = (_combo_variant_cells(combo, majority, n)
+                       + _combo_variant_cells(combo, minority, n))
+                assert got == n, (combo, n, got)

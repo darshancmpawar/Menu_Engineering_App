@@ -32,6 +32,15 @@ from src.constants import (
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
     COMBO_CATEGORIES, combo_minority_count, REPEATABLE_SLOTS,
 )
+from ..menu_rules.relaxations import RELAXATION, RULES_LOGGER
+
+# `RelaxationCapture` listens on the `src.menu_rules` tree and nowhere else, so
+# a relaxation stamped on THIS module's logger is collected by nobody and the
+# response comes back with an empty `relaxations` list — a degrade that is
+# indistinguishable from a satisfied rule, which is the one thing note 31 says
+# must not happen. The combination split below is solver machinery rather than
+# a rule, but it is a relaxation, so it is stamped on the relaxation channel.
+relax_logger = logging.getLogger(f'{RULES_LOGGER}.combination')
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
 from .solver_context import SolverContext
@@ -322,6 +331,21 @@ def _combo_day_variant(base_slot: str, di: int, n_days: int,
     if wanted in pair and wanted != majority:
         majority, minority = minority, majority
     return minority if di in _combo_minority_days(n_days) else majority
+
+
+def _combo_variant_cells(base_slot: str, variant: str, n_days: int,
+                         slot_count: int = 1,
+                         majority_by_slot: Optional[Dict[str, str]] = None) -> int:
+    """How many cells of *base_slot* across the horizon take *variant*.
+
+    What the narrowing below has to be able to cover. No repetition is hard
+    here, so a component with fewer distinct dishes than it has cells cannot
+    fill them, whatever else the solver does.
+    """
+    days = sum(1 for di in range(n_days)
+               if _combo_day_variant(base_slot, di, n_days,
+                                     majority_by_slot) == variant)
+    return days * max(1, int(slot_count or 1))
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
@@ -749,12 +773,37 @@ class MenuSolver:
                 # majority or minority component by course_type, so the combo
                 # slot splits across the week (e.g. dal 3 days, rasam 2 days).
                 if base in COMBO_CATEGORIES and len(pool2) > 0:
+                    majority_by = getattr(self.cfg, 'combo_majority', None)
                     variant = _combo_day_variant(
-                        base, di, len(dates),
-                        getattr(self.cfg, 'combo_majority', None))
+                        base, di, len(dates), majority_by)
                     v = pool2[pool2['course_type'] == variant]
-                    if len(v) > 0:
+                    # Narrow only if the component can COVER the cells it is
+                    # given. `> 0` was the wrong threshold and made one dish
+                    # worse than none: with zero the slot fell back to the
+                    # whole pair and planned, with one it was pinned to a
+                    # single dish across two minority days and no-repetition
+                    # made the whole counter INFEASIBLE — while pre-flight
+                    # reported `would_succeed: True` and zero warnings,
+                    # because `pool_size_diagnostics` walks BASE_SLOT_NAMES
+                    # and `dal_sambar` is not one of them. NCR's corrected
+                    # list, which leaves one sambar row, is what found it.
+                    needed = _combo_variant_cells(
+                        base, variant, len(dates),
+                        (self.cfg.slot_counts or {}).get(base, 1), majority_by)
+                    if len(v) >= needed:
                         pool2 = v
+                    elif len(v) > 0:
+                        # Degrading, not satisfying: the split the client asked
+                        # for does not happen on this day. Stamped so the
+                        # explanation says so rather than showing a plausible
+                        # plan (note 31).
+                        relax_logger.info(
+                            "%s: %s has %d dish(es) for %d cell(s) this "
+                            "horizon, so the combination is not split on %s — "
+                            "the whole %s pool is used instead.",
+                            base, variant, len(v), needed, d.isoformat(), base,
+                            extra={RELAXATION: f'{base}_combination'},
+                        )
 
                 base_pools[base] = pool2
 

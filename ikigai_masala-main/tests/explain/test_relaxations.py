@@ -431,3 +431,34 @@ class TestEveryRelaxationIsStamped:
                                 and v.attr == 'name'):
                             bad.append(f'{path.name}:{node.lineno}')
         assert not bad, bad
+
+
+class TestAStampOutsideTheRulesTreeIsCollectedByNobody:
+    """The capture attaches to `src.menu_rules` and to nothing else.
+
+    The combination split in `menu_solver` degrades rather than fails when a
+    component is too thin to cover its days, and it is not a rule — so the
+    obvious thing, stamping it on that module's own logger, put the record on
+    `src.solver.menu_solver`, outside the captured tree. `/plan` came back 200
+    with `relaxations: []`: a degrade indistinguishable from a satisfied rule,
+    which is the one outcome this whole channel exists to prevent. Measured,
+    not assumed — the empty list is what showed it.
+    """
+
+    def test_the_solver_s_relaxation_logger_is_inside_the_captured_tree(self):
+        from src.solver.menu_solver import relax_logger
+        assert relax_logger.name.startswith(RULES_LOGGER + '.')
+
+    def test_a_record_on_it_is_actually_captured(self):
+        from src.solver.menu_solver import relax_logger
+        with RelaxationCapture() as cap:
+            relax_logger.info('thin component', extra={RELAXATION: 'x_combination'})
+        assert [r['rule'] for r in cap.records] == ['x_combination']
+
+    def test_the_module_s_plain_logger_would_not_have_been(self):
+        """The negative half: without it this test passes whether or not the
+        capture works."""
+        from src.solver.menu_solver import logger as plain
+        with RelaxationCapture() as cap:
+            plain.info('thin component', extra={RELAXATION: 'x_combination'})
+        assert cap.records == []
