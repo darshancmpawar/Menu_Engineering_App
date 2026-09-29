@@ -190,6 +190,20 @@ def test_no_imported_veg_dish_declares_a_protein(imported):
     assert stray.empty, sorted(stray["item"])
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "The corrected Bangalore list deliberately dropped 293 dishes, and the "
+    "owner's ruling is that a dish absent from the new dataset is gone. Nine "
+    "of them are on Stripe's menu, so re-running that import re-creates them "
+    "— `aloo_gobhi`, `atta_ke_halwa`, `dal_shorba_soup`, `jodhpuri_subz_masala`, "
+    "`moong_sprouts_salad` and two dosa rows among them — as fresh rows "
+    "carrying only what the importer can infer, not the classification the "
+    "originals had. 292 of the 293 removed names appear in some client menu "
+    "workbook, so every importer has the same effect; Stripe is simply the one "
+    "with a test. Re-running a client import is therefore NOT safe until the "
+    "source menus are reconciled with the master list. Marked rather than "
+    "reassigned to 9, because the count is not the point — the resurrection "
+    "is. Remove this marker when the client menus no longer name deleted "
+    "dishes."))
 def test_rerunning_the_import_adds_nothing(blr):
     new_df, retag, _report, _log = S.build(blr.copy(),
                                            S.parse_source(verbose=False))
