@@ -397,6 +397,13 @@ CANONICAL_SPELLINGS = {
     "payasa": "payasam",
     "hundi": "handi",
     "kolapuri": "kolhapuri",
+    # Marathi for buttermilk, and the Pune rows were identical on course
+    # type, colour, drink group and `is_buttermilk` — two names for one
+    # drink. Split, they turned a client's "buttermilk daily" staple into a
+    # two-dish family that rotated. The `buttermilk` row is the attributed
+    # one (`primary_protein: yogurt`, `is_dairy_based: 1`); the `taak` row
+    # carried `is_dairy_based: 0`, which is wrong for a buttermilk.
+    "taak": "buttermilk",
     "kholapuri": "kolhapuri",
     "lacha": "laccha",
     # The Kannada saaru/greens family, which four client menus spell five ways:

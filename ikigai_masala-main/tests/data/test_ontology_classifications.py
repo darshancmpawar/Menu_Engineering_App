@@ -14,16 +14,23 @@ def ontology(ensure_sample_data_exists):
     return pd.read_excel(ensure_sample_data_exists)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "`is_kadhi_dal` is 0 on every row of all five corrected workbooks, against "
-    "182 rows named kadhi / mor kuzhambu / majjige huli. Three rules key on it "
-    "— Pune's R30 `kadhi_weekly` and `kadhi_15d_window`, and one Bangalore rule "
-    "— so all three are silently inert. Waiting on the flag coming back in the "
-    "data; remove this marker with it."))
 def test_all_kadhi_items_are_veg_gravy(ontology):
     """Kadhi (pakora / mor kuzhambu / majjige huli) serves in the gravy slot,
-    not as an everyday lentil dal. All is_kadhi_dal items must be veg_gravy so
-    the kadhi_dal_weekly rule (scoped to veg_gravy) binds consistently."""
+    not as an everyday lentil dal.
+
+    All `is_kadhi_dal` items must be veg_gravy so `kadhi_weekly`, which is
+    scoped to that slot, binds consistently.
+
+    This carried a strict xfail while `is_kadhi_dal` was 0 on every row of all
+    five workbooks, which left three rules silently inert — Pune's
+    `kadhi_weekly` and `kadhi_15d_window`, and one Bangalore rule. The
+    corrected item lists restore the flag (26 rows in Bangalore and Hyderabad,
+    10 in Pune, 1 in Chennai), so the marker is gone, as its own note said to
+    do. NCR still reads 0 and is the workbook still to come.
+
+    NB Pune files its 10 flagged rows across BOTH `dal` and `veg_gravy`, so a
+    Pune fixture would fail this. The fixture is Bangalore, where all 26 are
+    veg_gravy; the Pune split is recorded in docs/pending_config_changes.md."""
     kadhi = ontology[ontology["is_kadhi_dal"].fillna(0).astype(float) == 1]
     assert len(kadhi) > 0, "expected some is_kadhi_dal items"
     course = set(kadhi["course_type"].dropna())
