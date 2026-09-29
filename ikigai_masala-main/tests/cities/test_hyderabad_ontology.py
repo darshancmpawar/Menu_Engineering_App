@@ -171,15 +171,24 @@ class TestWhatQuestAdded:
         assert _names(hyd) > _names(blr)
 
     def test_the_count_is_the_import_s_own(self, quest_rows):
-        """Was 101, then 95. Six of Quest's dishes turned out to be dishes
-        Bangalore's seed already carried under another word order, and
-        `fold_duplicate_dish_names.py` merged them — which is the import's own
-        fold doing at the ontology level what it already does within one sheet.
+        """Was 101, then 95, now 89.
+
+        101 -> 95: six of Quest's dishes turned out to be dishes Bangalore's
+        seed already carried under another word order, and
+        `fold_duplicate_dish_names.py` merged them — the import's own fold
+        doing at the ontology level what it already does within one sheet.
+
+        95 -> 89: the corrected item lists dropped six more —
+        `chhole_masala`, `kolhapuri_sabzi`, `mixed_vegetable_korma`,
+        `sabzi_hariyali`, `vegetable_pepper_masala`, `vegetable_pulao`. Not a
+        fold this time: they are in neither city's corrected workbook, and the
+        owner's ruling on the corrected data is that a dish not in it is not
+        there.
 
         The count is what it is; the assertion exists to catch the import
         silently gaining or losing rows, so it is pinned rather than loosened.
         """
-        assert len(quest_rows) == 95
+        assert len(quest_rows) == 89
 
     def test_nothing_but_the_seed_lacks_the_quest_pool_token(self, added, blr):
         """Every row this import created carries Quest's token.
