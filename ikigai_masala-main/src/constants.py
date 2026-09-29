@@ -224,22 +224,6 @@ EXEMPT_FROM_CUISINE: Set[str] = {
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
 
-# Course types whose dishes may recur, wherever they are served. Owner's
-# ruling: "if we have sambar it can repeat."
-#
-# Keyed on COURSE TYPE rather than on a slot because a sambar is served from
-# three of them — the `sambar` station, and the `dal_sambar` and `sambar_rasam`
-# combination slots — and a slot-keyed entry would cover the station and miss
-# both combinations, which is where the thin pool actually bites. NCR's list
-# carries one sambar row against a combination slot that wants sambar on two
-# days of five.
-#
-# PERMISSION, not instruction. This only lifts `unique_items` and the cooldown
-# ban; the freshness objective still prefers a dish served longer ago, so a
-# city with depth keeps rotating (Chennai has 23 sambars, Bangalore 174) and
-# only a pool with nothing left to offer actually repeats.
-REPEATABLE_COURSE_TYPES: Set[str] = {'sambar'}
-
 # Ontology flags marking a dish that recurs like a staple **within one slot**:
 # the SAME dish may be served every day there, the way steamed rice is. Such a
 # dish is exempt from unique_items and from the item-cooldown ban, exactly like
@@ -265,19 +249,17 @@ _TRUTHY = ('1', 'true', 'yes', 'y')
 def repeatable_row(row, base_slot: str = None) -> bool:
     """True when *row* is a staple that may recur daily in *base_slot*.
 
-    Matches on item name (:data:`REPEATABLE_ITEM_BASES`), on course type
-    (:data:`REPEATABLE_COURSE_TYPES`, which travels with the dish into every
-    slot it can be served from), or, when *base_slot* has an entry in
-    :data:`REPEATABLE_ITEM_FLAGS_BY_SLOT`, on any of that slot's flag columns
-    being set — so the ontology decides which dishes are staples and the slot
-    decides where a flag-based one applies. ``base_slot=None`` checks
-    everything that does not depend on the slot.
+    Matches on item name (:data:`REPEATABLE_ITEM_BASES`) or, when *base_slot* has
+    an entry in :data:`REPEATABLE_ITEM_FLAGS_BY_SLOT`, on any of that slot's flag
+    columns being set — so the ontology decides which dishes are staples and the
+    slot decides where that applies. ``base_slot=None`` checks names only.
+
+    ONTOLOGY-WIDE, so anything here is a staple in every city. A staple in ONE
+    city is a `repeatable_items` rule in that city's ruleset instead, read
+    through `matches_declared` — see NCR's sambar and Chennai's rasam.
     """
     name = str(row.get('item', '') or '').strip().lower()
     if name in REPEATABLE_ITEM_BASES:
-        return True
-    course = str(row.get('course_type', '') or '').strip().lower()
-    if course in REPEATABLE_COURSE_TYPES:
         return True
     for flag in REPEATABLE_ITEM_FLAGS_BY_SLOT.get(base_slot or '', ()):
         value = row.get(flag)

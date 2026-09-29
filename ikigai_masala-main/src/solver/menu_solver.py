@@ -31,9 +31,10 @@ from src.constants import (
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
     COMBO_CATEGORIES, combo_minority_count, REPEATABLE_SLOTS,
-    REPEATABLE_COURSE_TYPES, repeatable_row,
+    repeatable_row,
 )
 from ..menu_rules.relaxations import RELAXATION, RULES_LOGGER
+from ..menu_rules.unique_items_menu_rule import matches_declared
 
 # `RelaxationCapture` listens on the `src.menu_rules` tree and nowhere else, so
 # a relaxation stamped on THIS module's logger is collected by nobody and the
@@ -789,17 +790,21 @@ class MenuSolver:
                     # and `dal_sambar` is not one of them. NCR's corrected
                     # list, which leaves one sambar row, is what found it.
                     #
-                    # A REPEATABLE component needs one dish, not one per cell:
-                    # `unique_items` does not apply to it, so a single sambar
-                    # covers every day the combination gives it. Without this
-                    # the owner's "if we have sambar it can repeat" would be
-                    # granted and then never used — the narrowing would still
-                    # back off and NCR would serve dal five days a week.
-                    needed = 1 if variant in REPEATABLE_COURSE_TYPES else \
-                        _combo_variant_cells(
-                            base, variant, len(dates),
-                            (self.cfg.slot_counts or {}).get(base, 1),
-                            majority_by)
+                    # A STAPLE covers any number of cells on its own, so a
+                    # component holding one needs no more dishes than that.
+                    # Same predicate `starved_slots` uses, so the combination
+                    # and the uniqueness report agree about what a staple is —
+                    # and it reads the DECLARED staples, which are scoped to
+                    # the city whose ruleset declared them. NCR says its sambar
+                    # may repeat; Chennai's 23 and Bangalore's 174 say nothing,
+                    # so they keep varying.
+                    declared = base_filter_ctx['extra_repeatable']
+                    has_staple = any(
+                        repeatable_row(r, base) or matches_declared(r, base, declared)
+                        for _i, r in v.iterrows())
+                    needed = 0 if has_staple else _combo_variant_cells(
+                        base, variant, len(dates),
+                        (self.cfg.slot_counts or {}).get(base, 1), majority_by)
                     if len(v) >= needed:
                         pool2 = v
                     elif len(v) > 0:
@@ -1154,14 +1159,10 @@ class MenuSolver:
                 x_vars.append(var)
                 cand_rows.append(row)
 
-                # Repeatable slots (the plain-curd station) and repeatable
-                # DISHES (a sambar, a tandoori kebab on the non-veg station)
-                # are exempt from unique_items: don't track their vars, so the
-                # same item may appear on every day. The row-level test is what
-                # reaches a dish inside a COMBINATION slot — a sambar served
-                # from `dal_sambar` has base slot `dal_sambar`, so the slot
-                # test alone never sees it.
-                if base not in REPEATABLE_SLOTS and not repeatable_row(row, base):
+                # Repeatable slots (e.g. the plain-curd station) are exempt
+                # from the unique-items constraint: don't track their vars so
+                # the same item may appear on every day.
+                if base not in REPEATABLE_SLOTS:
                     item_to_vars.setdefault(item_base, []).append(var)
 
                 # Premium tracking
