@@ -92,3 +92,9 @@ Two general habits this codebase has earned and should keep:
 `docs/repo_map.md` — the module map, API surface, call graphs, test index and
 40 design notes. Read it before changing anything; the notes exist so the same
 mistake is not made twice.
+
+## Version control
+
+`version_control/` — one plain-English document per released version, the
+master change control record, and the release steps. Read `version_control/CURRENT.md`
+for what is running now.
