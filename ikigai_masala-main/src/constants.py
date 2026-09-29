@@ -253,6 +253,10 @@ def repeatable_row(row, base_slot: str = None) -> bool:
     an entry in :data:`REPEATABLE_ITEM_FLAGS_BY_SLOT`, on any of that slot's flag
     columns being set — so the ontology decides which dishes are staples and the
     slot decides where that applies. ``base_slot=None`` checks names only.
+
+    ONTOLOGY-WIDE, so anything here is a staple in every city. A staple in ONE
+    city is a `repeatable_items` rule in that city's ruleset instead, read
+    through `matches_declared` — see NCR's sambar and Chennai's rasam.
     """
     name = str(row.get('item', '') or '').strip().lower()
     if name in REPEATABLE_ITEM_BASES:

@@ -78,12 +78,24 @@ class TestRule:
         assert 'fish_curry' in items and 'goan_fish_curry' in items
 
     def test_matching_items_resolves_sambar_by_course_type(self):
+        """Chennai, not NCR, and the assertion is the MECHANISM.
+
+        This used to read NCR and assert `>= 10`, which was a count the
+        client's item list owns: the corrected NCR workbook leaves one sambar
+        row and the anchor died with it. `soppu_saru` and `uppu_saru` are
+        Chennai sambars whose NAME does not contain the word, so a selector
+        that had quietly fallen back to name-matching would miss them — which
+        is the failure this test exists to catch, and it does not depend on
+        how many sambars a city happens to carry.
+        """
         from src.ontology.paths import city_excel_path
-        df = pd.read_excel(city_excel_path('NCR'))
+        df = pd.read_excel(city_excel_path('Chennai'))
         df.columns = [c.strip() for c in df.columns]
         r = SelectorHistoryWindowRule({
             'name': 'x', 'selector': {'course_type': 'sambar'}, 'window_days': 15})
-        assert len(r.matching_items(df)) >= 10
+        items = r.matching_items(df)
+        assert {'soppu_saru', 'uppu_saru'} <= items
+        assert not any('sambar' in i for i in ('soppu_saru', 'uppu_saru'))
 
     def test_matching_items_is_scoped_to_base_slot(self):
         # 'leafy veg_dry once per 15 days' must not match a leafy DAL: the ban is

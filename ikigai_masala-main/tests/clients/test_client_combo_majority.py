@@ -160,3 +160,54 @@ class TestAThinComponentMustNotPinTheSlot:
                 got = (_combo_variant_cells(combo, majority, n)
                        + _combo_variant_cells(combo, minority, n))
                 assert got == n, (combo, n, got)
+
+
+class TestSambarRepeatsInNCROnly:
+    """Owner's ruling: "sambar can repeat only in NCR."
+
+    NCR's list carries ONE sambar row against a `dal_sambar` slot that wants
+    sambar on two days of five. Under unique_items that dish cannot cover two
+    cells, so the combination backed off and served dal all week.
+
+    Declared as a `repeatable_items` rule in NCR's ruleset, not in
+    `REPEATABLE_ITEM_BASES` — that set is ontology-wide and would make sambar
+    repeatable in Chennai (23 dishes) and Bangalore (174) too. A city ruleset
+    is what "only in NCR" means, and it is the same shape Chennai already uses
+    for its rasam.
+    """
+
+    RULES = pathlib.Path(__file__).resolve().parents[2] / 'data' / 'configs' / 'city_rules'
+
+    def _repeatable(self, city):
+        blob = json.loads((self.RULES / f'{city}.json').read_text())
+        return {r['base_slot'] for r in blob.get('rules', [])
+                if r.get('type') == 'repeatable_items'
+                and (r.get('selector') or {}).get('course_type') == 'sambar'}
+
+    def test_ncr_declares_it_for_the_station_and_both_combinations(self):
+        """A sambar reaches a plate through three slots. `repeatable_items`
+        takes ONE `base_slot`, and inside `dal_sambar` the cell's base slot is
+        `dal_sambar` — so a `sambar` entry alone never reaches the combination,
+        which is exactly where the single-row pool bites."""
+        assert self._repeatable('ncr') == {'sambar', 'dal_sambar', 'sambar_rasam'}
+
+    @pytest.mark.parametrize('city', ['bangalore', 'chennai', 'pune'])
+    def test_no_other_city_does(self, city):
+        """The half that makes it "only in NCR". Without this the test passes
+        just as well with the exemption granted everywhere."""
+        assert self._repeatable(city) == set()
+
+    def test_sambar_is_not_repeatable_ontology_wide(self):
+        """The other way it could leak: `repeatable_row` is city-blind, so a
+        course-type entry there would apply to every city at once."""
+        from src.constants import repeatable_row
+        row = {'item': 'arachuvitta_sambar', 'course_type': 'sambar'}
+        for slot in ('sambar', 'dal_sambar', 'sambar_rasam', None):
+            assert not repeatable_row(row, slot), slot
+
+    def test_a_staple_covers_every_cell_the_combination_gives_it(self):
+        """The threshold the declaration has to reach. Cells still say 2; what
+        changes is that a pool holding a staple needs no more dishes than one.
+        Without this the permission is granted and then never used."""
+        assert _combo_variant_cells('dal_sambar', 'sambar', 5) == 2
+        assert _combo_variant_cells('dal_sambar', 'dal', 5) == 3

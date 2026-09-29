@@ -170,6 +170,13 @@ def test_stryker_salad_bread_rice_and_gravies(api, _ncr_df):
     # Bread 1 = tawa roti every day.
     breads = _slot_by_day(sol, 'bread')
     assert all('tawa_roti' in day for day in breads.values()), breads
+    # ...and the near-identical `roti` row never stands in for it. The
+    # corrected NCR list carries BOTH — identical on 138 of 140 columns — and
+    # the owner's ruling is that a pinned `tawa roti` is the only one that
+    # reaches a plate here. `in` alone would not catch this: `roti` arriving in
+    # bread 2 leaves `tawa_roti` present in the day and the assertion above
+    # passing, while the counter serves the same bread twice under two names.
+    assert not any('roti' in day for day in breads.values()), breads
     # Rice split: flavour rice Mon/Wed/Thu/Fri, white rice (const) Tue only.
     rice = _slot_by_day(sol, 'rice')
     white = _slot_by_day(sol, 'white_rice')
