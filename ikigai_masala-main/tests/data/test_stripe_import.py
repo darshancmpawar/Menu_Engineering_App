@@ -232,7 +232,7 @@ def test_the_mutton_pool_is_too_thin_for_a_positive_cadence(blr):
 
     It was exactly one dish until `vegnonveg_corrections.py` (note 34) settled
     three rows onto it: `kosha_mangsho` (Bengali `mangsho` is goat; the row said
-    chicken), and `shami_kebab` + `gauloti_kebab`, which the client confirmed
+    chicken), and `shami_kebab` + `galouti_kebab`, which the client confirmed
     are non-veg and which are both minced-MUTTON kebabs. Four dishes is still
     far under the ~15 distinct a positive cadence needs against the 20-day
     cooldown, so the argument for capping rather than targeting is unchanged.
@@ -244,7 +244,7 @@ def test_the_mutton_pool_is_too_thin_for_a_positive_cadence(blr):
     """
     mutton = blr[blr["primary_protein"].map(_norm) == "mutton"]
     assert sorted(mutton["item"]) == [
-        "dhaba_style_mutton_curry", "gauloti_kebab", "kosha_mangsho",
+        "dhaba_style_mutton_curry", "galouti_kebab", "kosha_mangsho",
         "shami_kebab",
     ], sorted(mutton["item"])
     assert (mutton["course_type"].map(_norm) == "nonveg_main").all()

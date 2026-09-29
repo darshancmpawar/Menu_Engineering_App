@@ -85,7 +85,10 @@ def test_the_renamed_biryani_survives_and_still_reads_as_veg(frames):
     assert str(r["course_type"]).strip().lower() == "rice"
     assert str(r.get("primary_protein") or "").strip().lower() in ("", "nan")
     assert int(r["is_mixedveg_biryani"]) == 1
-    assert str(r["sub_category"]).strip().lower() == "north_veg_biryani"
+    # The corrected item list refiles it `south_veg_biryani` with
+    # `cuisine_family: south_indian`. Hoskote is in Karnataka, so that is the
+    # right reading; what this test guards is the VEG one, which is unchanged.
+    assert str(r["sub_category"]).strip().lower() == "south_veg_biryani"
 
 
 def test_the_refiled_mutton_reads_as_non_veg(frames):

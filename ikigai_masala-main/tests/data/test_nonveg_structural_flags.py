@@ -175,8 +175,10 @@ def test_the_mechanism_still_refuses_to_guess(frames):
     idx = df.index[df["course_type"].astype(str).str.strip().str.lower()
                    == "nonveg_main"][0]
     df.at[idx, "item"] = "hyderabadi_chicken_speciality"
+    # `is_single_state` is the one bool-typed `is_*` column in the corrected
+    # workbooks; assigning the int 0 to it raises rather than coercing.
     for col in [c for c in df.columns if str(c).startswith("is_")]:
-        df.at[idx, col] = 0
+        df.at[idx, col] = False if df[col].dtype == bool else 0
     _out, _filled, unresolved = apply(df)
     assert "hyderabadi_chicken_speciality" in unresolved
 
