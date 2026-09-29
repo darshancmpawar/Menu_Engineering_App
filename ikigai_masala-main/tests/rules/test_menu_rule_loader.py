@@ -276,11 +276,18 @@ class TestCityRules:
         assert len(MenuRuleLoader().load_for_city(city)) == _CITY_RULE_COUNT
 
     def test_ncr_extends_bangalore_and_adds_its_own(self):
-        """NCR inherits every Bangalore rule and adds the south-bread pair.
+        """NCR inherits every Bangalore rule and adds its own five.
 
         Asserted by name rather than by count: the point of `extends` is that
         nothing is silently dropped, and a count check cannot tell an added rule
         from a replaced one.
+
+        The three sambar rules are the owner's "sambar can repeat only in NCR".
+        They live here rather than in `REPEATABLE_ITEM_BASES` because that set
+        is ontology-wide and would grant the exemption in Chennai and Bangalore
+        too; a city ruleset is the scope that means "only in NCR". One per slot
+        because `repeatable_items` takes a single `base_slot` and a sambar
+        reaches a plate through three — the station and both combinations.
         """
         loader = MenuRuleLoader()
         parent = {r.name for r in loader.load_for_city('Bangalore')}
@@ -288,6 +295,8 @@ class TestCityRules:
         assert parent - ncr == set(), f'NCR lost inherited rules: {parent - ncr}'
         assert ncr - parent == {
             'ncr_south_bread_cadence', 'ncr_south_bread_weekly_max',
+            'sambar_is_a_staple', 'sambar_is_a_staple_dal_sambar',
+            'sambar_is_a_staple_sambar_rasam',
         }, ncr - parent
         assert all(r.validate_config() for r in loader.load_for_city('NCR'))
 
