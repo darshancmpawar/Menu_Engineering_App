@@ -160,3 +160,40 @@ class TestAThinComponentMustNotPinTheSlot:
                 got = (_combo_variant_cells(combo, majority, n)
                        + _combo_variant_cells(combo, minority, n))
                 assert got == n, (combo, n, got)
+
+
+class TestARepeatableComponentNeedsOneDish:
+    """Owner's ruling: "if we have sambar it can repeat."
+
+    Two halves that only work together, which is why they are asserted
+    together. `repeatable_row` has to recognise a sambar wherever it is served
+    — by COURSE TYPE, because inside `dal_sambar` the cell's base slot is
+    `dal_sambar` and a slot-keyed entry never sees it. And the narrowing
+    threshold has to know that a repeatable component needs ONE dish rather
+    than one per cell, or the permission is granted and then never used: the
+    combination would still back off and NCR would serve dal five days a week
+    off its single sambar row.
+    """
+
+    def test_a_sambar_is_repeatable_wherever_it_is_served(self):
+        from src.constants import repeatable_row
+        sambar = {'item': 'sambar_masala', 'course_type': 'sambar'}
+        for slot in ('sambar', 'dal_sambar', 'sambar_rasam', None):
+            assert repeatable_row(sambar, slot), slot
+
+    def test_the_other_half_of_each_combination_is_not(self):
+        """Permission is scoped. A dal must still vary day to day."""
+        from src.constants import repeatable_row
+        assert not repeatable_row(
+            {'item': 'dal_tadka', 'course_type': 'dal'}, 'dal_sambar')
+        assert not repeatable_row(
+            {'item': 'jeera_rasam', 'course_type': 'rasam'}, 'sambar_rasam')
+
+    def test_one_sambar_covers_every_day_the_combination_gives_it(self):
+        """The threshold. Cells still say 2; what changes is what covers them."""
+        from src.constants import REPEATABLE_COURSE_TYPES
+        assert 'sambar' in REPEATABLE_COURSE_TYPES
+        assert _combo_variant_cells('dal_sambar', 'sambar', 5) == 2
+        # ...and `dal`, which is not repeatable, still needs its three.
+        assert 'dal' not in REPEATABLE_COURSE_TYPES
+        assert _combo_variant_cells('dal_sambar', 'dal', 5) == 3
