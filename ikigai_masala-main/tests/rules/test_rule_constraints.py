@@ -141,7 +141,10 @@ class TestWelcomeDrinkColorConstraint:
         ctx = {
             'dates': dates,
             'known_welcome_colors': ['red'],
-            'day_welcome_color_vars': {(0, 'red'): [d0_red], (1, 'red'): [d1_red]},
+            # Keyed by CELL as the solver builds it, so a counter running two
+            # drinks can scope the rule to one of them (`slot_indices`).
+            'day_welcome_color_vars': {(0, 'red', 'welcome_drink__1'): [d0_red],
+                                       (1, 'red', 'welcome_drink__1'): [d1_red]},
         }
         rule.apply(model, {}, None, ctx)
 
@@ -163,8 +166,10 @@ class TestWelcomeDrinkColorConstraint:
             'dates': dates,
             'known_welcome_colors': ['red', 'green'],
             'day_welcome_color_vars': {
-                (0, 'red'): [d0_red], (0, 'green'): [d0_green],
-                (1, 'red'): [d1_red], (1, 'green'): [d1_green],
+                (0, 'red', 'welcome_drink__1'): [d0_red],
+                (0, 'green', 'welcome_drink__1'): [d0_green],
+                (1, 'red', 'welcome_drink__1'): [d1_red],
+                (1, 'green', 'welcome_drink__1'): [d1_green],
             },
         }
         rule.apply(model, {}, None, ctx)

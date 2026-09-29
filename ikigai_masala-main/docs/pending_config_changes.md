@@ -140,7 +140,7 @@ counter rows and the Pune list can currently carry.
 | Missing | Blocks |
 |---|---|
 | `boiled_egg`, `boiled_chicken` | 'Non Veg 2 & 3 will serve Boiled egg and boiled chicken daily as staple'. Both are pinned and print correctly, but as TEXT — invisible to colour, variety and the cooldown. Adding the two rows upgrades the same pins to solved cells with no config change. |
-| a `masala_buttermilk` row | '2 welcome drinks … mon,wed,fri plain buttermilk and tue,thur masala buttermilk, both staple'. Pune has one buttermilk row, so the rule cannot be written at all. What IS written is a cap of one dairy drink per day. |
+| a `masala_buttermilk` row | '2 welcome drinks … mon,wed,fri plain buttermilk and tue,thur masala buttermilk, both staple'. Both halves are pinned in `constant_items.welcome_drink__2`; `buttermilk` is a real Pune row and solves, `masala buttermilk` is not and prints as text. Adding the row upgrades it to a solved cell with no config change — and the no-repeat-colour rule is already scoped to drink 1 (`slot_indices`), which it has to be: a buttermilk is white every day, and unscoped that rule makes the counter INFEASIBLE the moment this row exists. Measured. |
 | a `chaat` course_type, in any city | 'Tuesday and Thursday, chaat will be served instead of salad, with 2 chaat items'. No city carries one. |
 
 **Flags that made a rule miss.** `is_pulao` is set on 10 of Pune's 110 rices while
@@ -183,6 +183,87 @@ the pre-swap history and accept that the cooldown restarts from the swap date.
 
 Same root cause as the client-importer drift in §4 and the twelve Hyderabad rows
 that still carry spellings Bangalore has changed.
+
+---
+
+## 3e. Two compositions can stack on one slot, and nothing says so
+
+Rules merge by **name**. A client composition on `nonveg_main` written under the
+client's own name therefore **stacks** on the city's `nonveg_main_daily_pair`
+(one non-veg dry + one gravy daily) instead of replacing it, and what the solver
+must satisfy is the *intersection* of the two. Usually that is harmless and even
+desirable — the city rule is about ROLE, a client rule is usually about PROTEIN,
+so "two chicken, one dry one gravy" is a good plate. It bites where the
+intersection is thin, and there is no warning of any kind: the pre-flight gate
+reports `would_succeed: true` and the solve then returns INFEASIBLE naming no
+rule, because no individual *slot* is starved.
+
+Siemens is the live case. It serves two non-veg, and week 3 is INFEASIBLE from
+three separate start Mondays (3 Aug, 7 Sep, 5 Oct) with weeks 1-2 saved. With
+the history pinned so each trial differs by exactly one rule, **three single
+removals fix it**: the city `nonveg_main_daily_pair`, the client
+`siemens_nonveg_pair_by_weekday`, or `item_cooldown_20d`. Its own sentence
+("Tue one egg + one chicken, other days two chicken") fully specifies both cells
+and says nothing about dry/gravy, so the city composition is now disabled for
+that client. **The mechanism is still unexplained** — the obvious story, that the
+chicken-dry pool empties, is disproven: NCR has 10 chicken dry rows and week 3
+still has 6 available, so the dry half is not what runs out.
+
+| Client | Composition | Stacks on | Counter's nonveg_main |
+|---|---|---|---|
+| Siemens | `siemens_nonveg_pair_by_weekday` | `nonveg_main_daily_pair` | 2 — **fixed, city rule disabled** |
+| Citrix, Cloudera, Infenion, Konsberg, Plum, Sinch, Sinch NCR, Tekion, Thales | `*_nonveg_by_weekday` | `nonveg_main_daily_pair` | 1, so the city pair is inactive — latent |
+| Bakertilly | `bakertilly_two_chicken_dry_on_the_biryani_day` | `nonveg_main_five_dish` | 5 |
+| Cigna, F5 | named `nonveg_main_daily_pair` | — | correctly REPLACE it |
+
+Cigna and F5 show the intended shape: reuse the city rule's name and it
+overrides. Worth a guard test that a client composition sharing a `base_slot`
+with an active city composition either reuses its name or disables it.
+
+## 3f. NCR is thin on non-veg dry
+
+`is_nonveg_dry` is set on **12** NCR rows (10 of them chicken) against **108**
+non-veg gravies. Any counter whose composition wants a dry dish daily draws on
+those 12 under a 20-day cooldown. Not the cause of the Siemens failure above,
+but the same shape as the north-rice shortage that `add_ncr_north_rice.py` was
+written for, and worth an import while the item list is being cleaned.
+
+Also in NCR's bread pool and reached by the unpinned bread slots: `bhelpuri`,
+`bhel_poori` and `cholay_poori` are filed as **bread**. A bhel puri is a chaat.
+
+---
+
+## 3g. A pin a theme filter removes is dropped SILENTLY — six live cases
+
+`theme_slot_filter` narrows a day's pool before cells are built. When the
+narrowing removes a `constant_items` dish, the pin is dropped with **no warning,
+no relaxation stamp and HTTP 200** — note 31's failure mode exactly. Junglee
+Games served `wheat_dosa` on its south Thursday this way while its `tawa_roti`
+staple looked configured (fixed: a client `theme_cuisine_filter` override adding
+`bread` to `exempt_slots`, the same shape World Bank uses for `nonveg_main`).
+
+Swept fleet-wide and **confirmed on real solves**, not on the pool check alone —
+a pool-level hit does not always reach the plate, because `_filter_cuisine` falls
+back when narrowing would empty a slot. Three of the nine pool hits held fine.
+
+| Client | Pin | Day | Served instead |
+|---|---|---|---|
+| Ather | `bread` = plain chapati | Tue (south) | `millet_dosa` |
+| Ather | `bread` = plain chapati | Thu (south) | `plain_dosa_with_red_chutney` |
+| Astrazeneca | `bread` = plain chapati | Thu (south) | `ragi_roti_with_khara_chutney` |
+| Booking.com | `starter__2` = veg kathi roll | Tue (continental) | `karela_kurkure` |
+| Quince | `curd` = Curd | Wed (north) | `mint_curd` |
+| Sinch | `curd` = Curd | Fri (north) | `mixed_curd` |
+
+Booking.com/Telstra/Tessolve `curd` were pool hits that **held** on the plate.
+
+All six are Bangalore. The curd and starter cases have an obvious reading — the
+client pinned a specific dish and got a different one — while the two bread cases
+are a genuine question: is a dosa wanted on a south day, or the chapati staple?
+
+**The underlying defect is not fixed.** Per-client `exempt_slots` overrides close
+each case one at a time; what would stop it recurring is stamping a dropped pin
+as a relaxation so it reaches the explanation instead of vanishing.
 
 ---
 

@@ -26,6 +26,7 @@ a hand-built counter, because a rule is only as configured as the row it runs on
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 
@@ -83,6 +84,17 @@ def _matches(city, slot, names, selector):
     matcher = SelectorFrequencyRule._parse_matcher(selector)
     return [n for n in names if n in rows
             and SelectorFrequencyRule._matches(rows[n], matcher)]
+
+
+def _colour_of(city, slot, name):
+    """The ontology colour of one served dish, normalised as the solver does."""
+    from src.ontology.repository import OntologyRepository
+    from src.preprocessor.column_mapper import _norm_color
+    _df, pools = OntologyRepository().filtered_menu_data(city, [])
+    for _i, r in pools[slot].iterrows():
+        if str(r['item']).strip().lower() == name:
+            return _norm_color(r.get('item_color', 'unknown'))
+    return 'unknown'
 
 
 # --- the two that were measured wrong -------------------------------------
@@ -156,6 +168,45 @@ def test_phonepe_bread_is_chapati_or_paratha_by_weekday(api):
         assert _matches('Pune', 'bread', [bread[day]], plain), (day, bread[day])
     for day in ('tue', 'thu'):
         assert _matches('Pune', 'bread', [bread[day]], paratha), (day, bread[day])
+
+
+def test_phonepe_drink_staple_survives_the_no_repeat_colour_rule(api, monkeypatch,
+                                                                tmp_path):
+    """'2 welcome drinks ... plain buttermilk ... masala buttermilk ... both
+    staple' AND 'Welcome drink colors cannot repeat on consecutive days', which
+    are the same client's lines 46 and 1.
+
+    A buttermilk is white every day, so across BOTH cells the colour rule says
+    'at most one white drink in any two consecutive days' and the staple breaks
+    it five times. The committed config only escapes because `masala buttermilk`
+    is not a Pune row and stamps as text — so filling that data gap, which is on
+    the pending list, would have taken the counter down with a message naming no
+    rule. `slot_indices` scopes the rule to the rotating cell, which is what the
+    client's own grid shows.
+
+    Pinned to `taak` because it IS a real white Pune buttermilk: this asserts the
+    behaviour the day the missing row arrives, not the behaviour today."""
+    import shutil
+    from src.menu_rules.menu_rule_loader import CLIENT_RULES_DIR
+    rules = tmp_path / 'rules'
+    shutil.copytree(CLIENT_RULES_DIR, rules)
+    cfg = rules / 'phonepe.json'
+    blob = json.loads(cfg.read_text())
+    blob['PhonePe']['constant_items']['welcome_drink__2'] = {
+        'mon': 'buttermilk', 'wed': 'buttermilk', 'fri': 'buttermilk',
+        'tue': 'taak', 'thu': 'taak'}
+    cfg.write_text(json.dumps(blob))
+    monkeypatch.setattr(
+        'src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(rules))
+    api.reset_caches()
+
+    second = _by_weekday(_plan(api, 'PhonePe'), 'welcome_drink__2')
+    assert set(second.values()) == {'buttermilk', 'taak'}, second
+    # And the rule still holds on the cell it is scoped to.
+    first = _by_weekday(_plan(api, 'PhonePe'), 'welcome_drink__1')
+    colours = [_colour_of('Pune', 'welcome_drink', first[d])
+               for d in ('mon', 'tue', 'wed', 'thu', 'fri') if d in first]
+    assert all(a != b for a, b in zip(colours, colours[1:])), list(zip(first, colours))
 
 
 @pytest.mark.parametrize('client,city,white_days', [

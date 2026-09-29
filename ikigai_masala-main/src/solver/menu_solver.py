@@ -1114,7 +1114,11 @@ class MenuSolver:
                 if base == 'welcome_drink':
                     col = _norm_color(row.get(self.cfg.color_col, 'unknown'))
                     if col != 'unknown':
-                        day_welcome_color_vars.setdefault((di, col), []).append(var)
+                        # Keyed by cell, not just by day: a counter with two
+                        # drink cells may want the no-repeat-colour rule on the
+                        # rotating one only, because the other is a staple.
+                        day_welcome_color_vars.setdefault(
+                            (di, col, slot_id), []).append(var)
 
                 # Monday mix tracking
                 if day_types[di] == 'mix' and base not in EXEMPT_FROM_CUISINE:

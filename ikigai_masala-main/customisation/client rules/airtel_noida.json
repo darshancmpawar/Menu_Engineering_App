@@ -31,6 +31,10 @@
         },
         "max": 2
       }
-    ]
+    ],
+    "constant_items": {
+      "_comment": "Indian bread is a STAPLE here, not a family. The sheet never named a bread, so the slot rotated the whole 43-60 dish pool and served a different one every day. Airtel Noida's own served history in data/raw/source_workbooks/NCR_menu_items.xlsx::Menu_Daily is `tawa_roti` on 57 of 59 days (97%); the handful of other rows are idli/poori/thepla one-offs on festival and south days, not a rotation. Every other NCR site pins the same staple.",
+      "bread": "tawa roti"
+    }
   }
 }

@@ -1248,14 +1248,22 @@ class TestStapleItemsRecurDaily:
 
 
 class TestWholeHorizonPinStaysStamped:
-    """A pin replacing a slot for the whole horizon must still be stamped.
+    """A pin replacing a slot for the whole horizon: stamped only when it names
+    no dish.
 
-    Routing an in-ontology pin through the solver is right for a per-day pin, but
-    a whole-horizon pin has its base slot dropped from the model
-    (`whole_slot_bases`), so there is no cell to narrow — and solving one anyway
-    would be INFEASIBLE under unique_items, since the same dish cannot occupy
-    five days unless it is a staple. Six counters shipped a blank salad /
-    curd_side / healthy_rice row before this guard.
+    This class used to assert the opposite for both halves — a bare string
+    always dropped its base slot from the model (`whole_slot_bases`) and stamped
+    the text, "because the same dish cannot occupy five days unless it is a
+    staple", which `unique_items` would have made INFEASIBLE. Six counters
+    shipped a blank salad / curd_side / healthy_rice row before that guard.
+
+    `MenuSolver._repeatable_declarations` removed the premise: a dish forced
+    into one base slot on two or more dates now declares itself a staple, which
+    is what pinning it every day meant in the first place. So a pin naming a
+    REAL dish narrows its cells and stays visible to colour variety, cuisine
+    variety and the no-repeat rules; only a pin naming no dish still has
+    nothing to narrow to and keeps the old path. The sibling assertions live in
+    `tests/clients/test_fixed_items_without_a_slot.py`.
     """
 
     def _skips(self, monkeypatch, constants, active_slots, dates):
@@ -1286,12 +1294,26 @@ class TestWholeHorizonPinStaysStamped:
         )
         return skips, whole, forced
 
-    def test_daily_string_pin_is_stamped_not_solved(self, monkeypatch):
+    def test_daily_string_pin_of_a_real_dish_is_solved_on_every_day(self, monkeypatch):
+        """`green salad` is a Bangalore dish, so every day's cell is narrowed to
+        it rather than the slot being replaced by text."""
         dates = [MON + dt.timedelta(days=i) for i in range(5)]
         skips, whole, forced = self._skips(
             monkeypatch, {'salad': 'green salad'}, ['rice', 'salad'], dates,
         )
-        assert 'salad' in whole, 'a daily string replaces the slot outright'
+        assert 'salad' not in whole, 'a real dish leaves the slot in the model'
+        assert {d for d, slot in forced if slot == 'salad'} == set(dates), forced
+        assert not [d for d in dates if (d, 'salad') in skips]
+
+    def test_daily_string_pin_naming_no_dish_is_still_stamped(self, monkeypatch):
+        """The other half, unchanged: nothing to narrow to, so the base slot is
+        dropped and the text prints. World Bank's `Sweet/Fruit` is the live
+        one."""
+        dates = [MON + dt.timedelta(days=i) for i in range(5)]
+        skips, whole, forced = self._skips(
+            monkeypatch, {'salad': 'Sweet/Fruit'}, ['rice', 'salad'], dates,
+        )
+        assert 'salad' in whole, 'a pin naming no dish replaces the slot'
         assert not any(slot == 'salad' for _d, slot in forced), forced
         for d in dates:
             assert (d, 'salad') in skips, d

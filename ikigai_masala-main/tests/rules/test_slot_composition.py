@@ -212,8 +212,9 @@ class TestSlotIndices:
     `slot_day_restriction` could already stand down `rice__2` alone; a
     composition could only speak about the whole family, which is why PhonePe's
     "Welcome drink 1 is non dairy" had to be written as the weaker "at most one
-    dairy drink a day". Both rules now read `slot_indices` through the same
-    parser so the two cannot drift.
+    dairy drink a day". All three readers of the key — `slot_day_restriction`,
+    `slot_composition` and `welcome_drink_color` — go through the same parser so
+    they cannot drift.
     """
 
     def test_the_parser_is_shared_and_normalises(self):
@@ -256,6 +257,47 @@ class TestSlotIndices:
         # what catch that, not a runtime raise.
         absent = SlotCompositionRule({**base, 'slot_indices': [9]})
         assert absent._my_cells(cells, 0) == []
+
+    def test_the_welcome_drink_colour_rule_scopes_the_same_way(self):
+        """The third reader of the key, and the one a STAPLE depends on.
+
+        PhonePe's second drink is a buttermilk every day, and a buttermilk is
+        white every day; across both cells "no repeating colour on consecutive
+        days" is unsatisfiable. Constraints are counted rather than solved —
+        one over the rotating cell per adjacent day pair, none once the staple
+        cell is the only white."""
+        from ortools.sat.python import cp_model
+
+        from src.menu_rules.color_rules import WelcomeDrinkColorMenuRule
+
+        def constrained(cfg):
+            """Which of the four white drinks the rule counts together."""
+            model = cp_model.CpModel()
+            v = {s: model.NewBoolVar(s) for s in
+                 ('a1', 'a2', 'b1', 'b2')}          # two days, two cells each
+            WelcomeDrinkColorMenuRule({
+                'name': 'c', 'type': 'welcome_drink_color', **cfg,
+            }).apply(model, {}, None, {
+                'dates': [0, 1], 'known_welcome_colors': ['white'],
+                'day_welcome_color_vars': {
+                    (0, 'white', 'welcome_drink__1'): [v['a1']],
+                    (0, 'white', 'welcome_drink__2'): [v['a2']],
+                    (1, 'white', 'welcome_drink__1'): [v['b1']],
+                    (1, 'white', 'welcome_drink__2'): [v['b2']],
+                }})
+            by_index = {var.Index(): name for name, var in v.items()}
+            return [sorted(by_index[i] for i in c.linear.vars)
+                    for c in model.Proto().constraints]
+
+        # Unset: every drink cell, which is the shape single-drink counters run
+        # and the one that fights a staple on a two-drink counter.
+        assert constrained({}) == [['a1', 'a2', 'b1', 'b2']]
+        # Scoped: the staple cell's daily white no longer counts against the
+        # rotating one, which is the whole point.
+        assert constrained({'slot_indices': [1]}) == [['a1', 'b1']]
+        assert constrained({'slot_indices': [2]}) == [['a2', 'b2']]
+        # An index the counter does not run leaves nothing to constrain.
+        assert constrained({'slot_indices': [9]}) == []
 
 
 class TestNoneOfSelector:

@@ -25,6 +25,7 @@ from typing import Any, Dict, List
 
 from ortools.sat.python import cp_model
 
+from ..constants import SLOT_SUFFIX_SEP
 from ..preprocessor.column_mapper import _norm_color
 from .base_menu_rule import (
     BaseMenuRule,
@@ -33,6 +34,7 @@ from .base_menu_rule import (
     DiagnosticPhase,
     DiagnosticSeverity,
     MenuRuleType,
+    parse_slot_indices,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,24 +117,44 @@ class WelcomeDrinkColorMenuRule(BaseMenuRule):
     Config:
     {
         "type": "welcome_drink_color",
-        "name": "welcome_drink_no_repeat_color"
+        "name": "welcome_drink_no_repeat_color",
+        "slot_indices": [1]          # optional; default is every drink cell
     }
+
+    ``slot_indices`` is what makes this rule compatible with a drink STAPLE.
+    Every counter but one runs a single welcome drink, where "no two
+    consecutive days share a colour" is the whole of it. PhonePe runs two:
+    a rotating detox water and a buttermilk served every day. A buttermilk is
+    white on all five days, so applying the rule across both cells makes the
+    counter INFEASIBLE the moment the staple is a real dish rather than a
+    stamped string — measured, and it takes the counter down with the generic
+    "rules cannot all be satisfied" message that names no rule. The client's
+    own printed grid answers which cell they meant: drink 1 rotates, drink 2
+    does not.
     """
 
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.WELCOME_DRINK_COLOR
+        self.slot_indices = parse_slot_indices(rule_config.get('slot_indices'))
 
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
         dates = context.get('dates', [])
         known_welcome_colors = context.get('known_welcome_colors', [])
-        day_welcome_color_vars = context.get('day_welcome_color_vars', {})
+        wanted = self.slot_indices and {
+            f'welcome_drink{SLOT_SUFFIX_SEP}{i}' for i in self.slot_indices}
+
+        by_day: Dict[Any, List] = {}
+        for (di, col, slot_id), day_vars in context.get(
+                'day_welcome_color_vars', {}).items():
+            if not wanted or slot_id in wanted:
+                by_day.setdefault((di, col), []).extend(day_vars)
 
         for di in range(len(dates) - 1):
             for col in known_welcome_colors:
-                a = day_welcome_color_vars.get((di, col), [])
-                b = day_welcome_color_vars.get((di + 1, col), [])
+                a = by_day.get((di, col), [])
+                b = by_day.get((di + 1, col), [])
                 if a and b:
                     model.Add(sum(a) + sum(b) <= 1)
 
