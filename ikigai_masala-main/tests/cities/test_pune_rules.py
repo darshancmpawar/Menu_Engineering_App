@@ -95,15 +95,13 @@ class TestPuneRulesBiteOnPuneData:
         # Chain rules/pune_flag_corrections.py fixed that, and this set is what stops
         # a re-import from silently undoing it.)
         'multigrain_bread_non_consecutive',
-        # R30 (kadhi once in 15 days) went inert when the corrected Pune list
-        # arrived with `is_kadhi_dal` at 0 on all thirteen of its kadhi rows —
-        # the previous workbook carried the flag and no correction script sets
-        # it, so nothing replaced it. The rule reads `base_slot: veg_gravy`, and
-        # two reachable Pune gravies are kadhis (`dahi_kadhi`,
-        # `dahi_pakoda_kadhi`), so flagging those two reactivates it. Listed
-        # here rather than left failing so the tripwire still guards the other
-        # rules; it is a data question for the client, not a code one.
-        'kadhi_weekly',
+        # R30 (kadhi once in 15 days) was listed here while it was inert: the
+        # corrected Pune list arrived with `is_kadhi_dal` at 0 on all thirteen
+        # of its kadhi rows. That was answered — every Pune kadhi is filed as a
+        # gravy and flagged, matching the other three cities — so the rule
+        # bites again and belongs OUT of this set. Left in, it would assert the
+        # rule is still broken and fail the moment somebody fixed it, which is
+        # the wrong way round for a tripwire.
     }
 
     def test_selector_rules_match_pune_items(self, pune_rules, pune_pools):

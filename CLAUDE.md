@@ -64,15 +64,28 @@ under-enforce on purpose; every one stamps the relaxation channel so the
 explanation names the rule that did not hold. A silent relaxation is
 indistinguishable from a satisfied rule, which is worse than a failure. Note 31.
 
-**4. The ontology correction chain** (`Chain rules/*.py`, which rewrite
-`data/raw/city_items/*.xlsx`). They mutate committed data and they must be
-idempotent — a chain that does not converge corrupts the item list silently, and
-the corrected workbooks have already broken the three client menu importers this
-way (`tests/data/test_client_menu_imports.py` records it). Their per-script
-tests were dropped in the repo cleanup; what is left is the convergence run —
-every step must print "already correct" and leave the five workbooks unchanged.
-Run the whole chain and check that before committing any change to it, and add
-the no-op-re-run assertion back to any script you touch.
+**4. The five city workbooks are now the SOURCE, and nothing may write to
+them.** `data/raw/city_items/*.xlsx` used to be derived: a normaliser rebuilt
+them from the raw lists and a chain of correction scripts re-applied every hand
+fix on top. The owner has replaced that with cleaned workbooks, one per city,
+and the chain is deleted. So:
+
+- **Do not add rows to a city list, and do not run anything that does.** The
+  chain's whole job was injecting dishes — ten sambars copied into NCR from
+  Bangalore, sixteen north rices, seven side dishes per city. Every one of
+  those is now an unrequested change to the owner's data. If a pool looks too
+  thin to satisfy a rule, that is a fact to report, not a gap to fill.
+- A dataset problem is the owner's to fix at source. Report it with the
+  measurement; do not edit the workbook.
+- What the corrections existed to guarantee is kept as standing guards in
+  `tests/data/test_dataset_guards.py`, which read the workbooks and nothing
+  else: no meat-named dish in a veg pool, no misspelled protein word, no
+  `nonveg_main` row without a form flag. Those must keep passing.
+
+A thin pool is now a normal state, so code that narrows a pool must degrade
+rather than fail, and say so — see point 3. `_combo_variant_cells` in
+`menu_solver` is the worked example: one dish in a component was worse than
+none until it was fixed.
 
 Two general habits this codebase has earned and should keep:
 
