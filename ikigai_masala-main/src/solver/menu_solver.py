@@ -415,6 +415,10 @@ class MenuSolver:
         self.ricebread_ban_day = ricebread_ban_day or {}
         self.recent_sigs = recent_sigs or set()
         self.skip_cells = skip_cells or set()
+        # Filled by `_rows_to_week_plan`: the cells this solve did not choose.
+        # Empty until a plan is built, so reading it before `solve()` reports
+        # "nothing pinned" rather than raising.
+        self.pinned_cells: set = set()
         # {item_base(norm): days-since-last-served}. Drives the soft freshness
         # objective — a dish served long ago (large value) or absent from the
         # map (never served in the window) is preferred over a recently-served
@@ -1317,6 +1321,13 @@ class MenuSolver:
     def _rows_to_week_plan(self, chosen_rows, dates, expanded_slots):
         week_plan = {}
         client_consts = getattr(self.cfg, 'client_constant_items', None) or {}
+        # ``{(date, slot_id)}`` for every cell this plan did NOT freely choose:
+        # a global staple, a `constant_items` pin the solver narrowed to, and a
+        # pin stamped verbatim. Recorded HERE, by the code that does the
+        # pinning, because that is the only place all three are visible at
+        # once — anything downstream would have to re-derive it from config and
+        # would go quietly stale the first time a fourth pinning path appears.
+        pinned = set()
         for d in dates:
             day_out = {}
             for slot_id in expanded_slots:
@@ -1343,11 +1354,13 @@ class MenuSolver:
                 if _cell_is_skipped(self.skip_cells, d, k):
                     continue
                 day_out[k] = CONSTANT_ITEMS[k]
+                pinned.add((d, k))
             # Per-client overlay (after globals). Day-specific maps only stamp
             # on matching weekdays; daily strings stamp every day.
+            forced = self.cfg.forced_items or {}
+            pinned.update((d, s) for (fd, s) in forced if fd == d and s in day_out)
             if client_consts:
                 weekday = _weekday_name(d)
-                forced = self.cfg.forced_items or {}
                 for slot, spec in client_consts.items():
                     # A pin the solver placed itself is already in day_out with
                     # its colour suffix; stamping the raw text over it would
@@ -1359,5 +1372,7 @@ class MenuSolver:
                         spec, weekday, d.isocalendar()[1])
                     if value is not None:
                         day_out[slot] = value
+                        pinned.add((d, slot))
             week_plan[d] = day_out
+        self.pinned_cells = pinned
         return week_plan

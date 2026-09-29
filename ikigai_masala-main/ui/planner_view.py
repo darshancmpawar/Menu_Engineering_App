@@ -23,6 +23,7 @@ from ui.formatters import (
     format_item_html,
     nonveg_slots_from_solution,
     off_days_from_solution,
+    pinned_slots_from_solution,
     slot_sort_key,
 )
 
@@ -40,6 +41,9 @@ def flatten_result(result: dict) -> dict:
         "day_types": day_types,
         "off_days": off_days_from_solution(solution),
         "nonveg": nonveg_slots_from_solution(solution),
+        # Cells the solve did not choose. `{date: {slot_id}}`, the same
+        # shape as `nonveg`, so the table reads both the same way.
+        "pinned": pinned_slots_from_solution(solution),
         "pool_warnings": result.get("pool_warnings", []),
         # Kept unflattened for /explain, which describes the plate rather than
         # renders it and so needs the per-slot attributes `flat` discards.

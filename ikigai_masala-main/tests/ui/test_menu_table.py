@@ -12,7 +12,18 @@ halves drift and a planner's selection silently regenerates nothing.
 
 from __future__ import annotations
 
-from ui.menu_table import _color_key, day_cells
+import sys
+from pathlib import Path
+
+# So `python tests/ui/test_menu_table.py` works as the pytest-free check the
+# bottom of this file promises; pytest.ini already puts the root on the path
+# for the normal run, and adding it twice is harmless.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from ui.menu_table import (  # noqa: E402 — after the path insert, on purpose
+    _color_key, cell_keys, day_cells, regen_request, warned_cells,
+)
+from ui.theme_tokens import ITEM_COLOR_MAP
 
 DATES = ["2026-09-21", "2026-09-22"]
 PLAN = {
@@ -28,11 +39,28 @@ def _args(**kw):
 
 def test_the_colour_suffix_is_read_and_removed_from_the_name():
     """`veg_fried_rice(Y)` is a yellow dish called Veg Fried Rice. The suffix
-    drives the cell's colour dot and must not also print in the name."""
+    names the colour and must not also print in the name."""
     cell = _args()["rows"][0]["cells"]["2026-09-21"]
     assert cell["color"] == "Y"
     assert cell["name"] == "Veg Fried Rice"
     assert "(" not in cell["name"]
+
+
+def test_the_colour_is_spelled_out_and_the_name_is_printed_in_it():
+    """The planner reads "Yellow", not "Y", and the dish itself carries the
+    colour — that is the whole point of the colour column."""
+    cell = _args()["rows"][0]["cells"]["2026-09-21"]
+    assert cell["color_name"] == "Yellow"
+    assert cell["color_fg"] == ITEM_COLOR_MAP["Y"][2]
+
+
+def test_a_white_dish_is_not_printed_in_white():
+    """The fg is the READABLE colour, not the colour itself. #FFFFFF on a
+    white cell is an empty cell, and the dish silently disappears."""
+    out = day_cells({"2026-09-21": {"rice": "jeera_rice(W)"}}, ["2026-09-21"], {})
+    cell = out["rows"][0]["cells"]["2026-09-21"]
+    assert cell["color_name"] == "White"
+    assert cell["color_fg"].lower() not in ("#fff", "#ffffff")
 
 
 def test_a_dish_with_no_suffix_still_renders():
@@ -40,6 +68,15 @@ def test_a_dish_with_no_suffix_still_renders():
                     {"2026-09-21": "mix"})
     cell = out["rows"][0]["cells"]["2026-09-21"]
     assert cell["color"] == "" and cell["name"] == "Plain Rice"
+    # No colour → no tag and the default ink, rather than a blank tag or a
+    # name painted in the empty string.
+    assert cell["color_name"] == "" and cell["color_fg"] == ""
+
+
+def test_an_unknown_colour_letter_does_not_invent_a_colour():
+    out = day_cells({"2026-09-21": {"rice": "mystery_rice(Z)"}}, ["2026-09-21"], {})
+    cell = out["rows"][0]["cells"]["2026-09-21"]
+    assert cell["color"] == "Z" and cell["color_name"] == ""
 
 
 def test_the_cell_key_is_slot_then_date():
@@ -99,6 +136,81 @@ def test_a_day_with_no_theme_still_gets_a_label():
 def test_color_key_ignores_a_bracket_that_is_part_of_the_name():
     assert _color_key("kadhi_(gujarati)") == ""
     assert _color_key("dal(Y)") == "Y"
+
+
+def test_a_shared_row_is_matched_on_the_base_slot():
+    """`shared_categories` is configured as `dal`; the counter serves `dal__1`
+    and `dal__2`. Matching the whole slot id would label neither."""
+    rows = day_cells({"2026-09-21": {"dal__1": "a(Y)", "rice": "b(W)"}},
+                     ["2026-09-21"], {}, shared={"dal"})["rows"]
+    by_id = {r["id"]: r["shared"] for r in rows}
+    assert by_id == {"dal__1": True, "rice": False}
+
+
+# --- the two converters the markers arrive through -------------------------
+
+def test_cell_keys_turns_a_projection_into_the_table_key():
+    """`{date: {slot}}` is what every `ui.formatters` projection returns;
+    `"<slot>|<date>"` is what the table reads. One converter, or the pins
+    render as a plan with nothing pinned."""
+    assert cell_keys({"2026-09-21": {"rice", "dal__1"}}) == {
+        "rice|2026-09-21", "dal__1|2026-09-21"}
+    assert cell_keys(None) == set()
+
+
+def test_a_warning_marks_every_expanded_cell_of_its_base_slot():
+    """Diagnostics address `rice`; the plan holds `rice__1` and `rice__2`."""
+    plan = {"2026-09-21": {"rice__1": "a(W)", "rice__2": "b(Y)", "dal": "c(Y)"}}
+    diags = [{"severity": "warning",
+              "affected": {"date": "2026-09-21", "slot": "rice"}}]
+    assert warned_cells(diags, plan) == {"rice__1|2026-09-21", "rice__2|2026-09-21"}
+
+
+def test_an_info_diagnostic_is_not_a_cell_marker():
+    """"Exactly enough items, no variety" is true of every staple by design.
+    Marking them all is a marker nobody reads."""
+    plan = {"2026-09-21": {"rice": "a(W)"}}
+    assert warned_cells(
+        [{"severity": "info", "affected": {"date": "2026-09-21", "slot": "rice"}}],
+        plan) == set()
+
+
+def test_a_whole_solve_diagnostic_is_not_spread_over_every_cell():
+    plan = {"2026-09-21": {"rice": "a(W)"}}
+    assert warned_cells(
+        [{"severity": "warning", "affected": {"max_per_week": 2}}], plan) == set()
+    assert warned_cells(None, plan) == set()
+
+
+# --- the regenerate request ------------------------------------------------
+
+def test_a_request_splits_back_into_the_replace_mask():
+    """The mask `/regenerate` takes. Split the key the other way round and it
+    is a valid-looking dict naming no cell the plan has."""
+    req = regen_request({"action": "regenerate", "nonce": 1,
+                         "cells": ["rice|2026-09-21", "dal__1|2026-09-21",
+                                   "rice|2026-09-22"]})
+    assert req["cells"] == {"2026-09-21": ["rice", "dal__1"],
+                            "2026-09-22": ["rice"]}
+    assert req["nonce"] == 1
+
+
+def test_the_same_request_is_handled_once():
+    """A component's return value is replayed on every rerun and handling a
+    regenerate ends in a rerun. Without this the table regenerates forever."""
+    picked = {"action": "regenerate", "nonce": 7, "cells": ["rice|2026-09-21"]}
+    assert regen_request(picked, last_nonce=None) is not None
+    assert regen_request(picked, last_nonce=7) is None
+    # a second press stamps a new nonce and is handled again
+    assert regen_request({**picked, "nonce": 8}, last_nonce=7) is not None
+
+
+def test_nothing_to_do_is_none_not_an_empty_regenerate():
+    """An empty mask would re-solve the WHOLE plan, not nothing."""
+    assert regen_request(None) is None
+    assert regen_request({"action": "regenerate", "cells": []}) is None
+    assert regen_request({"action": "regenerate", "cells": ["rubbish"]}) is None
+    assert regen_request({"action": "something_else", "cells": ["a|b"]}) is None
 
 
 if __name__ == "__main__":  # a runnable check without pytest

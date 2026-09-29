@@ -71,11 +71,16 @@
   .cell:focus-visible { outline: 2px solid #0D6EFD; outline-offset: -2px; }
   .cell.on { background: #EBF3FF; }
   .cell.off { background: #F9F9F9; color: #AEAEAE; cursor: default; }
-  .cell .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-               border: 1px solid rgba(19,19,19,0.18); }
-  .cell .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+              font-weight: 600; }
   .cell .tail { margin-left: auto; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
-  .cell.nonveg .nm { color: #C40D1B; font-weight: 600; }
+  .tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+         letter-spacing: 0.04em; padding: 2px 7px; border-radius: 99px;
+         white-space: nowrap; }
+  /* The dish name already carries the item colour, so non-veg cannot also be
+     red — that is the Red item colour, and one cell would be saying two
+     different things in the same ink. It gets its own outlined word instead. */
+  .tag.nv { background: #FFFFFF; color: #131313; border: 1.5px solid #131313; }
 
   .explain { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr);
              gap: 18px; padding: 14px 16px; background: #FFFBF2;
@@ -112,8 +117,9 @@
     biryani: ["#FFE7E9", "#C40D1B"], south: ["#EBF3FF", "#0A58CA"],
     north: ["#F3ECFF", "#6F42C1"], continental: ["#E4F7F4", "#0F8E80"]
   };
-  var DOT = {R: "#C40D1B", G: "#1AA45B", B: "#8A5A2B", Y: "#9A7A10",
-             W: "#FFFFFF", O: "#C56A00", K: "#333333"};
+  // Item colours arrive per cell as a spelled-out name and a readable
+  // foreground (ui/theme_tokens.ITEM_COLOR_MAP). Deliberately not a palette
+  // here: two copies of it drift, and the drifted one is the invisible error.
 
   var ICON = {
     pin: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6zM12 14v7" stroke="#414141" stroke-width="2.2" stroke-linejoin="round"/></svg>',
@@ -197,13 +203,18 @@
           h.push('<div class="cell off">' + esc(c.name || "—") + '</div>');
           return;
         }
-        var cls = "cell" + (on ? " on" : "") + (c.nonveg ? " nonveg" : "");
+        var cls = "cell" + (on ? " on" : "");
         h.push('<button class="' + cls + '" data-cell="' + esc(k) + '"' +
                ' aria-pressed="' + on + '" title="' + esc(c.title || c.name) + '">');
-        h.push('<span class="dot" style="background:' + (DOT[c.color] || "#FFFFFF") + '"></span>');
         if (c.pinned) h.push(ICON.pin);
-        h.push('<span class="nm">' + esc(c.name) + '</span>');
+        h.push('<span class="nm"' + (c.color_fg ? ' style="color:' + esc(c.color_fg) + '"' : '') +
+               '>' + esc(c.name) + '</span>');
         h.push('<span class="tail">');
+        if (c.nonveg) h.push('<span class="tag nv">Non-veg</span>');
+        if (c.color_name) {
+          h.push('<span class="tag" style="background:' + esc(c.color_bg) +
+                 ';color:' + esc(c.color_fg) + '">' + esc(c.color_name) + '</span>');
+        }
         if (on) h.push(ICON.tick);
         else if (c.warn) h.push(ICON.warn);
         else if (c.modified) h.push(ICON.redo);

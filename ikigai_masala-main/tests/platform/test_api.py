@@ -437,6 +437,31 @@ class TestConstantSelection:
         assert 'white_rice' in slots and 'papad' in slots
         assert 'pickle' not in slots and 'chutney' not in slots
 
+    def test_a_stamped_constant_is_reported_as_pinned(
+        self, client, auth_headers, fake_supabase,
+    ):
+        """The table's pin marker rides on `is_pinned`, and a staple is the
+        case that must be True — white rice is stamped, never solved.
+
+        Asserted as a POSITIVE and not just as a key: if the flag ever comes
+        back all-False the menu is still correct and nothing logs, the marker
+        simply stops appearing, which is indistinguishable from a client that
+        pins nothing.
+        """
+        client.post('/api/v1/client', json={
+            'name': 'PinCo', 'active_slots': _VIABLE + ['white_rice'],
+        }, headers=auth_headers)
+        resp = client.post('/api/v1/plan', json={
+            'client_name': 'PinCo', 'start_date': '2026-03-23', 'num_days': 1,
+            'time_limit_seconds': 30,
+        }, headers=auth_headers)
+        assert resp.status_code == 200
+        items = next(iter(resp.get_json()['solution'].values()))['items']
+        assert all('is_pinned' in v for v in items.values())
+        assert items['white_rice']['is_pinned'] is True
+        # and a solved cell is not claimed as pinned
+        assert items['rice']['is_pinned'] is False
+
     def test_no_constants_when_none_selected(self, client, auth_headers, fake_supabase):
         client.post('/api/v1/client', json={
             'name': 'NoConst', 'active_slots': _VIABLE,

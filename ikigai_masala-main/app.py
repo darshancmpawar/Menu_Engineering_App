@@ -59,10 +59,9 @@ from ui.formatters import (
     meal_difference,
     MIN_MEAL_DIFFERENCE,
     nonveg_slots_from_solution,
+    pinned_slots_from_solution,
     shared_items_from_solution,
     slot_sort_key,
-    THEME_TAG_COLORS,
-    THEME_ICONS,
 )
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
@@ -71,11 +70,11 @@ from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
 from ui.planner_view import (
     date_label,
     flatten_result,
-    menu_table_html,
     download_filename,
     plan_xlsx,
     XLSX_MIME,
 )
+from ui.menu_table import menu_table, regen_request
 from src.explain.checks import MAIN_COURSES, base_slot
 from src.application.horizon import _weekdays_from
 from src.solver._helpers import weekday_type_for_config
@@ -868,125 +867,99 @@ def _render_explain_day(day: dict) -> None:
             st.code("\n".join(day["bullets"]), language=None)
 
 
-def _render_regen_expander(api, block_index: int, counter_index: int,
-                           key_ns: str) -> None:
-    """Regenerate-cells panel for one plan block; mutates
-    st.session_state.plan_blocks[block_index] in place and reruns."""
+def _apply_regenerate(api, block_index: int, counter_index: int,
+                      regen_selections: dict) -> None:
+    """Re-solve the named cells; mutates ``st.session_state.plan_blocks`` and reruns.
+
+    ``regen_selections`` is ``{iso date: [slot_id, …]}`` — the replace mask
+    ``/regenerate`` already takes, and what the table's cell selection
+    produces. The old expander built the same dict from a multiselect per day,
+    which asked the planner to re-find, in a dropdown, the cells they were
+    looking at in the table.
+    """
     b = st.session_state.plan_blocks[block_index]
-    plan, plan_dates, day_types = b["plan"], b["plan_dates"], b["day_types"]
-    with st.expander("Regenerate cells"):
-        st.caption("Pick slots to replace with fresh items.")
-        regen_selections = {}
-        cols_per_row = min(len(plan_dates), 3) or 1
-        cols = st.columns(cols_per_row)
-        for i, d_str in enumerate(plan_dates):
-            try:
-                d_lbl = dt.date.fromisoformat(d_str).strftime("%a %d %b")
-            except ValueError:
-                d_lbl = d_str
-            day_type = day_types.get(d_str, "")
-            bg, fg = THEME_TAG_COLORS.get(day_type, ("#F0F0F0", "#777777"))
-            icon = THEME_ICONS.get(day_type, "")
-            label = day_type.replace("_", " ").title() if day_type else ""
-            with cols[i % cols_per_row]:
-                st.markdown(
-                    f'<div class="regen-day-header">{d_lbl} '
-                    f'<span class="theme-tag" style="background:{bg};color:{fg};'
-                    f'font-size:0.6rem;">{icon} {label}</span></div>',
-                    unsafe_allow_html=True)
-                day_map = plan.get(d_str, {})
+    plan, plan_dates = b["plan"], b["plan_dates"]
 
-                def _fmt(slot_id, _dm=day_map):
-                    cur = format_item_for_ui(_dm.get(slot_id, ""))
-                    lbl = display_label_for_slot_id(slot_id)
-                    return f"{lbl} — {cur}" if cur else lbl
-
-                day_slots = sorted(day_map.keys(), key=slot_sort_key)
-                selected = st.multiselect(
-                    f"Slots for {d_str}", day_slots, format_func=_fmt,
-                    key=f"regen_{key_ns}_{d_str}", label_visibility="collapsed")
-                if selected:
-                    regen_selections[d_str] = selected
-
-        if st.button("Regenerate Selected", type="primary",
-                     key=f"regen_btn_{key_ns}"):
-            if not regen_selections:
-                st.warning("Select at least one cell.")
-                return
-            old_snap = {
-                (d, s): plan.get(d, {}).get(s, "")
-                for d, slots in regen_selections.items() for s in slots
-            }
-            # Exclude every item already shown for each selected cell this
-            # session (plus its current item), so repeated regenerations keep
-            # producing something new instead of flipping A->B->A. Keyed per
-            # (counter, date, slot); reset when the pool is exhausted.
-            seen_store = st.session_state.setdefault("regen_seen", {})
-            exclude_items = {}
+    old_snap = {
+        (d, s): plan.get(d, {}).get(s, "")
+        for d, slots in regen_selections.items() for s in slots
+    }
+    # Exclude every item already shown for each selected cell this
+    # session (plus its current item), so repeated regenerations keep
+    # producing something new instead of flipping A->B->A. Keyed per
+    # (counter, date, slot); reset when the pool is exhausted.
+    seen_store = st.session_state.setdefault("regen_seen", {})
+    exclude_items = {}
+    for d_str, slots in regen_selections.items():
+        for s in slots:
+            k = f"{counter_index}|{d_str}|{s}"
+            ex = set(seen_store.get(k, set()))
+            cur = plan.get(d_str, {}).get(s, "")
+            if cur:
+                ex.add(cur)
+            if ex:
+                exclude_items.setdefault(d_str, {})[s] = sorted(ex)
+    with st.spinner("Regenerating..."):
+        try:
+            result = api.regenerate(
+                client_name=st.session_state.client_name,
+                base_plan=plan, replace_slots=regen_selections,
+                start_date=plan_dates[0], num_days=len(plan_dates),
+                time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
+                counter_index=counter_index,
+                exclude_items=exclude_items)
+            solution = result.get("solution", {})
+            flat_regen, regen_day_types = flatten_api_solution(solution)
+            new_plan = flat_regen if flat_regen else plan
+            # Record what each cell now shows so the next regenerate
+            # avoids it too; if the solver had to repeat an already-seen
+            # item (pool exhausted), restart that cell's cycle.
             for d_str, slots in regen_selections.items():
                 for s in slots:
                     k = f"{counter_index}|{d_str}|{s}"
-                    ex = set(seen_store.get(k, set()))
-                    cur = plan.get(d_str, {}).get(s, "")
-                    if cur:
-                        ex.add(cur)
-                    if ex:
-                        exclude_items.setdefault(d_str, {})[s] = sorted(ex)
-            with st.spinner("Regenerating..."):
-                try:
-                    result = api.regenerate(
-                        client_name=st.session_state.client_name,
-                        base_plan=plan, replace_slots=regen_selections,
-                        start_date=plan_dates[0], num_days=len(plan_dates),
-                        time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
-                        counter_index=counter_index,
-                        exclude_items=exclude_items)
-                    solution = result.get("solution", {})
-                    flat_regen, regen_day_types = flatten_api_solution(solution)
-                    new_plan = flat_regen if flat_regen else plan
-                    # Record what each cell now shows so the next regenerate
-                    # avoids it too; if the solver had to repeat an already-seen
-                    # item (pool exhausted), restart that cell's cycle.
-                    for d_str, slots in regen_selections.items():
-                        for s in slots:
-                            k = f"{counter_index}|{d_str}|{s}"
-                            prev = set(seen_store.get(k, set()))
-                            new_item = new_plan.get(d_str, {}).get(s, "")
-                            old_item = plan.get(d_str, {}).get(s, "")
-                            if new_item and new_item in prev:
-                                seen_store[k] = {new_item}
-                            else:
-                                seen_store[k] = prev | {
-                                    x for x in (old_item, new_item) if x}
-                    b["plan"] = new_plan
-                    if regen_day_types:
-                        b["day_types"] = regen_day_types
-                    b["plan_dates"] = sorted(new_plan.keys())
-                    if flat_regen:
-                        b["nonveg"] = nonveg_slots_from_solution(solution)
+                    prev = set(seen_store.get(k, set()))
+                    new_item = new_plan.get(d_str, {}).get(s, "")
+                    old_item = plan.get(d_str, {}).get(s, "")
+                    if new_item and new_item in prev:
+                        seen_store[k] = {new_item}
+                    else:
+                        seen_store[k] = prev | {
+                            x for x in (old_item, new_item) if x}
+            b["plan"] = new_plan
+            if regen_day_types:
+                b["day_types"] = regen_day_types
+            b["plan_dates"] = sorted(new_plan.keys())
+            if flat_regen:
+                b["nonveg"] = nonveg_slots_from_solution(solution)
+                b["pinned"] = pinned_slots_from_solution(solution)
 
-                    diffs = []
-                    for (d, s), old_raw in old_snap.items():
-                        op = format_item_for_ui(old_raw)
-                        np = format_item_for_ui(new_plan.get(d, {}).get(s, ""))
-                        if op == np:
-                            continue
-                        try:
-                            dl = dt.date.fromisoformat(d).strftime("%a %d %b")
-                        except ValueError:
-                            dl = d
-                        diffs.append({
-                            "kind": "regen", "counter": b["name"], "day": dl,
-                            "slot": display_label_for_slot_id(s),
-                            "old": op, "new": np,
-                        })
-                    if diffs:
-                        st.session_state.changes_log.extend(diffs)
-                        b["source"] = "modified"
-                        st.session_state.plan_source = "modified"
-                    st.rerun()
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Regeneration failed: {e}")
+            diffs = []
+            # Cells this session has actually changed, for the table's
+            # "regenerated" marker. Accumulated, not replaced: a second
+            # regenerate of one cell must not un-mark the first.
+            changed = b.setdefault("modified", {})
+            for (d, s), old_raw in old_snap.items():
+                op = format_item_for_ui(old_raw)
+                np = format_item_for_ui(new_plan.get(d, {}).get(s, ""))
+                if op == np:
+                    continue
+                changed.setdefault(d, set()).add(s)
+                try:
+                    dl = dt.date.fromisoformat(d).strftime("%a %d %b")
+                except ValueError:
+                    dl = d
+                diffs.append({
+                    "kind": "regen", "counter": b["name"], "day": dl,
+                    "slot": display_label_for_slot_id(s),
+                    "old": op, "new": np,
+                })
+            if diffs:
+                st.session_state.changes_log.extend(diffs)
+                b["source"] = "modified"
+                st.session_state.plan_source = "modified"
+            st.rerun()
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+            st.error(f"Regeneration failed: {e}")
 
 
 def _render_changes_log() -> None:
@@ -1226,6 +1199,7 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
             b["plan"] = flat
             b["plan_dates"] = sorted(flat.keys())
             b["nonveg"] = nonveg_slots_from_solution(solution)
+            b["pinned"] = pinned_slots_from_solution(solution)
             b["solution"] = solution
             if day_types:
                 b["day_types"] = day_types
@@ -1268,6 +1242,10 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
                     result.get("solution", {}), shared_categories)
             blk = flatten_result(result)
             blk["name"] = cname
+            # Per-BLOCK, not just counter 0's: the page-level warnings panel
+            # shows the first counter's, but the table's per-cell markers have
+            # to be THIS counter's or they point at cells in another plan.
+            blk["rule_diagnostics"] = result.get("rule_diagnostics") or []
             if i == 0:
                 diagnostics = result.get("rule_diagnostics") or []
                 summary = result.get("summary")
@@ -1289,6 +1267,14 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
                 diagnostics = e.diagnostics
                 summary = getattr(e, "summary", None) or None
         blk["meal"] = meal or LUNCH
+        # Base slots this counter serves identically to the others, so the
+        # table can label the row. Mirrors `send_shared` above exactly:
+        # counter 0 DEFINES the shared dishes (so it is shared even if it is
+        # named in the exclusion list), and every later counter receives them
+        # unless it is excluded, in which case it plans its own.
+        blk["shared_categories"] = (
+            [] if (i and cname in shared_excluded)
+            else list(shared_categories or []))
         # Which counter this block IS. The regional re-solve addresses one
         # counter at a time and cannot infer the index from list position once
         # several services are concatenated onto the page.
@@ -1347,18 +1333,29 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
     own service, which is what `/plan` and `/regenerate` take.
     """
     _pool_warnings_expander(b)
-    st.markdown(
-        menu_table_html(b["plan"], b["plan_dates"], b["day_types"],
-                        b.get("nonveg"), b.get("off_days")),
-        unsafe_allow_html=True)
-    st.markdown("")
+    # The table IS the regenerate control: tick cells, press Regenerate. The
+    # `reset_token` is what the selection is scoped to — a fresh plan changes
+    # it and the component drops a selection that now points at other dishes.
+    picked = menu_table(
+        b, title=b.get("name") or "Menu",
+        meta=f"{len(b.get('plan_dates') or [])} days",
+        hint="Select cells to regenerate",
+        reset_token=f"{key_ns}|{'|'.join(b.get('plan_dates') or [])}",
+        key=f"table_{key_ns}")
+    # A component's return value is REPLAYED on every rerun, and handling a
+    # regenerate ends in `st.rerun()`. `regen_request` is what makes one press
+    # one request; the nonce it hands back is stored per table.
+    handled = st.session_state.setdefault("regen_nonce", {})
+    req = regen_request(picked, handled.get(key_ns))
+    if req:
+        handled[key_ns] = req["nonce"]
+        _apply_regenerate(api, block_index, counter_index, req["cells"])
     _c1, _c2, _rest = st.columns([1, 1, 4])
     with _c2:
         if st.button("Clear", key=f"clear_{key_ns}", use_container_width=True):
             b["plan"], b["plan_dates"], b["day_types"] = {}, [], {}
             b["nonveg"] = {}
             st.rerun()
-    _render_regen_expander(api, block_index, counter_index, key_ns)
     _render_explain_expander(api, block_index, counter_index, key_ns)
 
 
