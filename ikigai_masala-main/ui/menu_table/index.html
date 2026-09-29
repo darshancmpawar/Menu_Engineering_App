@@ -1,0 +1,266 @@
+<!doctype html>
+<meta charset="utf-8">
+<!--
+  The menu table, as a Streamlit component.
+
+  Streamlit cannot express this table: every cell is an individually
+  selectable button carrying a colour dot, a pin, a warning and a
+  "changed" marker, and the selection drives "Regenerate selected".
+  st.markdown renders it but returns nothing, and a widget per cell is
+  9 rows x 5 days x 2 services = 90 buttons and a rerun per click.
+
+  Deliberately a STATIC component: no npm, no bundler, no node in the
+  repo. It talks to Streamlit over the documented postMessage protocol
+  directly, which is ~40 lines of the JS below. The cost is that there
+  is no JSX and no hot reload; the benefit is that `pip install` is
+  still the whole toolchain.
+-->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: transparent; }
+
+  .panel { background: #FFFFFF; border: 1px solid #E5E5E5; border-radius: 14px;
+           box-shadow: 0 1px 3px rgba(19,19,19,0.05); overflow: hidden; }
+
+  .bar { display: flex; align-items: center; justify-content: space-between;
+         gap: 12px; padding: 12px 16px; min-height: 34px; }
+  .bar .name { font-size: 16px; font-weight: 800; color: #131313; }
+  .bar .meta { font-size: 12px; color: #777777; margin-left: 10px; }
+  .bar .sel  { font-size: 12.5px; font-weight: 700; color: #0A58CA; }
+
+  .btn { border-radius: 8px; font-family: inherit; cursor: pointer;
+         font-size: 12.5px; font-weight: 600; padding: 7px 12px;
+         background: #FFFFFF; color: #131313; border: 1px solid #E5E5E5;
+         transition: background-color .18s ease, border-color .18s ease,
+                     color .18s ease, box-shadow .18s ease, transform .18s ease; }
+  .btn:hover:not(:disabled) { filter: brightness(0.97); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid #0D6EFD; outline-offset: 2px; }
+  .btn.primary { background: #FEBF34; border-color: #FEBF34; font-weight: 700; padding: 7px 14px; }
+
+  .grid { display: grid; border-top: 1px solid #131313; }
+  .head { background: #000000; color: #FFFFFF; padding: 10px 12px;
+          font-size: 12px; font-weight: 700; display: flex; align-items: flex-end; }
+  .day  { background: #000000; padding: 8px 10px; display: flex;
+          flex-direction: column; gap: 4px; border-left: 1px solid #333333; }
+  .day .lbl { display: flex; align-items: center; gap: 6px; font-size: 13px;
+              font-weight: 700; color: #FFFFFF; }
+  .dot-issue { width: 7px; height: 7px; border-radius: 50%; background: #F78D00; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 99px;
+          font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.04em; align-self: flex-start; }
+  .why  { margin-top: 2px; align-self: flex-start; background: transparent;
+          border: 1px solid #444444; color: #FFFFFF; border-radius: 8px;
+          font-size: 10.5px; font-weight: 700; padding: 3px 8px;
+          font-family: inherit; cursor: pointer; }
+
+  .slot { background: #F9F9F9; padding: 8px 12px; font-size: 11.5px;
+          font-weight: 600; color: #414141; border-right: 1px solid #131313;
+          display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+  .slot .shared { font-size: 9.5px; font-weight: 700; color: #0A58CA;
+                  text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .cell { display: flex; align-items: center; gap: 7px; width: 100%;
+          padding: 9px 11px; background: #FFFFFF; border: none;
+          border-left: 1px solid #131313; text-align: left;
+          font-family: inherit; font-size: 12.5px; color: #131313;
+          cursor: pointer; min-height: 40px;
+          transition: background-color .18s ease; }
+  .cell:hover { background: #F5F5F5; }
+  .cell:focus-visible { outline: 2px solid #0D6EFD; outline-offset: -2px; }
+  .cell.on { background: #EBF3FF; }
+  .cell.off { background: #F9F9F9; color: #AEAEAE; cursor: default; }
+  .cell .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+               border: 1px solid rgba(19,19,19,0.18); }
+  .cell .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell .tail { margin-left: auto; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+  .cell.nonveg .nm { color: #C40D1B; font-weight: 600; }
+
+  .explain { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr);
+             gap: 18px; padding: 14px 16px; background: #FFFBF2;
+             border-top: 1px solid #131313; }
+  .explain h4 { margin: 0 0 5px; font-size: 11px; font-weight: 800; color: #131313;
+                text-transform: uppercase; letter-spacing: 0.06em; }
+  .explain p  { margin: 0; font-size: 13px; color: #414141; line-height: 1.6; }
+  .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
+           color: #131313; line-height: 1.45; margin-bottom: 7px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+<div id="root"></div>
+<script>
+(function () {
+  // --- the Streamlit component protocol, written out rather than imported ---
+  function post(type, extra) {
+    window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, extra || {}), "*");
+  }
+  function setHeight() {
+    post("streamlit:setFrameHeight", {height: document.documentElement.scrollHeight});
+  }
+  function setValue(value) {
+    post("streamlit:setComponentValue", {value: value, dataType: "json"});
+  }
+
+  var ARGS = null;
+  // Selection and the open explain day live HERE, not in Streamlit: a rerun
+  // per click would make picking six cells cost six round trips.
+  var selected = [];
+  var openDay = null;
+
+  var THEME = {
+    mix: ["#E5FFF1", "#137A43"], chinese: ["#FFF5E8", "#A35800"],
+    biryani: ["#FFE7E9", "#C40D1B"], south: ["#EBF3FF", "#0A58CA"],
+    north: ["#F3ECFF", "#6F42C1"], continental: ["#E4F7F4", "#0F8E80"]
+  };
+  var DOT = {R: "#C40D1B", G: "#1AA45B", B: "#8A5A2B", Y: "#9A7A10",
+             W: "#FFFFFF", O: "#C56A00", K: "#333333"};
+
+  var ICON = {
+    pin: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6zM12 14v7" stroke="#414141" stroke-width="2.2" stroke-linejoin="round"/></svg>',
+    tick: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#0D6EFD"/><path d="M7 12.5l3.2 3L17 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    warn: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9L2.5 17a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#A35800" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    redo: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 11-2.3-5.7M20 4v5h-5" stroke="#0A58CA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+    });
+  }
+  function key(rowId, iso) { return rowId + "|" + iso; }
+
+  function render() {
+    if (!ARGS) return;
+    var days = ARGS.days || [], rows = ARGS.rows || [];
+    var cols = "130px repeat(" + days.length + ",minmax(0,1fr))";
+    var h = [];
+
+    h.push('<div class="panel">');
+
+    // header bar: name, meta, and the selection actions when anything is picked
+    h.push('<div class="bar"><div><span class="name">' + esc(ARGS.title) + '</span>');
+    if (ARGS.meta) h.push('<span class="meta">' + esc(ARGS.meta) + '</span>');
+    h.push('</div>');
+    if (selected.length) {
+      h.push('<div style="display:flex;align-items:center;gap:8px;">' +
+             '<span class="sel">' + selected.length + ' selected</span>' +
+             '<button class="btn" data-act="clear">Clear</button>' +
+             '<button class="btn primary" data-act="regen">Regenerate selected</button></div>');
+    } else if (ARGS.hint) {
+      h.push('<span style="font-size:12.5px;color:#777777;">' + esc(ARGS.hint) + '</span>');
+    }
+    h.push('</div>');
+
+    // day header row
+    h.push('<div class="grid" style="grid-template-columns:' + cols + '">');
+    h.push('<div class="head">Slot</div>');
+    days.forEach(function (d, i) {
+      var t = THEME[d.theme] || ["#F0F0F0", "#555555"];
+      h.push('<div class="day"><span class="lbl">' + esc(d.label) +
+             (d.has_issue ? '<span class="dot-issue" title="Something to look at"></span>' : '') +
+             '</span>');
+      h.push('<span class="pill" style="background:' + t[0] + ';color:' + t[1] + '">' +
+             esc(d.theme_label || d.theme) + '</span>');
+      if (d.region) {
+        h.push('<span class="pill" style="background:#FFF6E3;color:#6B4E00;">' + esc(d.region) + '</span>');
+      }
+      h.push('<button class="why" data-why="' + i + '" aria-expanded="' + (openDay === i) + '">' +
+             (openDay === i ? "Hide" : "Why this menu") + '</button>');
+      h.push('</div>');
+    });
+    h.push('</div>');
+
+    // the explain panel sits directly under the day it belongs to
+    if (openDay !== null && ARGS.explain && ARGS.explain[days[openDay].iso]) {
+      var ex = ARGS.explain[days[openDay].iso];
+      h.push('<div class="explain"><div><h4>Why this menu · ' + esc(days[openDay].label) +
+             '</h4><p>' + esc(ex.overview || "") + '</p></div><div>');
+      (ex.checks || []).forEach(function (c) {
+        var ok = c.passed !== false;
+        h.push('<div class="check"><span style="color:' + (ok ? "#1AA45B" : "#A35800") +
+               ';font-weight:800;flex-shrink:0;">' + (ok ? "✓" : "!") + '</span><span>' +
+               esc(c.text) + '</span></div>');
+      });
+      h.push('</div></div>');
+    }
+
+    // one grid row per slot
+    rows.forEach(function (r) {
+      h.push('<div class="grid" style="grid-template-columns:' + cols + '">');
+      h.push('<div class="slot">' + esc(r.label) +
+             (r.shared ? '<span class="shared">Shared</span>' : '') + '</div>');
+      days.forEach(function (d) {
+        var c = (r.cells || {})[d.iso] || {};
+        var k = key(r.id, d.iso);
+        var on = selected.indexOf(k) !== -1;
+        if (c.off || !c.name) {
+          h.push('<div class="cell off">' + esc(c.name || "—") + '</div>');
+          return;
+        }
+        var cls = "cell" + (on ? " on" : "") + (c.nonveg ? " nonveg" : "");
+        h.push('<button class="' + cls + '" data-cell="' + esc(k) + '"' +
+               ' aria-pressed="' + on + '" title="' + esc(c.title || c.name) + '">');
+        h.push('<span class="dot" style="background:' + (DOT[c.color] || "#FFFFFF") + '"></span>');
+        if (c.pinned) h.push(ICON.pin);
+        h.push('<span class="nm">' + esc(c.name) + '</span>');
+        h.push('<span class="tail">');
+        if (on) h.push(ICON.tick);
+        else if (c.warn) h.push(ICON.warn);
+        else if (c.modified) h.push(ICON.redo);
+        h.push('</span></button>');
+      });
+      h.push('</div>');
+    });
+
+    h.push('</div>');
+    document.getElementById("root").innerHTML = h.join("");
+    wire();
+    setHeight();
+  }
+
+  function wire() {
+    document.querySelectorAll("[data-cell]").forEach(function (el) {
+      el.onclick = function () {
+        var k = el.getAttribute("data-cell");
+        var i = selected.indexOf(k);
+        if (i === -1) selected.push(k); else selected.splice(i, 1);
+        render();                       // selection is local; no rerun yet
+      };
+    });
+    document.querySelectorAll("[data-why]").forEach(function (el) {
+      el.onclick = function () {
+        var i = +el.getAttribute("data-why");
+        openDay = (openDay === i) ? null : i;
+        render();
+      };
+    });
+    var clear = document.querySelector('[data-act="clear"]');
+    if (clear) clear.onclick = function () { selected = []; render(); };
+    var regen = document.querySelector('[data-act="regen"]');
+    // Only THIS sends a value back, so Streamlit reruns once per regenerate
+    // rather than once per click. nonce makes two identical requests distinct,
+    // otherwise the second is dropped as an unchanged widget value.
+    if (regen) regen.onclick = function () {
+      setValue({action: "regenerate", cells: selected.slice(), nonce: Date.now()});
+      selected = [];
+      render();
+    };
+  }
+
+  window.addEventListener("message", function (e) {
+    if (!e.data || e.data.type !== "streamlit:render") return;
+    ARGS = e.data.args || {};
+    // A new plan replaces the table underneath; a stale selection would point
+    // at cells that are gone.
+    if (ARGS.reset_token !== undefined && ARGS.reset_token !== window.__token) {
+      window.__token = ARGS.reset_token;
+      selected = [];
+      openDay = null;
+    }
+    render();
+  });
+
+  post("streamlit:componentReady", {apiVersion: 1});
+  setHeight();
+})();
+</script>
