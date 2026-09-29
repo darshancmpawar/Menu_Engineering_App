@@ -119,6 +119,37 @@ def regen_request(picked: Optional[dict], last_nonce=None) -> Optional[dict]:
     return {"nonce": nonce, "cells": by_day} if by_day else None
 
 
+def explain_days(payload: Optional[dict]) -> dict:
+    """An `/explain` response → `{iso: {"overview", "checks"}}` for the table.
+
+    The table's per-day panel is the SHORT read: the paragraph a chef actually
+    reads, and the verdicts as ticks. The full four-step version — plate,
+    pairings, provenance, relaxations, raw bullets — stays in the expander
+    below, which is a different reader with a different question.
+
+    Days with no overview and no checks are dropped rather than returned empty,
+    because the component only offers a "Why this menu" button for days it has
+    something to say about. An empty entry would put a button on screen that
+    opens a blank panel, which is what it did before this existed.
+    """
+    out = {}
+    for day in ((payload or {}).get("days") or []):
+        iso = str(day.get("date") or "")
+        if not iso:
+            continue
+        checks = [
+            {"text": " — ".join(p for p in (
+                str(c.get("name", "")).replace("_", " ").strip(),
+                str(c.get("detail", "")).strip()) if p),
+             "passed": c.get("passed") is not False}
+            for c in (day.get("checks") or [])
+        ]
+        overview = str(day.get("overview") or "").strip()
+        if overview or checks:
+            out[iso] = {"overview": overview, "checks": checks}
+    return out
+
+
 def day_cells(plan: dict, dates: List[str], day_types: dict,
               nonveg: Optional[dict] = None,
               off_days: Optional[set] = None,
@@ -204,7 +235,8 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
 
 
 def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
-               explain: Optional[dict] = None, reset_token: str = "",
+               explain: Optional[dict] = None, meal: str = "",
+               reset_token: str = "",
                key: Optional[str] = None) -> Optional[dict]:
     """Render one service's table. Returns the regenerate request, or None.
 
@@ -227,7 +259,7 @@ def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
     )
     height = _CHROME_PX + _ROW_PX * (len(args["rows"]) + 1)
     return _component(
-        title=title, meta=meta, hint=hint,
+        title=title, meta=meta, hint=hint, meal=meal,
         days=args["days"], rows=args["rows"],
         explain=explain or {}, reset_token=reset_token,
         default=None, key=key, height=height,

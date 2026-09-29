@@ -21,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui.menu_table import (  # noqa: E402 — after the path insert, on purpose
-    _color_key, cell_keys, day_cells, regen_request, warned_cells,
+    _color_key, cell_keys, day_cells, explain_days, regen_request,
+    warned_cells,
 )
 from ui.theme_tokens import ITEM_COLOR_MAP
 
@@ -211,6 +212,45 @@ def test_nothing_to_do_is_none_not_an_empty_regenerate():
     assert regen_request({"action": "regenerate", "cells": []}) is None
     assert regen_request({"action": "regenerate", "cells": ["rubbish"]}) is None
     assert regen_request({"action": "something_else", "cells": ["a|b"]}) is None
+
+
+# --- "Why this menu" -------------------------------------------------------
+
+PAYLOAD = {"days": [
+    {"date": "2026-09-21", "overview": "Rajma with jeera rice.",
+     "checks": [{"name": "colour_variety", "detail": "4 colours", "passed": True},
+                {"name": "texture_contrast", "detail": "nothing crisp",
+                 "passed": False}]},
+    {"date": "2026-09-22", "overview": "", "checks": []},
+]}
+
+
+def test_a_day_is_offered_only_when_there_is_something_to_say():
+    """The component renders the button off this lookup, and the panel is
+    guarded on the same one. An entry with no overview and no checks would put
+    a control on screen that opens nothing — which is what it did."""
+    got = explain_days(PAYLOAD)
+    assert sorted(got) == ["2026-09-21"]
+
+
+def test_a_check_reads_as_one_sentence_and_keeps_its_verdict():
+    checks = explain_days(PAYLOAD)["2026-09-21"]["checks"]
+    assert checks[0] == {"text": "colour variety — 4 colours", "passed": True}
+    assert checks[1]["passed"] is False
+
+
+def test_a_missing_verdict_is_not_read_as_a_failure():
+    """`passed` absent means the check did not report one; only an explicit
+    False is a warning. Defaulting the other way paints a day with ticks it
+    never earned."""
+    out = explain_days({"days": [{"date": "2026-09-21", "overview": "x",
+                                  "checks": [{"name": "a", "detail": "b"}]}]})
+    assert out["2026-09-21"]["checks"][0]["passed"] is True
+
+
+def test_nothing_to_explain_is_an_empty_map_not_a_crash():
+    assert explain_days(None) == {} and explain_days({}) == {}
+    assert explain_days({"days": []}) == {}
 
 
 if __name__ == "__main__":  # a runnable check without pytest

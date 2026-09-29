@@ -17,7 +17,9 @@ if _APP_DIR not in sys.path:
 os.chdir(_APP_DIR)
 
 import datetime as dt
+import hashlib
 import html
+import json
 import logging
 import threading
 import time
@@ -74,7 +76,7 @@ from ui.planner_view import (
     plan_xlsx,
     XLSX_MIME,
 )
-from ui.menu_table import menu_table, regen_request
+from ui.menu_table import explain_days, menu_table, regen_request
 from src.explain.checks import MAIN_COURSES, base_slot
 from src.application.horizon import _weekdays_from
 from src.solver._helpers import weekday_type_for_config
@@ -684,6 +686,21 @@ def _pool_warnings_expander(block: dict) -> None:
                     unsafe_allow_html=True)
 
 
+def _explain_cache_key(b: dict, key_ns: str) -> str:
+    """Cache key for one block's explanation.
+
+    Digests the PLAN, not just the client and the start date. An explanation is
+    about the dishes, and regenerating a cell changes them while leaving the
+    client, the counter and the horizon exactly as they were — so a key built
+    from those three went on hitting, and the panel kept serving the
+    pre-regenerate text. Cached, so no request went out to contradict it.
+    """
+    digest = hashlib.sha1(
+        json.dumps(b.get("plan") or {}, sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
+    return f"{st.session_state.client_name}|{key_ns}|{digest}"
+
+
 def _render_explain_expander(api, block_index: int, counter_index: int,
                              key_ns: str) -> None:
     """"Why this menu" for one plan block — a stepped read, not a text dump.
@@ -714,7 +731,7 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
     if not b.get("plan_dates") or not b.get("solution"):
         return
     store = st.session_state.setdefault("explanations", {})
-    cache_key = f"{st.session_state.client_name}|{key_ns}|{b['plan_dates'][0]}"
+    cache_key = _explain_cache_key(b, key_ns)
     with st.expander("Why this menu"):
         st.caption(
             "Plate-balance checks read off the menu itself, the reason each "
@@ -932,6 +949,11 @@ def _apply_regenerate(api, block_index: int, counter_index: int,
             if flat_regen:
                 b["nonveg"] = nonveg_slots_from_solution(solution)
                 b["pinned"] = pinned_slots_from_solution(solution)
+                # The unflattened solution is what `/explain` is given. Left
+                # stale it describes the dishes that were just REPLACED — a
+                # "Why this menu" that argues for a plate nobody is serving,
+                # with nothing on screen to say so.
+                b["solution"] = solution
 
             diffs = []
             # Cells this session has actually changed, for the table's
@@ -1340,6 +1362,16 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
         b, title=b.get("name") or "Menu",
         meta=f"{len(b.get('plan_dates') or [])} days",
         hint="Select cells to regenerate",
+        # "Mon 21 Lunch" — the heading has to name the service, or a
+        # site running lunch and dinner shows two panels headed alike.
+        meal=_MEAL_LABELS.get(b.get("meal") or LUNCH, ""),
+        # The per-day "Why this menu" panel. Empty until somebody presses
+        # Explain below, and the component shows no button for a day it has
+        # nothing for — the alternative is a control that opens a blank panel,
+        # which is what it did while this argument was not passed at all.
+        explain=explain_days(
+            (st.session_state.get("explanations") or {}).get(
+                _explain_cache_key(b, key_ns))),
         reset_token=f"{key_ns}|{'|'.join(b.get('plan_dates') or [])}",
         key=f"table_{key_ns}")
     # A component's return value is REPLAYED on every rerun, and handling a
