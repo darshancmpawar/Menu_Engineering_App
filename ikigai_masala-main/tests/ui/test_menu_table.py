@@ -24,7 +24,7 @@ from ui.menu_table import (  # noqa: E402 — after the path insert, on purpose
     _color_key, cell_keys, day_cells, explain_days, regen_request,
     warned_cells,
 )
-from ui.theme_tokens import ITEM_COLOR_MAP
+from ui.theme_tokens import ITEM_COLOR_MAP, ITEM_DOT_COLOR
 
 DATES = ["2026-09-21", "2026-09-22"]
 PLAN = {
@@ -47,20 +47,27 @@ def test_the_colour_suffix_is_read_and_removed_from_the_name():
     assert "(" not in cell["name"]
 
 
-def test_the_colour_is_spelled_out_and_the_name_is_printed_in_it():
-    """The planner reads "Yellow", not "Y", and the dish itself carries the
-    colour — that is the whole point of the colour column."""
+def test_the_colour_becomes_a_swatch_and_a_readable_foreground():
+    """Two colours per cell, for two jobs.
+
+    `color_dot` is the swatch the cell draws beside the dish; `color_fg` is the
+    readable version, used where the colour has to carry TEXT — the dish names
+    in the explain paragraph. For every colour but one they are the same value,
+    and the one exception is the whole reason there are two.
+    """
     cell = _args()["rows"][0]["cells"]["2026-09-21"]
-    assert cell["color_name"] == "Yellow"
+    assert cell["color"] == "Y"
+    assert cell["color_dot"] == ITEM_DOT_COLOR["Y"]
     assert cell["color_fg"] == ITEM_COLOR_MAP["Y"][2]
 
 
-def test_a_white_dish_is_not_printed_in_white():
-    """The fg is the READABLE colour, not the colour itself. #FFFFFF on a
-    white cell is an empty cell, and the dish silently disappears."""
+def test_white_is_a_white_swatch_but_never_white_text():
+    """The exception, stated both ways. A white dot is drawn as white and the
+    component outlines it; white TEXT on a white cell is an empty cell, so the
+    foreground is the readable grey instead."""
     out = day_cells({"2026-09-21": {"rice": "jeera_rice(W)"}}, ["2026-09-21"], {})
     cell = out["rows"][0]["cells"]["2026-09-21"]
-    assert cell["color_name"] == "White"
+    assert cell["color_dot"] == "#FFFFFF"
     assert cell["color_fg"].lower() not in ("#fff", "#ffffff")
 
 
@@ -69,15 +76,14 @@ def test_a_dish_with_no_suffix_still_renders():
                     {"2026-09-21": "mix"})
     cell = out["rows"][0]["cells"]["2026-09-21"]
     assert cell["color"] == "" and cell["name"] == "Plain Rice"
-    # No colour → no tag and the default ink, rather than a blank tag or a
-    # name painted in the empty string.
-    assert cell["color_name"] == "" and cell["color_fg"] == ""
+    # No colour → no swatch and no ink, rather than a black dot standing in.
+    assert cell["color_dot"] == "" and cell["color_fg"] == ""
 
 
 def test_an_unknown_colour_letter_does_not_invent_a_colour():
     out = day_cells({"2026-09-21": {"rice": "mystery_rice(Z)"}}, ["2026-09-21"], {})
     cell = out["rows"][0]["cells"]["2026-09-21"]
-    assert cell["color"] == "Z" and cell["color_name"] == ""
+    assert cell["color"] == "Z" and cell["color_dot"] == ""
 
 
 def test_the_cell_key_is_slot_then_date():
