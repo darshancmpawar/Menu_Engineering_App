@@ -90,3 +90,11 @@ ITEM_COLOR_MAP = {
     "O": ("Orange", TINT_ORANGE, "#C56A00"),
     "K": ("Black",  "#E8E8E8",   "#333333"),
 }
+
+# The dot in a menu cell is a SWATCH, not text, so it wants the colour itself
+# rather than a readable substitute for it. Identical to the foregrounds above
+# except White — the one colour you cannot also read words in, which is why the
+# foreground says #555555 while the swatch stays #FFFFFF and the component
+# draws it a grey outline so it is visible on a white cell.
+ITEM_DOT_COLOR = {k: v[2] for k, v in ITEM_COLOR_MAP.items()}
+ITEM_DOT_COLOR["W"] = "#FFFFFF"

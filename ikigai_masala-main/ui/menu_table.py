@@ -27,7 +27,7 @@ from typing import List, Optional
 import streamlit.components.v1 as components
 
 from ui.formatters import display_label_for_slot_id, format_item_for_ui
-from ui.theme_tokens import ITEM_COLOR_MAP
+from ui.theme_tokens import ITEM_COLOR_MAP, ITEM_DOT_COLOR
 
 _DIR = Path(__file__).parent / "menu_table"
 _component = components.declare_component("ikigai_menu_table", path=str(_DIR))
@@ -209,16 +209,16 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
                 continue
             k = f"{slot_id}|{iso}"
             col = _color_key(str(raw))
-            col_name, col_bg, col_fg = ITEM_COLOR_MAP.get(col, ("", "", ""))
             cells[iso] = {
                 "name": format_item_for_ui(str(raw)),
                 "color": col,
-                # Spelled out, and the name printed in it. The foreground is
-                # the READABLE one from the map, not the colour itself: a white
-                # dish prints #555555, because white on white is a blank cell.
-                "color_name": col_name,
-                "color_bg": col_bg,
-                "color_fg": col_fg,
+                # Two colours, for two jobs. `color_dot` is the SWATCH the cell
+                # draws beside the dish; `color_fg` is the READABLE version,
+                # used where the colour has to carry text — the dish names in
+                # the explain paragraph. They differ only for White, and that
+                # difference is the whole reason there are two.
+                "color_dot": ITEM_DOT_COLOR.get(col, ""),
+                "color_fg": ITEM_COLOR_MAP.get(col, ("", "", ""))[2],
                 "nonveg": slot_id in (nonveg.get(iso) or set()),
                 "pinned": k in pinned,
                 "warn": k in warned,

@@ -1074,9 +1074,10 @@ def _render_region_strip(api, city, dates, day_themes, has_plan):
     applied = st.session_state.setdefault("region_applied", {})
     pending = st.session_state.setdefault("region_pending", {})
 
-    st.markdown('<p class="page-subtitle" style="margin-top:0.8rem;'
-                'font-size:0.95rem;font-weight:700">Regional days</p>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div class="region-strip-title">Regional days</div>'
+        "<div class=\"region-strip-sub\">On top of the day's theme</div>",
+        unsafe_allow_html=True)
 
     if not meta.get("available"):
         st.info(
@@ -1101,10 +1102,9 @@ def _render_region_strip(api, city, dates, day_themes, has_plan):
         options = _region_options(meta, theme)
         with col:
             st.markdown(
-                f'<div style="font-size:0.78rem;font-weight:700">{label}</div>'
-                f'<div style="font-size:0.68rem;color:#8a8a8a;'
-                f'text-transform:uppercase;letter-spacing:.04em">'
-                f'{theme or "—"}</div>', unsafe_allow_html=True)
+                f'<div class="region-day">{label}</div>'
+                f'<div class="region-theme">{theme or "—"}</div>',
+                unsafe_allow_html=True)
             enabled = [o for o in options if not o[2]]
             if not enabled:
                 # A chinese / biryani / continental day narrows its main slots
@@ -1358,10 +1358,15 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
     # The table IS the regenerate control: tick cells, press Regenerate. The
     # `reset_token` is what the selection is scoped to — a fresh plan changes
     # it and the component drops a selection that now points at other dishes.
+    # The counter's name is already the TAB above this table, so the panel
+    # heading is the service and the meta is the shape of the grid — which is
+    # what somebody scanning two services on one page actually needs.
+    _slots = len({s for d in (b.get("plan") or {}).values() for s in d})
+    _dishes = sum(len(d) for d in (b.get("plan") or {}).values())
     picked = menu_table(
-        b, title=b.get("name") or "Menu",
-        meta=f"{len(b.get('plan_dates') or [])} days",
-        hint="Select cells to regenerate",
+        b, title=_MEAL_LABELS.get(b.get("meal") or LUNCH, "Menu"),
+        meta=f"{_slots} slots · {_dishes} dishes",
+        hint="Click dishes to select them for regenerate",
         # "Mon 21 Lunch" — the heading has to name the service, or a
         # site running lunch and dinner shows two panels headed alike.
         meal=_MEAL_LABELS.get(b.get("meal") or LUNCH, ""),
@@ -1678,6 +1683,14 @@ if _blocks and any(b.get("plan") for b in _blocks):
         slots_per_day = len({s for d in b0["plan_dates"] for s in b0["plan"].get(d, {})})
         cards.append(("Slots per day", str(slots_per_day)))
     cards.append(("Total items", str(total_items)))
+    # Warnings last, and only when there are some. A card reading "0" every
+    # time is a card nobody looks at, which is the same as not having it —
+    # and it would push the count that matters out of the eye's first pass.
+    _warns = sum(len(b.get("pool_warnings") or []) for b in _blocks)
+    _warns += sum(1 for d in (st.session_state.get("rule_diagnostics") or [])
+                  if isinstance(d, dict) and d.get("severity") == "warning")
+    if _warns:
+        cards.append(("Warnings", str(_warns)))
     st.markdown(
         '<div class="metrics-grid">' + ''.join(
             f'<div class="metric-card"><div class="metric-label">{lbl}</div>'

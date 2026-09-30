@@ -9,6 +9,7 @@ from ui.theme_tokens import (
     YELLOW, YELLOW_HOVER, BLUE, BLUE_HOVER, GREEN, ORANGE, RED,
     PAGE_BG, CARD_BG, ALT_ROW, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_TERTIARY,
     TEXT_DISABLED, BORDER, TINT_BLUE, TINT_ORANGE, TINT_YELLOW, PURPLE,
+    RADIUS_CARD, SHADOW_PANEL,
 )
 
 STYLES = f"""
@@ -189,6 +190,34 @@ STYLES = f"""
     .metric-value {{
         font-size: 1.5rem; font-weight: 800; color: var(--text-primary);
         letter-spacing: -0.5px; line-height: 1;
+    }}
+
+    /* ================================================================
+       REGIONAL DAYS STRIP
+       A card, not a loose stack: the picker, the per-day chips and the
+       Apply/Reset buttons are ONE control, and a heading floating above bare
+       selectboxes reads as three unrelated things. Matches the planner
+       mockup's strip — the dropdown itself is still Streamlit's, which the
+       mockup draws as a custom menu.
+       ================================================================ */
+    .region-strip {{
+        background: {CARD_BG}; border: 1px solid {BORDER};
+        border-radius: {RADIUS_CARD}; box-shadow: {SHADOW_PANEL};
+        padding: 0.75rem 1rem; margin-bottom: 1rem;
+    }}
+    .region-strip-title {{
+        font-size: 0.84rem; font-weight: 800; color: {TEXT_PRIMARY};
+        line-height: 1.2;
+    }}
+    .region-strip-sub {{
+        font-size: 0.72rem; color: {TEXT_TERTIARY}; margin-bottom: 0.1rem;
+    }}
+    /* The day's own label inside a chip: name above, theme beneath in the
+       same uppercase micro-type the table's pills use. */
+    .region-day {{ font-size: 0.78rem; font-weight: 700; color: {TEXT_PRIMARY}; }}
+    .region-theme {{
+        font-size: 0.66rem; color: {TEXT_TERTIARY}; text-transform: uppercase;
+        letter-spacing: 0.04em; margin-bottom: 0.15rem;
     }}
 
     /* ================================================================

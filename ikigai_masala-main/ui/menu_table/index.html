@@ -42,18 +42,22 @@
   .grid { display: grid; border-top: 1px solid #131313; }
   .head { background: #000000; color: #FFFFFF; padding: 10px 12px;
           font-size: 12px; font-weight: 700; display: flex; align-items: flex-end; }
-  .day  { background: #000000; padding: 8px 10px; display: flex;
-          flex-direction: column; gap: 4px; border-left: 1px solid #333333; }
+  .day  { background: #131313; padding: 10px 8px; display: flex;
+          flex-direction: column; align-items: center; gap: 6px;
+          border-left: 1px solid #2A2A2A; }
   .day .lbl { display: flex; align-items: center; gap: 6px; font-size: 13px;
               font-weight: 700; color: #FFFFFF; }
   .dot-issue { width: 7px; height: 7px; border-radius: 50%; background: #F78D00; }
   .pill { display: inline-block; padding: 2px 9px; border-radius: 99px;
           font-size: 9.5px; font-weight: 700; text-transform: uppercase;
           letter-spacing: 0.04em; align-self: flex-start; }
-  .why  { margin-top: 2px; align-self: flex-start; background: transparent;
-          border: 1px solid #444444; color: #FFFFFF; border-radius: 8px;
-          font-size: 10.5px; font-weight: 700; padding: 3px 8px;
+  .why  { background: transparent; border: 1px solid rgba(255,255,255,0.35);
+          color: #FFFFFF; border-radius: 99px; font-size: 11px;
+          font-weight: 700; padding: 4px 10px;
           font-family: inherit; cursor: pointer; }
+  /* Open reads as a pressed control, not a second way of saying the same
+     thing — the row above it is black, so an outline alone barely changes. */
+  .why.open { background: #FEBF34; color: #131313; border-color: #FEBF34; }
 
   .slot { background: #F9F9F9; padding: 8px 12px; font-size: 11.5px;
           font-weight: 600; color: #414141; border-right: 1px solid #131313;
@@ -61,26 +65,29 @@
   .slot .shared { font-size: 9.5px; font-weight: 700; color: #0A58CA;
                   text-transform: uppercase; letter-spacing: 0.04em; }
 
-  .cell { display: flex; align-items: center; gap: 7px; width: 100%;
-          padding: 9px 11px; background: #FFFFFF; border: none;
+  .cell { display: flex; align-items: center; gap: 6px; width: 100%;
+          min-width: 0; padding: 8px 10px; border: none;
           border-left: 1px solid #131313; text-align: left;
-          font-family: inherit; font-size: 12.5px; color: #131313;
-          cursor: pointer; min-height: 40px;
+          font-family: inherit; cursor: pointer; min-height: 38px;
           transition: background-color .18s ease; }
-  .cell:hover { background: #F5F5F5; }
   .cell:focus-visible { outline: 2px solid #0D6EFD; outline-offset: -2px; }
-  .cell.on { background: #EBF3FF; }
-  .cell.off { background: #F9F9F9; color: #AEAEAE; cursor: default; }
+  .cell.off { background: #F9F9F9; color: #AEAEAE; cursor: default;
+              font-size: 12.5px; }
+  /* A pinned cell is fixed by a rule, so regenerating it would hand back the
+     same dish. Not selectable, and the cursor says so before the click. */
+  .cell.pinned { cursor: not-allowed; }
+  /* The SWATCH. White needs an outline or it is an invisible hole in a white
+     cell — the one colour that cannot be drawn as itself unaided. */
+  .cell .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+               box-sizing: border-box; }
   .cell .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-              font-weight: 600; }
-  .cell .tail { margin-left: auto; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
-  .tag { font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-         letter-spacing: 0.04em; padding: 2px 7px; border-radius: 99px;
-         white-space: nowrap; }
-  /* The dish name already carries the item colour, so non-veg cannot also be
-     red — that is the Red item colour, and one cell would be saying two
-     different things in the same ink. It gets its own outlined word instead. */
-  .tag.nv { background: #FFFFFF; color: #131313; border: 1.5px solid #131313; }
+              font-size: 12.5px; line-height: 1.3; color: #131313;
+              font-weight: 500; }
+  /* Non-veg is the one thing in a cell worth reading before the dish name.
+     Red here is unambiguous because the colour itself lives in the dot. */
+  .cell.nonveg .nm { color: #C40D1B; font-weight: 700; }
+  .cell .tail { margin-left: auto; flex-shrink: 0; display: flex;
+                align-items: center; }
 
   .explain { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr);
              gap: 18px; padding: 14px 16px; background: #FFFBF2;
@@ -90,6 +97,9 @@
   .explain p  { margin: 0; font-size: 13px; color: #414141; line-height: 1.6; }
   .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
            color: #131313; line-height: 1.45; margin-bottom: 7px; }
+  .mark  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+           display: flex; align-items: center; justify-content: center;
+           font-size: 10px; font-weight: 800; color: #FFFFFF; margin-top: 1px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 <div id="root"></div>
@@ -206,7 +216,8 @@
       // unconditionally it was a control that toggled to "Hide" and opened
       // nothing, because the panel below is guarded on the same lookup.
       if (ARGS.explain && ARGS.explain[d.iso]) {
-        h.push('<button class="why" data-why="' + i + '" aria-expanded="' + (openDay === i) + '">' +
+        h.push('<button class="why' + (openDay === i ? ' open' : '') +
+               '" data-why="' + i + '" aria-expanded="' + (openDay === i) + '">' +
                (openDay === i ? "Hide" : "Why this menu") + '</button>');
       }
       h.push('</div>');
@@ -221,19 +232,25 @@
       h.push('<div class="explain"><div><h4>Why this menu · ' + esc(head) +
              '</h4><p>' + colourDishes(ex.overview || "", iso) + '</p></div><div>');
       (ex.checks || []).forEach(function (c) {
-        var ok = c.passed !== false;
-        h.push('<div class="check">' + (ok ? ICON.tickOk : ICON.warn) +
-               '<span>' + esc(c.text) + '</span></div>');
+        // Three marks, not two: a check that PASSED, one that flagged, and a
+        // note that is neither. Collapsing the third into a warning is how a
+        // panel ends up looking alarming about something nobody needs to act
+        // on, which is the fastest way to have it ignored.
+        var m = c.passed === false ? ["#C56A00", "!"]
+              : c.passed === true ? ["#1AA45B", "\u2713"] : ["#0A58CA", "i"];
+        h.push('<div class="check"><span class="mark" style="background:' +
+               m[0] + '">' + m[1] + '</span><span>' + esc(c.text) +
+               '</span></div>');
       });
       h.push('</div></div>');
     }
 
     // one grid row per slot
-    rows.forEach(function (r) {
+    rows.forEach(function (r, ri) {
       h.push('<div class="grid" style="grid-template-columns:' + cols + '">');
       h.push('<div class="slot">' + esc(r.label) +
              (r.shared ? '<span class="shared">Shared</span>' : '') + '</div>');
-      days.forEach(function (d) {
+      days.forEach(function (d, di) {
         var c = (r.cells || {})[d.iso] || {};
         var k = key(r.id, d.iso);
         var on = selected.indexOf(k) !== -1;
@@ -241,22 +258,32 @@
           h.push('<div class="cell off">' + esc(c.name || "—") + '</div>');
           return;
         }
-        var cls = "cell" + (on ? " on" : "");
-        h.push('<button class="' + cls + '" data-cell="' + esc(k) + '"' +
-               ' aria-pressed="' + on + '" title="' + esc(c.title || c.name) + '">');
+        // One background, decided in one place. Ordered by how much the
+        // reader needs it: what they just picked, then what needs looking at,
+        // then what changed, then the day they opened, then the zebra that
+        // only has to make a long row followable.
+        var bg = on ? "#EBF3FF"
+               : c.warn ? "#FFF5E8"
+               : c.modified ? "#EBF3FF"
+               : (openDay === di ? "#FFFBF2" : (ri % 2 ? "#F9F9F9" : "#FFFFFF"));
+        var st = "background:" + bg + (on ? ";box-shadow:inset 0 0 0 2px #0D6EFD" : "");
+        var cls = "cell" + (c.nonveg ? " nonveg" : "") + (c.pinned ? " pinned" : "");
+        // A pinned cell carries no `data-cell`, so `wire` never binds it and
+        // it cannot join a selection — the rule already decided this dish.
+        h.push('<button class="' + cls + '"' +
+               (c.pinned ? ' aria-disabled="true"' : ' data-cell="' + esc(k) + '"') +
+               ' style="' + st + '" aria-pressed="' + on + '"' +
+               ' title="' + esc(c.title || c.name) + '">');
+        h.push('<span class="dot" style="background:' + esc(c.color_dot || "#FFFFFF") +
+               (c.color === "W" ? ';border:1px solid #AEAEAE' : '') + '"></span>');
         if (c.pinned) h.push(ICON.pin);
-        h.push('<span class="nm"' + (c.color_fg ? ' style="color:' + esc(c.color_fg) + '"' : '') +
-               '>' + esc(c.name) + '</span>');
-        h.push('<span class="tail">');
-        if (c.nonveg) h.push('<span class="tag nv">Non-veg</span>');
-        if (c.color_name) {
-          h.push('<span class="tag" style="background:' + esc(c.color_bg) +
-                 ';color:' + esc(c.color_fg) + '">' + esc(c.color_name) + '</span>');
-        }
-        if (on) h.push(ICON.tick);
-        else if (c.warn) h.push(ICON.warn);
-        else if (c.modified) h.push(ICON.redo);
-        h.push('</span></button>');
+        h.push('<span class="nm">' + esc(c.name) + '</span>');
+        // At most ONE marker, and in this order: a tick for what you picked
+        // beats a warning you have already responded to by picking it.
+        if (on) h.push('<span class="tail">' + ICON.tick + '</span>');
+        else if (c.warn) h.push('<span class="tail">' + ICON.warn + '</span>');
+        else if (c.modified) h.push('<span class="tail">' + ICON.redo + '</span>');
+        h.push('</button>');
       });
       h.push('</div>');
     });
