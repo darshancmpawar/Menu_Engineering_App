@@ -83,7 +83,10 @@ from src.explain.evidence import (
     attach_relaxations, attrs_from_dataframe, build_plan_evidence,
 )
 from src.explain.renderer import day_overview
-from api.explain_llm import explain_plan
+from api.explain_llm import (
+    explain_plan, explain_chef_read, chef_attrs_from_dataframe,
+    city_dish_names_from_dataframe,
+)
 from src.solver.menu_solver import MenuSolver
 from src.solver._helpers import (
     strip_color_suffix,
@@ -1912,6 +1915,15 @@ def explain_menu():
             attach_relaxations(packs, [r for r in relaxations if isinstance(r, dict)])
 
         rendered = explain_plan(packs)
+        # The chef's read: off unless EXPLAIN_CHEF_READ_ENABLED. Never raises;
+        # a day that fails simply carries source=None and its reason.
+        chef = explain_chef_read(
+            packs,
+            extras=chef_attrs_from_dataframe(inputs.df),
+            recency=inputs.recency_by_item,
+            region_days=getattr(inputs, 'region_days', None),
+            city_dish_names=city_dish_names_from_dataframe(inputs.df),
+        )
         days = []
         for pack in packs:
             extra = rendered.get(pack['date'], {})
@@ -1960,6 +1972,10 @@ def explain_menu():
                 'prose': extra.get('prose'),
                 'llm_used': bool(extra.get('llm_used')),
                 'reason': extra.get('reason', ''),
+                # Both notes go to the planner. A client-facing surface must
+                # show only chef_read['client_read'] - never internal_read or
+                # data_doubts.
+                'chef_read': chef.get(pack['date']),
             })
         return jsonify({
             'success': True,

@@ -79,6 +79,53 @@ footer, .stDeployButton, [data-testid="stDecoration"],
 }}
 
 /* ================================================================
+   WIZARD RAIL
+   The editor already numbered its three steps, but a number on its own
+   says "this is step 2" and not "of how many, which are done, what is
+   left". All three render stacked, so without a rail a long client has
+   no sense of place and no way to tell a step they finished from one
+   they skipped. Display only — the editor's own state decides what is
+   done, so there is nothing here to click and no component needed.
+   ================================================================ */
+.pulse-rail {{
+    display: flex; align-items: stretch; gap: 0;
+    background: {CARD_BG}; border: 1px solid {BORDER};
+    border-radius: 14px; box-shadow: 0 1px 3px rgba(19,19,19,0.05);
+    padding: 0.55rem 0.5rem; margin-bottom: 1.1rem; overflow: hidden;
+}}
+.pulse-rail-step {{
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.35rem 0.7rem; flex: 1; min-width: 0;
+}}
+/* The line between steps is the only thing saying they are a SEQUENCE
+   rather than three independent cards sitting in a row. */
+.pulse-rail-step + .pulse-rail-step {{ border-left: 1px solid {BORDER}; }}
+.pulse-rail-num {{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    font-size: 0.72rem; font-weight: 800;
+    background: #F0F0F0; color: {TEXT_DISABLED};
+}}
+.pulse-rail-text {{ min-width: 0; }}
+.pulse-rail-name {{
+    font-size: 0.8rem; font-weight: 700; color: {TEXT_DISABLED};
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}}
+.pulse-rail-meta {{
+    font-size: 0.68rem; color: {TEXT_TERTIARY};
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}}
+/* Done is green and current is yellow, never both: two highlighted
+   steps is the state the rail exists to rule out. */
+.pulse-rail-step.done .pulse-rail-num {{ background: {GREEN}; color: #FFFFFF; }}
+.pulse-rail-step.done .pulse-rail-name {{ color: {TEXT_SECONDARY}; }}
+.pulse-rail-step.now .pulse-rail-num {{
+    background: {YELLOW}; color: {TEXT_PRIMARY};
+    box-shadow: 0 1px 3px rgba(254,191,52,0.4);
+}}
+.pulse-rail-step.now .pulse-rail-name {{ color: {TEXT_PRIMARY}; }}
+
+/* ================================================================
    CARDS — style Streamlit bordered containers as white Pulse cards
    ================================================================ */
 [data-testid="stVerticalBlockBorderWrapper"] {{
