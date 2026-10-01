@@ -291,11 +291,33 @@ STYLES = f"""
     }}
 
     /* Empty state */
+    /* The empty state is also the state after Clear All, so it is not a
+       decoration — it is where somebody lands mid-task. A dashed box with an
+       emoji says "nothing here"; what a planner needs is what WILL happen if
+       they press Generate, which is the `.empty-recap` row below. */
     .empty-state {{
-        text-align: center; padding: 5rem 2rem;
-        border: 2px dashed var(--border-subtle);
-        border-radius: var(--radius-xl); margin: 3rem auto; max-width: 500px;
-        background: var(--bg-secondary);
+        text-align: center; padding: 3rem 2rem 2.25rem;
+        border: 1px solid var(--border-subtle);
+        border-radius: {RADIUS_CARD}; margin: 2.5rem auto; max-width: 620px;
+        background: var(--bg-secondary); box-shadow: {SHADOW_PANEL};
+    }}
+    /* What the sidebar is currently set to, so the check happens BEFORE a
+       solve rather than after reading a wrong week. Blank-safe: a field with
+       nothing in it shows a dash and still holds its column. */
+    .empty-recap {{
+        display: flex; justify-content: center; flex-wrap: wrap; gap: 0;
+        margin: 1.4rem auto 0; border-top: 1px solid var(--border-subtle);
+        padding-top: 1.1rem;
+    }}
+    .empty-recap div {{ padding: 0 1.15rem; min-width: 84px; }}
+    .empty-recap div + div {{ border-left: 1px solid var(--border-subtle); }}
+    .empty-recap .k {{
+        font-size: 0.62rem; color: var(--text-tertiary); font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.06em;
+    }}
+    .empty-recap .v {{
+        font-size: 0.95rem; font-weight: 800; color: var(--text-primary);
+        line-height: 1.3; margin-top: 0.15rem;
     }}
     .empty-icon {{
         width: 64px; height: 64px; margin: 0 auto 1rem; border-radius: 50%;

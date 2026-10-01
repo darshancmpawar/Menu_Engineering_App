@@ -1824,8 +1824,32 @@ if _blocks and any(b.get("plan") for b in _blocks):
     _render_changes_log()
 
 else:
-    st.markdown("""<div class="empty-state">
-        <div class="empty-icon">&#127835;</div>
-        <h3>No menu plan yet</h3>
-        <p>Select a client and click <b>Generate Menu Plan</b><br>in the sidebar to get started.</p>
-    </div>""", unsafe_allow_html=True)
+    # Also the state after Clear All, so somebody lands here mid-task rather
+    # than only on first load. Two jobs: say what the next action is, and show
+    # what that action would USE — the sidebar is a column away and a wrong
+    # client or a wrong week is cheaper to catch here than after a solve.
+    _ready = bool(selected_client and selected_client != _empty_msg)
+    _recap = [
+        ("Client", selected_client if _ready else None),
+        ("City", st.session_state.get("client_city")),
+        ("Starts", start_date.strftime("%a %d %b") if start_date else None),
+        ("Days", str(num_days) if num_days else None),
+        ("Services", ", ".join(_MEAL_LABELS.get(m, m) for m in plan_meals)
+         if plan_meals else None),
+    ]
+    st.markdown(
+        '<div class="empty-state">'
+        '<div class="empty-icon">&#127835;</div>'
+        f'<h3>{"Ready to plan" if _ready else "No menu plan yet"}</h3>'
+        '<p>' + (
+            "Press <b>Generate Menu Plan</b> in the sidebar. Nothing is saved "
+            "until you choose to save it."
+            if _ready else
+            "Pick a client in the sidebar to get started."
+        ) + '</p>'
+        '<div class="empty-recap">' + "".join(
+            f'<div><div class="k">{html.escape(k)}</div>'
+            f'<div class="v">{html.escape(v) if v else "&mdash;"}</div></div>'
+            for k, v in _recap
+        ) + '</div></div>',
+        unsafe_allow_html=True)

@@ -98,6 +98,59 @@ def _step_header(num: int, title: str, desc: str) -> None:
     )
 
 
+def rail_steps(client: str, mode: str, counters: int, ready: bool) -> List[tuple]:
+    """`[(number, title, meta, state)]` where state is "done", "now" or "".
+
+    Separated from the rendering because this is the part that can be WRONG.
+    Two things it guarantees, and both are the reason the rail is worth having:
+    a step is `done` only when the editor's own state says so, never from a
+    click count; and at most ONE step is `now` — two highlighted steps is
+    exactly the confusion a progress rail exists to remove.
+    """
+    steps = [
+        (1, "Client", client or "none picked yet", bool(client)),
+        (2, "Counters",
+         (f"{counters} counters" if mode == "multi" else "single counter")
+         if mode else "not chosen yet",
+         bool(mode)),
+        (3, "Categories",
+         "ready to save" if ready else "set what each counter serves",
+         bool(ready)),
+    ]
+    # The first unfinished step is the live one. All finished -> none is live,
+    # which is correct: there is nothing left to point at.
+    nxt = next((n for n, _t, _m, done in steps if not done), None)
+    return [(n, t, m, "done" if done else ("now" if n == nxt else ""))
+            for n, t, m, done in steps]
+
+
+def _wizard_rail(client: str, mode: str, counters: int, ready: bool) -> None:
+    """The three steps, which are done, and which one is live.
+
+    `_step_header` numbers each step but a number alone says "this is step 2",
+    not "of how many, which are behind you, what is left". All three render
+    stacked on one page, so without this a long client has no sense of place
+    and no way to tell a step they finished from one they scrolled past.
+
+    Done is decided by the editor's OWN state rather than by a click count, so
+    the rail cannot claim progress that was not made: step 1 is done when a
+    client is named, step 2 when a counter layout is chosen, step 3 when the
+    categories are ready to save.
+    """
+    out = ['<div class="pulse-rail">']
+    for num, title, meta, cls in rail_steps(client, mode, counters, ready):
+        mark = "&#10003;" if cls == "done" else str(num)
+        out.append(
+            f'<div class="pulse-rail-step {cls}">'
+            f'<span class="pulse-rail-num">{mark}</span>'
+            f'<span class="pulse-rail-text">'
+            f'<div class="pulse-rail-name">{html.escape(title)}</div>'
+            f'<div class="pulse-rail-meta">{html.escape(str(meta))}</div>'
+            f'</span></div>')
+    out.append("</div>")
+    st.markdown("".join(out), unsafe_allow_html=True)
+
+
 def _counters_equal(a: List[Dict], b: List[Dict]) -> bool:
     """Structural comparison of two counter lists (order matters)."""
     if len(a) != len(b):
@@ -166,6 +219,11 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
     available_cities = metadata.get('available_cities', [])
     default_cooldown = int(metadata.get('default_item_cooldown_days', 20) or 20)
     max_counters = int(metadata.get('max_counters', 6) or 6)
+
+    # The rail goes at the TOP but can only be filled once the steps below
+    # have run — Streamlit renders in call order, so a rail drawn first knows
+    # nothing. A placeholder is the one way to have both.
+    rail_slot = st.empty()
 
     # ============================================================
     # Step 1 — Client
@@ -450,6 +508,15 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
 
     counter_mode = 'multi' if is_multi else 'single'
     empty_counters = [c['name'] for c in result_counters if not c['categories']]
+
+    # Fill the rail now that every step's real state is known. `empty_counters`
+    # is the editor's OWN readiness test — the same list the save path warns
+    # about — so the rail cannot show a tick for work that would not save.
+    with rail_slot.container():
+        _wizard_rail(
+            (selected_client or new_client_name or "").strip(),
+            counter_mode, len(result_counters),
+            bool(result_counters) and not empty_counters)
 
     # ============================================================
     # Shared categories (multi-counter only)
