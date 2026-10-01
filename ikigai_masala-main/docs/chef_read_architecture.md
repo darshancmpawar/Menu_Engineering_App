@@ -1,36 +1,37 @@
 # Chef's Read: Architecture
 
-> Owner's design document, 1 Oct 2026. `api/explain_llm.py` cites this file
-> three times and it was the one piece of the drop that never landed in the
-> repo. Reproduced here as written, except for the lines marked
-> **Since written:** — the shipped code has moved on from the draft in four
-> places and a design doc that disagrees with the code is worse than none.
+> Owner's design document, 1 Oct 2026 (second revision). `api/explain_llm.py`
+> cites this file and it was not in the repo. Reproduced as written, except
+> for the lines marked **Since written:**, where the merged code differs — a
+> design doc that disagrees with the code is worse than none.
 
 ## Summary
 
-The chef's read is an optional section of "Why this menu": an LLM reads each
-day's menu like someone who knows Indian food and writes two short notes, one
-for the people eating and one for the chef and planner. It changes nothing
-about the existing overview.
+The chef's read is a section of "Why this menu": an LLM reads each day's menu
+like someone who knows Indian food and writes two short notes, one for the
+people eating and one for the chef and planner. It runs only when someone
+presses **Ask the chef** in the planner; a plain "Explain this menu" never
+calls it, and the existing overview is unchanged.
 
+- **How it starts:** the Ask the chef button in "Why this menu". No button
+  press, no model call.
 - **What it says:** whatever matters for that day's menu, in no fixed order —
   how to put a plate together, the star of the day (if there is one), a
   regional or theme thread, comebacks after 20+ days, and, for the chef, what
   is weak and which dish looks wrongly described.
+- **Where it shows:** one *Chef's read* heading in the planner, with "For
+  guests" and "For the kitchen" as separate sections side by side.
+- **Room to write:** up to 200 words for guests and 350 for the kitchen, with
+  2,500 reply tokens; all three are settings.
 - **Who decides:** the model, using its own food knowledge, for pairings and
   the star.
 - **What keeps it honest:** the model also returns a hidden claim list; code
   checks those claims and both notes for truth (dishes, numbers, star reason,
-  client vs chef consistency), never for shape. A failed draft goes back with
-  its problems, up to 3 times.
-- **Delivered:** `api/explain_llm.py` (previous code kept, chef's read added),
-  `tests/explain/test_chef_read.py`, and `docs/chef_read_prompt.md`.
-- **Verified:** the 300 existing explain and architecture tests still pass with
-  the new module; the new tests pass offline. No real model was called — that
-  needs the AI Studio key.
-
-**Since written:** it shipped off by default and is now **on** by default; the
-key is the gate. See *Configuration*.
+  guest vs kitchen consistency), never for shape. A failed draft goes back
+  with its problems, up to 3 times.
+- **Delivered:** `api/explain_llm.py`, `chef_read_wiring.patch` (endpoint,
+  planner button and display, API client), 49 new tests across
+  `tests/explain/` and `tests/ui/`, and `docs/chef_read_prompt.md`.
 
 ## How it fits next to the overview
 
@@ -89,10 +90,15 @@ structure.
 - **Goal, not template.** "Tell them what is worth knowing about THIS menu"
   with examples of what that might be. No headings, lists or fixed order; some
   days need one line.
-- **Two audiences in one reply.** `client_read` is warm and plain, 2 to 5
-  sentences. `internal_read` is direct kitchen language, up to 6 sentences, and
-  must face `known_problems`. One reply writes both, so they come from the same
-  reading of the menu.
+- **Room to write, not a sentence count.** Each note is told to be as long as
+  the menu deserves and no longer, with one stated ceiling: under 200 words for
+  guests, under 350 for the kitchen. A quiet day can be two sentences; a full
+  regional day can be a paragraph or two. The ceilings are interpolated into
+  the prompt from the settings, so the number the model is told is always the
+  number the checks enforce.
+- **Two audiences in one reply.** `client_read` is warm and plain;
+  `internal_read` is direct kitchen language and must face `known_problems`.
+  One reply writes both, so they come from the same reading of the menu.
 - **Food knowledge is invited.** The model is told to use what it knows about
   which dishes go together and what diners look for.
 - **Hard limits, each matched by a check:** only today's dishes, no
@@ -109,17 +115,23 @@ structure.
 - **Temperature 0.2**, so the same menu tends to get the same star; the cache
   makes it exact for repeat requests.
 
-**Since written:** the draft had eight hard limits. A ninth was added — no
-bullets, no headings and no labels in front of a sentence — because "no
-template" was a line in the prompt that nothing enforced, and the model
-reliably wrote `Weak spots:` at the front of a sentence. The check vetoes list
-and heading SHAPES and the output schema's own field names, not plausible
-English, so `An easy day:` survives.
+**Since written:** the draft has eight hard limits; the shipped prompt has
+nine. The ninth — no bullets, no headings, no labels in front of a sentence,
+and never a field name from the output schema — exists because "there is no
+template" was a prompt line nothing enforced, and a model asked for prose
+reaches for a bulleted list the moment a day has three things worth saying.
+It matters MORE under the new ceilings, not less: a 350-word kitchen note is
+exactly where a list appears. The check vetoes list and heading SHAPES only,
+so `An easy day:` survives — the first draft of it rejected that, and the
+suite caught it. The prompt version is therefore `chef-read-v3`, not v2: the
+prompt text changed in both revisions and the version is part of the cache
+key.
 
 ## The checks
 
-`check_chef_read()` checks truth, never shape: it never asks for a plate, a
-star, an order or a minimum length. Every message is written to be sent
+`check_chef_read()` checks truth, never shape — it never asks for a plate, a
+star, an order or a minimum length — with the one exception noted above, which
+checks FORMAT rather than content. Every message is written to be sent
 straight back to the model.
 
 | Check | Applies to | Catches |
@@ -128,12 +140,13 @@ straight back to the model.
 | Number not in the facts | both notes | "back after 26 days" with no such fact |
 | Health topic | both notes | calories, healthy, diet, vitamins |
 | Underscores | both notes | `jeera_chapati` in prose |
+| List, heading or schema label | both notes | `- bullet`, `## heading`, `Weak spots:` |
 | Machinery words | client | rule, cooldown, slot, score, data, system |
 | Theme praise vs `theme_mismatch` | client | "a true north spread" while the chef note says the theme is thin |
 | "light" vs `heavy`, "variety" vs `repetitive` | client | contradicting the chef note |
 | "perfect" or "balanced" with known problems | client | flattery over a gap |
 | Same opening as an earlier day | client | template-like weeks |
-| Length ceiling | both | over 110 words (client) or 170 (chef) |
+| Length ceiling | both | over 200 words (guests) or 350 (kitchen); both configurable |
 | Known problems faced | chef | silence about a gap or relaxation |
 | Plate dishes on the menu | claims | a plate with an invented dish |
 | Plate has rice or bread | claims | "pepper fry + laddu" as a plate |
@@ -153,7 +166,8 @@ day, as one growing conversation.
 
 1. Send the facts as the first user turn.
 2. Parse the JSON reply; if it is not valid JSON, that is the only problem sent
-   back.
+   back, and a reply that stopped before its JSON closed is told plainly that
+   it was cut off.
 3. Run `check_chef_read()`. No problems → accept.
 4. Otherwise append the model's draft as a `model` turn and the problems as a
    `user` turn ("fix only these, keep everything else"), and go back to step 2.
@@ -177,37 +191,39 @@ simply has no section, and the existing overview (model or `day_overview()`)
 is shown as today. Accepted data doubts are logged on the
 `explain.data_doubts` logger for the ontology team.
 
-**Cost.** Worst case 3 calls per day, 15 for a 5-day plan, within Gemma's free
-30 requests a minute. Days run in order so each sees earlier openings, so
-worst-case latency is about a minute per day at the 20-second timeout.
+**Cost.** Nothing is spent until someone presses Ask the chef. Then the worst
+case is 3 calls per day, 15 for a 5-day plan, within Gemma's free 30 requests
+a minute. Days run in order so each sees earlier openings, so worst-case
+latency is about a minute per day at the 20-second timeout; the planner waits
+up to 60 seconds plus 60 per day (at most 600) and does not retry blindly.
 
 ## Configuration
+
+The chef's read needs the shared key and its own switch; everything else has a
+working default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `EXPLAIN_LLM_API_KEY` | (empty) | Google AI Studio key, shared with the overview |
-| `EXPLAIN_CHEF_READ_ENABLED` | **true** | Turns the chef's read on, independently of the overview |
-| `EXPLAIN_CHEF_READ_MODEL` | same as `EXPLAIN_LLM_MODEL` (`gemma-4-31b-it`) | Model for the chef's read; set by the probe result |
+| `EXPLAIN_CHEF_READ_ENABLED` | true | Kill switch only; the Ask the chef button is what runs it. Set false and the button reports "switched off" |
+| `EXPLAIN_CHEF_READ_MODEL` | same as `EXPLAIN_LLM_MODEL` (`gemini-3.1-flash-lite`) | Model for the chef's read; set by the probe result, which has now been run |
+| `EXPLAIN_CHEF_READ_CLIENT_MAX_WORDS` | 200 | Ceiling for the guest note, stated in the prompt |
+| `EXPLAIN_CHEF_READ_CHEF_MAX_WORDS` | 350 | Ceiling for the kitchen note, stated in the prompt |
+| `EXPLAIN_CHEF_READ_MAX_TOKENS` | 2500 | Reply room per call; both notes at their ceilings plus claims is about 1,200 |
 | `EXPLAIN_CHEF_READ_MAX_ATTEMPTS` | 3 | Drafts per day before giving up |
-| `EXPLAIN_CHEF_READ_MAX_TOKENS` | 1200 | Reply limit per call |
-| `EXPLAIN_CHEF_READ_CLIENT_WORDS` | 110 | Length the checks accept, diner note |
-| `EXPLAIN_CHEF_READ_INTERNAL_WORDS` | 170 | Length the checks accept, kitchen note |
 | `EXPLAIN_LLM_ENDPOINT` | Gemini `generateContent` URL | Shared |
 | `EXPLAIN_LLM_TIMEOUT_SECONDS` | 20 | Shared, per call |
 
-Code constants worth knowing: `COMEBACK_DAYS = 21`, temperature 0.2,
-`CHEF_READ_PROMPT_VERSION = "chef-read-v2"`.
-
-**Since written:** the draft shipped `EXPLAIN_CHEF_READ_ENABLED=false` and
-`chef-read-v1`, and the two word ceilings were code constants. The owner turned
-the feature on; the version is v2 because the ninth hard limit changed the
-prompt; and the ceilings became env vars so the three length dials can move
-together — see `docs/setup.md`, which explains why moving fewer than three
-changes nothing.
+To give the model more room, raise the two word ceilings first and the token
+limit with them (roughly 2 tokens per word, plus about 500 for the claims), up
+to the model's own output limit. Code constants worth knowing:
+`COMEBACK_DAYS = 21`, temperature 0.2, `CHEF_READ_PROMPT_VERSION =
+"chef-read-v3"`.
 
 ## Wiring it in
 
-`explain_llm.py` alone does nothing until `/api/v1/explain` calls it.
+`explain_llm.py` alone does nothing until `/api/v1/explain` calls it and the
+planner asks for it.
 
 1. Import (replaces the existing `explain_plan` import):
 
@@ -221,42 +237,64 @@ from api.explain_llm import (
 2. Call it right after `rendered = explain_plan(packs)`:
 
 ```python
-chef = explain_chef_read(
-    packs,
-    extras=chef_attrs_from_dataframe(inputs.df),
-    recency=inputs.recency_by_item,
-    region_days=getattr(inputs, 'region_days', None),
-    city_dish_names=city_dish_names_from_dataframe(inputs.df),
-)
+chef: Dict[str, Any] = {}
+if data.get('chef_read'):          # only when "Ask the chef" was pressed
+    chef = explain_chef_read(
+        packs,
+        extras=chef_attrs_from_dataframe(inputs.df),
+        recency=inputs.recency_by_item,
+        region_days=getattr(inputs, 'region_days', None),
+        city_dish_names=city_dish_names_from_dataframe(inputs.df),
+    )
 ```
 
 3. Return it per day, beside the existing fields: `'chef_read': chef.get(pack['date'])`.
 
+4. **The planner** (`app.py`). In `_render_explain_day`, show
+   `chef_read.client_read` above the numbered parts and
+   `chef_read.internal_read` beside it, each in its own bordered section under
+   one *Chef's read* heading; skip both when `source` is None.
+
+| Section | Shows | Extra line |
+| --- | --- | --- |
+| For guests | `client_read` | the star and its reason, if there is one |
+| For the kitchen | `internal_read` | one line per data doubt ("marked north indian, looks south indian") |
+
+   The sections come from `chef_read_sections()` in `ui/formatters.py`, which
+   returns nothing unless the read passed every check, so a rejected read never
+   shows half-written. When a read is missing for a reason worth knowing (model
+   unavailable, rejected), `chef_read_status()` shows one quiet line; when the
+   feature is simply off, nothing is shown.
+
+5. **The button.** "Why this menu" now has two buttons side by side: *Explain
+   this menu* (as before) and *Ask the chef*. Ask the chef calls
+   `MenuApiClient.explain(..., chef_read=True, region_days=...)`, which sends
+   `chef_read: true`, passes the applied regional picks when the regional
+   toggle is on, waits up to 60 seconds plus 60 per day, and is not retried
+   blindly. The result is stored with an "asked" flag, so a day without a read
+   says why (switched off, model unreachable, failed the checks) instead of
+   staying blank.
+
 Two things to get right:
 
-- **Regional days.** `MenuApiClient.explain()` does not send `region_days`, so
-  the facts will never say "Tamil Nadu day". Pass the planner's picks through,
-  as `plan()` already does.
+- **Request time.** Ask the chef can take minutes for a long plan. Whatever
+  sits in front of the API (proxy, platform request limit) must allow at least
+  the planner's wait, or long plans will time out there first.
 - **Client surfaces.** Anything a client sees must carry only `client_read`.
   `internal_read` and `data_doubts` are for the kitchen and planners.
-
-**Since written:** both are done. The planner shows the chef's read as the
-second view in the "Why this menu" expander — one request, two buttons, and
-`_render_chef_read` labels the diner note *safe to share* and the kitchen note
-*not for clients* so the split is visible rather than inferred. And
-`MenuApiClient.explain()` now sends `region_days` (the regions **applied** to
-the plan on screen, not the pending picks), so the regional thread reaches the
-facts.
 
 ## Testing and the learning loop
 
 The code is tested offline; whether the model is good enough is a separate
 question, answered in three steps before it reaches anyone.
 
-**Unit tests (done).** `tests/explain/test_chef_read.py`, on the real Eli Lilly
-Monday menu with a scripted model: switches, the retry loop, give-up, no retry
-on network failure, cache, every truth check, both audience guards, and that no
-template is required.
+**Unit tests (done).** `tests/explain/test_chef_read.py` on the real Eli Lilly
+Monday menu with a scripted model, plus the two planner sections in
+`tests/ui/test_chef_read_sections.py`, the request shape in
+`tests/ui/test_ask_the_chef_client.py` and the trigger in
+`tests/explain/test_chef_read_endpoint.py`: switches, the retry loop, give-up,
+no retry on network failure, cache, every truth check, both audience guards,
+and that no template is required.
 
 1. **Capability probe.** Ask the chosen model to label about 60 dishes by
    region and meal role, and score it against rows whose `state_origin` is a
@@ -319,18 +357,33 @@ judgement is right; that is what the probe and golden set are for.
 - **Food knowledge is unchecked.** A pairing the model likes and a chef would
   not (but that is not bread with rasam) passes. Only the golden set catches
   this.
-- **Gemma 31B is unproven here.** It has never been called in this repo, and
-  regional dish names are where a general model guesses. Run the probe first.
+- ~~**Gemma 31B is unproven here.**~~ **Since written: the probe was run
+  against a real key, and `gemma-4-31b-it` failed it outright.** It is a
+  thinking model: it writes ~3,900 characters of visible reasoning before its
+  JSON (3 of 3 replies, even with `responseMimeType: application/json`), takes
+  95–105 seconds against a 20-second timeout, and returns HTTP 500/503 on
+  about half of all calls. Accept rate zero, on the overview as well as the
+  read. The default is now `gemini-3.1-flash-lite`: 3–4 seconds, clean JSON,
+  every check passed on the first draft 6 times out of 6, and it caught the
+  pachadi mis-tag and the north/south split unprompted. `_parse_reply` now
+  also finds the JSON after a reasoning preamble, so the next thinking model
+  fails loudly rather than silently. Food judgement is still unscored — that
+  is the golden set's job, below.
+- **Longer notes mean more to check.** Every extra sentence is another chance
+  to name an off-menu dish or an unsourced number, so watch attempts per
+  accepted day on the golden set before raising the ceilings further.
 - **Contradiction guard is narrow.** It catches theme praise, "light",
-  "variety" and "perfect" against the chef note; a contradiction phrased
+  "variety" and "perfect" against the kitchen note; a contradiction phrased
   another way gets through.
 - **An invented dish not in the city list is not caught if written in
   lowercase.** The overview's Title-Case check is not applied here, because it
   rejected ordinary food words in testing.
 - **Days run in sequence**, so a 5-day plan can take up to about 5 minutes in
   the worst case. Running them in parallel would lose the "open differently"
-  hint. A horizon past about 9 days also exceeds the free tier's 30 requests a
-  minute.
+  hint.
+- **Regional days.** Fixed: Ask the chef now sends `region_days` to `/explain`
+  when the regional toggle is on; with the toggle off, the read does not know a
+  day was regional.
 - **Open:** who in the kitchen writes the golden-set reads, and whether a
-  client-facing surface (an exported menu, a display) should show
-  `client_read` at all before the golden set is scored.
+  client-facing surface (an exported menu, a display) should show the guest
+  note at all before the golden set is scored.

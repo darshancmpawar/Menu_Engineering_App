@@ -82,45 +82,47 @@ windows and weekday themes by up to a day.
 
 ### The explanation model (optional)
 
-"Why this menu" has two readings. **Explain this menu** is computed by
-`src/explain/` and needs nothing here. **Chef's read** is written by a model,
-and so is the overview paragraph above the checks. Neither does anything until
-a key is set: the chef's read says "model unavailable" and the overview falls
-back to the deterministic `renderer.day_overview`. The overview additionally
-wants `EXPLAIN_LLM_ENABLED=true`; the chef's read is on already.
+"Why this menu" has two buttons. **Explain this menu** is computed by
+`src/explain/` and never calls a model. **Ask the chef** adds the chef's read,
+which does. The overview paragraph above the checks is the model's too when
+one is configured.
 
 ```toml
-EXPLAIN_LLM_API_KEY             = "<Google AI Studio key>"   # the only one that's required
-EXPLAIN_LLM_ENABLED             = "true"    # the overview paragraph; default false
-EXPLAIN_LLM_MODEL               = "gemma-4-31b-it"
-EXPLAIN_LLM_ENDPOINT            = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-EXPLAIN_LLM_TIMEOUT_SECONDS     = "20"      # shared, per call
+EXPLAIN_LLM_API_KEY                = "<Google AI Studio key>"   # the only one that's required
+EXPLAIN_LLM_ENABLED                = "true"    # the overview paragraph; default false
+EXPLAIN_LLM_MODEL                  = "gemini-3.1-flash-lite"
+EXPLAIN_LLM_ENDPOINT               = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+EXPLAIN_LLM_TIMEOUT_SECONDS        = "20"      # shared, per call
 
-EXPLAIN_CHEF_READ_ENABLED       = "false"   # the chef's read; default TRUE, set this to switch it off
-EXPLAIN_CHEF_READ_MODEL         = ""        # defaults to EXPLAIN_LLM_MODEL
-EXPLAIN_CHEF_READ_MAX_ATTEMPTS  = "3"       # drafts per day before the section is omitted
-EXPLAIN_CHEF_READ_MAX_TOKENS    = "1200"    # reply budget per call
-EXPLAIN_CHEF_READ_CLIENT_WORDS  = "110"     # length the checks accept, diner note
-EXPLAIN_CHEF_READ_INTERNAL_WORDS = "170"    # length the checks accept, kitchen note
+EXPLAIN_CHEF_READ_ENABLED          = "false"   # KILL SWITCH; default true, the button is the trigger
+EXPLAIN_CHEF_READ_MODEL            = ""        # defaults to EXPLAIN_LLM_MODEL
+EXPLAIN_CHEF_READ_MAX_ATTEMPTS     = "3"       # drafts per day before the section is omitted
+EXPLAIN_CHEF_READ_MAX_TOKENS       = "2500"    # reply room per call
+EXPLAIN_CHEF_READ_CLIENT_MAX_WORDS = "200"     # ceiling for the guest note
+EXPLAIN_CHEF_READ_CHEF_MAX_WORDS   = "350"     # ceiling for the kitchen note
 ```
 
-**The key is the gate, not the switches.** `EXPLAIN_CHEF_READ_ENABLED`
-defaults to `true`, but with no `EXPLAIN_LLM_API_KEY` the chef's read returns
-"model unavailable" without making a single call, so a deployment that has
-configured no model pays nothing and sees nothing.
+**The button is the trigger, not the switch.** `EXPLAIN_CHEF_READ_ENABLED`
+defaults to `true` and is only a kill switch: nothing is spent until someone
+presses *Ask the chef*, and with no `EXPLAIN_LLM_API_KEY` that button reports
+"could not be reached" without making a single call.
 
-**The three length dials only work together.** `MAX_TOKENS` is what the model
-may spend, `*_WORDS` is what the checks will accept, and the prompt's own "two
-to five sentences" / "up to six sentences" is what the model aims for. Raising
-the first two without the third changes nothing — a five-sentence note never
-came near 1200 tokens. Longer notes mean editing `CHEF_READ_SYSTEM_PROMPT`,
-bumping `CHEF_READ_PROMPT_VERSION` (it is part of the cache key) and updating
+**The length dials move together.** The two `*_MAX_WORDS` ceilings are
+interpolated into the prompt, so the number the model is told is always the
+number the checks enforce — raising one raises both ends at once. Raise
+`MAX_TOKENS` with them (roughly 2 tokens per word, plus about 500 for the
+claims JSON) or a long read is cut off mid-JSON and spends a retry. Changing
+`CHEF_READ_SYSTEM_PROMPT` itself also means bumping
+`CHEF_READ_PROMPT_VERSION` (it is part of the cache key) and updating
 `docs/chef_read_prompt.md`, which a test pins against the prompt.
 
-**Cost.** The overview is one call per plan. The chef's read is one call per
-day plus up to two retries, run in sequence, so a 5-day plan is at most 15
-calls and about a minute per day at the 20-second timeout. Gemma's free tier
-is 30 requests a minute, which a horizon past ~9 days will exceed.
+**Cost and time.** The overview is one call per plan. The chef's read is one
+call per day plus up to two retries, run in sequence, so a 5-day plan is at
+most 15 calls and about a minute per day at the 20-second timeout. Gemma's
+free tier is 30 requests a minute, which a horizon past ~9 days will exceed.
+The planner waits 60 seconds plus 60 per day (capped at 600) and does not
+retry — whatever proxy or platform sits in front of the API must allow at
+least that, or long plans time out there first.
 `docs/chef_read_architecture.md` has the rest.
 
 ---

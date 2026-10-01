@@ -54,6 +54,8 @@ _bridge_streamlit_secrets()
 
 from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
 from ui.formatters import (
+    chef_read_sections,
+    chef_read_status,
     dishes_from_solution,
     display_label_for_slot_id,
     flatten_api_solution,
@@ -719,28 +721,31 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
     cache_key = _explain_cache_key(b, key_ns)
     with st.expander("Why this menu"):
         st.caption(
-            "Two readings of the same day. **Explain this menu** is computed: "
-            "plate-balance checks read off the menu itself, why each dish is "
-            "there, and any rule the solver could not fully enforce. "
-            "**Chef's read** is a model's judgement of it — a note for diners "
-            "and a blunter one for the kitchen. A flagged check is a "
-            "suggestion; a relaxed rule is a fact.")
-        # Two readings of the same day, from ONE request: `/explain` returns
-        # the checks and the chef's read together, so the buttons choose a
-        # view rather than each costing a call.
-        views = st.session_state.setdefault("explain_view", {})
-        c1, c2, _c3 = st.columns([1.1, 1, 2.4])
-        with c1:
-            want_checks = st.button("Explain this menu", use_container_width=True,
-                                    key=f"explain_btn_{key_ns}")
-        with c2:
-            want_chef = st.button("Chef's read", use_container_width=True,
-                                  key=f"chef_btn_{key_ns}")
-        if want_checks or want_chef:
-            views[key_ns] = "chef" if want_chef else "checks"
-            if cache_key not in store:
-                try:
-                    store[cache_key] = api.explain(
+            "Plate-balance checks read off the menu itself, the reason each "
+            "dish is there, and any rule the solver could not fully enforce. "
+            "A flagged check is a suggestion; a relaxed rule is a fact.")
+        # Two buttons. "Ask the chef" is what turns the chef's read on: it is
+        # on demand because it costs up to three model calls per day, and a
+        # plain explanation should never pay for it.
+        explain_col, chef_col = st.columns(2)
+        with explain_col:
+            explain_clicked = st.button("Explain this menu", key=f"explain_btn_{key_ns}",
+                                        use_container_width=True)
+        with chef_col:
+            chef_clicked = st.button(
+                "Ask the chef", key=f"chef_btn_{key_ns}", use_container_width=True,
+                help="Adds the chef's read: how to eat today, the star of the day, "
+                     "and notes for the kitchen. Takes up to a minute per day.")
+        if explain_clicked or chef_clicked:
+            # The read should know a Tamil Nadu day is one, so the APPLIED
+            # regional picks go along when the regional toggle is on — the same
+            # gate `/plan` uses, and a pick nobody applied is not in this menu.
+            regional = (st.session_state.get("region_applied") or None
+                        if st.session_state.get("planner_regional_on") else None)
+            try:
+                with st.spinner("Asking the chef, up to a minute per day..."
+                                if chef_clicked else "Explaining the menu..."):
+                    result = api.explain(
                         client_name=st.session_state.client_name,
                         # plan_dates spans the horizon including days this
                         # client does not serve, so [0] is the horizon start
@@ -750,17 +755,16 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
                         counter_index=counter_index,
                         solution=b.get("solution") or {},
                         relaxations=b.get("relaxations") or None,
-                        # The regions ALREADY applied to this plan, not the
-                        # pending picks: the explanation describes the menu on
-                        # screen, and a pick nobody has applied yet is not in it.
-                        region_days=st.session_state.get("region_applied") or None,
+                        chef_read=chef_clicked,
+                        region_days=regional,
                     )
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Could not explain this menu: {e}")
+                result["_chef_asked"] = bool(chef_clicked)
+                store[cache_key] = result
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.error(f"Could not explain this menu: {e}")
         payload = store.get(cache_key)
         if not payload:
             return
-        view = views.get(key_ns, "checks")
 
         days = payload.get("days") or []
         if not days:
@@ -786,94 +790,15 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
         tabs = st.tabs([date_label(d["date"]) for d in days])
         for tab, day in zip(tabs, days):
             with tab:
-                if view == "chef":
-                    _render_chef_read(day)
-                else:
-                    _render_explain_day(day)
+                _render_explain_day(day, chef_asked=bool(payload.get("_chef_asked")))
 
 
-#: Why a chef's read is missing, said in words an operator can act on rather
-#: than the reason string the API uses internally.
-_CHEF_OFF = {
-    # On by default now, so this reads as "somebody turned it off", not as a
-    # feature waiting to be discovered.
-    "disabled": ("The chef's read has been switched off for this deployment "
-                 "(`EXPLAIN_CHEF_READ_ENABLED=false`). Remove that to get it "
-                 "back."),
-    "model unavailable": ("No model is configured, or it could not be reached — "
-                          "the chef's read needs an `EXPLAIN_LLM_API_KEY`, the "
-                          "same one the overview uses. Everything else on this "
-                          "page is computed and is unaffected."),
-    "error": "Something went wrong building it. The menu itself is unaffected.",
-}
+def _render_explain_day(day: dict, chef_asked: bool = False) -> None:
+    """One day of the explanation, in the four steps above.
 
-
-def _render_chef_read(day: dict) -> None:
-    """One day's chef's read: the note for diners, then the note for the kitchen.
-
-    **The split is the whole point and it is a safety one.** `client_read` is
-    written to be shown to the people eating; `internal_read` says what is weak,
-    what looks mis-tagged and what the theme failed to do, and `data_doubts`
-    names rows it thinks are described wrongly. Only the first may leave the
-    building, so it is labelled as such here rather than left to be worked out
-    from the surrounding prose.
+    ``chef_asked`` is whether "Ask the chef" produced this payload, so a day
+    with no read can say why instead of staying silent.
     """
-    chef = day.get("chef_read") or {}
-    if chef.get("source") != "model":
-        reason = str(chef.get("reason") or "disabled")
-        # An exact match where we have one, then the prefix cases that carry
-        # their own detail ("rejected after 3 attempts: ...").
-        st.info(_CHEF_OFF.get(reason)
-                or (f"The model's drafts were all sent back. {reason.split(':', 1)[-1].strip()}"
-                    if reason.startswith("rejected") else reason))
-        return
-
-    st.markdown("**For the people eating** &nbsp;·&nbsp; "
-                "<span style='color:#1AA45B;font-weight:700'>safe to share</span>",
-                unsafe_allow_html=True)
-    st.success(chef.get("client_read") or "")
-
-    st.markdown("**For the kitchen** &nbsp;·&nbsp; "
-                "<span style='color:#C40D1B;font-weight:700'>not for clients</span>",
-                unsafe_allow_html=True)
-    st.warning(chef.get("internal_read") or "")
-
-    star = chef.get("star") or None
-    if isinstance(star, dict) and star.get("dish"):
-        st.markdown(f"&#11088; **{format_item_for_ui(star.get('dish'))}** — "
-                    f"{html.escape(str(star.get('why') or ''))} "
-                    f"<span style='color:#777'>({html.escape(str(star.get('basis') or ''))})</span>",
-                    unsafe_allow_html=True)
-    for w in (chef.get("weak_spots") or []):
-        if isinstance(w, dict) and w.get("text"):
-            kind = str(w.get("kind", "")).replace("_", " ")
-            st.markdown(f"&#9888; {html.escape(str(w['text']))} "
-                        f"<span style='color:#777'>({html.escape(kind)})</span>",
-                        unsafe_allow_html=True)
-    # Not a verdict on the data — a prompt to go and look. The model is
-    # guessing from the dish name, which is exactly the evidence the ontology
-    # does not use, so it is worth reading and never worth applying blind.
-    doubts = chef.get("data_doubts") or []
-    if doubts:
-        with st.expander(f"{len(doubts)} row(s) the model thinks are mis-tagged"):
-            for d in doubts:
-                if not isinstance(d, dict):
-                    continue
-                st.markdown(
-                    f"- **{format_item_for_ui(d.get('dish'))}** · "
-                    f"`{html.escape(str(d.get('field') or ''))}` is "
-                    f"{html.escape(str(d.get('tagged') or ''))}, "
-                    f"model reads it as {html.escape(str(d.get('likely') or ''))}"
-                    f" — {html.escape(str(d.get('why') or ''))}")
-            st.caption("A suggestion from the dish NAME, which is not evidence "
-                       "the ontology uses. Check before changing anything.")
-    if int(chef.get("attempts") or 1) > 1:
-        st.caption(f"Accepted on draft {chef['attempts']}; the earlier ones were "
-                   "sent back for naming a dish or a number that was not there.")
-
-
-def _render_explain_day(day: dict) -> None:
-    """One day of the explanation, in the four steps above."""
     profile = day.get("plate_profile") or {}
     theme = day.get("theme")
     if theme:
@@ -908,6 +833,25 @@ def _render_explain_day(day: dict) -> None:
             f"<div style='padding:.6rem .8rem;border-left:3px solid #4c8bf5;"
             f"opacity:.95;margin-bottom:.8rem'>{html.escape(overview)}</div>",
             unsafe_allow_html=True)
+
+    # The chef's read: the model's own reading of the day, under one heading
+    # with two sections side by side, guests and kitchen. They are kept apart
+    # because they are written for different readers, and only a read that
+    # passed every check is shown (`chef_read_sections` returns nothing else).
+    chef_sections = chef_read_sections(day.get("chef_read"))
+    if chef_sections:
+        st.markdown("**Chef's read**")
+        for col, sec in zip(st.columns(len(chef_sections)), chef_sections):
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{sec['title']}**")
+                    st.markdown(html.escape(sec["text"]))
+                    for note in sec["notes"]:
+                        st.caption(html.escape(note))
+    else:
+        status = chef_read_status(day.get("chef_read"), asked=chef_asked)
+        if status:
+            st.caption(status)
 
     st.markdown("**1 · The plate**")
     dishes = day.get("dishes") or {}
