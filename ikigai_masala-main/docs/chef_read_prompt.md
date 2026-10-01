@@ -14,7 +14,7 @@ Prompt version `chef-read-v3`. The same text lives in `api/explain_llm.py` as
 | 3 | user | The problems with draft 1 (format below) |
 | 4, 5 | model, user | Draft 2 and its problems, only if rejected again |
 
-Settings: model `EXPLAIN_CHEF_READ_MODEL` (default `gemma-4-31b-it`), temperature 0.2,
+Settings: model `EXPLAIN_CHEF_READ_MODEL` (default `gemini-3.1-flash-lite`), temperature 0.2,
 up to 2500 output tokens, JSON reply, at most 3 drafts per day.
 
 ## System prompt

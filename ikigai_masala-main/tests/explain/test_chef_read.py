@@ -302,6 +302,46 @@ class TestFacts:
         assert by['rasam']['pinned'] is True and by['jeera_chapati']['pinned'] is False
 
 
+class TestTheReplyIsFoundInTheReply:
+    """A thinking model puts its answer after its reasoning.
+
+    Every model this API key can reach is a thinking model, and the one that
+    used to be the default (`gemma-4-31b-it`) writes ~3,900 characters of
+    bulleted reasoning before the JSON — even with
+    `responseMimeType: application/json`. Fence-stripping alone rejected that
+    as malformed, so all three drafts burned and the day silently had no read.
+    Measured against a real key, not supposed.
+    """
+
+    PREAMBLE = ('*   Date: 2026-09-07 (Monday)\n'
+                '    *   Pachadi is tagged north - *wait, that is southern*\n'
+                '    *   Shape to return: {"client_read": "...", ...}\n')
+
+    def test_a_clean_reply_is_unchanged(self):
+        assert mod._parse_reply('{"a": 1}') == {'a': 1}
+        assert mod._parse_reply('```json\n{"a": 1}\n```') == {'a': 1}
+
+    def test_reasoning_before_the_json_is_skipped(self):
+        got = mod._parse_reply(self.PREAMBLE + json.dumps(GOOD))
+        assert got == GOOD
+
+    def test_a_nested_object_never_wins_over_the_whole_reply(self):
+        """The first version of this returned a `data_doubts` entry: scanning
+        every brace and keeping the LAST match picks the innermost one,
+        because a nested brace comes after its parent's."""
+        got = mod._parse_reply(self.PREAMBLE + json.dumps(GOOD))
+        assert set(got) == {'client_read', 'internal_read', 'claims'}
+        assert got['claims']['data_doubts'][0]['dish'] == 'drumstick_mango_pachadi'
+
+    def test_a_whole_read_survives_the_round_trip(self, pack):
+        assert _problems(pack, mod._parse_reply(self.PREAMBLE + json.dumps(GOOD))) == []
+
+    def test_nothing_parseable_is_still_None(self):
+        assert mod._parse_reply('I could not do that.') is None
+        assert mod._parse_reply('[1, 2, 3]') is None
+        assert mod._parse_reply('') is None
+
+
 class TestRoomToWrite:
     """Ceilings are generous and stated, so a rich day is never choked."""
 

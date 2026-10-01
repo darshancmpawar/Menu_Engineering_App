@@ -29,11 +29,20 @@ path. They make opposite bets, on purpose:
    `CHEF_READ_MAX_ATTEMPTS` times; after that the section is simply omitted and
    the overview above still stands. See `docs/chef_read_architecture.md`.
 
-Model: `gemma-4-31b-it` on Google AI Studio. 30 RPM / 14,400 requests per day
-free. For the overview this is a rendering task over supplied facts, and a 31B
-model does it as well as a 550B one. The chef's read asks for judgement, so its
-model is configurable separately (`EXPLAIN_CHEF_READ_MODEL`) and should be
-chosen by the capability probe in the architecture doc, not by assumption.
+Model: `gemini-3.1-flash-lite` on Google AI Studio, CHOSEN BY MEASUREMENT, not
+by assumption — the architecture doc's capability probe, run against a real
+key on the Eli Lilly Monday menu. `gemma-4-31b-it` was the configured default
+and cannot do this job at all: it is a thinking model that writes ~3,900
+characters of visible reasoning before its JSON (3 of 3 replies), so every
+draft is rejected as malformed, and a reply takes 95-105 seconds against a
+20-second timeout, with HTTP 500/503 on roughly half of all calls. Measured
+accept rate: zero, on both features. `gemini-3.1-flash-lite` answers the same
+prompt in 3-4 seconds with clean JSON and passed every check on the first
+draft, 6 times out of 6. 30 RPM / 14,400 requests per day free either way.
+
+The chef's read's model is still configurable separately
+(`EXPLAIN_CHEF_READ_MODEL`) because it asks for judgement where the overview
+asks only for phrasing. Re-run the probe before changing either.
 
 Batching: the overview is ONE call per plan, all days in, one paragraph per day
 out. The chef's read is one call per DAY (plus retries), because each day is a
@@ -60,7 +69,11 @@ logger = logging.getLogger(__name__)
 # usable with no key configured. Do NOT add these to validate_required_env().
 ENABLED = os.getenv('EXPLAIN_LLM_ENABLED', 'false').strip().lower() == 'true'
 API_KEY = os.getenv('EXPLAIN_LLM_API_KEY', '').strip()
-MODEL = os.getenv('EXPLAIN_LLM_MODEL', 'gemma-4-31b-it').strip()
+# Changed from gemma-4-31b-it by the capability probe — see the module
+# docstring for the numbers. An explicit EXPLAIN_LLM_MODEL still wins, including
+# a re-test of gemma: a setting that quietly means something else is worse than
+# a bad default.
+MODEL = os.getenv('EXPLAIN_LLM_MODEL', 'gemini-3.1-flash-lite').strip()
 TIMEOUT = int(os.getenv('EXPLAIN_LLM_TIMEOUT_SECONDS', '20'))
 ENDPOINT = os.getenv(
     'EXPLAIN_LLM_ENDPOINT',
@@ -1156,11 +1169,43 @@ def _feedback(problems: List[str]) -> str:
 
 
 def _parse_reply(raw: str) -> Optional[Dict[str, Any]]:
+    """The reply's JSON object, or None.
+
+    The fast path is the whole string, fences stripped — what a well-behaved
+    model returns. The fallback exists because EVERY model this key can reach
+    is a thinking model, and one of them (`gemma-4-31b-it`) writes ~3,900
+    characters of visible reasoning before the JSON even with
+    `responseMimeType: application/json`. Without this the reply is rejected
+    as malformed, all three drafts burn, and the day silently has no read —
+    which is what the probe measured before this was here.
+
+    The last TOP-LEVEL object wins: the answer comes last, and the reasoning
+    above it may quote a JSON fragment of its own. Scanning every `{` and
+    keeping the last match is the wrong rule and the first version did exactly
+    that — it returned a `data_doubts` entry nested inside the real reply,
+    because a nested brace comes after its parent's. So a successful decode
+    skips the scan past its own end.
+    """
+    stripped = re.sub(r'^```(?:json)?|```$', '', raw.strip(), flags=re.MULTILINE).strip()
     try:
-        parsed = json.loads(re.sub(r'^```(?:json)?|```$', '', raw.strip(), flags=re.MULTILINE).strip())
+        parsed = json.loads(stripped)
+        return parsed if isinstance(parsed, dict) else None
     except Exception:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+        pass
+    # ponytail: O(braces x length) rescan, fine for a reply bounded by
+    # CHEF_READ_MAX_TOKENS. A streaming parser would be the upgrade if replies
+    # ever get long enough for this to show.
+    decoder, found, i = json.JSONDecoder(), None, 0
+    while (i := stripped.find('{', i)) != -1:
+        try:
+            obj, end = decoder.raw_decode(stripped, i)
+        except ValueError:
+            i += 1
+            continue
+        if isinstance(obj, dict):
+            found = obj
+        i = end
+    return found
 
 
 # --- the loop -------------------------------------------------------------

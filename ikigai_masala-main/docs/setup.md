@@ -90,7 +90,7 @@ one is configured.
 ```toml
 EXPLAIN_LLM_API_KEY                = "<Google AI Studio key>"   # the only one that's required
 EXPLAIN_LLM_ENABLED                = "true"    # the overview paragraph; default false
-EXPLAIN_LLM_MODEL                  = "gemma-4-31b-it"
+EXPLAIN_LLM_MODEL                  = "gemini-3.1-flash-lite"
 EXPLAIN_LLM_ENDPOINT               = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 EXPLAIN_LLM_TIMEOUT_SECONDS        = "20"      # shared, per call
 

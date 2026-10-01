@@ -206,7 +206,7 @@ working default.
 | --- | --- | --- |
 | `EXPLAIN_LLM_API_KEY` | (empty) | Google AI Studio key, shared with the overview |
 | `EXPLAIN_CHEF_READ_ENABLED` | true | Kill switch only; the Ask the chef button is what runs it. Set false and the button reports "switched off" |
-| `EXPLAIN_CHEF_READ_MODEL` | same as `EXPLAIN_LLM_MODEL` (`gemma-4-31b-it`) | Model for the chef's read; set by the probe result |
+| `EXPLAIN_CHEF_READ_MODEL` | same as `EXPLAIN_LLM_MODEL` (`gemini-3.1-flash-lite`) | Model for the chef's read; set by the probe result, which has now been run |
 | `EXPLAIN_CHEF_READ_CLIENT_MAX_WORDS` | 200 | Ceiling for the guest note, stated in the prompt |
 | `EXPLAIN_CHEF_READ_CHEF_MAX_WORDS` | 350 | Ceiling for the kitchen note, stated in the prompt |
 | `EXPLAIN_CHEF_READ_MAX_TOKENS` | 2500 | Reply room per call; both notes at their ceilings plus claims is about 1,200 |
@@ -357,8 +357,18 @@ judgement is right; that is what the probe and golden set are for.
 - **Food knowledge is unchecked.** A pairing the model likes and a chef would
   not (but that is not bread with rasam) passes. Only the golden set catches
   this.
-- **Gemma 31B is unproven here.** It has never been called in this repo, and
-  regional dish names are where a general model guesses. Run the probe first.
+- ~~**Gemma 31B is unproven here.**~~ **Since written: the probe was run
+  against a real key, and `gemma-4-31b-it` failed it outright.** It is a
+  thinking model: it writes ~3,900 characters of visible reasoning before its
+  JSON (3 of 3 replies, even with `responseMimeType: application/json`), takes
+  95–105 seconds against a 20-second timeout, and returns HTTP 500/503 on
+  about half of all calls. Accept rate zero, on the overview as well as the
+  read. The default is now `gemini-3.1-flash-lite`: 3–4 seconds, clean JSON,
+  every check passed on the first draft 6 times out of 6, and it caught the
+  pachadi mis-tag and the north/south split unprompted. `_parse_reply` now
+  also finds the JSON after a reasoning preamble, so the next thinking model
+  fails loudly rather than silently. Food judgement is still unscored — that
+  is the golden set's job, below.
 - **Longer notes mean more to check.** Every extra sentence is another chance
   to name an off-menu dish or an unsourced number, so watch attempts per
   accepted day on the golden set before raising the ceilings further.
