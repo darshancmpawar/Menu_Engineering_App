@@ -750,6 +750,10 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
                         counter_index=counter_index,
                         solution=b.get("solution") or {},
                         relaxations=b.get("relaxations") or None,
+                        # The regions ALREADY applied to this plan, not the
+                        # pending picks: the explanation describes the menu on
+                        # screen, and a pick nobody has applied yet is not in it.
+                        region_days=st.session_state.get("region_applied") or None,
                     )
                 except (ConnectionError, OSError, ValueError, RuntimeError) as e:
                     st.error(f"Could not explain this menu: {e}")
@@ -791,12 +795,15 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
 #: Why a chef's read is missing, said in words an operator can act on rather
 #: than the reason string the API uses internally.
 _CHEF_OFF = {
-    "disabled": ("The chef's read is switched off. Set "
-                 "`EXPLAIN_CHEF_READ_ENABLED=true` to turn it on; it needs the "
-                 "same `EXPLAIN_LLM_API_KEY` as the overview."),
-    "model unavailable": ("No model is configured, or it could not be reached. "
-                          "Everything else on this page is computed and is "
-                          "unaffected."),
+    # On by default now, so this reads as "somebody turned it off", not as a
+    # feature waiting to be discovered.
+    "disabled": ("The chef's read has been switched off for this deployment "
+                 "(`EXPLAIN_CHEF_READ_ENABLED=false`). Remove that to get it "
+                 "back."),
+    "model unavailable": ("No model is configured, or it could not be reached — "
+                          "the chef's read needs an `EXPLAIN_LLM_API_KEY`, the "
+                          "same one the overview uses. Everything else on this "
+                          "page is computed and is unaffected."),
     "error": "Something went wrong building it. The menu itself is unaffected.",
 }
 

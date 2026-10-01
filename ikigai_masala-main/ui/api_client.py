@@ -346,6 +346,7 @@ class MenuApiClient:
         num_days: int = 5,
         counter_index: int = 0,
         relaxations: Optional[List[Dict[str, Any]]] = None,
+        region_days: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Explain a plan this client already has. Never solves.
 
@@ -353,6 +354,11 @@ class MenuApiClient:
         recomputed here — the solver's "I could not fully enforce this" lines
         are only observable while it runs. Pass them through or the explanation
         silently stops mentioning which rule did not hold.
+
+        ``region_days`` is the same ``{iso: region}`` ``plan()`` was given, for
+        the same reason: a Tamil Nadu day is not recoverable from the solution,
+        so without it the chef's read describes a regional day as an ordinary
+        one — the regional thread is one of the things it exists to notice.
 
         Returns ``{success, days: [{date, bullets, prose, checks, …}], …}``.
         ``prose`` is None unless the optional model is enabled AND its reply
@@ -367,6 +373,8 @@ class MenuApiClient:
         }
         if relaxations:
             payload["relaxations"] = relaxations
+        if region_days:
+            payload["region_days"] = region_days
 
         def _do():
             return self.session.post(

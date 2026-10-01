@@ -114,11 +114,21 @@ def _facts(pack, **kw):
 
 
 class TestSwitches:
-    def test_off_by_default(self, pack):
+    def test_on_by_default(self):
+        """The owner turned it on. The KEY is the gate, not this switch — see
+        `test_no_key_never_calls_the_model` below, which is what makes shipping
+        it on safe for a deployment that has not configured a model."""
+        assert mod.CHEF_READ_ENABLED is True
+
+    def test_the_switch_still_turns_it_off(self, pack, monkeypatch):
+        """A default is only a default if the override still works, and this
+        one is the kill switch: it must stop the feature with a key present."""
         mod.reset_chef_read_cache_for_tests()
-        assert mod.CHEF_READ_ENABLED is False
+        monkeypatch.setattr(mod, 'CHEF_READ_ENABLED', False)
+        monkeypatch.setattr(mod, 'API_KEY', 'test-key')
+        calls = _script(monkeypatch, [GOOD])
         out = mod.explain_chef_read([pack])[DATE]
-        assert out['source'] is None and out['reason'] == 'disabled'
+        assert out['source'] is None and out['reason'] == 'disabled' and not calls
 
     def test_no_key_never_calls_the_model(self, pack, monkeypatch):
         monkeypatch.setattr(mod, 'CHEF_READ_ENABLED', True)

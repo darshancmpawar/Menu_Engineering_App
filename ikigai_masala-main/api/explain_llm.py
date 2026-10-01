@@ -600,9 +600,14 @@ def explain_plan(packs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 # and changes nothing about `explain_plan`. Design: docs/chef_read_architecture.md.
 
 # --- configuration ---------------------------------------------------------
-# Off by default, independently of the overview: turning on the overview must
-# not silently turn on judgement. Both need EXPLAIN_LLM_API_KEY.
-CHEF_READ_ENABLED = os.getenv('EXPLAIN_CHEF_READ_ENABLED', 'false').strip().lower() == 'true'
+# ON by default since the owner turned it on; `EXPLAIN_CHEF_READ_ENABLED=false`
+# switches it back off. The switch was never the real gate and should not be
+# read as one: with no EXPLAIN_LLM_API_KEY this returns `model unavailable`
+# without making a single call, so turning it on costs nothing until a key is
+# configured. It stays SEPARATE from the overview's switch because the two
+# features make opposite bets, and nobody should acquire judgement by enabling
+# phrasing.
+CHEF_READ_ENABLED = os.getenv('EXPLAIN_CHEF_READ_ENABLED', 'true').strip().lower() == 'true'
 CHEF_READ_MODEL = os.getenv('EXPLAIN_CHEF_READ_MODEL', '').strip() or MODEL
 CHEF_READ_MAX_ATTEMPTS = max(1, int(os.getenv('EXPLAIN_CHEF_READ_MAX_ATTEMPTS', '3')))
 CHEF_READ_MAX_TOKENS = int(os.getenv('EXPLAIN_CHEF_READ_MAX_TOKENS', '1200'))
@@ -616,8 +621,21 @@ CHEF_READ_PROMPT_VERSION = 'chef-read-v2'
 # claim says something the cooldown alone would not have produced.
 COMEBACK_DAYS = 21
 
-CLIENT_MAX_WORDS = 110
-INTERNAL_MAX_WORDS = 170
+# The length ceilings the checks enforce, in words (`_words` counts letters-only
+# tokens, so numbers and dates do not spend the budget).
+#
+# THREE DIALS, AND THEY ONLY WORK TOGETHER. `CHEF_READ_MAX_TOKENS` is what the
+# model may SPEND, these two are what the checks will ACCEPT, and the prompt's
+# own "two to five sentences" / "up to six sentences" is what the model AIMS
+# for. Raising the token budget alone buys nothing — a 2-to-5-sentence note
+# never came near 1200 tokens. Raising these alone buys nothing either, for the
+# same reason. Longer notes need the prompt's sentence counts raised too, which
+# means bumping CHEF_READ_PROMPT_VERSION and `docs/chef_read_prompt.md` with
+# them. Lowering these below what the prompt asks for is the expensive
+# direction: every draft is rejected on length and the day burns all three
+# attempts to produce nothing.
+CLIENT_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_CLIENT_WORDS', '110'))
+INTERNAL_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_INTERNAL_WORDS', '170'))
 
 CHEF_READ_SYSTEM_PROMPT = """You read one day's menu at a corporate cafeteria \
 in India and write two short notes about it.

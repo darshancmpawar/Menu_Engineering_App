@@ -1,13 +1,8 @@
+# The README tells you to write a Supabase service_role key into this file,
+# and `.streamlit/config.toml` claims it is ignored. It was not — nothing in
+# this file matched it, so the one file in the repo that is SUPPOSED to hold a
+# secret was the one file tracked by default.
+.streamlit/secrets.toml
 
-# atomic-write temp files from the ontology correction scripts
+# atomic-write temp files
 *.xlsx.tmp
-
-# Open-question reports the ontology correction chain rewrites on every run.
-# The other two files in that directory ARE committed: the duplicate-name
-# audit, because `--check` compares it against a fresh run, and the misfile
-# verdicts, because those are decisions rather than output.
-Chain rules/reports/colours_to_confirm_by_family.csv
-Chain rules/reports/cuisines_to_confirm.csv
-Chain rules/reports/dishes_needing_a_colour.csv
-Chain rules/reports/ontology_gaps.csv
-Chain rules/reports/vegnonveg_to_confirm.csv

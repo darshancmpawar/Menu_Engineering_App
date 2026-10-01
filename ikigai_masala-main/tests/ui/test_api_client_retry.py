@@ -291,3 +291,37 @@ class TestSolverFailedCarriesDiagnostics:
         })
         with pytest.raises(RuleDiagnosticsBlockedError):
             _parse_response(resp, 'Planning failed')
+
+
+class TestExplainCarriesTheRegion:
+    """`/explain` has to be told which days are regional.
+
+    A region is not recoverable from the solution — a Tamil Nadu Tuesday and a
+    themeless Tuesday can hold the same dishes — so if the planner does not
+    send `region_days`, the chef's read describes a regional day as an ordinary
+    one. That is the quiet half of this bug: nothing errors, the explanation
+    just never mentions the thread the day was built around. `/plan` has always
+    sent it; `/explain` is the sibling caller that was missed.
+    """
+
+    def _post(self, monkeypatch, **kw):
+        client = MenuApiClient("http://fake.invalid")
+        seen = {}
+
+        def _call(*_a, **kwargs):
+            seen.update(kwargs.get("json") or {})
+            return _fake_response(200, {"success": True, "days": []})
+
+        monkeypatch.setattr(client.session, "post", _call)
+        client.explain("X", "2026-03-23", {"2026-03-23": {}}, **kw)
+        return seen
+
+    def test_the_picked_regions_reach_the_request(self, monkeypatch):
+        picks = {"2026-03-24": "tamil_nadu"}
+        assert self._post(monkeypatch, region_days=picks)["region_days"] == picks
+
+    def test_no_region_sends_no_key_rather_than_an_empty_map(self, monkeypatch):
+        """Same shape as `relaxations` beside it, and the endpoint reads an
+        absent key as "no regional days" without touching the region rules."""
+        assert "region_days" not in self._post(monkeypatch)
+        assert "region_days" not in self._post(monkeypatch, region_days={})
