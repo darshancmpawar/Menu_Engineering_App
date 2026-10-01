@@ -77,6 +77,7 @@ from ui.planner_view import (
     XLSX_MIME,
 )
 from ui.menu_table import explain_days, menu_table, regen_request
+from ui.region_strip import region_day_args, region_strip
 from src.explain.checks import MAIN_COURSES, base_slot
 from src.application.horizon import _weekdays_from
 from src.solver._helpers import weekday_type_for_config
@@ -293,28 +294,12 @@ def _cached_regions(_api: MenuApiClient, city: str) -> dict:
         return {"available": False, "regions": [], "theme_compatibility": {}}
 
 
-def _region_options(meta: dict, theme: str) -> list:
-    """`[(value, label, disabled)]` for one day's region select.
-
-    Three groups, in this order: the regions this day CAN take, the ones whose
-    cuisine its theme excludes, and the ones this city has too few dishes for.
-    The last two are DISABLED rather than hidden, each carrying its reason, so
-    an operator can see a region was weighed and rejected instead of wondering
-    where it went.
-    """
-    compat = set((meta.get("theme_compatibility") or {}).get(theme, []))
-    ok, wrong_theme, thin = [], [], []
-    for r in meta.get("regions") or []:
-        name = r.get("name", "")
-        slots = len(r.get("deep_slots") or [])
-        if not r.get("themeable"):
-            thin.append((name, f"{name}  —  only {slots} slots here", True))
-        elif name in compat:
-            ok.append((name, f"{name}  ·  {slots} slots", False))
-        else:
-            wrong_theme.append(
-                (name, f"{name}  —  wrong cuisine for a {theme} day", True))
-    return ok + wrong_theme + thin
+def _label_iso(iso: str) -> str:
+    """`2026-09-21` -> `Mon 21 Sep`, falling back to the raw string."""
+    try:
+        return dt.date.fromisoformat(iso).strftime("%a %d %b")
+    except ValueError:
+        return iso
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -1091,52 +1076,57 @@ def _render_region_strip(api, city, dates, day_themes, has_plan):
                "never narrows a slot, so a day whose region runs thin simply "
                "carries fewer of them.")
 
-    cols = st.columns(len(dates)) if dates else []
-    for col, d in zip(cols, dates):
-        iso = d if isinstance(d, str) else d.isoformat()
-        try:
-            label = dt.date.fromisoformat(iso).strftime("%a %d %b")
-        except ValueError:
-            label = iso
-        theme = (day_themes or {}).get(iso, "")
-        options = _region_options(meta, theme)
-        with col:
-            st.markdown(
-                f'<div class="region-day">{label}</div>'
-                f'<div class="region-theme">{theme or "—"}</div>',
-                unsafe_allow_html=True)
-            enabled = [o for o in options if not o[2]]
-            if not enabled:
-                # A chinese / biryani / continental day narrows its main slots
-                # by FLAG, not by cuisine, so a region's dishes are gone before
-                # any floor could be read. Saying so beats an empty dropdown.
-                st.caption(f"A {theme} day takes no region.")
-                pending.pop(iso, None)
-                continue
-            values = [""] + [o[0] for o in enabled]
-            labels = {"": "— No region"}
-            labels.update({o[0]: o[1] for o in enabled})
-            current = pending.get(iso, "")
-            # Streamlit cannot disable an individual option, so the ones this
-            # day cannot take go in the HELP text WITH their reasons instead of
-            # being dropped. A region silently absent from the list reads as
-            # forgotten, and the operator has no way to tell "Rajasthan was
-            # weighed and Bangalore has three slots of it" from a broken list.
-            blocked = [o[1] for o in options if o[2]]
-            st.selectbox(
-                f"Region for {label}", values,
-                index=values.index(current) if current in values else 0,
-                format_func=lambda v: labels.get(v, v),
-                key=f"region_pick_{iso}", label_visibility="collapsed",
-                help=("Not available on this day:\n\n- "
-                      + "\n- ".join(blocked)) if blocked else None)
-            picked = st.session_state.get(f"region_pick_{iso}", "")
-            if picked:
-                pending[iso] = picked
-            else:
-                pending.pop(iso, None)
-            if blocked:
-                st.caption(f"{len(blocked)} not available today")
+    isos = [d if isinstance(d, str) else d.isoformat() for d in dates]
+    problems = st.session_state.get("region_problems") or []
+    days = region_day_args(meta, isos, day_themes or {}, applied, problems, city or "")
+    dirty_now = pending != applied
+
+    # Applying re-solves ONLY the changed days, so say which — the sentence is
+    # what stops "Apply" reading as "throw the week away and start again".
+    changed = sorted((set(pending) ^ set(applied))
+                     | {k for k in pending if pending.get(k) != applied.get(k)})
+    info = ""
+    if has_plan and dirty_now and changed:
+        info = ("Applying re-solves "
+                + ", ".join(_label_iso(c) for c in changed)
+                + " only — every other day on the menu stays exactly as it is.")
+
+    picked = region_strip(
+        days, picks=dict(pending),
+        apply_enabled=bool(has_plan and dirty_now),
+        reset_enabled=bool(dirty_now),
+        save_enabled=bool(has_plan and applied and not dirty_now),
+        save_title=("" if applied else "Apply a regional day first"),
+        info=info,
+        reset_token=f"{city}|{'|'.join(isos)}",
+        key="region_strip")
+
+    # A component replays its value on every rerun, and applying ends in one —
+    # the nonce is what makes one press one action. Same guard as the table's.
+    _seen = st.session_state.setdefault("region_nonce", None)
+    if picked and picked.get("nonce") != _seen:
+        st.session_state["region_nonce"] = picked.get("nonce")
+        act = picked.get("action")
+        new_picks = {k: v for k, v in (picked.get("picks") or {}).items() if v}
+        if act == "reset":
+            st.session_state["region_pending"] = dict(applied)
+            st.rerun()
+        elif act == "pick":
+            if new_picks != pending:
+                st.session_state["region_pending"] = new_picks
+                st.rerun()
+        elif act == "apply":
+            st.session_state["region_pending"] = new_picks
+            st.session_state["_region_apply_now"] = True
+            st.rerun()
+        elif act == "save":
+            try:
+                api.update_client_config(
+                    st.session_state.client_name,
+                    {"region_map": _weekday_map_from_dates(applied)})
+                st.toast("Saved — this pattern now seeds every plan.", icon="✅")
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.error(f"Could not save: {e}")
 
     # Anything the last Apply could not honour, carried across the rerun that
     # follows it. Rendered here rather than at the call site so it sits under
@@ -1149,42 +1139,9 @@ def _render_region_strip(api, city, dates, day_themes, has_plan):
         if pending:
             st.caption("Applied when you generate.")
         return dict(pending), dirty
-
-    if dirty:
-        changed = sorted(set(pending) ^ set(applied)) + [
-            k for k in pending if k in applied and pending[k] != applied[k]]
-        st.warning(
-            f"{len(set(changed))} day(s) changed. Applying re-solves only "
-            "those days — every other day on the menu stays exactly as it is.")
-        c1, c2, _ = st.columns([1.2, 1, 4])
-        with c1:
-            if st.button("Apply to menu", type="primary", key="region_apply"):
-                st.session_state["_region_apply_now"] = True
-                st.rerun()
-        with c2:
-            if st.button("Reset", key="region_reset"):
-                for iso in list(st.session_state.keys()):
-                    if iso.startswith("region_pick_"):
-                        del st.session_state[iso]
-                st.session_state["region_pending"] = dict(applied)
-                st.rerun()
-    elif applied:
-        names = ", ".join(f"{dt.date.fromisoformat(k).strftime('%a')} · {v}"
-                          for k, v in sorted(applied.items()))
-        c1, c2 = st.columns([3, 1.4])
-        with c1:
-            st.success(f"Applied: {names}")
-        with c2:
-            if st.button("Save as weekly default", key="region_save_default",
-                         use_container_width=True):
-                try:
-                    api.update_client_config(
-                        st.session_state.client_name,
-                        {"region_map": _weekday_map_from_dates(applied)})
-                    st.toast("Saved — this pattern now seeds every plan.",
-                             icon="✅")
-                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                    st.error(f"Could not save: {e}")
+    if not dirty and applied:
+        st.success("Applied: " + ", ".join(
+            f"{_label_iso(k)} · {v}" for k, v in sorted(applied.items())))
     return dict(pending), dirty
 
 
