@@ -719,28 +719,44 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
     cache_key = _explain_cache_key(b, key_ns)
     with st.expander("Why this menu"):
         st.caption(
-            "Plate-balance checks read off the menu itself, the reason each "
-            "dish is there, and any rule the solver could not fully enforce. "
-            "A flagged check is a suggestion; a relaxed rule is a fact.")
-        if st.button("Explain this menu", key=f"explain_btn_{key_ns}",
-                     use_container_width=True):
-            try:
-                store[cache_key] = api.explain(
-                    client_name=st.session_state.client_name,
-                    # plan_dates spans the horizon including days this client
-                    # does not serve, so [0] is the horizon start and the count
-                    # is its length.
-                    start_date=b["plan_dates"][0],
-                    num_days=len(b["plan_dates"]),
-                    counter_index=counter_index,
-                    solution=b.get("solution") or {},
-                    relaxations=b.get("relaxations") or None,
-                )
-            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                st.error(f"Could not explain this menu: {e}")
+            "Two readings of the same day. **Explain this menu** is computed: "
+            "plate-balance checks read off the menu itself, why each dish is "
+            "there, and any rule the solver could not fully enforce. "
+            "**Chef's read** is a model's judgement of it — a note for diners "
+            "and a blunter one for the kitchen. A flagged check is a "
+            "suggestion; a relaxed rule is a fact.")
+        # Two readings of the same day, from ONE request: `/explain` returns
+        # the checks and the chef's read together, so the buttons choose a
+        # view rather than each costing a call.
+        views = st.session_state.setdefault("explain_view", {})
+        c1, c2, _c3 = st.columns([1.1, 1, 2.4])
+        with c1:
+            want_checks = st.button("Explain this menu", use_container_width=True,
+                                    key=f"explain_btn_{key_ns}")
+        with c2:
+            want_chef = st.button("Chef's read", use_container_width=True,
+                                  key=f"chef_btn_{key_ns}")
+        if want_checks or want_chef:
+            views[key_ns] = "chef" if want_chef else "checks"
+            if cache_key not in store:
+                try:
+                    store[cache_key] = api.explain(
+                        client_name=st.session_state.client_name,
+                        # plan_dates spans the horizon including days this
+                        # client does not serve, so [0] is the horizon start
+                        # and the count is its length.
+                        start_date=b["plan_dates"][0],
+                        num_days=len(b["plan_dates"]),
+                        counter_index=counter_index,
+                        solution=b.get("solution") or {},
+                        relaxations=b.get("relaxations") or None,
+                    )
+                except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                    st.error(f"Could not explain this menu: {e}")
         payload = store.get(cache_key)
         if not payload:
             return
+        view = views.get(key_ns, "checks")
 
         days = payload.get("days") or []
         if not days:
@@ -766,7 +782,87 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
         tabs = st.tabs([date_label(d["date"]) for d in days])
         for tab, day in zip(tabs, days):
             with tab:
-                _render_explain_day(day)
+                if view == "chef":
+                    _render_chef_read(day)
+                else:
+                    _render_explain_day(day)
+
+
+#: Why a chef's read is missing, said in words an operator can act on rather
+#: than the reason string the API uses internally.
+_CHEF_OFF = {
+    "disabled": ("The chef's read is switched off. Set "
+                 "`EXPLAIN_CHEF_READ_ENABLED=true` to turn it on; it needs the "
+                 "same `EXPLAIN_LLM_API_KEY` as the overview."),
+    "model unavailable": ("No model is configured, or it could not be reached. "
+                          "Everything else on this page is computed and is "
+                          "unaffected."),
+    "error": "Something went wrong building it. The menu itself is unaffected.",
+}
+
+
+def _render_chef_read(day: dict) -> None:
+    """One day's chef's read: the note for diners, then the note for the kitchen.
+
+    **The split is the whole point and it is a safety one.** `client_read` is
+    written to be shown to the people eating; `internal_read` says what is weak,
+    what looks mis-tagged and what the theme failed to do, and `data_doubts`
+    names rows it thinks are described wrongly. Only the first may leave the
+    building, so it is labelled as such here rather than left to be worked out
+    from the surrounding prose.
+    """
+    chef = day.get("chef_read") or {}
+    if chef.get("source") != "model":
+        reason = str(chef.get("reason") or "disabled")
+        # An exact match where we have one, then the prefix cases that carry
+        # their own detail ("rejected after 3 attempts: ...").
+        st.info(_CHEF_OFF.get(reason)
+                or (f"The model's drafts were all sent back. {reason.split(':', 1)[-1].strip()}"
+                    if reason.startswith("rejected") else reason))
+        return
+
+    st.markdown("**For the people eating** &nbsp;·&nbsp; "
+                "<span style='color:#1AA45B;font-weight:700'>safe to share</span>",
+                unsafe_allow_html=True)
+    st.success(chef.get("client_read") or "")
+
+    st.markdown("**For the kitchen** &nbsp;·&nbsp; "
+                "<span style='color:#C40D1B;font-weight:700'>not for clients</span>",
+                unsafe_allow_html=True)
+    st.warning(chef.get("internal_read") or "")
+
+    star = chef.get("star") or None
+    if isinstance(star, dict) and star.get("dish"):
+        st.markdown(f"&#11088; **{format_item_for_ui(star.get('dish'))}** — "
+                    f"{html.escape(str(star.get('why') or ''))} "
+                    f"<span style='color:#777'>({html.escape(str(star.get('basis') or ''))})</span>",
+                    unsafe_allow_html=True)
+    for w in (chef.get("weak_spots") or []):
+        if isinstance(w, dict) and w.get("text"):
+            kind = str(w.get("kind", "")).replace("_", " ")
+            st.markdown(f"&#9888; {html.escape(str(w['text']))} "
+                        f"<span style='color:#777'>({html.escape(kind)})</span>",
+                        unsafe_allow_html=True)
+    # Not a verdict on the data — a prompt to go and look. The model is
+    # guessing from the dish name, which is exactly the evidence the ontology
+    # does not use, so it is worth reading and never worth applying blind.
+    doubts = chef.get("data_doubts") or []
+    if doubts:
+        with st.expander(f"{len(doubts)} row(s) the model thinks are mis-tagged"):
+            for d in doubts:
+                if not isinstance(d, dict):
+                    continue
+                st.markdown(
+                    f"- **{format_item_for_ui(d.get('dish'))}** · "
+                    f"`{html.escape(str(d.get('field') or ''))}` is "
+                    f"{html.escape(str(d.get('tagged') or ''))}, "
+                    f"model reads it as {html.escape(str(d.get('likely') or ''))}"
+                    f" — {html.escape(str(d.get('why') or ''))}")
+            st.caption("A suggestion from the dish NAME, which is not evidence "
+                       "the ontology uses. Check before changing anything.")
+    if int(chef.get("attempts") or 1) > 1:
+        st.caption(f"Accepted on draft {chef['attempts']}; the earlier ones were "
+                   "sent back for naming a dish or a number that was not there.")
 
 
 def _render_explain_day(day: dict) -> None:

@@ -1,6 +1,6 @@
 # Chef's read: prompt
 
-Prompt version `chef-read-v1`. The same text lives in `api/explain_llm.py` as
+Prompt version `chef-read-v2`. The same text lives in `api/explain_llm.py` as
 `CHEF_READ_SYSTEM_PROMPT`; this file is the readable copy. Change both together and bump
 `CHEF_READ_PROMPT_VERSION`, which is part of the cache key.
 
@@ -41,6 +41,7 @@ HARD LIMITS. A draft that breaks any of these is sent back to you:
 6. client_read never contradicts internal_read. It may leave a problem out, or turn it into a tip ("for a north-style plate, pair the chapati with the soya chatpata"), but it may never praise what internal_read criticises.
 7. Call something a comeback only if has_history is true and days_since_served is 21 or more.
 8. Never suggest bread with rasam as a plate.
+9. Write plain sentences. No bullets, no numbered lists, no headings, and no labels in front of a sentence — not "Weak spots:", and never a field name from the output schema. The claims below carry the structure; the notes are prose.
 
 THE STAR
 Pick a star only if one dish genuinely stands out; otherwise set star to null. Give the reason in plain words, and a basis the facts can confirm:

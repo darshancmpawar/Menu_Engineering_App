@@ -294,3 +294,73 @@ class TestFacts:
         pack['provenance'].append({'dish': 'rasam', 'slot': 'rasam', 'reason': 'client_constant', 'detail': 'pinned'})
         by = {d['name']: d for d in _facts(pack)['dishes']}
         assert by['rasam']['pinned'] is True and by['jeera_chapati']['pinned'] is False
+
+
+class TestToneIsChecked:
+    """"No headings, no lists, no labels" was a prompt line nothing enforced.
+
+    The module's own tuning note says a limit in the prompt without a matching
+    check either wastes retries or goes unenforced, and this is the one that
+    shows: asked for prose, a model reaches for a bulleted list the moment a
+    day has three things worth saying — and a list is what makes a note
+    skimmed rather than read.
+    """
+
+    def test_a_bulleted_draft_is_sent_back(self, pack):
+        reply = _with(internal_read='- No north gravy for the roti.\n- Heavy finish.')
+        assert any('list or a heading' in p for p in _problems(pack, reply))
+
+    def test_a_numbered_draft_is_sent_back(self, pack):
+        reply = _with(client_read='1. Chapati with the soya chatpata.\n2. Rice with sambar.')
+        assert any('list or a heading' in p for p in _problems(pack, reply))
+
+    def test_a_heading_is_sent_back(self, pack):
+        reply = _with(internal_read="## The plate\nNothing wet for the roti.")
+        assert any('list or a heading' in p for p in _problems(pack, reply))
+
+    def test_a_label_echoed_from_the_schema_is_sent_back(self, pack):
+        reply = _with(internal_read='Weak spots: nothing wet for the roti, and a heavy finish.')
+        assert any('uses the label' in p for p in _problems(pack, reply))
+
+    def test_a_field_name_mid_sentence_is_caught_too(self, pack):
+        """Not line-anchored: a schema word reads as leaked plumbing wherever
+        it lands, not only at the start of a line."""
+        reply = _with(internal_read='As internal_read notes, the dal is a kootu.')
+        assert any('uses the label' in p for p in _problems(pack, reply))
+
+    def test_ordinary_prose_is_left_alone(self, pack):
+        """The guard has to be narrow or it rejects good writing. The first
+        draft of it flagged "An easy day:" — a capitalised word before a colon
+        is a sentence, not a label — and the suite above caught that."""
+        reply = _with(client_read='Two good ways to eat today - roti or rice. '
+                                  'The soya chatpata is the pick.')
+        assert _problems(pack, reply) == []
+
+    def test_a_colon_in_a_sentence_is_not_a_label(self, pack):
+        reply = _with(client_read='An easy day: steamed rice, dosakai sambar '
+                                  'and rasam, with curd on the side.')
+        assert _problems(pack, reply) == []
+
+    def test_a_hyphenated_dish_name_is_not_a_bullet(self, pack):
+        reply = _with(internal_read=GOOD['internal_read'].replace(
+            'The pachadi looks wrongly marked north.',
+            'The do-pyaza style would have suited it better.'))
+        assert not any('list or a heading' in p for p in _problems(pack, reply))
+
+
+def test_the_prompt_and_its_readable_copy_have_not_drifted():
+    """`docs/chef_read_prompt.md` says it is the readable copy of
+    `CHEF_READ_SYSTEM_PROMPT` and that the two change together. Nothing made
+    that true. A doc describing a prompt the model is not being given is worse
+    than no doc, because it is the one somebody reads before tuning.
+    """
+    import pathlib
+    import re
+    doc = (pathlib.Path(__file__).resolve().parents[2]
+           / 'docs' / 'chef_read_prompt.md').read_text(encoding='utf-8')
+    block = re.search(r'```text\n(.*?)\n```', doc, re.S)
+    assert block, 'the doc no longer carries the prompt in a ```text block'
+    norm = lambda s: re.sub(r'\s+', ' ', s).strip()      # noqa: E731
+    assert norm(block.group(1)) == norm(mod.CHEF_READ_SYSTEM_PROMPT)
+    assert mod.CHEF_READ_PROMPT_VERSION in doc, (
+        'the doc names a different prompt version than the module')

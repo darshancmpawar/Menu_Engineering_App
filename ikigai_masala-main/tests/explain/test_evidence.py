@@ -177,6 +177,26 @@ class TestValidator:
         from api.explain_llm import validate
         return validate(prose, pack)
 
+    def test_a_marketing_sentence_is_rejected(self, pack):
+        """`SYSTEM_PROMPT` forbids marketing adjectives and nothing enforced it.
+
+        It matters more than it looks: this paragraph sits above a menu a
+        kitchen has to act on, and a sentence written to SELL is one nobody
+        trusts the numbers in. The rejected reply falls back to the computed
+        bullets, which is the right trade.
+        """
+        for sell in ('A delightful plate today.',
+                     'A symphony of textures across the counter.',
+                     'Thoughtfully curated for the week ahead.'):
+            ok, why = self._v(sell, pack)
+            assert not ok and 'marketing word' in why, sell
+
+    def test_plain_kitchen_english_is_untouched(self, pack):
+        """The guard has to be narrow or it eats the voice it is protecting."""
+        for plain in ('Thursday is a north menu of six mains.',
+                      'Aloo jeera is the only dry vegetable against two gravies.'):
+            assert self._v(plain, pack)[0], plain
+
     def test_an_invented_dish_written_the_way_a_model_writes_one(self, pack):
         """The hole the guarantee was overstated across: the snake_case check
         lowercases the prose and then looks for underscores, so it could never

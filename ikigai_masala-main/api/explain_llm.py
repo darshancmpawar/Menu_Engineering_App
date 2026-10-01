@@ -80,6 +80,18 @@ _BANNED_RE = re.compile('|'.join(BANNED_PATTERNS), re.IGNORECASE)
 
 _NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
 
+# "No marketing adjectives: nothing is delightful, vibrant, a symphony or
+# thoughtfully curated" is a line in SYSTEM_PROMPT that nothing enforced —
+# the same gap as the chef read's "no template". It matters more here than it
+# looks: this paragraph sits above a menu a kitchen has to act on, and a
+# sentence written to sell is a sentence nobody trusts the numbers in. Kept to
+# words with no honest use in a plate description, so a real one is never lost.
+_MARKETING_RE = re.compile(
+    r'\b(delightful|delectable|exquisite|sumptuous|tantalis(?:ing|zing)|'
+    r'mouth-?watering|symphony|medley|culinary journey|burst of flavou?r|'
+    r'thoughtfully curated|curated|elevates?|indulgent|decadent)\b',
+    re.IGNORECASE)
+
 SYSTEM_PROMPT = """You write a short overview of one day's corporate cafeteria \
 menu for the chef who will cook it.
 
@@ -317,6 +329,8 @@ def validate(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
         return False, 'empty'
     if _BANNED_RE.search(prose):
         return False, f'banned topic: {_BANNED_RE.search(prose).group(0)!r}'
+    if _MARKETING_RE.search(prose):
+        return False, f'marketing word: {_MARKETING_RE.search(prose).group(0)!r}'
 
     numbers, names, words = _allowed_tokens(pack)
 
@@ -596,7 +610,7 @@ CHEF_READ_TEMPERATURE = 0.2      # low, so the same menu gets the same star
 
 # Bump whenever the prompt or the checks change: it is part of the cache key,
 # so an old accepted read is never served against new rules.
-CHEF_READ_PROMPT_VERSION = 'chef-read-v1'
+CHEF_READ_PROMPT_VERSION = 'chef-read-v2'
 
 # A dish counts as a comeback only past the item cooldown (20 days), so the
 # claim says something the cooldown alone would not have produced.
@@ -651,6 +665,9 @@ chatpata"), but it may never praise what internal_read criticises.
 7. Call something a comeback only if has_history is true and \
 days_since_served is 21 or more.
 8. Never suggest bread with rasam as a plate.
+9. Write plain sentences. No bullets, no numbered lists, no headings, and no \
+labels in front of a sentence — not "Weak spots:", and never a field name from \
+the output schema. The claims below carry the structure; the notes are prose.
 
 THE STAR
 Pick a star only if one dish genuinely stands out; otherwise set star to null. \
@@ -708,6 +725,34 @@ _CONTRADICTIONS = {
     'repetitive': re.compile(r'\b(varied|variety|something different)\b', re.IGNORECASE),
 }
 _PRAISE_RE = re.compile(r'\b(perfect|perfectly|balanced|flawless)\b', re.IGNORECASE)
+
+# "There is no template. No headings, no lists, no labels" is a line in the
+# prompt that nothing enforced. The module's own tuning note says a limit in
+# the prompt without a matching check here either wastes retries or goes
+# unenforced, and this is the one that shows: a model asked for prose reaches
+# for a bulleted list the moment the day has three things worth saying, and a
+# list is exactly what makes a note skimmed instead of read.
+#
+# Matched at a LINE START (or after a newline) so an em dash mid-sentence and
+# a hyphenated dish name are untouched; a bare "1." is only a list when it
+# opens a line, and "2 of 5" never does.
+# Deliberately only the SHAPES, never a capitalised word before a colon: "An
+# easy day: steamed rice, sambar and rasam" is good prose and the first draft
+# of this rejected it. Same lesson as VETO_PAIRS above — veto what is clearly
+# wrong, leave what is merely plausible to the model.
+_TEMPLATE_RE = re.compile(
+    r'(?m)^\s*(?:[-*\u2022\u00b7]\s+'          # - bullet  * bullet  • bullet
+    r'|\d+[.)]\s+'                              # 1. or 1)
+    r'|#{1,6}\s+'                                # # heading
+    r'|\*\*[^*\n]{1,40}\*\*\s*:?)'             # **Bold label**
+)
+
+# A label the model echoed back out of its own output schema, in either the
+# field spelling or the human one. Not line-anchored: these turn up
+# mid-paragraph too, and read as leaked plumbing wherever they land.
+_SCHEMA_WORDS_RE = re.compile(
+    r'\b(client[_ ]read|internal[_ ]read|weak[_ ]spots|data[_ ]doubts'
+    r'|plate[_ ]role|claims|comebacks)\b\s*:?', re.IGNORECASE)
 
 _chef_cache: Dict[str, Dict[str, Any]] = {}
 _chef_cache_order: List[str] = []
@@ -938,6 +983,16 @@ def check_chef_read(reply: Dict[str, Any], facts: Dict[str, Any], pack: Dict[str
             break
         for name in _off_menu_dishes(text, menu, city):
             problems.append(f'{label} names "{name}", which is not on today\'s menu. Remove it.')
+        hit = _TEMPLATE_RE.search(text)
+        if hit:
+            problems.append(
+                f'{label} is formatted as a list or a heading '
+                f'({hit.group(0).strip()!r}); write plain sentences instead.')
+        hit = _SCHEMA_WORDS_RE.search(text)
+        if hit:
+            problems.append(
+                f'{label} uses the label {hit.group(0).strip()!r}; those belong '
+                'in claims, not in a sentence somebody reads.')
 
     # client note: no internals, no contradictions
     if client:
