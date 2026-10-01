@@ -114,15 +114,11 @@ def _facts(pack, **kw):
 
 
 class TestSwitches:
-    def test_on_by_default(self):
-        """The owner turned it on. The KEY is the gate, not this switch — see
-        `test_no_key_never_calls_the_model` below, which is what makes shipping
-        it on safe for a deployment that has not configured a model."""
+    def test_allowed_by_default_because_the_button_is_the_trigger(self):
+        """The env var is a kill switch; asking is what runs it (see the endpoint tests)."""
         assert mod.CHEF_READ_ENABLED is True
 
-    def test_the_switch_still_turns_it_off(self, pack, monkeypatch):
-        """A default is only a default if the override still works, and this
-        one is the kill switch: it must stop the feature with a key present."""
+    def test_the_kill_switch_returns_disabled_without_a_call(self, pack, monkeypatch):
         mod.reset_chef_read_cache_for_tests()
         monkeypatch.setattr(mod, 'CHEF_READ_ENABLED', False)
         monkeypatch.setattr(mod, 'API_KEY', 'test-key')
@@ -306,6 +302,41 @@ class TestFacts:
         assert by['rasam']['pinned'] is True and by['jeera_chapati']['pinned'] is False
 
 
+class TestRoomToWrite:
+    """Ceilings are generous and stated, so a rich day is never choked."""
+
+    def test_the_prompt_states_the_word_ceilings(self):
+        p = mod.CHEF_READ_SYSTEM_PROMPT
+        assert f'under {mod.CLIENT_MAX_WORDS} words' in p
+        assert f'under {mod.INTERNAL_MAX_WORDS} words' in p
+        assert '<CLIENT_MAX_WORDS>' not in p and '<INTERNAL_MAX_WORDS>' not in p
+
+    def test_defaults_leave_room_for_a_full_read(self):
+        assert mod.CLIENT_MAX_WORDS >= 200 and mod.INTERNAL_MAX_WORDS >= 350
+        assert mod.CHEF_READ_MAX_TOKENS >= 2500
+
+    def test_a_long_guest_note_is_accepted(self, pack):
+        long_note = ' '.join([GOOD['client_read']] * 4)
+        assert 140 < len(long_note.split()) < mod.CLIENT_MAX_WORDS
+        assert _problems(pack, _with(client_read=long_note)) == []
+
+    def test_the_ceiling_can_be_changed(self, pack, monkeypatch):
+        monkeypatch.setattr(mod, 'CLIENT_MAX_WORDS', 20)
+        assert any('too long' in p for p in _problems(pack, GOOD))
+
+    def test_a_cut_off_reply_is_told_it_was_cut_off(self, pack, on):
+        cut = json.dumps(GOOD)[:300]
+        calls = _script(on, [cut, GOOD])
+        out = _run(pack)
+        assert out['source'] == 'model' and out['attempts'] == 2
+        assert 'cut off' in calls[1]['contents'][-1]['parts'][0]['text']
+
+    def test_the_request_asks_for_the_configured_token_room(self, pack, on):
+        calls = _script(on, [GOOD])
+        _run(pack)
+        assert calls[0]['max_tokens'] == mod.CHEF_READ_MAX_TOKENS
+
+
 class TestToneIsChecked:
     """"No headings, no lists, no labels" was a prompt line nothing enforced.
 
@@ -370,7 +401,11 @@ def test_the_prompt_and_its_readable_copy_have_not_drifted():
            / 'docs' / 'chef_read_prompt.md').read_text(encoding='utf-8')
     block = re.search(r'```text\n(.*?)\n```', doc, re.S)
     assert block, 'the doc no longer carries the prompt in a ```text block'
-    norm = lambda s: re.sub(r'\s+', ' ', s).strip()      # noqa: E731
+    # The two word ceilings are settings interpolated into the prompt, so they
+    # are masked on both sides: the doc shows the defaults, and a deployment
+    # that raised them must not make this read as drift.
+    norm = lambda s: re.sub(r'under \d+ words', 'under N words',      # noqa: E731
+                            re.sub(r'\s+', ' ', s).strip())
     assert norm(block.group(1)) == norm(mod.CHEF_READ_SYSTEM_PROMPT)
     assert mod.CHEF_READ_PROMPT_VERSION in doc, (
         'the doc names a different prompt version than the module')

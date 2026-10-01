@@ -4,7 +4,7 @@ UI formatting utilities for menu plan display.
 
 import html
 import re
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES, DISPLAY_SLOT_ORDER  # noqa: F401
 from ui.theme_tokens import ITEM_COLOR_MAP, PULSE_THEME_COLORS
@@ -283,3 +283,63 @@ def slot_sort_key(slot_id: str) -> int:
         return DISPLAY_SLOT_ORDER.index(base)
     except ValueError:
         return 999
+
+
+def chef_read_sections(chef: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The chef's read as its two sections, guests first, then the kitchen.
+
+    Both sit under one "Chef's read" heading but stay separate, because they
+    are written for different readers: the guest note is warm and leaves out
+    the kitchen's problems, the kitchen note says them plainly. Empty unless
+    the read passed every check (``source == 'model'``): a rejected or missing
+    read shows nothing rather than half a read.
+
+    Each section: ``{'key', 'title', 'text', 'notes'}``. ``notes`` are short
+    extra lines taken from the read's claims (the star for guests, data doubts
+    for the kitchen) for anything the prose may not have spelled out.
+    """
+    if not isinstance(chef, dict) or chef.get('source') != 'model':
+        return []
+    out: List[Dict[str, Any]] = []
+    guest = str(chef.get('client_read') or '').strip()
+    if guest:
+        notes = []
+        star = chef.get('star')
+        if isinstance(star, dict) and star.get('dish'):
+            why = str(star.get('why') or '').strip()
+            notes.append(f"Star of the day: {_prettify_item_name(str(star['dish']))}"
+                         + (f" ({why})" if why else ''))
+        out.append({'key': 'guests', 'title': 'For guests', 'text': guest, 'notes': notes})
+    kitchen = str(chef.get('internal_read') or '').strip()
+    if kitchen:
+        notes = []
+        for d in chef.get('data_doubts') or []:
+            if not isinstance(d, dict) or not d.get('dish'):
+                continue
+            field = str(d.get('field') or '').replace('_', ' ')
+            notes.append(f"Check the dish list: {_prettify_item_name(str(d['dish']))} is marked "
+                         f"{str(d.get('tagged') or '?').replace('_', ' ')} ({field}), "
+                         f"looks {str(d.get('likely') or '?').replace('_', ' ')}")
+        out.append({'key': 'kitchen', 'title': 'For the kitchen', 'text': kitchen, 'notes': notes})
+    return out
+
+
+def chef_read_status(chef: Optional[Dict[str, Any]], asked: bool = False) -> Optional[str]:
+    """One line for the planner when the chef was asked but a day has no read.
+
+    Nothing until someone presses "Ask the chef": the read is on demand, so its
+    absence before that is not news. Once asked, every missing day says why,
+    including a deployment that has switched the feature off.
+    """
+    if not asked:
+        return None
+    if isinstance(chef, dict) and chef.get('source') == 'model':
+        return None
+    reason = str((chef or {}).get('reason') or '').strip() if isinstance(chef, dict) else ''
+    if reason == 'disabled':
+        return "The chef's read is switched off on this server."
+    if reason == 'model unavailable':
+        return "The chef could not be reached just now (no model key, a timeout or the rate limit). Try again later."
+    if reason.startswith('rejected'):
+        return "The chef's notes for this day did not pass the fact checks, so they are not shown."
+    return f"No chef's read for this day ({reason or 'no reply'})."

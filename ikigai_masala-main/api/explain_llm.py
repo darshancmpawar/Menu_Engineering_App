@@ -15,7 +15,8 @@ path. They make opposite bets, on purpose:
    discouraged. Without it, this is a fluent-nonsense generator pointed at a
    client-facing surface.
 
-2. **The chef's read** (`explain_chef_read`, new, off by default). Here the
+2. **The chef's read** (`explain_chef_read`, new, runs only when a request
+   asks for it: the planner's "Ask the chef" button). Here the
    model IS asked for judgement: which dishes go together, what the star of the
    day is, what is weak, what looks mis-tagged. It uses its own food knowledge
    for that, because no table in this repo knows that rajma chawal is a meal on
@@ -600,42 +601,34 @@ def explain_plan(packs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 # and changes nothing about `explain_plan`. Design: docs/chef_read_architecture.md.
 
 # --- configuration ---------------------------------------------------------
-# ON by default since the owner turned it on; `EXPLAIN_CHEF_READ_ENABLED=false`
-# switches it back off. The switch was never the real gate and should not be
-# read as one: with no EXPLAIN_LLM_API_KEY this returns `model unavailable`
-# without making a single call, so turning it on costs nothing until a key is
-# configured. It stays SEPARATE from the overview's switch because the two
-# features make opposite bets, and nobody should acquire judgement by enabling
-# phrasing.
+# The chef's read runs ONLY when a request asks for it: the planner's "Ask the
+# chef" button sends `chef_read: true` to /explain. That keeps the cost (up to
+# 3 model calls per day) on the people who want it. This variable is the
+# deployment's kill switch, separate from the overview's: set it to false and
+# the button gets "switched off" instead of a read. Both need EXPLAIN_LLM_API_KEY.
 CHEF_READ_ENABLED = os.getenv('EXPLAIN_CHEF_READ_ENABLED', 'true').strip().lower() == 'true'
 CHEF_READ_MODEL = os.getenv('EXPLAIN_CHEF_READ_MODEL', '').strip() or MODEL
 CHEF_READ_MAX_ATTEMPTS = max(1, int(os.getenv('EXPLAIN_CHEF_READ_MAX_ATTEMPTS', '3')))
-CHEF_READ_MAX_TOKENS = int(os.getenv('EXPLAIN_CHEF_READ_MAX_TOKENS', '1200'))
+# Room to write a full read. ~200 + 350 words of notes plus the claims JSON is
+# about 1,200 tokens; 2,500 leaves headroom so a rich day is never cut off
+# mid-JSON. Raise it up to the model's own output limit if reads get longer.
+CHEF_READ_MAX_TOKENS = int(os.getenv('EXPLAIN_CHEF_READ_MAX_TOKENS', '2500'))
 CHEF_READ_TEMPERATURE = 0.2      # low, so the same menu gets the same star
 
 # Bump whenever the prompt or the checks change: it is part of the cache key,
 # so an old accepted read is never served against new rules.
-CHEF_READ_PROMPT_VERSION = 'chef-read-v2'
+CHEF_READ_PROMPT_VERSION = 'chef-read-v3'
 
 # A dish counts as a comeback only past the item cooldown (20 days), so the
 # claim says something the cooldown alone would not have produced.
 COMEBACK_DAYS = 21
 
-# The length ceilings the checks enforce, in words (`_words` counts letters-only
-# tokens, so numbers and dates do not spend the budget).
-#
-# THREE DIALS, AND THEY ONLY WORK TOGETHER. `CHEF_READ_MAX_TOKENS` is what the
-# model may SPEND, these two are what the checks will ACCEPT, and the prompt's
-# own "two to five sentences" / "up to six sentences" is what the model AIMS
-# for. Raising the token budget alone buys nothing — a 2-to-5-sentence note
-# never came near 1200 tokens. Raising these alone buys nothing either, for the
-# same reason. Longer notes need the prompt's sentence counts raised too, which
-# means bumping CHEF_READ_PROMPT_VERSION and `docs/chef_read_prompt.md` with
-# them. Lowering these below what the prompt asks for is the expensive
-# direction: every draft is rejected on length and the day burns all three
-# attempts to produce nothing.
-CLIENT_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_CLIENT_WORDS', '110'))
-INTERNAL_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_INTERNAL_WORDS', '170'))
+# Ceilings, not targets: they stop rambling, they do not ask for length. Both
+# are interpolated into the prompt below, so the model is told the room it has
+# — which is the half that actually changes the output. A ceiling the checks
+# enforce and the prompt never mentions only burns retries.
+CLIENT_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_CLIENT_MAX_WORDS', '200'))
+INTERNAL_MAX_WORDS = int(os.getenv('EXPLAIN_CHEF_READ_CHEF_MAX_WORDS', '350'))
 
 CHEF_READ_SYSTEM_PROMPT = """You read one day's menu at a corporate cafeteria \
 in India and write two short notes about it.
@@ -653,15 +646,18 @@ knowing about THIS menu. That might be how to put a good plate together, the \
 dish you would point a friend to, the thread running through the day (a \
 region, a theme), something that is back after a long time, or simply that it \
 is an easy day. Pick what matters today and leave out what does not. Warm and \
-plain, like a colleague who knows food. Two to five sentences.
+plain, like a colleague who knows food. Write as much as this menu deserves \
+and no more: a quiet day may need two sentences, a full regional day a short \
+paragraph or two. Stay under <CLIENT_MAX_WORDS> words.
 
 internal_read: the same menu for the chef and the menu planner. Be direct. Say \
 what works, what does not, and why, in kitchen language. If a group of diners \
 has no proper plate, if the theme does not really show, if the day finishes \
 heavy, or if two dishes are too alike, say so. If the facts list \
 known_problems, address the worst one. If a dish looks wrongly described in \
-the facts (a south-Indian dish marked north, say), say it here. Up to six \
-sentences.
+the facts (a south-Indian dish marked north, say), say it here. Say \
+everything a chef would act on and nothing they would not. Stay under \
+<INTERNAL_MAX_WORDS> words.
 
 There is no template. No headings, no lists, no labels, and do not open the \
 way other days opened (other_days_open_with shows how earlier days began). \
@@ -711,6 +707,12 @@ OUTPUT: strict JSON, no markdown fences:
  }}
 star may be null. List in claims every plate, star, comeback and weakness your \
 notes mention, and inside claims write dish names exactly as the facts do."""
+# The two ceilings are settings, so the prompt carries them as placeholders and
+# they are filled in once, here. A prompt that names a number the checks do not
+# use (or the other way round) is the failure this avoids.
+CHEF_READ_SYSTEM_PROMPT = (CHEF_READ_SYSTEM_PROMPT
+                           .replace('<CLIENT_MAX_WORDS>', str(CLIENT_MAX_WORDS))
+                           .replace('<INTERNAL_MAX_WORDS>', str(INTERNAL_MAX_WORDS)))
 
 # Words that describe how the menu was MADE. Fine for a chef, meaningless or
 # alarming for an HR admin reading the client note.
@@ -1190,8 +1192,15 @@ def chef_read_day(pack: Dict[str, Any], facts: Dict[str, Any],
             out['reason'] = 'model unavailable'
             return out
         reply = _parse_reply(raw)
-        problems = (['The reply was not valid JSON. Return only the JSON object.']
-                    if reply is None else check_chef_read(reply, facts, pack, city_dish_names))
+        if reply is None:
+            # A reply that stops before its closing brace hit the token limit:
+            # say so, or the model just tries the same length again.
+            problems = (['Your reply was cut off before the JSON closed. Keep both notes within '
+                         'their word limits and return the whole JSON object.']
+                        if raw.lstrip().startswith(('{', '```')) and not raw.rstrip().rstrip('`').rstrip().endswith('}') else
+                        ['The reply was not valid JSON. Return only the JSON object.'])
+        else:
+            problems = check_chef_read(reply, facts, pack, city_dish_names)
         out['problems_by_attempt'].append(problems)
         if not problems:
             claims = reply.get('claims') or {}

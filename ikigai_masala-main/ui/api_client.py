@@ -346,19 +346,23 @@ class MenuApiClient:
         num_days: int = 5,
         counter_index: int = 0,
         relaxations: Optional[List[Dict[str, Any]]] = None,
+        chef_read: bool = False,
         region_days: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Explain a plan this client already has. Never solves.
+
+        ``chef_read=True`` is the "Ask the chef" button: the server then also
+        writes the chef's read for every day. It can take up to a minute per
+        day (up to three model calls each), so the timeout grows with the plan
+        and the request is NOT retried blindly: a retry would spend the model
+        quota twice. ``region_days`` lets the read know a day is, say, a Tamil
+        Nadu day; without it the facts never mention the region, because a
+        region is not recoverable from the solution.
 
         ``relaxations`` comes from the ``plan()`` response and cannot be
         recomputed here — the solver's "I could not fully enforce this" lines
         are only observable while it runs. Pass them through or the explanation
         silently stops mentioning which rule did not hold.
-
-        ``region_days`` is the same ``{iso: region}`` ``plan()`` was given, for
-        the same reason: a Tamil Nadu day is not recoverable from the solution,
-        so without it the chef's read describes a regional day as an ordinary
-        one — the regional thread is one of the things it exists to notice.
 
         Returns ``{success, days: [{date, bullets, prose, checks, …}], …}``.
         ``prose`` is None unless the optional model is enabled AND its reply
@@ -373,14 +377,17 @@ class MenuApiClient:
         }
         if relaxations:
             payload["relaxations"] = relaxations
+        if chef_read:
+            payload["chef_read"] = True
         if region_days:
             payload["region_days"] = region_days
+        timeout = min(600, 60 + 60 * max(1, int(num_days))) if chef_read else 45
 
         def _do():
             return self.session.post(
-                f"{self.base_url}/api/v1/explain", json=payload, timeout=45,
+                f"{self.base_url}/api/v1/explain", json=payload, timeout=timeout,
             )
-        resp = _with_one_retry(_do, retryable=True)
+        resp = _with_one_retry(_do, retryable=not chef_read)
         return _parse_response(resp, "Explain failed")
 
     def get_saved_plan(

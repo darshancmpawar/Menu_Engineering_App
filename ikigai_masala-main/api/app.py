@@ -1915,15 +1915,19 @@ def explain_menu():
             attach_relaxations(packs, [r for r in relaxations if isinstance(r, dict)])
 
         rendered = explain_plan(packs)
-        # The chef's read: off unless EXPLAIN_CHEF_READ_ENABLED. Never raises;
-        # a day that fails simply carries source=None and its reason.
-        chef = explain_chef_read(
-            packs,
-            extras=chef_attrs_from_dataframe(inputs.df),
-            recency=inputs.recency_by_item,
-            region_days=getattr(inputs, 'region_days', None),
-            city_dish_names=city_dish_names_from_dataframe(inputs.df),
-        )
+        # The chef's read runs only when the request asks for it (the planner's
+        # "Ask the chef" button sends `chef_read: true`): it costs up to three
+        # model calls per day, so a plain "Explain this menu" never pays for it.
+        # Never raises; a day that fails carries source=None and its reason.
+        chef: Dict[str, Any] = {}
+        if data.get('chef_read'):
+            chef = explain_chef_read(
+                packs,
+                extras=chef_attrs_from_dataframe(inputs.df),
+                recency=inputs.recency_by_item,
+                region_days=getattr(inputs, 'region_days', None),
+                city_dish_names=city_dish_names_from_dataframe(inputs.df),
+            )
         days = []
         for pack in packs:
             extra = rendered.get(pack['date'], {})
@@ -1972,9 +1976,9 @@ def explain_menu():
                 'prose': extra.get('prose'),
                 'llm_used': bool(extra.get('llm_used')),
                 'reason': extra.get('reason', ''),
-                # Both notes go to the planner. A client-facing surface must
-                # show only chef_read['client_read'] - never internal_read or
-                # data_doubts.
+                # None unless asked for. Both notes go to the planner; a
+                # client-facing surface must show only chef_read['client_read'],
+                # never internal_read or data_doubts.
                 'chef_read': chef.get(pack['date']),
             })
         return jsonify({
