@@ -174,8 +174,22 @@ day, as one growing conversation.
 5. After the third rejection, give up: `source=None`,
    `reason="rejected after 3 attempts: <first problem>"`.
 
-**Network failure is not retried.** A timeout, 429 or HTTP error returns
-`model unavailable` after one call, because retrying only spends quota.
+**Since written: a transport failure spends an attempt rather than the day.**
+The draft said a timeout, 429 or HTTP error returns `model unavailable` after
+one call, "because retrying only spends quota". Measured on a real 7-day plan:
+1 call in 15 read-timed-out on the first (cold) call, and that rule cost the
+whole day's read while two unused attempts stood by — 6 of 7 days had a read
+and the first said "could not be reached". A blip is not a bad draft, but it
+is not a reason to abandon a budget the day already has, and the per-day
+ceiling is unchanged at `CHEF_READ_MAX_ATTEMPTS`.
+
+**Two failures stay terminal**, because a second attempt gets the same answer:
+a 429 (retrying the thing that caused the rate limit is rudeness with a delay)
+and a missing key. They now say so by name — `rate limited`, `no model key` —
+instead of sharing one `model unavailable`, which is three problems with three
+different answers in one line nobody could act on. `_post_model` fills an
+`outcome` dict with the failure KIND so the day can tell them apart, and logs
+the HTTP body, which it used to swallow.
 
 Every rejection is kept in `problems_by_attempt`, which is the raw material for
 the learning loop.

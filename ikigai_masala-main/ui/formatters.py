@@ -338,8 +338,23 @@ def chef_read_status(chef: Optional[Dict[str, Any]], asked: bool = False) -> Opt
     reason = str((chef or {}).get('reason') or '').strip() if isinstance(chef, dict) else ''
     if reason == 'disabled':
         return "The chef's read is switched off on this server."
-    if reason == 'model unavailable':
-        return "The chef could not be reached just now (no model key, a timeout or the rate limit). Try again later."
+    if reason == 'no model key':
+        return ("No model is configured on this server, so there is nothing to ask. "
+                "Set EXPLAIN_LLM_API_KEY.")
+    if reason == 'rate limited':
+        return ("The model's rate limit was hit, so this day was skipped. "
+                "Ask again in a minute, or plan fewer days at once.")
+    # "could not be reached" used to cover a missing key, a rate limit and a
+    # timeout alike — three problems with three different answers in one line
+    # nobody could act on. Each has its own now, and this one keeps the detail
+    # (`model unavailable (ReadTimeout)`) because by the time it is shown the
+    # day has already retried and still failed.
+    if reason.startswith('model unavailable'):
+        detail = reason[len('model unavailable'):].strip(' ()')
+        return ("The chef did not answer for this day after "
+                f"{'several tries' if detail else 'retrying'}"
+                f"{' (' + detail + ')' if detail else ''}. "
+                "Every other day is unaffected — ask again to retry just this one.")
     if reason.startswith('rejected'):
         return "The chef's notes for this day did not pass the fact checks, so they are not shown."
     return f"No chef's read for this day ({reason or 'no reply'})."

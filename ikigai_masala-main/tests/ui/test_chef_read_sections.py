@@ -36,13 +36,18 @@ def test_a_rejected_or_missing_read_shows_nothing():
 
 
 def test_nothing_is_said_until_the_chef_is_asked():
-    for chef in (None, {'source': None, 'reason': 'disabled'}, {'source': None, 'reason': 'model unavailable'}):
+    for chef in (None, {'source': None, 'reason': 'disabled'},
+                 {'source': None, 'reason': 'no model key'}):
         assert chef_read_status(chef) is None
 
 
 def test_once_asked_a_missing_day_says_why():
     assert chef_read_status(READ, asked=True) is None
     assert 'switched off' in chef_read_status({'source': None, 'reason': 'disabled'}, asked=True)
-    assert 'could not be reached' in chef_read_status({'source': None, 'reason': 'model unavailable'}, asked=True)
+    # Each cause says what to DO about it; they used to share one line.
+    assert 'EXPLAIN_LLM_API_KEY' in chef_read_status({'source': None, 'reason': 'no model key'}, asked=True)
+    assert 'rate limit' in chef_read_status({'source': None, 'reason': 'rate limited'}, asked=True)
+    timed_out = chef_read_status({'source': None, 'reason': 'model unavailable (ReadTimeout)'}, asked=True)
+    assert 'ReadTimeout' in timed_out and 'Every other day is unaffected' in timed_out
     assert 'fact checks' in chef_read_status({'source': None, 'reason': 'rejected after 3 attempts: x'}, asked=True)
     assert chef_read_status(None, asked=True)
