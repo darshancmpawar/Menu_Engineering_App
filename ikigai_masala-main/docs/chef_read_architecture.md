@@ -104,7 +104,18 @@ structure.
 - **Hard limits, each matched by a check:** only today's dishes, no
   underscores, no unsourced numbers, no health claims, no machinery words for
   clients, no client praise of what the chef note criticises, comebacks need
-  21+ days with history, never bread with rasam.
+  21+ days with history, never bread with rasam, every plate carries a rice or
+  a bread, plain sentences.
+- **Each limit names the words its check rejects on.** The draft's version of
+  limit 6 said client_read "may never praise what internal_read criticises",
+  which is true and unactionable: the check rejects on `perfect`, `balanced`,
+  `light` against a heavy day, `classic north` against a theme_mismatch, and
+  the model could not know that. Measured on a real 7-day plan, the vague
+  version cost **16 model calls with zero days accepted first draft**; naming
+  the words took the same plan to **9–11 calls with most days accepted first
+  time**. `tests/explain/test_chef_read.py::TestEveryRejectionRuleIsInThePrompt`
+  pins the pairing, so a new check with no prompt line fails there rather than
+  quietly costing a retry a day forever.
 - **The star is optional.** If one dish stands out, the model names it with a
   plain reason and a basis code can confirm: premium, comeback, regional,
   pinned, theme or plate_role. Richness alone is not a reason, and it is told
@@ -123,7 +134,7 @@ reaches for a bulleted list the moment a day has three things worth saying.
 It matters MORE under the new ceilings, not less: a 350-word kitchen note is
 exactly where a list appears. The check vetoes list and heading SHAPES only,
 so `An easy day:` survives — the first draft of it rejected that, and the
-suite caught it. The prompt version is therefore `chef-read-v3`, not v2: the
+suite caught it. The prompt version is therefore `chef-read-v6`, not v2: the
 prompt text changed in both revisions and the version is part of the cache
 key.
 
@@ -232,7 +243,7 @@ To give the model more room, raise the two word ceilings first and the token
 limit with them (roughly 2 tokens per word, plus about 500 for the claims), up
 to the model's own output limit. Code constants worth knowing:
 `COMEBACK_DAYS = 21`, temperature 0.2, `CHEF_READ_PROMPT_VERSION =
-"chef-read-v3"`.
+"chef-read-v6"`.
 
 ## Wiring it in
 
