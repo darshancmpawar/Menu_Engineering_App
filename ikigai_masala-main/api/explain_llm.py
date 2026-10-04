@@ -460,8 +460,18 @@ def _reports_the_bad_news(prose: str, pack: Dict[str, Any]) -> Tuple[bool, str]:
 
 def _post_model(system_prompt: str, contents: List[Dict[str, Any]], *,
                 model: Optional[str] = None, max_tokens: int = 900,
-                temperature: float = 0.3, tag: str = 'explain') -> Optional[str]:
+                temperature: float = 0.3, tag: str = 'explain',
+                outcome: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """POST one request to the model. Returns raw text, or None on any failure.
+
+    `outcome`, when given, is filled with `{'kind', 'detail'}` saying WHICH
+    failure it was: `rate_limited` and `no_key` are terminal, everything else
+    (`timeout`, `network`, `http`, `empty`) is worth another attempt. Returning
+    a bare None for all of them is what made "could not be reached (no model
+    key, a timeout or the rate limit)" the only thing the planner could say —
+    three different problems with three different answers, in one message
+    nobody can act on. An out-parameter rather than a changed return type
+    because tests and `_call_model` patch this function by name.
 
     Shared by the overview and the chef's read so there is exactly one place
     that knows the Gemini request shape, the key header and the failure rules.
@@ -472,12 +482,18 @@ def _post_model(system_prompt: str, contents: List[Dict[str, Any]], *,
     Every failure path returns None rather than raising: both features are
     optional and must never be the reason a menu request fails.
     """
+    def _say(kind: str, detail: str = '') -> None:
+        if outcome is not None:
+            outcome['kind'], outcome['detail'] = kind, detail
+
     if not API_KEY:
         logger.info('%s: no EXPLAIN_LLM_API_KEY set; using the fallback', tag)
+        _say('no_key')
         return None
     try:
         import requests
     except ImportError:  # pragma: no cover
+        _say('no_requests')
         return None
 
     url = ENDPOINT.format(model=model or MODEL)
@@ -493,18 +509,36 @@ def _post_model(system_prompt: str, contents: List[Dict[str, Any]], *,
                           headers={'x-goog-api-key': API_KEY})
         if r.status_code == 429:
             logger.warning('%s: rate limited; falling back', tag)
+            _say('rate_limited')
             return None
         if r.status_code >= 400:
-            logger.warning('%s: model HTTP %s; falling back', tag, r.status_code)
+            # The body says WHY — "model is overloaded", "API key not valid",
+            # "model not found". Swallowing it is why the first diagnosis of
+            # this took a packet capture; 200 characters is enough to name it.
+            logger.warning('%s: model HTTP %s; falling back. body=%s',
+                           tag, r.status_code, r.text[:200].replace('\n', ' '))
+            _say('http', f'HTTP {r.status_code}')
             return None
         data = r.json()
-        parts = (data.get('candidates') or [{}])[0].get('content', {}).get('parts', [])
+        candidate = (data.get('candidates') or [{}])[0]
+        parts = candidate.get('content', {}).get('parts', [])
         text = ''.join(p.get('text', '') for p in parts)
+        if not text:
+            # 200 with nothing in it. A thinking model that spends the whole
+            # budget reasoning finishes MAX_TOKENS with no parts, which read
+            # as a transport failure until the reason was carried out.
+            logger.warning('%s: model returned no text (finishReason=%s, usage=%s)',
+                           tag, candidate.get('finishReason'), data.get('usageMetadata'))
+            _say('empty', f"finishReason={candidate.get('finishReason')}")
+            return None
         logger.info('%s: model replied in %.2fs (%d chars)',
                     tag, time.time() - t0, len(text))
-        return text or None
+        _say('ok')
+        return text
     except Exception as exc:                    # pragma: no cover - network
         logger.warning('%s: model call failed (%s); falling back', tag, exc)
+        _say('timeout' if 'Timeout' in type(exc).__name__ else 'network',
+             type(exc).__name__)
         return None
 
 
@@ -1210,6 +1244,16 @@ def _parse_reply(raw: str) -> Optional[Dict[str, Any]]:
 
 # --- the loop -------------------------------------------------------------
 
+#: Failures where a second attempt would get the same answer, so the day stops
+#: and says which one it was. Everything else is transient and worth the
+#: attempt. The reason reaches the planner verbatim, so it is written for a
+#: person: `ui/formatters.py::chef_read_status` turns each into one line.
+_TERMINAL_FAILURES = {
+    'no_key': 'no model key',
+    'rate_limited': 'rate limited',
+    'no_requests': 'model unavailable (requests is not installed)',
+}
+
 def _empty_read(reason: str) -> Dict[str, Any]:
     return {'source': None, 'reason': reason, 'client_read': None, 'internal_read': None,
             'star': None, 'plates': [], 'comebacks': [], 'weak_spots': [], 'data_doubts': [],
@@ -1229,13 +1273,31 @@ def chef_read_day(pack: Dict[str, Any], facts: Dict[str, Any],
         {'text': json.dumps(facts, default=str, separators=(',', ':'))}]}]
     for attempt in range(1, CHEF_READ_MAX_ATTEMPTS + 1):
         out['attempts'] = attempt
+        outcome: Dict[str, Any] = {}
         raw = _post_model(CHEF_READ_SYSTEM_PROMPT, contents, model=CHEF_READ_MODEL,
                           max_tokens=CHEF_READ_MAX_TOKENS, temperature=CHEF_READ_TEMPERATURE,
-                          tag='chef_read')
+                          tag='chef_read', outcome=outcome)
         if not raw:
-            # A network failure is not a bad draft; retrying would only spend quota.
-            out['reason'] = 'model unavailable'
-            return out
+            kind = outcome.get('kind') or 'network'
+            if kind in _TERMINAL_FAILURES:
+                out['reason'] = _TERMINAL_FAILURES[kind]
+                return out
+            # A transport blip is not a bad draft — but it is not a reason to
+            # throw away a budget this day already has. Measured on a real
+            # 7-day plan: 1 call in 15 read-timed-out, and because that `return`
+            # used to sit here it cost a whole day's read while two unused
+            # attempts stood by. Spending one costs at most what a rejected
+            # draft costs, and the per-day ceiling is still
+            # CHEF_READ_MAX_ATTEMPTS. 429 and a missing key are excluded above:
+            # those repeat, so retrying them is just rudeness with a delay.
+            detail = outcome.get('detail') or kind
+            logger.warning('chef_read: %s attempt %d got no reply (%s)',
+                           facts.get('date'), attempt, detail)
+            out['problems_by_attempt'].append([f'no reply from the model ({detail})'])
+            if attempt == CHEF_READ_MAX_ATTEMPTS:
+                out['reason'] = f'model unavailable ({detail})'
+                return out
+            continue
         reply = _parse_reply(raw)
         if reply is None:
             # A reply that stops before its closing brace hit the token limit:
@@ -1283,7 +1345,7 @@ def explain_chef_read(packs: List[Dict[str, Any]], *,
     if not CHEF_READ_ENABLED or not packs:
         return {p['date']: _empty_read('disabled') for p in packs}
     if not API_KEY:
-        return {p['date']: _empty_read('model unavailable') for p in packs}
+        return {p['date']: _empty_read('no model key') for p in packs}
 
     result: Dict[str, Dict[str, Any]] = {}
     openings: List[str] = []

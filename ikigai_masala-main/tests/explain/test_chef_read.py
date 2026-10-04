@@ -130,7 +130,7 @@ class TestSwitches:
         monkeypatch.setattr(mod, 'CHEF_READ_ENABLED', True)
         monkeypatch.setattr(mod, 'API_KEY', '')
         calls = _script(monkeypatch, [GOOD])
-        assert _run(pack)['reason'] == 'model unavailable' and not calls
+        assert _run(pack)['reason'] == 'no model key' and not calls
 
     def test_the_overview_is_untouched(self, pack, on):
         """Turning on the chef's read must not change the overview path."""
@@ -165,10 +165,44 @@ class TestTheLoop:
         assert out['source'] is None and len(calls) == mod.CHEF_READ_MAX_ATTEMPTS
         assert out['reason'].startswith(f'rejected after {mod.CHEF_READ_MAX_ATTEMPTS} attempts')
 
-    def test_network_failure_is_not_retried(self, pack, on):
+    def test_a_transport_blip_spends_an_attempt_instead_of_the_day(self, pack, on):
+        """Measured on a real 7-day plan: 1 call in 15 read-timed-out, and the
+        day returned blank with two unused attempts standing by. A blip is not
+        a bad draft, but it is not a reason to abandon a budget either."""
+        calls = _script(on, [None, GOOD])
+        out = _run(pack)
+        assert out['source'] == 'model' and len(calls) == 2
+        assert out['problems_by_attempt'][0] == ['no reply from the model (network)']
+
+    def test_transport_failures_stay_inside_the_per_day_ceiling(self, pack, on):
+        """The retry reuses the existing budget; it must not raise the cap."""
         calls = _script(on, [None])
         out = _run(pack)
-        assert out['reason'] == 'model unavailable' and len(calls) == 1
+        assert len(calls) == mod.CHEF_READ_MAX_ATTEMPTS
+        assert out['source'] is None and out['reason'].startswith('model unavailable')
+
+    def test_the_reason_names_the_failure_so_it_can_be_acted_on(self, pack, on):
+        def fake(system_prompt, contents, outcome=None, **kw):
+            if outcome is not None:
+                outcome.update(kind='timeout', detail='ReadTimeout')
+            return None
+        on.setattr(mod, '_post_model', fake)
+        assert _run(pack)['reason'] == 'model unavailable (ReadTimeout)'
+
+    def test_a_rate_limit_is_terminal_and_is_not_retried(self, pack, on):
+        """429 is the one failure that repeats on purpose. Retrying it inside
+        the same second is rudeness with a delay, and spends the quota that
+        caused it."""
+        calls = []
+
+        def fake(system_prompt, contents, outcome=None, **kw):
+            calls.append(1)
+            if outcome is not None:
+                outcome.update(kind='rate_limited', detail='')
+            return None
+        on.setattr(mod, '_post_model', fake)
+        out = _run(pack)
+        assert out['reason'] == 'rate limited' and len(calls) == 1
 
     def test_invalid_json_gets_a_second_chance(self, pack, on):
         calls = _script(on, ['not json at all', GOOD])
