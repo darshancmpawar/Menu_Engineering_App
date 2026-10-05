@@ -18,7 +18,8 @@ decisions that matter are pinned without a browser:
 
 from __future__ import annotations
 
-from customisation.main import counters_for_write, seed_counters_for
+from customisation.main import (counters_for_write, seed_counters_for,
+                                service_split_note)
 from src.history import DINNER, LUNCH
 
 
@@ -88,3 +89,27 @@ class TestWhatGetsStored:
 if __name__ == '__main__':      # a runnable check without pytest
     import pytest
     raise SystemExit(pytest.main([__file__, '-q']))
+
+
+class TestTheScreenSaysWhichItIs:
+    """Two tabs look the same whether dinner is its own setup or a copy of
+    lunch nobody has touched — and that difference decides whether editing
+    Dinner changes lunch. It matters most on an existing client, which is the
+    one case where the answer is not obvious from having just typed it."""
+
+    def test_an_unsplit_site_is_told_the_services_share(self):
+        note = service_split_note([_c('Main'), _c('Chinese')], [LUNCH, DINNER])
+        assert 'share one setup' in note
+
+    def test_a_split_site_is_told_which_are_separate(self):
+        note = service_split_note([_c('Veg', meals=[LUNCH]),
+                                   _c('Grill', meals=[DINNER])], [LUNCH, DINNER])
+        assert 'Lunch and Dinner are configured separately' in note
+
+    def test_it_says_how_to_undo_a_split(self):
+        note = service_split_note([_c('Veg', meals=[LUNCH])], [LUNCH, DINNER])
+        assert 'identical again' in note
+
+    def test_one_service_says_nothing(self):
+        """No tabs are drawn, so there is nothing to explain."""
+        assert service_split_note([_c('Main')], [LUNCH]) == ""

@@ -163,6 +163,30 @@ def seed_counters_for(meal: str, loaded: List[Dict]) -> List[Dict]:
     return own or [c for c in loaded if not c.get('meals')] or list(loaded)
 
 
+def service_split_note(loaded: List[Dict], meals: List[str]) -> str:
+    """One line saying whether this site's services are shared or split.
+
+    Matters far more on an EXISTING client than on a new one. Two tabs look
+    identical whether dinner is genuinely its own setup or merely a copy of
+    lunch that nobody has changed, and the difference decides whether editing
+    the Dinner tab affects lunch. Nothing on the screen said which, so the
+    honest answer is one sentence above the tabs.
+    """
+    if len(meals) <= 1:
+        return ""
+    # Ordered by MEALS — the order they are EATEN — not alphabetically, which
+    # is what every other service list in this codebase does and which reads
+    # as "Dinner and Lunch" otherwise.
+    tagged = {m for c in loaded for m in (c.get('meals') or [])}
+    split = [m for m in MEALS if m in tagged]
+    if not split:
+        return ("All services share one setup. Change a tab to give that "
+                "service its own — the others stay as they are.")
+    named = " and ".join(m.capitalize() for m in split)
+    return (f"{named} are configured separately. Make them identical again "
+            f"and they go back to sharing one setup.")
+
+
 def counters_for_write(by_meal: Dict[str, List[Dict]]) -> List[Dict]:
     """Flatten the per-service tabs into the one list `clients.counters` holds.
 
@@ -545,6 +569,9 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         m, cs = _service_config(meal, seed_counters_for(meal, loaded_counters))
         by_meal[meal], multi_flags = cs, [m]
     else:
+        note = service_split_note(loaded_counters, selected_meals)
+        if note:
+            st.caption(note)
         for meal, tab in zip(selected_meals, st.tabs(
                 [m.capitalize() for m in selected_meals])):
             with tab:
