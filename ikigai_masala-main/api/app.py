@@ -480,9 +480,15 @@ def _require_known_client(client_name):
 def _resolve_counter(client_name: str, data: Dict[str, Any]):
     """Return ``(counter_index, counter_name, counter_count, client_cfg)`` for
     the requested counter. ``counter_index`` defaults to 0 (primary). Raises
-    ValueError for an out-of-range index."""
+    ValueError for an out-of-range index.
+
+    Scoped to the request's `meal`, because a site can run different stations
+    at lunch and at dinner. `counter_index` therefore indexes THAT service's
+    counters — the planner already asks per service, and a site that has not
+    split its services has every counter in both lists, so nothing moves."""
     row = _client_row(client_name)
-    configs = _get_client_loader().get_client_configs_from_row(client_name, row)
+    configs = _get_client_loader().get_client_configs_from_row(
+        client_name, row, normalize_meal(data.get('meal')))
     counter_count = len(configs)
     try:
         idx = int(data.get('counter_index', 0) or 0)

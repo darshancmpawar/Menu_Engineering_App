@@ -757,6 +757,7 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
                         relaxations=b.get("relaxations") or None,
                         chef_read=chef_clicked,
                         region_days=regional,
+                        meal=b.get("meal"),
                     )
                 result["_chef_asked"] = bool(chef_clicked)
                 store[cache_key] = result
@@ -787,17 +788,45 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
             st.caption("Prose written by the optional model and checked against "
                        "the facts below; the numbers are computed, not written.")
 
+        # One button, one answer. "Ask the chef" shows the two notes and
+        # nothing else; "Explain this menu" shows the computed working and
+        # nothing else. They were stacked in one view, which buried the thing
+        # the press asked for under the thing it did not.
+        chef_view = bool(payload.get("_chef_asked"))
         tabs = st.tabs([date_label(d["date"]) for d in days])
         for tab, day in zip(tabs, days):
             with tab:
-                _render_explain_day(day, chef_asked=bool(payload.get("_chef_asked")))
+                (_render_chef_day if chef_view else _render_explain_day)(day)
 
 
-def _render_explain_day(day: dict, chef_asked: bool = False) -> None:
+def _render_chef_day(day: dict) -> None:
+    """One day's chef's read: two boxes, guests and kitchen, side by side.
+
+    Kept apart because they are written for different readers — the guest note
+    is safe to pass on, the kitchen note names what is weak and which rows look
+    mis-tagged. `chef_read_sections` returns nothing unless the read passed
+    every check, so a rejected read says why instead of showing half of itself.
+    """
+    st.markdown(f"**{date_label(day['date'])}**")
+    sections = chef_read_sections(day.get("chef_read"))
+    if not sections:
+        st.caption(chef_read_status(day.get("chef_read"), asked=True)
+                   or "No chef's read for this day.")
+        return
+    for col, sec in zip(st.columns(len(sections)), sections):
+        with col:
+            with st.container(border=True):
+                st.markdown(f"**{sec['title']}**")
+                st.markdown(html.escape(sec["text"]))
+                for note in sec["notes"]:
+                    st.caption(html.escape(note))
+
+
+def _render_explain_day(day: dict) -> None:
     """One day of the explanation, in the four steps above.
 
-    ``chef_asked`` is whether "Ask the chef" produced this payload, so a day
-    with no read can say why instead of staying silent.
+    The computed half only. The chef's read is its own view — see
+    `_render_chef_day` — because one button should answer one question.
     """
     profile = day.get("plate_profile") or {}
     theme = day.get("theme")
@@ -833,25 +862,6 @@ def _render_explain_day(day: dict, chef_asked: bool = False) -> None:
             f"<div style='padding:.6rem .8rem;border-left:3px solid #4c8bf5;"
             f"opacity:.95;margin-bottom:.8rem'>{html.escape(overview)}</div>",
             unsafe_allow_html=True)
-
-    # The chef's read: the model's own reading of the day, under one heading
-    # with two sections side by side, guests and kitchen. They are kept apart
-    # because they are written for different readers, and only a read that
-    # passed every check is shown (`chef_read_sections` returns nothing else).
-    chef_sections = chef_read_sections(day.get("chef_read"))
-    if chef_sections:
-        st.markdown("**Chef's read**")
-        for col, sec in zip(st.columns(len(chef_sections)), chef_sections):
-            with col:
-                with st.container(border=True):
-                    st.markdown(f"**{sec['title']}**")
-                    st.markdown(html.escape(sec["text"]))
-                    for note in sec["notes"]:
-                        st.caption(html.escape(note))
-    else:
-        status = chef_read_status(day.get("chef_read"), asked=chef_asked)
-        if status:
-            st.caption(status)
 
     st.markdown("**1 · The plate**")
     dishes = day.get("dishes") or {}
@@ -956,7 +966,9 @@ def _apply_regenerate(api, block_index: int, counter_index: int,
                 start_date=plan_dates[0], num_days=len(plan_dates),
                 time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
                 counter_index=counter_index,
-                exclude_items=exclude_items)
+                exclude_items=exclude_items,
+                # Which service's counters `counter_index` points at.
+                meal=b.get("meal"))
             solution = result.get("solution", {})
             flat_regen, regen_day_types = flatten_api_solution(solution)
             new_plan = flat_regen if flat_regen else plan
@@ -1215,7 +1227,7 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
                 start_date=plan_dates[0], num_days=len(plan_dates),
                 time_limit_seconds=_PLANNING_TIME_LIMIT_SECONDS,
                 counter_index=b.get("counter_index", 0),
-                region_days=region_days)
+                region_days=region_days, meal=b.get("meal"))
         except (ConnectionError, OSError, ValueError, RuntimeError) as e:
             problems.append({"message": f"{b.get('name', 'counter')}: {e}"})
             continue
