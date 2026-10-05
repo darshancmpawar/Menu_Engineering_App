@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
@@ -305,6 +306,39 @@ def _rule_solver_overrides(rules):
                 continue
             out[field_name] = value
     return out
+
+
+def _apply_seasonal_bans(rules, dates, city):
+    """Append the seasonal high-risk vegetable rule for ``city``, resolved per date.
+
+    Applies to every client in the city: the list is food safety, not a
+    preference, so no client opts out. Each date gets its own month's list, so
+    a plan from 28 Oct to 3 Nov uses October's, then November's. A city with no
+    seasonal region, or a date with nothing listed, adds nothing.
+    ``SEASONAL_BANS_ENABLED=false`` is the deployment's kill switch.
+    """
+    if os.getenv('SEASONAL_BANS_ENABLED', 'true').strip().lower() != 'true':
+        return rules
+    from src.seasonal.bans import bans_for
+    by_date = {}
+    for d in dates:
+        bans = bans_for(city, d)
+        if bans is None or bans.is_empty():
+            continue
+        by_date[d.isoformat()] = {
+            'month': bans.key, 'red': sorted(bans.red), 'yellow': sorted(bans.yellow),
+            'salad_bans': sorted(bans.salad_bans),
+        }
+    if not by_date:
+        return rules
+    rule = MenuRuleLoader()._create_rule({
+        'type': 'seasonal_ban', 'name': 'seasonal_vegetables', 'priority': 'medium',
+        'by_date': by_date,
+    })
+    if rule is None or not rule.validate_config():
+        logger.warning("seasonal_vegetables rule did not build for %s", city)
+        return rules
+    return list(rules) + [rule]
 
 
 def _apply_region_days(rules, data, dates, client_cfg, city, row):
@@ -588,6 +622,9 @@ def prepare_solver_inputs(
     rules, region_days, region_problems = _apply_region_days(
         rules, data, weekday_dates, client_cfg, city, row,
     )
+    # Seasonal high-risk vegetables: red list removed, yellow list avoided,
+    # pins kept. Same "ordinary rule" approach as regional days.
+    rules = _apply_seasonal_bans(rules, weekday_dates, city)
     _validate_constant_values(client_name, constant_items, df)
     # Cross-counter shared categories: the planner passes the primary counter's
     # dish for each shared base slot as `shared_items`; fold them into the

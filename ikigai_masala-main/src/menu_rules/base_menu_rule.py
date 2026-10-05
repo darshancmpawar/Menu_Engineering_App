@@ -82,6 +82,7 @@ class MenuRuleType(Enum):
     THEME_FALLBACK_PENALTY = "theme_fallback_penalty"
     # Per-client custom rules
     INGREDIENT_BAN = "ingredient_ban"
+    SEASONAL_BAN = "seasonal_ban"
     # `item_frequency` was retired: it was a strictly weaker duplicate of
     # `selector_frequency` (five selector keys against thirteen) whose
     # `min_per_week`/`max_per_week` summed over the whole HORIZON despite their

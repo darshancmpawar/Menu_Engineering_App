@@ -54,6 +54,8 @@ _bridge_streamlit_secrets()
 
 from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
 from ui.formatters import (
+    seasonal_dishes_by_date,
+    seasonal_label,
     chef_read_sections,
     chef_read_status,
     dishes_from_solution,
@@ -1101,6 +1103,72 @@ def _weekday_map_from_dates(region_days: dict) -> dict:
     return out
 
 
+def _render_seasonal_panel(api, client_name, start_date, num_days, blocks) -> None:
+    """The month's high-risk vegetable list, at the top of the planner.
+
+    Closed by default, and lazy: Streamlit only runs the body when someone
+    opens it (``on_change="rerun"`` + ``.open``), so a closed panel costs
+    nothing. Opened before a menu exists, it shows the sheet's lists and notes;
+    opened after Generate, the server also has the model write kitchen notes
+    for this week's dishes (falling back to the sheet's notes if the model is
+    off, unreachable or fails the checks). Results are kept per menu, so
+    reopening the panel never asks the model twice.
+    """
+    dates = sorted({d for b in blocks for d in b.get("plan_dates", [])}) or [
+        (start_date + dt.timedelta(days=i)).isoformat() for i in range(int(num_days))]
+    try:
+        exp = st.expander(seasonal_label(dates), expanded=False,
+                          key=f"seasonal_panel_{client_name}", on_change="rerun")
+    except TypeError:
+        # An older Streamlit without lazy expanders: still show the lists, but
+        # never ask the model, since the body would run on every rerun.
+        exp = st.expander(seasonal_label(dates), expanded=False)
+    is_open = getattr(exp, "open", None)       # None = a Streamlit without lazy expanders
+    with exp:
+        if is_open is False:
+            return
+        dishes = seasonal_dishes_by_date(blocks)
+        want_notes = bool(dishes) and is_open is not None
+        cache = st.session_state.setdefault("seasonal_cache", {})
+        key = json.dumps([client_name, str(dates[0]), len(dates), dishes, want_notes], sort_keys=True)
+        if key not in cache:
+            try:
+                with st.spinner("Writing kitchen notes for this week..." if want_notes
+                                else "Loading this month's list..."):
+                    cache[key] = api.seasonal_bans(
+                        client_name=client_name, start_date=str(dates[0]), num_days=len(dates),
+                        dishes_by_date=dishes or None, kitchen_notes=want_notes)
+            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+                st.caption(f"Couldn't load the seasonal list: {e}")
+                return
+        months = (cache[key] or {}).get("months") or []
+        if not months:
+            st.caption("No seasonal vegetable list applies to this client's city.")
+            return
+        for m in months:
+            st.markdown(f"**{m['label']} · {m['region']}** · {m['removed']} dishes removed")
+            if m.get("red"):
+                st.markdown("Not used this month (red list)")
+                st.markdown("  ".join(f":red-background[{r['label']} **{r['dishes']}**]" for r in m["red"]))
+            if m.get("yellow"):
+                st.markdown("Avoided where possible (yellow list)")
+                st.markdown("  ".join(f":orange-background[{y['label']}]" for y in m["yellow"]))
+            notes = (m.get("kitchen_notes") or {})
+            if notes.get("notes"):
+                st.markdown("Kitchen notes" + (" for this week" if notes.get("source") == "model" else ""))
+                for n in notes["notes"]:
+                    if n.get("pinned"):
+                        st.warning(html.escape(n["text"]), icon=":material/push_pin:")
+                    else:
+                        when = n.get("when") if notes.get("source") == "model" else None
+                        st.markdown(f"- {'**' + html.escape(when) + '** · ' if when else ''}{html.escape(n['text'])}")
+                if notes.get("source") == "model":
+                    st.caption("Written by the model from this week's menu and checked against the month's list.")
+                elif want_notes and notes.get("reason") not in (None, "no menu yet"):
+                    st.caption(f"Showing the sheet's notes ({notes.get('reason')}).")
+            st.caption(f"Source: High-risk vegetables list · {m['region']}")
+
+
 def _render_region_strip(api, city, dates, day_themes, has_plan):
     """The per-day region pickers. Rendered only while the toggle is ON.
 
@@ -1587,6 +1655,12 @@ _render_diagnostics_expander(
     st.session_state.get("rule_diagnostics") or [],
     st.session_state.get("diagnostics_summary"),
 )
+
+# --- Seasonal vegetable list -------------------------------------------------
+# At the top of the planner, closed by default; nothing is fetched until it is
+# opened (see _render_seasonal_panel).
+if clients_list and selected_client != _empty_msg:
+    _render_seasonal_panel(client, selected_client, start_date, num_days, _blocks)
 
 # --- Regional days -------------------------------------------------------
 # Hidden entirely unless the sidebar toggle is on: no control, no region

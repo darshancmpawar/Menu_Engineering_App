@@ -83,6 +83,8 @@ from src.explain.evidence import (
     attach_relaxations, attrs_from_dataframe, build_plan_evidence,
 )
 from src.explain.renderer import day_overview
+from api.kitchen_notes_llm import kitchen_notes
+from src.seasonal.bans import bans_by_month, default_matcher, vegetable_label
 from api.explain_llm import (
     explain_plan, explain_chef_read, chef_attrs_from_dataframe,
     city_dish_names_from_dataframe,
@@ -2065,6 +2067,104 @@ def _probe_supabase():
         return False, {"status": "unknown", "missing": []}
 
 
+
+
+def _seasonal_pin_clashes(bans, forced, stamped, dates, ki_of, matcher):
+    """Pinned dishes that contain a red-list vegetable this month.
+
+    Pins stay on the menu (the kitchen makes them without the vegetable), so
+    the panel has to say which ones. ``forced`` are pins naming a real dish;
+    ``stamped`` are pins naming something the dish list lacks, matched by name.
+    """
+    found = {}
+
+    def consider(name, base):
+        cands = set(bans.red) | (set(bans.salad_bans) if base == 'salad' else set())
+        veg = matcher.vegetables_in(name, ki_of.get(str(name).strip().lower()), cands)
+        if veg and str(name) not in found:
+            found[str(name)] = (base, veg)
+
+    for (d, slot_id), name in (forced or {}).items():
+        if d in dates and name:
+            consider(name, str(slot_id).split('__')[0])
+    for slot, value in (stamped or {}).items():
+        values = value.values() if isinstance(value, dict) else (value if isinstance(value, list) else [value])
+        for v in values:
+            if isinstance(v, str) and v.strip() and not str(slot).startswith('_'):
+                consider(v, str(slot).split('__')[0])
+    return [{'dish': n, 'slot': b, 'vegetables': [vegetable_label(x) for x in sorted(v)]}
+            for n, (b, v) in found.items()]
+
+
+@app.route('/api/v1/seasonal-bans', methods=['POST'])
+@rate_limit("diagnose")
+def seasonal_bans():
+    """The month's high-risk vegetable list for a client's plan, plus kitchen notes.
+
+    Feeds the planner's seasonal panel. Body::
+
+        {client_name, start_date, num_days, counter_index?,
+         dishes_by_date?: {iso: [{name, slot}, ...]},  # the generated menu
+         kitchen_notes?: bool}                         # the panel was opened
+
+    One entry per month the plan touches, each with the red list (and how many
+    dishes in the city list each removes), the yellow list, the sheet's notes,
+    pinned dishes that contain a red-list vegetable, and kitchen notes: written
+    by the model when asked for and a menu exists, otherwise the sheet's own.
+    """
+    try:
+        data = request.get_json() or {}
+        _require_known_client(data.get('client_name'))
+        _ci, _cn, _cc, client_cfg = _resolve_counter(data.get('client_name'), data)
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
+        df = inputs.df
+        matcher = default_matcher()
+        ki_of = ({str(i).strip().lower(): str(k).strip().lower()
+                  for i, k in zip(df['item'], df['key_ingredient'])}
+                 if 'key_ingredient' in df.columns else {})
+        leafy_of = ({str(i).strip().lower(): v for i, v in zip(df['item'], df['is_leafy_based_dish'])}
+                    if 'is_leafy_based_dish' in df.columns else {})
+        dishes_by_date = data.get('dishes_by_date') or {}
+        forced = getattr(inputs.cfg, 'forced_items', None) or {}
+        stamped = getattr(inputs.cfg, 'client_constant_items', None) or {}
+        want_notes = bool(data.get('kitchen_notes'))
+        city_names = city_dish_names_from_dataframe(df) if want_notes else []
+
+        months = []
+        for bans in bans_by_month(inputs.city, inputs.weekday_dates):
+            in_month = [d for d in inputs.weekday_dates if (d.year, d.month) == (bans.year, bans.month)]
+            red = sorted(bans.red)
+            pinned = _seasonal_pin_clashes(bans, forced, stamped, set(in_month), ki_of, matcher)
+            days = []
+            for d in in_month:
+                dishes = []
+                for entry in dishes_by_date.get(d.isoformat()) or []:
+                    name = entry.get('name') if isinstance(entry, dict) else entry
+                    if not name:
+                        continue
+                    low = str(name).strip().lower()
+                    dishes.append({'name': name, 'slot': entry.get('slot') if isinstance(entry, dict) else None,
+                                   'key_ingredient': ki_of.get(low), 'leafy': leafy_of.get(low)})
+                days.append({'day': d.strftime('%a %d %b'), 'dishes': dishes})
+            counts = matcher.counts(df, red)
+            months.append({
+                'key': bans.key, 'label': bans.label, 'region': bans.region,
+                'red': [{'vegetable': v, 'label': vegetable_label(v), 'dishes': counts.get(v, 0)}
+                        for v in sorted(red, key=lambda v: -counts.get(v, 0))],
+                'removed': int(matcher.mask(df, red).sum()),
+                'yellow': [{'vegetable': v, 'label': vegetable_label(v)} for v in sorted(bans.yellow)],
+                'salad_bans': [vegetable_label(v) for v in sorted(bans.salad_bans)],
+                'sheet_notes': list(bans.notes),
+                'pinned': pinned,
+                'kitchen_notes': kitchen_notes(bans, days, pinned, city_dish_names=city_names,
+                                               use_model=want_notes),
+            })
+        return jsonify({'success': True, 'city': inputs.city, 'months': months})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.exception("Error in seasonal_bans: %s", e)
+        return _internal_error_response(500)
 @app.route('/api/v1/metrics', methods=['GET'])
 def metrics_snapshot():
     """Return a point-in-time snapshot of every in-process counter.
