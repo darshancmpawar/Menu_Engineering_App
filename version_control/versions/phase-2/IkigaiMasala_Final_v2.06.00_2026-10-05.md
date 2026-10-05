@@ -155,4 +155,4 @@ catches it every time; it costs a few seconds.
 |---|---|---|---|
 | 2.06.00 | 29 Sep–5 Oct | Darshan + Claude Code | **The chef's read, and a configuration per service.** (1) Chef's read behind an Ask the chef button: two notes per day, guests and kitchen, every claim fact-checked against the menu. (2) Model chosen by the capability probe the design asked for — the configured one could not return parseable JSON. (3) Lunch and dinner configured apart, counters tagged per service, no migration. (4) Menu table and regional strip as interactive components; the five city workbooks become the source and the correction chain is deleted |
 
-**Previous:** [v2.05.01](IkigaiMasala_Final_v2.05.01_2026-09-23.md)  **Next:** —
+**Previous:** [v2.05.01](IkigaiMasala_Final_v2.05.01_2026-09-23.md)  **Next:** [v2.07.00](IkigaiMasala_Final_v2.07.00_2026-10-05.md)
