@@ -1,0 +1,849 @@
+{
+ "_comment": "Vegetable vocabulary for the seasonal high-risk list. sheet = spellings the sheet uses (parser); key_ingredients = values in the city workbooks' key_ingredient column; name_patterns = regex on the lowercase dish name with underscores as spaces. Edit here, not in code. A dish matches a vegetable if either its key_ingredient or its name matches.",
+ "vegetables": {
+  "cauliflower": {
+   "label": "Cauliflower",
+   "kind": "vegetable",
+   "sheet": [
+    "cauli flower",
+    "cauliflower"
+   ],
+   "key_ingredients": [
+    "cauliflower"
+   ],
+   "name_patterns": [
+    "cauliflower",
+    "phool ?gobi",
+    "(?<!patta )(?<!patta)(?<!band )(?<!bandh )\\bgobh?i\\b"
+   ]
+  },
+  "broccoli": {
+   "label": "Broccoli",
+   "kind": "vegetable",
+   "sheet": [
+    "broccoli"
+   ],
+   "key_ingredients": [
+    "broccoli"
+   ],
+   "name_patterns": [
+    "broccoli"
+   ]
+  },
+  "lettuce": {
+   "label": "Lettuce",
+   "kind": "vegetable",
+   "sheet": [
+    "lettuce"
+   ],
+   "key_ingredients": [
+    "lettuce"
+   ],
+   "name_patterns": [
+    "lettuce",
+    "iceberg",
+    "romaine"
+   ]
+  },
+  "cabbage": {
+   "label": "Cabbage",
+   "kind": "vegetable",
+   "sheet": [
+    "red cabbage",
+    "cabbage"
+   ],
+   "key_ingredients": [
+    "cabbage"
+   ],
+   "name_patterns": [
+    "cabbage",
+    "patta ?gobh?i",
+    "bandh? ?gobh?i",
+    "muttai ?kose",
+    "\\bkos[eu]\\b",
+    "\\bcole ?slaw"
+   ]
+  },
+  "brinjal": {
+   "label": "Brinjal",
+   "kind": "vegetable",
+   "sheet": [
+    "brinjal",
+    "brijal"
+   ],
+   "key_ingredients": [
+    "eggplant"
+   ],
+   "name_patterns": [
+    "brinjal",
+    "baingan",
+    "baigan",
+    "eggplant",
+    "aubergine",
+    "vankaya",
+    "\\bvangi\\b",
+    "kathirikai",
+    "kathrikai",
+    "badanekai",
+    "badnekai",
+    "\\bbharta\\b",
+    "\\bbegun"
+   ]
+  },
+  "bhindi": {
+   "label": "Bhindi",
+   "kind": "vegetable",
+   "sheet": [
+    "lady finger/okra",
+    "lady finger",
+    "bhindi",
+    "bindi",
+    "okra"
+   ],
+   "key_ingredients": [
+    "okra"
+   ],
+   "name_patterns": [
+    "bhindi",
+    "okra",
+    "lad(?:y|ies) ?finger",
+    "bendakaya",
+    "bendekayi",
+    "vendakkai",
+    "vendakai"
+   ]
+  },
+  "cucumber": {
+   "label": "Cucumber",
+   "kind": "vegetable",
+   "sheet": [
+    "indian cucumber",
+    "cucumber"
+   ],
+   "key_ingredients": [
+    "cucumber"
+   ],
+   "name_patterns": [
+    "cucumber",
+    "\\bkakdi\\b",
+    "\\bkh(?:ee|i)ra\\b",
+    "vellarikai",
+    "\\bvellari",
+    "southekai",
+    "dosakai",
+    "sowtekayi"
+   ]
+  },
+  "beans": {
+   "label": "Beans",
+   "kind": "vegetable",
+   "sheet": [
+    "french beans",
+    "beans"
+   ],
+   "key_ingredients": [
+    "beans"
+   ],
+   "name_patterns": [
+    "(?<!kidney )(?<!black )(?<!broad )(?<!cluster )(?<!baked )(?<!soya )(?<!field )(?<!flat )(?<!coffee )\\bbeans?\\b",
+    "french bean"
+   ]
+  },
+  "field beans": {
+   "label": "Field beans",
+   "kind": "vegetable",
+   "sheet": [
+    "field beans",
+    "field bean"
+   ],
+   "key_ingredients": [
+    "avarekalu"
+   ],
+   "name_patterns": [
+    "avarekalu",
+    "\\bavare",
+    "field bean",
+    "\\bmochai\\b",
+    "\\blilva\\b"
+   ]
+  },
+  "flat beans": {
+   "label": "Flat beans",
+   "kind": "vegetable",
+   "sheet": [
+    "flat beans",
+    "flat bean"
+   ],
+   "key_ingredients": [],
+   "name_patterns": [
+    "flat bean",
+    "avarakkai",
+    "chikkudu",
+    "\\bsem\\b",
+    "\\bpapdi\\b"
+   ]
+  },
+  "cluster beans": {
+   "label": "Cluster beans",
+   "kind": "vegetable",
+   "sheet": [
+    "cluster beans",
+    "cluster bean"
+   ],
+   "key_ingredients": [
+    "cluster_beans"
+   ],
+   "name_patterns": [
+    "cluster bean",
+    "\\bgawar\\b",
+    "\\bguar\\b",
+    "kothavarangai",
+    "gorikayi"
+   ]
+  },
+  "capsicum": {
+   "label": "Capsicum",
+   "kind": "vegetable",
+   "sheet": [
+    "capsicum"
+   ],
+   "key_ingredients": [
+    "bell_pepper"
+   ],
+   "name_patterns": [
+    "capsicum",
+    "shimla ?mirch",
+    "bell peppers?"
+   ]
+  },
+  "spinach": {
+   "label": "Spinach",
+   "kind": "vegetable",
+   "sheet": [
+    "spinach",
+    "palak"
+   ],
+   "key_ingredients": [
+    "spinach"
+   ],
+   "name_patterns": [
+    "spinach",
+    "\\bpalak\\b",
+    "\\bpasalai\\b"
+   ]
+  },
+  "amaranth": {
+   "label": "Amaranth",
+   "kind": "vegetable",
+   "sheet": [
+    "amaranth leaves",
+    "amaranth"
+   ],
+   "key_ingredients": [
+    "amaranth"
+   ],
+   "name_patterns": [
+    "amaranth",
+    "chaulai",
+    "thotakura",
+    "\\bharive\\b",
+    "mulai ?keerai",
+    "arai ?keerai"
+   ]
+  },
+  "methi": {
+   "label": "Methi leaves",
+   "kind": "vegetable",
+   "sheet": [
+    "methi leaves",
+    "methi",
+    "fenugreek"
+   ],
+   "key_ingredients": [
+    "fenugreek"
+   ],
+   "name_patterns": [
+    "(?<!kasuri )\\bmethi\\b",
+    "(?<!dried )fenugreek",
+    "menthya",
+    "vendhaya ?keerai"
+   ]
+  },
+  "leafy vegetables": {
+   "label": "Leafy vegetables",
+   "kind": "group",
+   "sheet": [
+    "all green leafy vegetables",
+    "green leafy vegetables",
+    "all leafy vegetables",
+    "leafy vegetables"
+   ],
+   "key_ingredients": [
+    "spinach",
+    "fenugreek",
+    "amaranth",
+    "leafy_greens",
+    "dill",
+    "kale",
+    "sorrel",
+    "bok_choy"
+   ],
+   "name_patterns": [
+    "\\bkeerai\\b",
+    "\\bsaa?g\\b",
+    "\\bgreens\\b",
+    "\\bpalak\\b",
+    "(?<!kasuri )\\bmethi\\b",
+    "\\bsabsige\\b",
+    "\\bsoya ?saag\\b",
+    "\\bdill\\b",
+    "gongura",
+    "chukka ?kura"
+   ]
+  },
+  "tomato": {
+   "label": "Tomato",
+   "kind": "vegetable",
+   "sheet": [
+    "tomato (use puree)",
+    "tomatoes",
+    "tomato"
+   ],
+   "key_ingredients": [
+    "tomato"
+   ],
+   "name_patterns": [
+    "tomato",
+    "tamatar",
+    "tamater",
+    "thakkali"
+   ]
+  },
+  "small tomato": {
+   "label": "Small tomato",
+   "kind": "vegetable",
+   "sheet": [
+    "tomato small",
+    "small tomato"
+   ],
+   "key_ingredients": [],
+   "name_patterns": [
+    "cherry tomato",
+    "small tomato",
+    "nati tomato"
+   ]
+  },
+  "drumstick": {
+   "label": "Drumstick",
+   "kind": "vegetable",
+   "sheet": [
+    "drumstick"
+   ],
+   "key_ingredients": [
+    "drumstick"
+   ],
+   "name_patterns": [
+    "drumstick(?! chicken)(?!s? chicken)",
+    "murungakkai",
+    "munagakaya",
+    "nuggekai",
+    "\\bshevga",
+    "\\bsa[hi]jan",
+    "moringa"
+   ]
+  },
+  "green peas": {
+   "label": "Green peas",
+   "kind": "vegetable",
+   "sheet": [
+    "fresh green peas",
+    "green peas"
+   ],
+   "key_ingredients": [
+    "green_peas"
+   ],
+   "name_patterns": [
+    "green peas",
+    "\\bmatar\\b",
+    "\\bmutter\\b",
+    "(?<!chick)(?<!white )(?<!black eyed )(?<!cow)\\bpeas\\b",
+    "\\bbatani\\b",
+    "\\bpattani\\b"
+   ]
+  },
+  "corn": {
+   "label": "Corn",
+   "kind": "vegetable",
+   "sheet": [
+    "frozen corn",
+    "corn"
+   ],
+   "key_ingredients": [
+    "corn"
+   ],
+   "name_patterns": [
+    "(?<!baby )\\bcorn\\b",
+    "\\bbhutt?a\\b",
+    "\\bmakk?ai\\b",
+    "sweet ?corn"
+   ]
+  },
+  "bitter gourd": {
+   "label": "Bitter gourd",
+   "kind": "vegetable",
+   "sheet": [
+    "bitter gourd",
+    "bitter guard",
+    "karela"
+   ],
+   "key_ingredients": [
+    "bitter_gourd"
+   ],
+   "name_patterns": [
+    "bitter gourd",
+    "\\bkarela",
+    "pava?kk?ai",
+    "hagalkai",
+    "kakarakaya"
+   ]
+  },
+  "ridge gourd": {
+   "label": "Ridge gourd",
+   "kind": "vegetable",
+   "sheet": [
+    "ridge gourd"
+   ],
+   "key_ingredients": [
+    "ridge_gourd"
+   ],
+   "name_patterns": [
+    "ridge gourd",
+    "\\bturai\\b",
+    "\\bt[h]?ori\\b",
+    "peerkangai",
+    "heerekai",
+    "beerakaya"
+   ]
+  },
+  "bottle gourd": {
+   "label": "Bottle gourd",
+   "kind": "vegetable",
+   "sheet": [
+    "bottle gourd",
+    "lauki"
+   ],
+   "key_ingredients": [
+    "bottle_gourd"
+   ],
+   "name_patterns": [
+    "bottle gourd",
+    "\\blauki\\b",
+    "\\bdudhi\\b",
+    "\\bghiya\\b",
+    "sorakaya",
+    "suraikai",
+    "sorekai"
+   ]
+  },
+  "snake gourd": {
+   "label": "Snake gourd",
+   "kind": "vegetable",
+   "sheet": [
+    "snake gourd"
+   ],
+   "key_ingredients": [
+    "snake_gourd"
+   ],
+   "name_patterns": [
+    "snake gourd",
+    "pudalangai",
+    "\\bpadwal\\b",
+    "potlakaya",
+    "padavalakai"
+   ]
+  },
+  "ash gourd": {
+   "label": "Ash gourd (petha)",
+   "kind": "vegetable",
+   "sheet": [
+    "petha"
+   ],
+   "key_ingredients": [
+    "ash_gourd"
+   ],
+   "name_patterns": [
+    "ash gourd",
+    "\\bpetha\\b",
+    "kumbalakai",
+    "vellai ?poosanikai",
+    "winter melon"
+   ]
+  },
+  "tinda": {
+   "label": "Tinda",
+   "kind": "vegetable",
+   "sheet": [
+    "tinda"
+   ],
+   "key_ingredients": [
+    "tinda"
+   ],
+   "name_patterns": [
+    "\\btinda\\b"
+   ]
+  },
+  "raw banana": {
+   "label": "Raw banana and stem",
+   "kind": "vegetable",
+   "sheet": [
+    "raw banana and its stem",
+    "raw banana"
+   ],
+   "key_ingredients": [
+    "raw_banana"
+   ],
+   "name_patterns": [
+    "raw banana",
+    "vazhakkai",
+    "plantain",
+    "kach+a kela",
+    "balekai",
+    "aratikaya",
+    "banana stem",
+    "vazhaithandu"
+   ]
+  },
+  "coriander": {
+   "label": "Coriander",
+   "kind": "vegetable",
+   "sheet": [
+    "coriander leaves",
+    "coriander"
+   ],
+   "key_ingredients": [
+    "coriander"
+   ],
+   "name_patterns": [
+    "coriander",
+    "\\bdhania\\b",
+    "kothamalli",
+    "kothimbir",
+    "cilantro"
+   ]
+  },
+  "curry leaves": {
+   "label": "Curry leaves",
+   "kind": "vegetable",
+   "sheet": [
+    "curry leaves"
+   ],
+   "key_ingredients": [
+    "curry_leaf"
+   ],
+   "name_patterns": [
+    "curry lea",
+    "karivepaku",
+    "karuveppilai",
+    "kadi ?patta"
+   ]
+  },
+  "mint": {
+   "label": "Mint",
+   "kind": "vegetable",
+   "sheet": [
+    "mint"
+   ],
+   "key_ingredients": [
+    "mint"
+   ],
+   "name_patterns": [
+    "\\bmint\\b",
+    "\\bpudh?ina\\b"
+   ]
+  },
+  "spring onion": {
+   "label": "Spring onion",
+   "kind": "vegetable",
+   "sheet": [
+    "spring onion"
+   ],
+   "key_ingredients": [],
+   "name_patterns": [
+    "spring onion",
+    "scallion",
+    "green onion"
+   ]
+  },
+  "ginger": {
+   "label": "Ginger",
+   "kind": "vegetable",
+   "sheet": [
+    "ginger"
+   ],
+   "key_ingredients": [
+    "ginger"
+   ],
+   "name_patterns": [
+    "\\bginger\\b",
+    "\\badrak\\b",
+    "\\binji\\b"
+   ]
+  },
+  "green chilli": {
+   "label": "Green chilli",
+   "kind": "vegetable",
+   "sheet": [
+    "green chilli",
+    "chillies"
+   ],
+   "key_ingredients": [
+    "chili"
+   ],
+   "name_patterns": [
+    "green chill?i",
+    "hari mirch",
+    "\\bmirchi\\b"
+   ]
+  },
+  "onion": {
+   "label": "Onion",
+   "kind": "vegetable",
+   "sheet": [
+    "onion"
+   ],
+   "key_ingredients": [
+    "onion"
+   ],
+   "name_patterns": [
+    "(?<!spring )(?<!green )\\bonions?\\b",
+    "\\bpya+z\\b",
+    "\\bkanda\\b",
+    "\\bvengayam\\b"
+   ]
+  },
+  "mushroom": {
+   "label": "Mushroom",
+   "kind": "vegetable",
+   "sheet": [
+    "mushrooms",
+    "mushroom"
+   ],
+   "key_ingredients": [
+    "mushroom"
+   ],
+   "name_patterns": [
+    "mushroom",
+    "\\bkhumb\\b"
+   ]
+  },
+  "muskmelon": {
+   "label": "Muskmelon",
+   "kind": "fruit",
+   "sheet": [
+    "muskmelon",
+    "musk melon",
+    "melon"
+   ],
+   "key_ingredients": [
+    "muskmelon"
+   ],
+   "name_patterns": [
+    "musk ?melon",
+    "kharbuja",
+    "cantaloupe"
+   ]
+  },
+  "watermelon": {
+   "label": "Watermelon",
+   "kind": "fruit",
+   "sheet": [
+    "watermelon",
+    "water melon"
+   ],
+   "key_ingredients": [
+    "watermelon"
+   ],
+   "name_patterns": [
+    "water ?melon",
+    "tarbooz",
+    "tarbuj"
+   ]
+  },
+  "grapes": {
+   "label": "Grapes",
+   "kind": "fruit",
+   "sheet": [
+    "grapes"
+   ],
+   "key_ingredients": [
+    "grape"
+   ],
+   "name_patterns": [
+    "\\bgrapes?\\b",
+    "\\bangoor\\b"
+   ]
+  },
+  "guava": {
+   "label": "Guava",
+   "kind": "fruit",
+   "sheet": [
+    "guava"
+   ],
+   "key_ingredients": [
+    "guava"
+   ],
+   "name_patterns": [
+    "guava",
+    "\\bamrood\\b",
+    "\\bperu\\b"
+   ]
+  },
+  "pineapple": {
+   "label": "Pineapple",
+   "kind": "fruit",
+   "sheet": [
+    "pineapple"
+   ],
+   "key_ingredients": [
+    "pineapple"
+   ],
+   "name_patterns": [
+    "pineapple",
+    "\\bananas\\b"
+   ]
+  },
+  "strawberry": {
+   "label": "Strawberry",
+   "kind": "fruit",
+   "sheet": [
+    "strawberry"
+   ],
+   "key_ingredients": [
+    "strawberry"
+   ],
+   "name_patterns": [
+    "strawberr"
+   ]
+  },
+  "apple": {
+   "label": "Apple",
+   "kind": "fruit",
+   "sheet": [
+    "apple"
+   ],
+   "key_ingredients": [
+    "apple"
+   ],
+   "name_patterns": [
+    "(?<!custard )(?<!wood )(?<!pine)\\bapples?\\b"
+   ]
+  },
+  "avocado": {
+   "label": "Avocado",
+   "kind": "fruit",
+   "sheet": [
+    "avocado"
+   ],
+   "key_ingredients": [],
+   "name_patterns": [
+    "avocado"
+   ]
+  },
+  "orange": {
+   "label": "Orange",
+   "kind": "fruit",
+   "sheet": [
+    "orange"
+   ],
+   "key_ingredients": [
+    "orange"
+   ],
+   "name_patterns": [
+    "\\boranges?\\b"
+   ]
+  },
+  "pomegranate": {
+   "label": "Pomegranate (anar)",
+   "kind": "fruit",
+   "sheet": [
+    "anar",
+    "pomegranate"
+   ],
+   "key_ingredients": [
+    "pomegranate"
+   ],
+   "name_patterns": [
+    "pomegranate",
+    "\\banar\\b"
+   ]
+  },
+  "sapota": {
+   "label": "Sapota (chikoo)",
+   "kind": "fruit",
+   "sheet": [
+    "sapota (chikoo)",
+    "chickoo (sapota)",
+    "sapota",
+    "chikoo",
+    "chickoo"
+   ],
+   "key_ingredients": [],
+   "name_patterns": [
+    "sapota",
+    "chi(?:c)?koo",
+    "\\bchiku\\b"
+   ]
+  },
+  "mango": {
+   "label": "Mango",
+   "kind": "fruit",
+   "sheet": [
+    "mango"
+   ],
+   "key_ingredients": [
+    "mango"
+   ],
+   "name_patterns": [
+    "(?<!raw )\\bmangoe?s?\\b(?! ginger)",
+    "\\baam\\b",
+    "mambazham"
+   ]
+  },
+  "papaya": {
+   "label": "Papaya",
+   "kind": "fruit",
+   "sheet": [
+    "papaya"
+   ],
+   "key_ingredients": [
+    "papaya"
+   ],
+   "name_patterns": [
+    "papaya",
+    "\\bpapita\\b"
+   ]
+  },
+  "banana": {
+   "label": "Banana",
+   "kind": "fruit",
+   "sheet": [
+    "banana"
+   ],
+   "key_ingredients": [
+    "banana"
+   ],
+   "name_patterns": [
+    "(?<!raw )\\bbananas?\\b(?! stem)",
+    "\\bkela\\b"
+   ]
+  }
+ },
+ "leafy_flag_column": "is_leafy_based_dish",
+ "leafy_group": "leafy vegetables",
+ "multi": {
+  "frozen corns and peas": [
+   "corn",
+   "green peas"
+  ]
+ }
+}

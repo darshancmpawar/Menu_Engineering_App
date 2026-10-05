@@ -400,6 +400,39 @@ class MenuApiClient:
         resp = _with_one_retry(_do, retryable=not chef_read)
         return _parse_response(resp, "Explain failed")
 
+    def seasonal_bans(
+        self,
+        client_name: str,
+        start_date: str,
+        num_days: int = 5,
+        counter_index: int = 0,
+        dishes_by_date: Optional[Dict[str, List[Dict[str, str]]]] = None,
+        kitchen_notes: bool = False,
+    ) -> Dict[str, Any]:
+        """The month's high-risk vegetable list for this plan, for the seasonal panel.
+
+        ``kitchen_notes=True`` (sent when the panel is opened and a menu
+        exists) asks the server to have the model write notes for these
+        dishes; that can take a few model calls, so the wait is longer and the
+        request is not retried blindly.
+        """
+        payload: Dict[str, Any] = {
+            "client_name": client_name, "start_date": start_date,
+            "num_days": num_days, "counter_index": counter_index,
+        }
+        if dishes_by_date:
+            payload["dishes_by_date"] = dishes_by_date
+        if kitchen_notes:
+            payload["kitchen_notes"] = True
+        timeout = 150 if kitchen_notes else 45
+
+        def _do():
+            return self.session.post(
+                f"{self.base_url}/api/v1/seasonal-bans", json=payload, timeout=timeout,
+            )
+        resp = _with_one_retry(_do, retryable=not kitchen_notes)
+        return _parse_response(resp, "Seasonal list failed")
+
     def get_saved_plan(
         self, client_name: str, start_date: str, num_days: int = 5,
         meal: Optional[str] = None,

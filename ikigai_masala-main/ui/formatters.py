@@ -358,3 +358,44 @@ def chef_read_status(chef: Optional[Dict[str, Any]], asked: bool = False) -> Opt
     if reason.startswith('rejected'):
         return "The chef's notes for this day did not pass the fact checks, so they are not shown."
     return f"No chef's read for this day ({reason or 'no reply'})."
+
+
+def seasonal_dishes_by_date(blocks: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, str]]]:
+    """Every generated block's dishes, per date, for the seasonal kitchen notes.
+
+    All counters and meals are pooled: the kitchen cooks them all, and a
+    mixed-vegetable dish at dinner needs the same care as one at lunch. Each
+    dish once per date and slot.
+    """
+    out: Dict[str, List[Dict[str, str]]] = {}
+    seen: Set[Tuple[str, str, str]] = set()
+    for b in blocks or []:
+        for iso, day in (b.get('solution') or {}).items():
+            items = day.get('items') if isinstance(day, dict) else None
+            if not isinstance(items, dict):
+                continue
+            for slot, meta in items.items():
+                name = (meta.get('item_base') or meta.get('item')) if isinstance(meta, dict) else meta
+                base = str(slot).split('__')[0]
+                if not name or (str(iso), str(name), base) in seen:
+                    continue
+                seen.add((str(iso), str(name), base))
+                out.setdefault(str(iso), []).append({'name': str(name), 'slot': base})
+    return out
+
+
+def seasonal_label(dates: List[Any]) -> str:
+    """Expander header: "Seasonal vegetable list · October 2026" (or two months)."""
+    import datetime as _dt
+    months = []
+    for d in sorted(dates or []):
+        d = _dt.date.fromisoformat(str(d)[:10]) if not isinstance(d, _dt.date) else d
+        key = (d.year, d.month)
+        if key not in months:
+            months.append(key)
+    if not months:
+        return 'Seasonal vegetable list'
+    names = [_dt.date(y, m, 1).strftime('%B') for y, m in months]
+    year = months[-1][0]
+    joined = names[0] if len(names) == 1 else ' and '.join([', '.join(names[:-1]), names[-1]])
+    return f'Seasonal vegetable list · {joined} {year}'
