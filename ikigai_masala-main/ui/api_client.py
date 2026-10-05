@@ -253,6 +253,7 @@ class MenuApiClient:
         counter_index: int = 0,
         exclude_items: Optional[Dict[str, Dict[str, List[str]]]] = None,
         region_days: Optional[Dict[str, str]] = None,
+        meal: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload = {
             "client_name": client_name,
@@ -272,6 +273,10 @@ class MenuApiClient:
         # cells and this names the region they are re-solved under.
         if region_days:
             payload["region_days"] = region_days
+        # The service decides WHICH counters `counter_index` indexes, for a
+        # site that runs different stations at lunch and at dinner.
+        if meal:
+            payload["meal"] = meal
 
         def _do():
             return self.session.post(
@@ -348,6 +353,7 @@ class MenuApiClient:
         relaxations: Optional[List[Dict[str, Any]]] = None,
         chef_read: bool = False,
         region_days: Optional[Dict[str, str]] = None,
+        meal: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Explain a plan this client already has. Never solves.
 
@@ -377,6 +383,10 @@ class MenuApiClient:
         }
         if relaxations:
             payload["relaxations"] = relaxations
+        # The service decides WHICH counters `counter_index` indexes, for a
+        # site that runs different stations at lunch and at dinner.
+        if meal:
+            payload["meal"] = meal
         if chef_read:
             payload["chef_read"] = True
         if region_days:

@@ -664,7 +664,7 @@ CHEF_READ_TEMPERATURE = 0.2      # low, so the same menu gets the same star
 
 # Bump whenever the prompt or the checks change: it is part of the cache key,
 # so an old accepted read is never served against new rules.
-CHEF_READ_PROMPT_VERSION = 'chef-read-v3'
+CHEF_READ_PROMPT_VERSION = 'chef-read-v6'
 
 # A dish counts as a comeback only past the item cooldown (20 days), so the
 # claim says something the cooldown alone would not have produced.
@@ -706,9 +706,13 @@ the facts (a south-Indian dish marked north, say), say it here. Say \
 everything a chef would act on and nothing they would not. Stay under \
 <INTERNAL_MAX_WORDS> words.
 
-There is no template. No headings, no lists, no labels, and do not open the \
-way other days opened (other_days_open_with shows how earlier days began). \
-Some days need one line and some need five. Let the menu decide.
+There is no template. No headings, no lists, no labels. Some days need one \
+line and some need five. Let the menu decide.
+
+other_days_open_with lists how earlier days in this plan began. The FIRST FOUR \
+WORDS of your client_read must not match the start of any of them — not \
+"Today's menu" again, not "Today is" again. Open on what is actually different \
+about today: a dish, a plate, the thread running through it.
 
 HARD LIMITS. A draft that breaks any of these is sent back to you:
 1. Name only dishes in the facts. You may shorten a name ("the soya chatpata" \
@@ -722,11 +726,27 @@ if days_since_served says 26.
 cooldowns, tags, slots, data or systems.
 6. client_read never contradicts internal_read. It may leave a problem out, or \
 turn it into a tip ("for a north-style plate, pair the chapati with the soya \
-chatpata"), but it may never praise what internal_read criticises.
+chatpata"), but it may never praise what internal_read criticises. Three \
+specific words give this away, so avoid them in client_read:
+   - "perfect", "perfectly", "balanced" or "flawless" whenever the facts list \
+known_problems. Describe the day instead of grading it.
+   - "light", "lighter" or "easy on the stomach" when you call the day heavy.
+   - "varied", "variety" or "something different" when you call the day \
+repetitive.
+   - "classic", "true", "authentic", "proper", "full", "real" or "pure" in \
+front of today's theme or regional day when one of your weak_spots is \
+theme_mismatch. You cannot call it a true north spread and then say the north \
+theme does not show.
 7. Call something a comeback only if has_history is true and \
 days_since_served is 21 or more.
 8. Never suggest bread with rasam as a plate.
-9. Write plain sentences. No bullets, no numbered lists, no headings, and no \
+9. EVERY plate in claims.plates needs a rice or a bread in it — a biryani, \
+pulao, rice, chawal, roti, paratha, chapati, phulka, kulcha, naan, dosa, idli, \
+bhature, puri or khichdi. "Gobi 65 and malabar kurma" is a pair of dishes, not \
+a plate. Add the one from TODAY'S list of dishes, never a rice or bread you \
+wish were there; if today has none, do not claim a plate at all. Suggest \
+plates in the prose only if you also list them here.
+10. Write plain sentences. No bullets, no numbered lists, no headings, and no \
 labels in front of a sentence — not "Weak spots:", and never a field name from \
 the output schema. The claims below carry the structure; the notes are prose.
 
@@ -746,7 +766,7 @@ OUTPUT: strict JSON, no markdown fences:
 {"client_read": "...",
  "internal_read": "...",
  "claims": {
-   "plates": [{"for": "who this plate suits", "dishes": ["...", "..."]}],
+   "plates": [{"for": "who this plate suits", "dishes": ["...", "...", "a rice or a bread"]}],
    "star": {"dish": "...", "basis": "premium|comeback|regional|pinned|theme|plate_role", "why": "..."},
    "comebacks": ["..."],
    "weak_spots": [{"kind": "theme_mismatch|incomplete_plate|heavy|repetitive|clash|other", "text": "..."}],

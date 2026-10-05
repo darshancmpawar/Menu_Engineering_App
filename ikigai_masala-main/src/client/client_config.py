@@ -39,7 +39,7 @@ from src.constants import (
     DISPLAY_SLOT_NAME,
 )
 from src.db import get_supabase
-from src.history import DEFAULT_MEALS, normalize_meals
+from src.history import DEFAULT_MEALS, MEALS, normalize_meals
 from src.preprocessor.pool_builder import _expand_slots_in_order
 from src.preprocessor.client_pool_filter import (
     normalize_name as _normalize_pool_name, COMMON_POOL,
@@ -257,12 +257,32 @@ def normalize_counter(raw: Dict, index: int = 0) -> Dict:
         if d in theme_map and theme in AVAILABLE_THEMES:
             theme_map[d] = theme
 
-    return {
+    out = {
         'name': name,
         'categories': cats,
         'slot_counts': slot_counts,
         'theme_map': theme_map,
     }
+    # Which services this counter is for. ABSENT means every service, which is
+    # what every stored counter means today — so a client written before
+    # per-service config keeps planning identically and nothing is migrated.
+    # Written only when the editor actually splits a service out, and omitted
+    # rather than defaulted so `_counters_equal` does not see a dirty edit on
+    # every load. This dict is the canonical shape: a key not listed here is
+    # DROPPED on the next read, which is how a tag can look saved and be gone.
+    serves = [m for m in MEALS if m in {str(v).strip().lower()
+                                        for v in (raw.get('meals') or [])}]
+    if serves:
+        out['meals'] = serves
+    return out
+
+
+def counter_serves(counter: Dict, meal: Optional[str]) -> bool:
+    """Does this counter run at `meal`? An untagged counter runs at all of them."""
+    if not meal:
+        return True
+    tagged = (counter or {}).get('meals')
+    return not tagged or str(meal).strip().lower() in tagged
 
 
 # ---------------------------------------------------------------------------
@@ -380,18 +400,39 @@ class ClientConfigLoader:
         stored = row.data.get('counters')
         return stored if isinstance(stored, list) else []
 
-    def _counters_list(self, name: str) -> List[Dict]:
+    def _counters_list(self, name: str, meal: Optional[str] = None) -> List[Dict]:
         """Return the client's counters, normalised and always non-empty.
 
         Prefers ``clients.counters``; if empty (a client created before the
         migration, or a not-yet-migrated database) it falls back to the legacy
         config tables, and finally to an all-categories default.
+
+        With `meal`, only the counters that run at that service — an untagged
+        counter runs at all of them, so a client that has never split its
+        services is unaffected. This is the ONE place the filter lives, which
+        is what keeps `counter_index` and `counter_count` meaning the same
+        thing they always did, now per service: the index is into the list the
+        caller is handed, and every caller is handed this one.
         """
         raw = self._read_counters_column(name)
         if raw:
-            return [normalize_counter(c, i) for i, c in enumerate(raw)]
-        legacy = self._legacy_primary_counter(name)
-        return [legacy] if legacy else [default_counter(0)]
+            counters = [normalize_counter(c, i) for i, c in enumerate(raw)]
+        else:
+            legacy = self._legacy_primary_counter(name)
+            counters = [legacy] if legacy else [default_counter(0)]
+        if not meal:
+            return counters
+        serving = [c for c in counters if counter_serves(c, meal)]
+        if serving:
+            return serving
+        # Every counter is tagged for some OTHER service. Degrade rather than
+        # hand the solver an empty list — a zero-counter plan is an opaque
+        # failure — but say so, because a service quietly planned from another
+        # service's stations is worse than a loud one.
+        logger.warning(
+            "%s: no counter is configured for %r; planning it from all %d "
+            "counter(s) instead", name, meal, len(counters))
+        return counters
 
     def _legacy_primary_counter(self, name: str) -> Optional[Dict]:
         """Build one counter from the pre-migration config tables.
@@ -479,17 +520,17 @@ class ClientConfigLoader:
             counter_count=counter_count,
         )
 
-    def get_client(self, name: str) -> ClientConfig:
+    def get_client(self, name: str, meal: Optional[str] = None) -> ClientConfig:
         """Return a ClientConfig sourced from the primary counter
         (``counters[0]``). Output shape is unchanged, so the solver is
-        unaffected."""
-        counters = self._counters_list(name)
+        unaffected. With `meal`, the primary counter FOR THAT SERVICE."""
+        counters = self._counters_list(name, meal)
         cfg = self._config_from_counter(name, counters[0], len(counters))
         cfg.serve_weekends = self.get_client_serve_weekends(name)
         cfg.working_days = self.get_client_working_days(name)
         return cfg
 
-    def get_client_configs(self, name: str):
+    def get_client_configs(self, name: str, meal: Optional[str] = None):
         """Return ``[(counter_name, ClientConfig), …]`` — one per counter.
 
         Single-cuisine clients yield a one-element list; multi-cuisine clients
@@ -500,7 +541,7 @@ class ClientConfigLoader:
         serve_weekends = self.get_client_serve_weekends(name)
         working_days = self.get_client_working_days(name)
         out = []
-        counters = self._counters_list(name)
+        counters = self._counters_list(name, meal)
         for c in counters:
             cfg = self._config_from_counter(name, c, len(counters))
             cfg.serve_weekends = serve_weekends
@@ -508,13 +549,14 @@ class ClientConfigLoader:
             out.append((c['name'], cfg))
         return out
 
-    def get_counters_for_client(self, name: str) -> List[Dict]:
+    def get_counters_for_client(self, name: str,
+                                meal: Optional[str] = None) -> List[Dict]:
         """Return the ordered, normalised list of counter configs (>=1)."""
-        return self._counters_list(name)
+        return self._counters_list(name, meal)
 
-    def get_counter_setup(self, name: str):
+    def get_counter_setup(self, name: str, meal: Optional[str] = None):
         """Return ``(mode, counters)`` in a single ``clients.counters`` read."""
-        counters = self._counters_list(name)
+        counters = self._counters_list(name, meal)
         mode = 'multi' if len(counters) >= 2 else 'single'
         return mode, counters
 
@@ -874,8 +916,23 @@ class ClientConfigLoader:
         """Raise ValueError unless every counter has >=1 category."""
         if not counters:
             raise ValueError("At least one counter is required.")
-        if len(counters) > MAX_COUNTERS:
-            raise ValueError(f"At most {MAX_COUNTERS} counters are allowed.")
+        # Counted PER SERVICE. The cap is about how many stations one counter
+        # list can sanely describe, and a site running 4 at lunch and 4 at
+        # dinner is running 4 — not 8. Checked on the flattened list it would
+        # refuse that save with a number the editor never showed.
+        # Every service, and only the services: an UNTAGGED counter serves all
+        # of them, so a one-service list is still counted in full. Counting
+        # `None` as well would just re-count the flattened list and undo this.
+        split = any(c.get('meals') for c in counters)
+        for meal in MEALS:
+            n = sum(1 for c in counters if counter_serves(c, meal))
+            if n > MAX_COUNTERS:
+                # Name the service only when there IS one to name. An unsplit
+                # list is over the cap at every meal, and the first one
+                # checked is breakfast — which a lunch-only site does not run.
+                where = f" for {meal}" if split else ""
+                raise ValueError(
+                    f"At most {MAX_COUNTERS} counters are allowed{where}.")
         for i, c in enumerate(counters):
             cats = c.get('categories') or []
             if not cats:
@@ -1334,15 +1391,27 @@ class ClientConfigLoader:
             'version': int(data.get('version') or 1),
         }
 
-    def get_client_configs_from_row(self, name: str, row: Dict[str, Any]):
+    def get_client_configs_from_row(self, name: str, row: Dict[str, Any],
+                                    meal: Optional[str] = None):
         """``[(counter_name, ClientConfig), …]`` built from an already-read row.
 
         Lets a caller that fetched the row once avoid re-reading it per counter.
+
+        `meal` scopes it to that service's counters, the same rule
+        :meth:`_counters_list` uses — an untagged counter runs at every
+        service. The filter has to be repeated here rather than shared,
+        because this path deliberately never touches the database; keeping
+        them in step is what `counter_serves` is for.
         """
+        counters = [c for c in row['counters'] if counter_serves(c, meal)]
+        if not counters:
+            logger.warning(
+                "%s: no counter is configured for %r; planning it from all %d "
+                "counter(s) instead", name, meal, len(row['counters']))
+            counters = list(row['counters'])
         out = []
-        for counter in row['counters']:
-            cfg = self._config_from_counter(
-                name, counter, len(row['counters']))
+        for counter in counters:
+            cfg = self._config_from_counter(name, counter, len(counters))
             cfg.serve_weekends = row['serve_weekends']
             cfg.working_days = row['working_days']
             out.append((counter['name'], cfg))

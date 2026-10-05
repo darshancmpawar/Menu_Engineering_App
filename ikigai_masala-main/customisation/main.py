@@ -23,7 +23,7 @@ from ui.formatters import display_label_for_slot_id
 from src.constants import DISPLAY_SLOT_ORDER
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
-from src.history import MEALS, normalize_meals
+from src.history import LUNCH, MEALS, normalize_meals
 
 
 def pools_for_city(metadata: Dict, city) -> List[str]:
@@ -149,6 +149,37 @@ def _wizard_rail(client: str, mode: str, counters: int, ready: bool) -> None:
             f'</span></div>')
     out.append("</div>")
     st.markdown("".join(out), unsafe_allow_html=True)
+
+
+def seed_counters_for(meal: str, loaded: List[Dict]) -> List[Dict]:
+    """The stored counters to open this service's tab with.
+
+    Its own, if it has been split out before. Otherwise the untagged ones —
+    which is every counter of a site that has never split a service — so
+    Dinner opens as a copy of what Lunch is running rather than as a blank
+    form somebody has to fill in twice.
+    """
+    own = [c for c in loaded if meal in (c.get('meals') or [])]
+    return own or [c for c in loaded if not c.get('meals')] or list(loaded)
+
+
+def counters_for_write(by_meal: Dict[str, List[Dict]]) -> List[Dict]:
+    """Flatten the per-service tabs into the one list `clients.counters` holds.
+
+    **Tagged only when the services actually differ.** Every client already
+    has `meals: [lunch, dinner]`, so tagging unconditionally would double the
+    stored counters of every site on the first save and show "unsaved changes"
+    to someone who changed nothing. Identical services therefore write the
+    single untagged list they write today, and the document only grows when a
+    site genuinely runs different food at lunch and at dinner.
+    """
+    meals = list(by_meal)
+    if not meals:
+        return []
+    first = by_meal[meals[0]]
+    if all(_counters_equal(by_meal[m], first) for m in meals[1:]):
+        return [{k: v for k, v in c.items() if k != 'meals'} for c in first]
+    return [dict(c, meals=[m]) for m in meals for c in by_meal[m]]
 
 
 def _counters_equal(a: List[Dict], b: List[Dict]) -> bool:
@@ -434,79 +465,95 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         client_key = "_new_"
 
     # ============================================================
-    # Step 2 — Counter setup
+    # Steps 2 and 3 — once per service
     # ============================================================
-    with st.container(border=True):
-        _step_header(
-            2, "Cuisine Counter Setup",
-            "A single counter serves one cuisine plan. Multiple counters let "
-            "you run independent stations, each with its own categories, "
-            "frequency, and day themes.",
-        )
+    # Step 1 is the site: its city, its services, its cooldown. Everything
+    # below is the FOOD, and a site's lunch and its dinner are not the same
+    # food — different stations, different categories, different themes. So
+    # the counter setup repeats per service, and a one-service site sees no
+    # tabs at all, which is exactly the screen it had before.
+    def _service_config(meal: str, seed: List[Dict]) -> tuple:
+        """Steps 2 and 3 for one service. Returns `(is_multi, counters)`.
 
-        counter_choice = st.radio(
-            "Counter type",
-            ["Single Cuisine Counter", "Multi Cuisine Counter"],
-            index=(1 if loaded_mode == 'multi' else 0),
-            horizontal=True,
-            key=f"counter_mode_{client_key}",
-            label_visibility="collapsed",
-        )
-        is_multi = (counter_choice == "Multi Cuisine Counter")
-
-        if is_multi:
-            default_num = max(2, len(loaded_counters) if loaded_mode == 'multi' else 2)
-            default_num = min(default_num, max_counters)
-            num_counters = int(st.number_input(
-                "Number of counters",
-                min_value=2, max_value=max_counters, value=default_num, step=1,
-                key=f"num_counters_{client_key}",
-                help=f"Between 2 and {max_counters} counters.",
-            ))
-        else:
-            num_counters = 1
-
-    # ============================================================
-    # Step 3 — Configure counters
-    # ============================================================
-    _step_header(
-        3, "Configure Counters",
-        "For each counter, choose its food categories, how many items per "
-        "category, and the theme for each weekday.",
-    )
-
-    def _counter_seed(i: int) -> Dict:
-        if i < len(loaded_counters):
-            return loaded_counters[i]
-        return _default_counter(i, all_base_slots, const_slots, default_theme_map, default_off_slots)
-
-    result_counters: List[Dict] = []
-
-    if not is_multi:
-        result_counters.append(
-            render_counter_editor(
-                _counter_seed(0), 0, metadata,
-                key_prefix=f"{client_key}__c0", show_name=False,
+        `meal` scopes every widget key: Streamlit keys are global, and lunch's
+        category checkboxes would otherwise BE dinner's.
+        """
+        scope = f"{client_key}__{meal}"
+        seed_mode = 'multi' if len(seed) >= 2 else 'single'
+        with st.container(border=True):
+            _step_header(
+                2, "Cuisine Counter Setup",
+                "A single counter serves one cuisine plan. Multiple counters "
+                "let you run independent stations, each with its own "
+                "categories, frequency, and day themes.",
             )
-        )
-    else:
-        # Tab labels reflect the (possibly edited) counter name from the
-        # previous rerun, falling back to the seed / default name.
-        labels = []
-        for i in range(num_counters):
-            edited = st.session_state.get(f"cname_{client_key}__c{i}")
-            labels.append((edited or _counter_seed(i).get('name') or f"Counter {i + 1}"))
-        tabs = st.tabs(labels)
-        for i, tab in enumerate(tabs):
-            with tab:
-                result_counters.append(
-                    render_counter_editor(
-                        _counter_seed(i), i, metadata,
-                        key_prefix=f"{client_key}__c{i}", show_name=True,
-                    )
-                )
+            choice = st.radio(
+                "Counter type",
+                ["Single Cuisine Counter", "Multi Cuisine Counter"],
+                index=(1 if seed_mode == 'multi' else 0),
+                horizontal=True,
+                key=f"counter_mode_{scope}",
+                label_visibility="collapsed",
+            )
+            multi = (choice == "Multi Cuisine Counter")
+            if multi:
+                default_num = min(max(2, len(seed)), max_counters)
+                n = int(st.number_input(
+                    "Number of counters",
+                    min_value=2, max_value=max_counters, value=default_num,
+                    step=1, key=f"num_counters_{scope}",
+                    help=f"Between 2 and {max_counters} counters.",
+                ))
+            else:
+                n = 1
 
-    counter_mode = 'multi' if is_multi else 'single'
+        _step_header(
+            3, "Configure Counters",
+            "For each counter, choose its food categories, how many items per "
+            "category, and the theme for each weekday.",
+        )
+
+        def _seed_at(i: int) -> Dict:
+            if i < len(seed):
+                return seed[i]
+            return _default_counter(i, all_base_slots, const_slots,
+                                    default_theme_map, default_off_slots)
+
+        out: List[Dict] = []
+        if not multi:
+            out.append(render_counter_editor(
+                _seed_at(0), 0, metadata,
+                key_prefix=f"{scope}__c0", show_name=False))
+        else:
+            # Tab labels reflect the (possibly edited) counter name from the
+            # previous rerun, falling back to the seed / default name.
+            labels = []
+            for i in range(n):
+                edited = st.session_state.get(f"cname_{scope}__c{i}")
+                labels.append(edited or _seed_at(i).get('name') or f"Counter {i + 1}")
+            for i, tab in enumerate(st.tabs(labels)):
+                with tab:
+                    out.append(render_counter_editor(
+                        _seed_at(i), i, metadata,
+                        key_prefix=f"{scope}__c{i}", show_name=True))
+        return multi, out
+
+    by_meal: Dict[str, List[Dict]] = {}
+    multi_flags: List[bool] = []
+    if len(selected_meals) <= 1:
+        meal = (selected_meals or [LUNCH])[0]
+        m, cs = _service_config(meal, seed_counters_for(meal, loaded_counters))
+        by_meal[meal], multi_flags = cs, [m]
+    else:
+        for meal, tab in zip(selected_meals, st.tabs(
+                [m.capitalize() for m in selected_meals])):
+            with tab:
+                m, cs = _service_config(meal, seed_counters_for(meal, loaded_counters))
+                by_meal[meal] = cs
+                multi_flags.append(m)
+
+    result_counters = counters_for_write(by_meal)
+    counter_mode = 'multi' if any(multi_flags) else 'single'
     empty_counters = [c['name'] for c in result_counters if not c['categories']]
 
     # Fill the rail now that every step's real state is known. `empty_counters`
@@ -527,12 +574,18 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
     # only for base slots present on 2+ counters (a slot on one counter has
     # nothing to sync).
     selected_shared_categories: List[str] = []
-    if is_multi:
+    if counter_mode == 'multi':
         from collections import Counter as _Counter
-        slot_counts_across = _Counter(
-            s for c in result_counters for s in (c.get('categories') or [])
-        )
-        shareable = [s for s, n in slot_counts_across.items() if n >= 2]
+        # Counted WITHIN a service, not across the flattened list. Sharing
+        # pins the primary counter's dish onto its siblings for the same day's
+        # same service; a slot that lunch has once and dinner has once is on
+        # two counters and shareable on neither.
+        shareable = sorted({
+            s for counters in by_meal.values()
+            for s, n in _Counter(
+                x for c in counters for x in (c.get('categories') or [])
+            ).items() if n >= 2
+        })
         shareable_sorted = sorted(
             shareable,
             key=lambda s: DISPLAY_SLOT_ORDER.index(s)

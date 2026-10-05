@@ -336,6 +336,49 @@ class TestFacts:
         assert by['rasam']['pinned'] is True and by['jeera_chapati']['pinned'] is False
 
 
+class TestEveryRejectionRuleIsInThePrompt:
+    """A check the prompt never states is a draft spent teaching it.
+
+    The module's own tuning note says a limit in the prompt without a matching
+    check goes unenforced — this is the mirror of it, and it is the one that
+    cost money. Measured on a real 7-day plan: 16 model calls, ZERO days
+    accepted first draft, and almost every rejection was a rule the model was
+    never told. Naming them took the same plan to 9-11 calls with most days
+    accepted first time. So each word list the checks reject on is asserted to
+    appear in the prompt, and a new check with no prompt line fails here
+    instead of quietly costing a retry per day forever.
+    """
+
+    def test_the_praise_words_are_named(self):
+        for word in ('perfect', 'balanced', 'flawless'):
+            assert word in mod.CHEF_READ_SYSTEM_PROMPT, word
+
+    def test_the_contradiction_words_are_named(self):
+        for word in ('light', 'lighter', 'easy on the stomach',
+                     'varied', 'variety', 'something different'):
+            assert word in mod.CHEF_READ_SYSTEM_PROMPT, word
+
+    def test_the_theme_praise_adjectives_are_named(self):
+        for word in ('classic', 'true', 'authentic', 'proper', 'real', 'pure'):
+            assert f'"{word}"' in mod.CHEF_READ_SYSTEM_PROMPT, word
+
+    def test_a_plate_is_told_it_needs_a_carb(self):
+        p = mod.CHEF_READ_SYSTEM_PROMPT
+        assert 'needs a rice or a bread' in p
+        # and told to take it from today's menu, or the fix trades one
+        # rejection for another: the first wording said "add the chapati"
+        # and the model added a chapati the day did not have.
+        assert "TODAY'S list of dishes" in p
+        for word in mod._CARB_WORDS:
+            assert word in p, word
+
+    def test_the_opening_rule_says_how_much_must_differ(self):
+        """"do not open the way other days opened" is not actionable; the
+        check compares the first FOUR words."""
+        assert 'FIRST FOUR' in mod.CHEF_READ_SYSTEM_PROMPT
+        assert 'other_days_open_with' in mod.CHEF_READ_SYSTEM_PROMPT
+
+
 class TestTheReplyIsFoundInTheReply:
     """A thinking model puts its answer after its reasoning.
 
