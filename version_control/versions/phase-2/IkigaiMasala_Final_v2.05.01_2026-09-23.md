@@ -45,4 +45,4 @@ web request first.
 |---|---|---|---|
 | 2.05.01 | 23 Sep | Darshan + Claude Code | Installed five corrected city workbooks and re-ran the correction chain; solve-input assembly moved out of api/app.py |
 
-**Previous:** [v2.05.00](IkigaiMasala_Final_v2.05.00_2026-09-22.md)  **Next:** —
+**Previous:** [v2.05.00](IkigaiMasala_Final_v2.05.00_2026-09-22.md)  **Next:** [v2.06.00](IkigaiMasala_Final_v2.06.00_2026-10-05.md)
