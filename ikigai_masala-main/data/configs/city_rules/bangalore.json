@@ -2,9 +2,9 @@
   "description": "Complete menu rules for Indian lunch menu planning — matches old app rule set",
   "rules": [
     {
-      "name": "item_cooldown_20d",
+      "name": "item_cooldown_21d",
       "type": "item_cooldown",
-      "cooldown_days": 20
+      "cooldown_days": 21
     },
     {
       "name": "ricebread_gap_10d",

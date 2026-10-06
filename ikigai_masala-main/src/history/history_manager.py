@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
+from ..constants import DEFAULT_ITEM_COOLDOWN_DAYS
 from ..preprocessor.column_mapper import _norm_str
 
 
@@ -234,7 +235,7 @@ class HistoryManager:
     def banned_items_by_date(
         self,
         dates: List[dt.date],
-        cooldown_days: int = 20,
+        cooldown_days: int = DEFAULT_ITEM_COOLDOWN_DAYS,
         const_slots: List[str] = (),
         repeatable_items: Set[str] = frozenset(),
     ) -> Dict[dt.date, Set[str]]:

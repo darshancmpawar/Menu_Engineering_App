@@ -20,7 +20,7 @@ import streamlit as st
 from ui.api_client import MenuApiClient
 from ui.branding import logo_img_tag
 from ui.formatters import display_label_for_slot_id
-from src.constants import DISPLAY_SLOT_ORDER
+from src.constants import DEFAULT_ITEM_COOLDOWN_DAYS, DISPLAY_SLOT_ORDER
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
 from src.history import LUNCH, MEALS, normalize_meals
@@ -272,7 +272,11 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
     default_off_slots = metadata.get('default_off_slots', [])
     default_theme_map = metadata.get('default_theme_map', {})
     available_cities = metadata.get('available_cities', [])
-    default_cooldown = int(metadata.get('default_item_cooldown_days', 20) or 20)
+    # The fourth place this number lived. The API serves it; the literal is
+    # only the fallback for a metadata call that came back thin, and it reads
+    # the one constant so a changed window cannot show the old default here.
+    default_cooldown = int(metadata.get('default_item_cooldown_days')
+                           or DEFAULT_ITEM_COOLDOWN_DAYS)
     max_counters = int(metadata.get('max_counters', 6) or 6)
 
     # The rail goes at the TOP but can only be filled once the steps below

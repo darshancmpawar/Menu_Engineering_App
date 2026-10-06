@@ -2,10 +2,10 @@
   "description": "Pune regional ruleset — transcribed from Pune_menu_rulebook_101.xlsx (R1-R70). Standalone: it does NOT extend Bangalore, because most Bangalore rules describe Bangalore's rulebook (theme days, the deep-fried coupling family, the non-veg station) and Pune's rulebook states its own set. docs/pune_rulebook.md maps every R-number to the rule below that implements it, and lists the ones that are not machine-encodable.",
   "rules": [
     {
-      "_comment": "General 20-day no-repeat window for any single dish; also covers the same-item side of R30/R31/R37's 15-day gaps.",
-      "name": "item_cooldown_20d",
+      "_comment": "General 21-day no-repeat window for any single dish; also covers the same-item side of R30/R31/R37's 15-day gaps. Three weeks, and it spans SERVICES: `explode_history_rows` drops the `meal` column, so a dish served at dinner is banned from lunch for the same three weeks and the other way round.",
+      "name": "item_cooldown_21d",
       "type": "item_cooldown",
-      "cooldown_days": 20
+      "cooldown_days": 21
     },
     {
       "_comment": "No dish twice in one horizon. Pune's whole Gaps section (R28-R38) presumes it.",
@@ -58,7 +58,7 @@
       "ignore_rice_gravy_color_diff_on_chinese_day": true
     },
     {
-      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them — uniqueness is already lifted for that by the arithmetic starved-slot exception. The 20-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot — plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
+      "_comment": "The list carries exactly TWO curd_side dishes (raita, boondi_raita), so a counter serving Curd / Raita every day must repeat them — uniqueness is already lifted for that by the arithmetic starved-slot exception. The 21-day cooldown is the part that breaks: once a week is SAVED both dishes are in history and the slot has no candidate at all, so week 2 answers 422 'cooldown banned all 2 curd side candidates'. A yogurt side is a staple accompaniment, not a variety slot — plain `curd` is already globally repeatable for the same reason (constants.REPEATABLE_SLOTS). Same fix as R36 for bread, same cause.",
       "name": "raita_is_a_staple",
       "type": "repeatable_items",
       "base_slot": "curd_side",
@@ -67,7 +67,7 @@
       }
     },
     {
-      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. They are staples like steamed rice: exempt from unique_items and from the 20-day ban. Without this the second week has both breads cooled down and no bread left. Selected by NAME, on exactly the two dishes R36 names. Not `is_plain_phulka_chapathi`: that flag means the whole chapati family, plain OR flavoured — it is what a \"chapati only\" bread rule selects on — and `bread_form_flags.py` correctly took Pune from 2 flagged rows to 9 by adding the flavoured chapatis, which would have widened this exemption to beetroot and methi chapati as a side effect of a data fix. An exemption is permission to repeat EVERY DAY and that is not variety. Not `sub_category` either: `plain_chapatti/phulka` is unreliable, holding `garlic_chapati` here and 34 Bangalore rows of which several are plainly flavoured (makai, mango, mooli, hot_and_sour). Two dishes is thin, so `diagnose()` reporting a selector that matches nothing is the guard if either is ever renamed. `pav` used to carry the flag in all three cities that have the dish and the Corning Chakan import brought one into this city's bread pool; a pav is a leavened roll served alongside a bhaji once a week, so `course_type_corrections.py` fixes the row rather than this rule working around it.",
+      "_comment": "R36 — plain atta phulka/chapathi may run on consecutive days. They are staples like steamed rice: exempt from unique_items and from the 21-day ban. Without this the second week has both breads cooled down and no bread left. Selected by NAME, on exactly the two dishes R36 names. Not `is_plain_phulka_chapathi`: that flag means the whole chapati family, plain OR flavoured — it is what a \"chapati only\" bread rule selects on — and `bread_form_flags.py` correctly took Pune from 2 flagged rows to 9 by adding the flavoured chapatis, which would have widened this exemption to beetroot and methi chapati as a side effect of a data fix. An exemption is permission to repeat EVERY DAY and that is not variety. Not `sub_category` either: `plain_chapatti/phulka` is unreliable, holding `garlic_chapati` here and 34 Bangalore rows of which several are plainly flavoured (makai, mango, mooli, hot_and_sour). Two dishes is thin, so `diagnose()` reporting a selector that matches nothing is the guard if either is ever renamed. `pav` used to carry the flag in all three cities that have the dish and the Corning Chakan import brought one into this city's bread pool; a pav is a leavened roll served alongside a bhaji once a week, so `course_type_corrections.py` fixes the row rather than this rule working around it.",
       "name": "plain_chapati_may_repeat",
       "type": "repeatable_items",
       "base_slot": "bread",
@@ -143,7 +143,7 @@
       "max_per_week": 1
     },
     {
-      "_comment": "R30 — kadhi-style dal once in 15 days; projected onto the horizon as once a week (the 20-day item cooldown carries the rest of the window for the same dish). Kadhi sits under veg_gravy in the ontology.",
+      "_comment": "R30 — kadhi-style dal once in 15 days; projected onto the horizon as once a week (the 21-day item cooldown carries the rest of the window for the same dish). Kadhi sits under veg_gravy in the ontology.",
       "name": "kadhi_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -283,7 +283,7 @@
       "max_per_week": 1
     },
     {
-      "_comment": "R47 — oil-based breads (lachha parota, poori) are monthly. A month is longer than any horizon, so this caps them at one per horizon; the 20-day item cooldown extends it for the same dish. Inert in the current Pune list.",
+      "_comment": "R47 — oil-based breads (lachha parota, poori) are monthly. A month is longer than any horizon, so this caps them at one per horizon; the 21-day item cooldown extends it for the same dish. Inert in the current Pune list.",
       "name": "oil_based_bread_weekly",
       "type": "selector_frequency",
       "selector": {

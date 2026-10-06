@@ -103,6 +103,16 @@ BASE_SLOT_NAMES: List[str] = [
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
 
+# Default item-cooldown window (days): a dish served within this many days
+# before a date is banned from that date. THREE WEEKS, and it spans services —
+# `HistoryManager.explode_history_rows` drops the `meal` column, so a dish
+# served at dinner is banned from lunch for the same three weeks and the other
+# way round. Lives here rather than in `client_config` because three places
+# needed the number (the rule's own default, `banned_items_by_date`, and the
+# per-client column's default) and three copies of a window are three things
+# that can disagree. Per-client overridable via `clients.item_cooldown_days`.
+DEFAULT_ITEM_COOLDOWN_DAYS: int = 21
+
 # Canonical order for BOTH the config editor and the rendered menu (table +
 # Excel). Interleaves base and constant slots: welcome drink → soup → salad →
 # breads/rices → veg dry → veg gravy → starter → dal/sambar/rasam → dessert →
@@ -157,7 +167,7 @@ REPEATABLE_SLOTS: Set[str] = {'curd', 'curd_rice'}
 #
 # The curd/raita side (``curd_side``), curd-rice station (``curd_rice``), ``soup``
 # and ``healthy_rice`` are condiment/side slots with small pools (2-13 distinct
-# dishes). The 20-day cooldown is a hard ban, so over a multi-week run it empties
+# dishes). The 21-day cooldown is a hard ban, so over a multi-week run it empties
 # these pools and the solve goes INFEASIBLE — a fleet sweep found this drained
 # ~18 counters by week 2-3. They are sides, not variety centrepieces, so the
 # cross-week no-repeat window is wrong for them: dropping the hard ban lets the
@@ -167,7 +177,7 @@ REPEATABLE_SLOTS: Set[str] = {'curd', 'curd_rice'}
 # (global), mirroring how plain ``curd`` is already cooldown-exempt.
 COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     'curd_side', 'curd_rice', 'soup', 'healthy_rice',
-    # Same argument as `soup`: sides with a small pool, where a hard 20-day ban
+    # Same argument as `soup`: sides with a small pool, where a hard 21-day ban
     # empties the slot before the cycle of distinct dishes is used up. They keep
     # unique_items, so they still vary within the week.
     'infused_water', 'nonveg_soup',
@@ -227,7 +237,7 @@ REPEATABLE_ITEM_BASES: Set[str] = {'curd'}
 # Ontology flags marking a dish that recurs like a staple **within one slot**:
 # the SAME dish may be served every day there, the way steamed rice is. Such a
 # dish is exempt from unique_items and from the item-cooldown ban, exactly like
-# the plain-curd station — the 20-day no-repeat window governs ordinary dishes,
+# the plain-curd station — the 21-day no-repeat window governs ordinary dishes,
 # not staples.
 #
 # The chicken kebab on a non-veg station is one of these. Treating it as an

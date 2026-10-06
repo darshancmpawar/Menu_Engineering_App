@@ -2,10 +2,10 @@
   "description": "chennai menu rules — standalone (no `extends`), because inheriting Bangalore's ruleset keyed a third of its rules on flags Chennai's list leaves at 0. Chennai has NO welcome drinks at all (no `welcome_drink` course_type, `is_welcome_drink` = 0 across 361 rows), so every drink rule Bangalore ships was silently inert here. NOTE ON SCOPE: this is the engine skeleton plus the caps that are provable from the item list — it is NOT a transcription of a Chennai rulebook, because none has been supplied. Pune's 36 rules came from `Pune_menu_rulebook_101.xlsx`; the equivalent regional rules for Chennai (which kuzhambu on which day, poriyal/kootu rotation, rasam cadence) still need that document. Everything below is either universal engine behaviour or a cap whose selector was verified to match real Chennai items — see tests/test_chennai_rules.py, which fails if any rule stops matching.",
   "rules": [
     {
-      "_comment": "20-day item cooldown, same window as every other city.",
-      "name": "item_cooldown_20d",
+      "_comment": "21-day item cooldown, same window as every other city. Three weeks, and it spans SERVICES: `explode_history_rows` drops the `meal` column, so a dish served at dinner is banned from lunch for the same three weeks and the other way round.",
+      "name": "item_cooldown_21d",
       "type": "item_cooldown",
-      "cooldown_days": 20
+      "cooldown_days": 21
     },
     {
       "_comment": "No dish twice inside one plan.",
@@ -81,7 +81,7 @@
       }
     },
     {
-      "_comment": "Rasam is a staple, and this one is load-bearing: the list holds exactly TWO rasam dishes (rasam, jeera_rasam) and a Chennai counter serves rasam most days. Under unique_items + the 20-day cooldown the slot is empty by day 3 of the first plan, never mind week 2. Rasam is the daily tamarind broth, not a variety slot — the same call as steamed rice.",
+      "_comment": "Rasam is a staple, and this one is load-bearing: the list holds exactly TWO rasam dishes (rasam, jeera_rasam) and a Chennai counter serves rasam most days. Under unique_items + the 21-day cooldown the slot is empty by day 3 of the first plan, never mind week 2. Rasam is the daily tamarind broth, not a variety slot — the same call as steamed rice.",
       "name": "rasam_is_a_staple",
       "type": "repeatable_items",
       "base_slot": "rasam",
