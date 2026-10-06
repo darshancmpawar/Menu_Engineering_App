@@ -85,6 +85,7 @@ from src.explain.evidence import (
 from src.explain.renderer import day_overview
 from api.kitchen_notes_llm import kitchen_notes
 from src.seasonal.bans import bans_by_month, default_matcher, vegetable_label
+from src.ontology.regions import regional_dishes_by_date
 from api.explain_llm import (
     explain_plan, explain_chef_read, chef_attrs_from_dataframe,
     city_dish_names_from_dataframe,
@@ -702,6 +703,15 @@ def plan_menu():
         # response body is byte-for-byte what it was.
         if inputs.region_days:
             response['region_days'] = dict(inputs.region_days)
+            # WHICH dishes are the regional ones. A regional day is a floor,
+            # not a filter, so the day holds regional dishes and ordinary ones
+            # side by side and nothing on the menu says which is which. Only
+            # the ontology knows (`state_origin`), so the answer travels with
+            # the plan rather than the planner guessing from a name.
+            regional = regional_dishes_by_date(
+                inputs.df, response['solution'], inputs.region_days)
+            if regional:
+                response['regional_dishes'] = regional
         if inputs.region_problems:
             response['region_problems'] = list(inputs.region_problems)
         # Rules the solve under-enforced rather than failed on. Pass these back
@@ -808,6 +818,16 @@ def regenerate_cells():
             'message': f'Regenerated {sum(len(v) for v in replace_mask.values())} cells for {inputs.client_name}',
             'solution': formatter.to_dict(),
         }
+        # Applying a regional day IS a regenerate, so this is the path that
+        # creates most regional dishes in the first place. Answering it only
+        # on /plan would mark them on a freshly generated week and leave the
+        # day the planner just made regional unmarked.
+        if inputs.region_days:
+            response['region_days'] = dict(inputs.region_days)
+            regional = regional_dishes_by_date(
+                inputs.df, response['solution'], inputs.region_days)
+            if regional:
+                response['regional_dishes'] = regional
         if regen.rule_failures:
             response['rule_warnings'] = regen.rule_failures
             _count_rule_failures(regen.rule_failures)

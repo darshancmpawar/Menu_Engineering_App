@@ -249,3 +249,40 @@ def region_by_name(regions: Sequence[Region], name: str) -> Optional[Region]:
         if _norm_cell(r.name) == want:
             return r
     return None
+
+
+def regional_dishes_by_date(df, solution: Mapping[str, Any],
+                            region_days: Mapping[str, str]) -> Dict[str, list]:
+    """``{iso: [dish, …]}`` — the dishes on each regional day FROM that region.
+
+    A regional day is a floor, not a filter (v2.05.00): asking for a Punjabi
+    Monday serves at least N Punjabi dishes, and the rest of the plate is
+    ordinary. So "which dishes are the Punjabi ones" is not something the
+    planner can see by looking at the menu — every dish on the day looks the
+    same — and only the ontology knows, because only it carries
+    ``state_origin``. Computed here and sent with the plan so the table can
+    mark them.
+
+    Matched through ``_norm_cell`` on both sides, like `region_by_name`: a
+    picked region spelled "tamil nadu" against a column holding "Tamil Nadu"
+    is the near-miss that resolves to nothing while everything still answers
+    200.
+    """
+    out: Dict[str, list] = {}
+    if df is None or REGION_COL not in getattr(df, 'columns', ()):
+        return out
+    origin = {_norm_cell(i): _norm_cell(s)
+              for i, s in zip(df['item'], df[REGION_COL])}
+    for iso, region in (region_days or {}).items():
+        want = _norm_cell(region)
+        if not want:
+            continue
+        day = (solution or {}).get(iso) or {}
+        names = []
+        for value in (day.get('items') or {}).values():
+            name = (value or {}).get('item_base') if isinstance(value, dict) else value
+            if name and origin.get(_norm_cell(name)) == want:
+                names.append(str(name))
+        if names:
+            out[str(iso)] = names
+    return out

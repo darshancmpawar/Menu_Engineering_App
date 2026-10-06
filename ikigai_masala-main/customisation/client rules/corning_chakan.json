@@ -1,6 +1,6 @@
 {
   "Corning Chakan": {
-    "_comment": "Pune site, one counter, seven days a week (`serve_weekends` is true, which the soup/sweet schedule below depends on). Slots: soup, bread, rice, veg_dry, veg_gravy, dal, dessert, white_rice — one dish each. Five of the client's fourteen rules need no per-client entry because Pune's own ruleset already enforces them at least as tightly: 'kabuli chana gravy max once a week' is `kabuli_chana_gravy_weekly`, 'legume-based gravies max once a week' is `legume_gravy_weekly`, and 'mixed-veg, veg kurma and veg kofta max twice a week' is covered by `mixed_veg_gravy_weekly` + `veg_kurma_gravy_weekly` + `veg_kofta_gravy_weekly` (one day each) — the union cap below is added anyway because the client stated the combined number, and a city rule can be relaxed later without the client's requirement quietly going with it. 'Sweet and soup on alternate days' is not a rule: it is what the two day-restrictions below already produce (sweet Mon/Wed/Fri, soup Tue/Thu/Sat/Sun). 'Soya can be served as one of the vegetable options' is permission, not a constraint, so nothing enforces it — Pune carries soya veg dries and gravies and they are already eligible.",
+    "_comment": "Pune site, one counter, seven days a week (`serve_weekends` is true, which the soup/sweet schedule below depends on). Slots: soup, bread, rice, white_rice, veg_dry, veg_gravy, dal, dessert, starter — one dish each. The starter category now EXISTS on the counter, so the Thursday chaat rules below are live; they were written while it did not and their comments said so. Five of the client's fourteen rules need no per-client entry because Pune's own ruleset already enforces them at least as tightly: 'kabuli chana gravy max once a week' is `kabuli_chana_gravy_weekly`, 'legume-based gravies max once a week' is `legume_gravy_weekly`, and 'mixed-veg, veg kurma and veg kofta max twice a week' is covered by `mixed_veg_gravy_weekly` + `veg_kurma_gravy_weekly` + `veg_kofta_gravy_weekly` (one day each) — the union cap below is added anyway because the client stated the combined number, and a city rule can be relaxed later without the client's requirement quietly going with it. 'Sweet and soup on alternate days' is not a rule: it is what the two day-restrictions below already produce (sweet Mon/Wed/Fri, soup Tue/Thu/Sat/Sun). 'Soya can be served as one of the vegetable options' is permission, not a constraint, so nothing enforces it — Pune carries soya veg dries and gravies and they are already eligible.",
     "disable": [
       "leafy_veg_dry_15d_window"
     ],
@@ -50,7 +50,7 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Sprouts gravy should be served maximum twice a week.' Matched on the NAME rather than a column: Pune has no sprouts flag, and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule.",
+        "_comment": "'Sprouts gravy should be served AT LEAST twice a week.' A floor, not a cap — this was written as `max_per_week: 2` against an earlier reading ('maximum twice a week'), which is the opposite instruction. Both bounds are stated because the client named a number, not a range. Matched on the NAME rather than a column: Pune has no sprouts flag and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule. Pune carries SEVEN sprouts gravies and a floor of two a week needs about six distinct across the 20-day cooldown: it fits with one spare, `min` caps itself to what the pool can supply, and `diagnose()` reports a shortfall rather than failing the menu.",
         "name": "corning_chakan_sprouts_gravy_twice_weekly",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
@@ -60,6 +60,7 @@
             "matki"
           ]
         },
+        "min": 2,
         "max_per_week": 2
       },
       {
@@ -103,14 +104,13 @@
         "max_per_week": 2
       },
       {
-        "_comment": "'Leafy-vegetable dry preparations should be served twice a week.' This is the one rule that contradicts Pune's rulebook head-on: R31 caps leafy dry at one day a week (`leafy_veg_dry_weekly`) and R14's cadence allows it only once per 15 days (`leafy_veg_dry_15d_window`, disabled above for this client). Overriding the weekly rule by name rather than adding a second one, so the two cannot disagree. NB Pune carries only FIVE leafy veg dries, and two days a week across the 20-day cooldown needs about eight distinct dishes — `min` caps itself to what the pool can supply and `diagnose()` reports the shortfall, so this under-enforces rather than failing, but the real fix is three or four more leafy dry dishes in the Pune list.",
+        "_comment": "'Only two leafy-based dishes should be planned per week.' A CAP. This previously also carried `min: 2`, which forced two — a different instruction, and the one the earlier requirement wording ('should be served twice a week') asked for. Overriding Pune's R31 `leafy_veg_dry_weekly` by name rather than adding a second rule, so the two cannot disagree, and R14's `leafy_veg_dry_15d_window` stays disabled above because once per 15 days cannot reach two in a week. NB the old comment here said Pune carries five leafy veg dries; the corrected workbook carries 25, so the pool was never the constraint it warned about. SCOPE: this counts the veg_dry slot only, which is where Pune's rule put it. The client says 'leafy-based dishes', which may mean any slot — `leafy_daily_max_1` already caps one a day across all slots, and widening this needs the client to confirm.",
         "name": "leafy_veg_dry_weekly",
         "type": "selector_frequency",
         "base_slot": "veg_dry",
         "selector": {
           "flag": "is_leafy_based_dish"
         },
-        "min": 2,
         "max_per_week": 2
       },
       {
@@ -140,6 +140,46 @@
             "count": 1
           }
         ]
+      },
+      {
+        "_comment": "'Biryani should be served maximum once in 15 days.' Pune's `mixedveg_pulao_biryani_weekly` caps the mixed-veg pulao/biryani family at one day a WEEK, which permits two inside any 15 days. This is the half that looks BACKWARDS, and it reads saved history rather than only the week being solved, so a plan starting the day after a biryani still waits. SELECTED BY NAME AS WELL AS FLAG, and the flag alone would have made this rule nearly inert: `is_biryani_item` is set on 3 of the 15 biryanis in Pune's rice pool, and a first version of this rule using the flag alone let a real week serve kolakata_stye_aloo_biryani on the Thursday and mughalai_veg_biryani on the Saturday while reporting zero. The missing flags are a dataset matter for the list's owner; the name carries the rule until they are set. `biryani_rice` is included deliberately — for a cap, counting an ambiguous dish costs a day of variety, missing one costs the rule. Paired with `corning_chakan_biryani_weekly` below, because this rule alone does not bind inside the week being solved: with it in place and no saved history, a real week served a biryani on the Thursday AND the Saturday. Pune uses the same pair for kadhi (`kadhi_weekly` + `kadhi_15d_window`) for exactly this reason.",
+        "name": "corning_chakan_biryani_15d_window",
+        "type": "selector_history_window",
+        "base_slot": "rice",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_biryani_item"
+            },
+            {
+              "name_contains": [
+                "biryani",
+                "biriyani"
+              ]
+            }
+          ]
+        },
+        "window_days": 15
+      },
+      {
+        "_comment": "The forward half of 'biryani maximum once in 15 days': one biryani in the week being solved. The 15-day window above cannot see the week it is planning, only what was saved before it, so without this a single plan can hold two. Same selector as the window, deliberately — two halves of one requirement must not be able to disagree about what a biryani is. Pune's `mixedveg_pulao_biryani_weekly` stays in force and is stricter on the mixed-veg pulao family it names.",
+        "name": "corning_chakan_biryani_weekly",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "any_of": [
+            {
+              "flag": "is_biryani_item"
+            },
+            {
+              "name_contains": [
+                "biryani",
+                "biriyani"
+              ]
+            }
+          ]
+        },
+        "max_per_week": 1
       }
     ],
     "constant_items": {}
