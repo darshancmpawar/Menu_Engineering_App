@@ -5,7 +5,7 @@ not:
 
 * **A region is a FLOOR, never a filter.** Bangalore holds zero Punjabi rice and
   zero Punjabi bread; narrowing those slots empties them, which is
-  `Chain rules/ncr_south_bread.py`'s incident. So the floor's slot list is derived
+  the deleted `ncr_south_bread` step's incident. So the floor's slot list is derived
   from the region's own measured depth, and a slot the region cannot fill is
   simply not in it.
 * **`only_on_dates` scopes, it does not ban.** `allowed_day_types` forbids the

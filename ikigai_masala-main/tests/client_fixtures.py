@@ -8,10 +8,12 @@ It covers the shapes that ship: multi-counter clients, ``nonveg_main`` counts of
 per-client ``item_cooldown_days`` and ``working_days``, and cities with their own
 item list and ruleset (Pune, Chennai, NCR).
 
-GENERATED — do not hand-edit. Run ``Chain rules/dump_client_fixtures.py`` against a
-fresh `clients` export and commit the diff. Editing it by hand is how it fell
-5 clients behind the live table, which meant a third of the fleet was
-never swept.
+ONCE GENERATED, NOW MAINTAINED BY HAND. It was dumped from a fresh `clients`
+export by a script in the correction chain, and that chain is deleted — so
+there is no regenerate command any more, and the only way this stays level with
+the live table is somebody reading both. That is worth knowing because editing
+it by hand is exactly how it fell 5 clients behind last time, which meant a
+third of the fleet was never swept.
 
 Kept as a Python literal rather than a SQL dump so it is reviewable in diffs and
 needs no parser. The sweep is marked ``slow``, so it runs on push-to-main and on
@@ -22,8 +24,8 @@ value except:
 
 * ``working_days`` is blank on every live row, so Quince's three-day week is
   synthetic — kept because it is the only coverage of the horizon filter. It is
-  declared in ``Chain rules/dump_client_fixtures.py::OVERRIDES`` so a refresh cannot
-  drop it.
+  synthetic on purpose, and now only this comment says so — the generator that
+  declared it as an override is deleted along with the rest of the chain.
 * L&T's ``Non Veg Lunch`` counter serves ``nonveg_main: 1`` live, while the
   client's requirement is the five-dish station (biryani + gravy + dry + kebab +
   egg). The snapshot mirrors live; the test that proves the five-dish behaviour

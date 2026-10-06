@@ -38,7 +38,7 @@ Defined in `tests/conftest.py`:
 - `ruff check --select=F,E9` — real-bug ruleset (undefined names, syntax
   errors, unused imports). Style rules are intentionally out of scope for
   now.
-- `bandit -ll -r api src "Chain rules"` — medium+ severity security findings.
+- `bandit -ll -r api src` — medium+ severity security findings.
 
 A fourth job — `slow-tests` — runs only on push to `main` and manual
 `workflow_dispatch` triggers, so PR feedback stays fast.
@@ -117,14 +117,13 @@ add a `st.cache_data.clear()` call there or just wait 60s.
 A city has two files, both named after the city slug, both optional — a city
 without them falls back to the default city (`bangalore`) for that half.
 
-1. **Item list** → `data/raw/city_items/<slug>.xlsx`. Never hand-edit a raw
-   workbook into place; run the normaliser, which forces the reference column
-   set, coerces flags to 0/1 and reports what the list does not cover:
-
-   ```bash
-   python "Chain rules/normalize_city_ontology.py" pune ~/Downloads/pune_menu_items.xlsx --dry-run
-   python "Chain rules/normalize_city_ontology.py" pune ~/Downloads/pune_menu_items.xlsx
-   ```
+1. **Item list** → `data/raw/city_items/<slug>.xlsx`. The normaliser that used
+   to produce these files is **deleted**, along with the rest of the correction
+   chain: the owner's cleaned workbooks are now the SOURCE, and nothing in this
+   repository writes to one. A new city arrives as a finished workbook in the
+   reference column set; if it is not in that shape, that is a conversation
+   with whoever owns the list, not a script to run here.
+   `tests/data/test_dataset_guards.py` is what a new file has to satisfy.
 
    Then declare the categories the list covers in
    `data/raw/city_items/ontology_categories.json`. That declaration is what the
@@ -194,7 +193,6 @@ ikigai_masala-main/
 │   ├── configs/city_rules/<city>.json  one ruleset per city
 │   └── configs/rule_library.json    reusable rule bodies clients reference by name
 ├── customisation/            Streamlit editor UIs + client rules/<slug>.json, one per client
-├── Chain rules/              the ontology correction chain + client menu importers (dev tooling)
 ├── scripts/                  Supabase SQL only
 ├── tests/                    Pytest suite
 ├── docs/                     setup, architecture, api, operations
