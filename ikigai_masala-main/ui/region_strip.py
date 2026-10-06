@@ -63,8 +63,18 @@ def region_day_args(meta: dict, dates: List[str], day_themes: dict,
         theme = str((day_themes or {}).get(iso, "") or "").strip().lower()
         theme_name = theme.replace("_", " ").title() if theme else "No theme"
         compat = set(compat_all.get(theme, []))
+        # Two different situations, and saying the wrong one is a small lie
+        # the operator can check. A theme that LISTS cuisines genuinely
+        # excludes the others. A theme that narrows its mains by dish type
+        # (chinese, biryani, continental) lists none at all, so everything
+        # falls through here — and telling someone that Indo-Chinese is "not a
+        # Chinese day's cuisine" is plainly wrong.
+        off_label = ((f"Not a {theme_name} day's cuisine — the day will lean "
+                      f"regional where it can") if compat else
+                     (f"A {theme_name} day picks its mains by dish type, so a "
+                      f"region fills what is left"))
 
-        ok, wrong, thin = [], [], []
+        ok, off_theme, thin = [], [], []
         for r in regions:
             name = str(r.get("name", ""))
             slots = len(r.get("deep_slots") or [])
@@ -74,29 +84,48 @@ def region_day_args(meta: dict, dates: List[str], day_themes: dict,
                 ok.append({"value": name, "name": name,
                            "meta": f"{slots} slots"})
             else:
+                # SELECTABLE, under its own heading. This used to be a greyed
+                # list you could read and not pick, on the reasoning that a
+                # theme narrowing its mains by flag leaves a region nothing to
+                # land in. True, and not the picker's call: the floor relaxes
+                # per day to whatever the pool can place and stamps a
+                # relaxation when it does, so a mismatched pick comes back
+                # honest and thin rather than broken. Refusing it meant a
+                # Chinese day could take no region at all, and a north day
+                # could take only north ones.
                 fams = "/".join(sorted(r.get("cuisine_families") or [])) or "regional"
-                wrong.append({"name": name, "meta": fams.replace("_", " ").title()})
+                off_theme.append({
+                    "value": name, "name": name, "group": off_label,
+                    "meta": f"{slots} slots · {fams.replace('_', ' ').title()}"})
 
         picked = str(applied.get(iso, "") or "")
         more = len(thin) - _THIN_SHOWN
+        nothing = not ok and not off_theme
         out.append({
             "iso": iso,
             "chip": f"{_label(iso, '%a')} · {theme_name}".upper(),
             "long": _label(iso, "%A %d %b"),
             "applied": picked,
             "below_floor": iso in bad_days,
-            "disabled": not ok,
-            "title": (f"A {theme_name} day narrows its main dishes to "
-                      f"{theme_name} food, so no region fits." if not ok else ""),
+            # Only when the CITY has no region deep enough to theme — never
+            # because of the day's own theme.
+            "disabled": nothing,
+            "title": (f"{city or 'This city'} has no region with enough dishes "
+                      f"to carry a day." if nothing else ""),
             "menu_title": f"{_label(iso, '%A')} · {theme_name} day",
             "menu_sub": ("Every region fits this day."
-                         if len(ok) == len(regions) else "Regions that fit this day"),
+                         if not off_theme else
+                         f"Any region can be picked; the first ones suit a "
+                         f"{theme_name} day"),
             # "No region" is an OPTION, not the absence of one: picking it back
             # is how a day is cleared, and a menu you can only add from is a
             # menu you cannot undo.
-            "options": [{"value": "", "name": "No region", "meta": "theme only"}] + ok,
-            "wrong": wrong,
-            "wrong_label": f"Not for a {theme_name} day" if wrong else "",
+            #
+            # ONE list, with `group` marking where the second heading starts.
+            # Two lists meant two index spaces for `data-opt`, and the off-theme
+            # half would have had to carry an offset that nothing checked.
+            "options": ([{"value": "", "name": "No region", "meta": "theme only"}]
+                        + ok + off_theme),
             "thin_label": f"Too few dishes in {city}:" if city else "Too few dishes here:",
             "thin": (", ".join(thin[:_THIN_SHOWN])
                      + (f" and {more} more" if more > 0 else "")) if thin else "",
