@@ -128,4 +128,4 @@ own notes, which is the same thing it shows before a menu exists.
 |---|---|---|---|
 | 2.07.00 | 5 Oct | Darshan + Claude Code | **Seasonal high-risk vegetables.** (1) Per-date red list removed before the solver, per-city region mapping, yellow list as a soft penalty. (2) Client pins and mixed-vegetable dishes deliberately kept, and named in the panel. (3) Planner panel with the month's lists, counts, alternatives and model-written kitchen notes checked against the week's menu. (4) Reviewed JSON built from the sheet by a script that reports what a human must check |
 
-**Previous:** [v2.06.00](IkigaiMasala_Final_v2.06.00_2026-10-05.md)  **Next:** —
+**Previous:** [v2.06.00](IkigaiMasala_Final_v2.06.00_2026-10-05.md)  **Next:** [v2.07.01](IkigaiMasala_Final_v2.07.01_2026-10-06.md)
