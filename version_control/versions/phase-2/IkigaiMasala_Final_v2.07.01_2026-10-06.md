@@ -95,4 +95,4 @@ for Monday to Friday only, so Saturday and Sunday carry no theme.
 |---|---|---|---|
 | 2.07.01 | 5–6 Oct | Darshan + Claude Code | Corning Chakan audit: sprouts gravy and leafy corrected (both enforcing the opposite of the guideline), biryani once-in-15-days added (nothing enforced it), stale chaat-counter note removed, and a test that reads ten guarantees off a generated week. Regional days marked on the table: the region named in the day header, an R on the dishes that carry it |
 
-**Previous:** [v2.07.00](IkigaiMasala_Final_v2.07.00_2026-10-05.md)  **Next:** —
+**Previous:** [v2.07.00](IkigaiMasala_Final_v2.07.00_2026-10-05.md)  **Next:** [v2.07.02](IkigaiMasala_Final_v2.07.02_2026-10-06.md)
