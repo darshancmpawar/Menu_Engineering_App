@@ -373,7 +373,11 @@ def _logger_calls():
 # nonveg_soup and infused_water are 100% blank), so the drop gives way there —
 # and a variety rule that quietly stops governing a slot is exactly what this
 # channel exists to say out loud.
-STAMPED_SITES = 17
+# 17 -> 18: `theme_slot_filter` gained `slot_pool_by_theme`, and with it the
+# first narrowing that can run out of dishes. Chennai holds no Chinese salad at
+# all, so a Chinese day there keeps the ordinary salad pool — a rule that
+# quietly stops governing a slot, said out loud.
+STAMPED_SITES = 18
 
 
 class TestEveryRelaxationIsStamped:

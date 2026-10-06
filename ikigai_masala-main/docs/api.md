@@ -308,7 +308,7 @@ Per-client overrides live in `customisation/client rules/<slug>.json`.
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
 | `welcome_drink_buttermilk` | hard | Buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
-| `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north) |
+| `theme_slot_filter` | pre-filter | Narrow pools by day theme (chinese / biryani / south / north). `slot_pool_by_theme: {theme: {slot: selector}}` names a slot's pool outright on one theme — the only thing that overrides `EXEMPT_FROM_CUISINE`, and the way a Chinese day gets a Chinese soup and salad; it stands down (stamped) when the match count is below the slot's cell count |
 | `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
 | `ricebread_gap` | pre-filter | Enforce N-day gap between rice-breads |
 | `nonveg_biryani_weekly` | pre-filter | ≤1 nonveg biryani per week |

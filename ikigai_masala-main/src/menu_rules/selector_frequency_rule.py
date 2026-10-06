@@ -316,10 +316,17 @@ class SelectorFrequencyRule(BaseMenuRule):
                                    self.daily_min, self.max_per_week,
                                    self.min_per_week)) \
                 and not self.non_consecutive \
-                and not self.forbidden_weekdays:
+                and not self.forbidden_weekdays \
+                and self.allowed_day_types is None:
+            # `allowed_day_types` stands alone for the same reason
+            # `forbidden_weekdays` does: both are bans, and "south-Indian bread
+            # only on a south day" is a complete rule with no count in it.
+            # Requiring a count meant writing `max: 99`, which reads as a
+            # frequency cap nobody meant and silently becomes one on a long
+            # horizon.
             errs.append("at least one of max / max_per_week / min / min_per_week "
                         "/ exact / daily_max / non_consecutive / "
-                        "forbidden_weekdays is required")
+                        "forbidden_weekdays / allowed_day_types is required")
         if self.exact is not None and self.max_per_week is not None:
             errs.append("exact cannot be combined with max_per_week")
         if self.exact is not None and self.min_per_week is not None:
