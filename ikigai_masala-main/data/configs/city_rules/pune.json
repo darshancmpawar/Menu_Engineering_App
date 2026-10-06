@@ -93,7 +93,7 @@
       "max_per_week": 2
     },
     {
-      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; Chain rules/pune_flag_corrections.py sets it on black_chana_malwani.",
+      "_comment": "R14 — black chana gravies max once a week. is_black_chana_gravy was 0 for every row in the raw workbook, which made this inert; the deleted pune_flag_corrections step sets it on black_chana_malwani.",
       "name": "black_chana_gravy_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -211,7 +211,7 @@
       "max_per_week": 1
     },
     {
-      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; Chain rules/pune_flag_corrections.py adds the palak / methi / hariyali dishes.",
+      "_comment": "R31 — leafy veg dry once in 15 days; projected onto the horizon as once a week. is_leafy_based_dish covered no veg dry in the raw workbook; the deleted pune_flag_corrections step adds the palak / methi / hariyali dishes.",
       "name": "leafy_veg_dry_weekly",
       "type": "selector_frequency",
       "selector": {
@@ -587,6 +587,45 @@
           }
         ]
       }
+    },
+    {
+      "_comment": "Mango is a March-to-June dish. The only MONTH-scoped rule in the fleet, and a third ban axis beside `allowed_day_types` (a cuisine) and `forbidden_weekdays` (a service day): a season is a property of the DATE and neither of the others can say it. Deliberately NOT in the seasonal high-risk lists — those are generated from the owner's sheet by a script and must not be hand-edited, and this is a standing menu policy rather than a produce-safety list. LED BY `key_ingredient`, which is what makes the rule work outside Hindi: the column catches `mavinakayi_chitranna`, `mavinakayi_rasam`, `mavinakayi_saru` (Kannada), `masala_mangai_sadam` (Tamil), `aam_panna`, `aam_ras`, `aam_ki_sabzi` and `tropical_tango` — eight dishes in this list alone that no match on the word 'mango' would ever find. The name branch is kept for the rows the column misses (`mango_sheera`, `raw_mango_paneer_masala`, `drumstick_mango_pachadi`). `mangodi` IS EXCLUDED and that is the whole reason for the `none_of`: a mangodi is a dried moong-dal dumpling, not a fruit, and NCR carries five of them (`mangodi`, `mangodi_aloo`, `mangodi_gravy`, `mangodi_ki_sabzi`, `aloo_mangodi_ki_sabzi`) that a substring match would take off the menu for eight months of the year. Same family of trap as `akki` inside `sabakki`. No `base_slot`: mango turns up as a dessert, a welcome drink, a rice, a sambar, a rasam, a salad and a bread, so a slot-scoped rule would miss most of it. Out-of-season the ban degrades, and says so, on any day whose slot has nothing else to offer.",
+      "name": "mango_is_a_march_to_june_dish",
+      "type": "selector_frequency",
+      "selector": {
+        "all_of": [
+          {
+            "any_of": [
+              {
+                "key_ingredient": "mango"
+              },
+              {
+                "key_ingredient": "raw_mango"
+              },
+              {
+                "name_contains": [
+                  "mango"
+                ]
+              }
+            ]
+          },
+          {
+            "none_of": [
+              {
+                "name_contains": [
+                  "mangodi"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "allowed_months": [
+        "march",
+        "april",
+        "may",
+        "june"
+      ]
     }
   ]
 }

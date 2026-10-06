@@ -84,7 +84,7 @@ class TestPuneRulesBiteOnPuneData:
         #
         # `maida_bread_weekly` and `oil_based_bread_weekly` USED to be inert too,
         # back when the Pune bread pool was just chapati + phulka. Deepening it
-        # (Chain rules/expand_side_pools.py: butter_naan / tawa_kulcha are maida,
+        # (the deleted expand_side_pools step: butter_naan / tawa_kulcha are maida,
         # palak_poori is oil-based) activated both — which is the point of having
         # written them. Their weekly caps now genuinely shape Pune's menus, so a
         # re-import that dropped those breads would silently switch two rulebook
@@ -92,7 +92,7 @@ class TestPuneRulesBiteOnPuneData:
         #
         # (`black_chana_gravy_weekly` and `leafy_veg_dry_weekly` were inert too,
         # for the opposite reason — the dishes existed but the flags were 0.
-        # Chain rules/pune_flag_corrections.py fixed that, and this set is what stops
+        # the deleted pune_flag_corrections step fixed that, and this set is what stops
         # a re-import from silently undoing it.)
         'multigrain_bread_non_consecutive',
         # R30 (kadhi once in 15 days) was listed here while it was inert: the

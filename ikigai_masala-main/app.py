@@ -1062,12 +1062,18 @@ def _render_changes_log() -> None:
 
 
 def _client_counter_names(api, name: str):
-    """(mode, [counter names], city, shared_categories, excluded).
+    """(mode, [counter names], city, shared_categories, excluded, meal_shared).
 
     ``shared_categories`` are the base slots this client serves identically
     across its counters — the planner pins the primary counter's dish for each
     into the others. ``excluded`` names the counters that opt out of that sync
     (ICON Chn's Rice Combo, which the client states has its own menu).
+
+    ``meal_shared`` is the same idea one axis over: base slots a LATER SERVICE
+    repeats from the first on the same day. Corning Chakan's "dessert, soup and
+    indian bread shall be the same as Lunch". It is the opposite of the
+    planner's default, which bans every lunch dish at dinner, so both halves
+    live here: the dish is pinned in AND left out of the exclusion.
 
     Degrades to a single unsynced counter if the config cannot be read. Which
     SERVICES to plan is not read here — the sidebar owns that, seeded from
@@ -1080,9 +1086,10 @@ def _client_counter_names(api, name: str):
                  for i, c in enumerate(counters)] or ["Counter 1"]
         return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
                 cfg.get("shared_categories") or [],
-                set(cfg.get("shared_categories_excluded_counters") or []))
+                set(cfg.get("shared_categories_excluded_counters") or []),
+                cfg.get("meal_shared_categories") or [])
     except Exception:
-        return "single", ["Counter 1"], None, [], set()
+        return "single", ["Counter 1"], None, [], set(), []
 
 
 def _weekday_map_from_dates(region_days: dict) -> dict:
@@ -1328,7 +1335,8 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
 
 def _solve_counters(api, name, counter_names, start_iso, days, *,
                     shared_categories, shared_excluded, time_limit,
-                    meal=None, exclude_by_counter=None, region_days=None):
+                    meal=None, exclude_by_counter=None, region_days=None,
+                    meal_shared_by_counter=None):
     """Solve every counter for ONE service. Returns (blocks, diagnostics, summary).
 
     Factored out because lunch and dinner are the same pass with a different
@@ -1341,6 +1349,12 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
     stations with separate menus — pooling a six-counter site's lunch would
     ban eighty dishes from every dinner cell and starve the thin pools for no
     benefit a diner would notice.
+
+    `meal_shared_by_counter` is its opposite number: the dishes this counter
+    is meant to REPEAT from the earlier sitting, as `[[date, slot_id, item], …]`
+    pins. The two are disjoint by construction — `_exclusions_from` drops
+    exactly the slots `_meal_shared_from` pins — because a cell narrowed to a
+    pinned dish that is also banned has no candidate at all.
     """
     blocks, diagnostics, summary = [], [], None
     shared_items: list = []
@@ -1348,6 +1362,13 @@ def _solve_counters(api, name, counter_names, start_iso, days, *,
         try:
             send_shared = (
                 shared_items if i > 0 and cname not in shared_excluded else None)
+            # A client's across-SERVICES instruction is more specific than the
+            # across-COUNTERS one, so it goes first: `merge_shared_items` keeps
+            # the first pin it sees for a cell. Only one client states both
+            # today, and they name different slots.
+            carried = list((meal_shared_by_counter or {}).get(i) or [])
+            if carried:
+                send_shared = carried + list(send_shared or [])
             result = api.plan(
                 client_name=name, start_date=start_iso, num_days=days,
                 time_limit_seconds=time_limit, counter_index=i,
@@ -1503,7 +1524,7 @@ def _saveable_meals(meal_blocks, fallback_blocks):
     return [(LUNCH, fallback_blocks)] if fallback_blocks else []
 
 
-def _exclusions_from(blocks):
+def _exclusions_from(blocks, keep_slots=()):
     """`{counter_index: {iso_date: [item, …]}}` from a solved service.
 
     What stops dinner reprinting lunch. It has to be done here rather than by
@@ -1511,11 +1532,36 @@ def _exclusions_from(blocks):
     is scoped to one model and cannot see across them, and the item cooldown
     only reads SAVED history, which is after the duplicate is already on
     screen.
+
+    *keep_slots* are the base slots a client has asked the later service to
+    REPEAT. They are dropped from the ban here and pinned by
+    `_meal_shared_from`, which is the same decision made once — ban them as
+    well and the pinned cell would have no candidate left.
     """
     out = {}
     for i, blk in enumerate(blocks):
         raw = blk.get("solution") or {}
-        got = dishes_from_solution(raw)
+        got = dishes_from_solution(raw, keep_slots=keep_slots)
+        if got:
+            out[i] = got
+    return out
+
+
+def _meal_shared_from(blocks, meal_shared_categories):
+    """`{counter_index: [[date, slot_id, item], …]}` for the next service.
+
+    The twin of the cross-counter sync, one axis over: that one carries the
+    primary COUNTER's dish to the other counters of the same service, this
+    carries the first SERVICE's dish to the same counter at the next sitting.
+    Keyed per counter for the reason `_exclusions_from` is: counter 2's dinner
+    should repeat counter 2's lunch, not counter 1's.
+    """
+    if not meal_shared_categories:
+        return {}
+    out = {}
+    for i, blk in enumerate(blocks):
+        got = shared_items_from_solution(
+            blk.get("solution") or {}, meal_shared_categories)
         if got:
             out[i] = got
     return out
@@ -1529,7 +1575,8 @@ if generate_clicked:
         st.warning("Select a valid client first.")
     else:
         (mode, counter_names, city, shared_categories,
-         shared_excluded) = _client_counter_names(client, selected_client)
+         shared_excluded, meal_shared) = _client_counter_names(
+            client, selected_client)
         st.session_state.client_name = selected_client
         st.session_state.client_city = city
         st.session_state.plan_mode = mode
@@ -1593,6 +1640,7 @@ if generate_clicked:
             # service's dishes to avoid — accumulated, not just the previous
             # one, or dinner would happily reprint breakfast.
             served_so_far: dict = {}
+            carried_over: dict = {}
             with st.spinner(f"{label} for {selected_client}..."):
                 for _i, _meal in enumerate(plan_meals):
                     blocks, d, s = _solve_counters(
@@ -1602,6 +1650,11 @@ if generate_clicked:
                         shared_excluded=shared_excluded,
                         time_limit=per_limit, meal=_meal,
                         exclude_by_counter=served_so_far or None,
+                        # Slots a later service repeats from the FIRST one, so
+                        # this is taken once and carried, not re-taken from
+                        # each service in turn: "the same as Lunch" means
+                        # lunch, not "the same as whatever came before".
+                        meal_shared_by_counter=carried_over or None,
                         # Regional days picked BEFORE generating. Empty unless
                         # the toggle is on and somebody chose one.
                         region_days=(st.session_state.get("region_pending")
@@ -1609,8 +1662,10 @@ if generate_clicked:
                     by_meal[_meal] = blocks
                     if _i == 0:
                         diags, summary = d, s
+                        carried_over = _meal_shared_from(blocks, meal_shared)
                     served_so_far = _merge_exclusions(
-                        served_so_far, _exclusions_from(blocks))
+                        served_so_far,
+                        _exclusions_from(blocks, keep_slots=meal_shared))
 
             # What the menu on screen was actually planned with, so the
             # strip can tell "picked" from "applied".

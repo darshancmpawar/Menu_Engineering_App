@@ -201,4 +201,4 @@ rice" on the menu, because slot labels are fixed for the whole fleet.
 |---|---|---|---|
 | 2.07.02 | 6 Oct | Darshan + Claude Code | A themed day reaches the whole plate: a Chinese day's soup, salad and bread are named per theme and give way (reporting it) where the list is too thin — Chennai has no Chinese salad, NCR has one. South Indian breads (dosa, idly, uthappam, adai, akki/ragi rotti) restricted to south days, written against dish CATEGORY after the dish-list markers were measured to miss 20 of Chennai's 61. Pune excluded deliberately. No-repeat window 20 → 21 days, one copy of the number instead of three, and the lunch↔dinner span it already had put under test. Corning Chakan: chapati pinned as the daily Indian bread, khichdi capped at one per 21 days. Regional picker: the R made legible and right-aligned, theme and region on one line, Continental and Indo-Chinese admitted as regions, and every region pickable on every day |
 
-**Previous:** [v2.07.01](IkigaiMasala_Final_v2.07.01_2026-10-06.md)  **Next:** —
+**Previous:** [v2.07.01](IkigaiMasala_Final_v2.07.01_2026-10-06.md)  **Next:** [v2.07.03](IkigaiMasala_Final_v2.07.03_2026-10-06.md)

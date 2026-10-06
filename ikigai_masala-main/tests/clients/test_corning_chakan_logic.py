@@ -143,8 +143,7 @@ def test_the_indian_bread_is_chapati_every_day(week):
 
 
 def test_at_most_one_khichdi_in_the_week(week, pune):
-    """The forward half of 'khichdi once in three weeks'. The backward half
-    is a 21-day history window, which a single generated week cannot show."""
+    """The within-plan cap. The cross-plan halves are below."""
     fam = {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
            if str(s).strip().lower() == 'north_khichdi'}
     n = sum(1 for r in _slot(week, 'rice').values() if r in fam)
@@ -163,27 +162,94 @@ def test_the_khichdi_selector_is_not_inert(pune):
         'a khichdi moved out of the rice slot; the rule is scoped to rice')
 
 
-def test_a_saved_khichdi_blocks_the_whole_family_for_three_weeks(monkeypatch, pune):
+def test_a_saved_khichdi_keeps_the_whole_family_off_the_next_week(monkeypatch, pune):
     """The backward half, which a single generated week cannot show.
 
-    A 21-day window bans the family, not just the dish: `moong_khichadi` ten
-    days after a `dal_khichdi` is still a khichdi inside the fortnight-and-a-
-    half. The biryani rule's first version failed exactly here — it loaded,
+    A 15-day window bans the FAMILY, not just the dish: a `moong_khichadi`
+    five days after a `dal_khichdi` is still a khichdi inside the fortnight.
+    The biryani rule's first version failed exactly here — it loaded,
     validated, and banned nothing — so this seeds history and reads the menu
     rather than asserting the rule exists.
+
+    Seeded five days back on purpose: the ban then covers the whole horizon
+    (five plus fifteen is past its last day), so "no khichdi all week" is a
+    guarantee rather than something the solver happened not to want.
     """
+    served, rices = _solve_with_history(monkeypatch, 5, 'dal_khichdi')
+    fam = _khichdi_family(pune)
+    hits = {iso: r for iso, r in rices.items() if r in fam}
+    assert not hits, f'khichdi served inside 15 days of {served}: {hits}'
+
+
+def test_one_saved_khichdi_bans_all_seven_and_the_window_has_an_edge(pune):
+    """The assertion above can pass by luck — the solver might not have wanted
+    a khichdi that week. This is the one that cannot.
+
+    Two halves, and the second matters as much: the ban reaches the whole
+    FAMILY from one member (a cadence, not a no-repeat rule), and it STOPS,
+    fifteen days on. A ban with no edge is not a window, and a cadence whose
+    window never lapses is a deletion.
+    """
+    from src.history.history_manager import HistoryManager
+    start = dt.date.fromisoformat(BODY['start_date'])
+    fam = _khichdi_family(pune)
+    assert len(fam) > 1, 'one khichdi makes the family half of this vacuous'
+    served = start - dt.timedelta(days=10)
+    hm = HistoryManager()
+    hm.load_from_dataframes(HistoryManager.explode_history_rows(
+        [{'client_name': CLIENT, 'service_date': served.isoformat(),
+          'menu': {'rice': 'dal_khichdi'}}]))
+    dates = [start + dt.timedelta(days=i) for i in range(12)]
+    banned = hm.selector_banned_by_date(dates, fam, 15)
+    deadline = served + dt.timedelta(days=15)
+    for d in dates:
+        if d <= deadline:
+            assert banned[d] == fam, f'{d}: only {banned[d]} banned'
+        else:
+            assert not banned[d], f'{d}: still banned {len(banned[d])} days on'
+
+
+def test_a_khichdi_appears_when_the_cadence_falls_due(monkeypatch, pune):
+    """The FLOOR, which is the half 'once in fifteen days' also means.
+
+    A ceiling alone is satisfied by serving no khichdi ever — the sprouts
+    gravy defect of v2.07.01 in a second place — so this seeds a khichdi 15
+    days back and checks one comes round again. Paired with the test above it:
+    not twice inside the window, and not never.
+    """
+    served, rices = _solve_with_history(monkeypatch, 15, 'dal_khichdi')
+    fam = _khichdi_family(pune)
+    hits = {iso: r for iso, r in rices.items() if r in fam}
+    assert hits, f'nothing from the khichdi family 15 days after {served}'
+
+
+def test_and_a_client_with_no_history_at_all_gets_one(monkeypatch, pune):
+    """A family absent from the history window is OVERDUE, not fresh — the
+    opposite of how the freshness objective reads the same map."""
+    _served, rices = _solve_with_history(monkeypatch, None, None)
+    assert {iso: r for iso, r in rices.items() if r in _khichdi_family(pune)}
+
+
+def _khichdi_family(pune):
+    return {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
+            if str(s).strip().lower() == 'north_khichdi'}
+
+
+def _solve_with_history(monkeypatch, days_ago, item):
+    """One Corning Chakan week with a single dish seeded `days_ago` back."""
     from tests.fake_supabase import FakeSupabase
     from tests.client_fixtures import CLIENTS
     import src.db as db_mod
     import api.app as api_app
 
-    served = dt.date.fromisoformat(BODY['start_date']) - dt.timedelta(days=10)
+    start = dt.date.fromisoformat(BODY['start_date'])
+    served = None if days_ago is None else start - dt.timedelta(days=days_ago)
+    history = [] if served is None else [{
+        'client_name': CLIENT, 'meal': 'lunch',
+        'service_date': served.isoformat(), 'menu': {'rice': item}}]
     fake = FakeSupabase(seed={
         'clients': [dict(next(c for c in CLIENTS if c['name'] == CLIENT))],
-        'app_settings': [], 'week_signatures': [],
-        'menu_history': [{'client_name': CLIENT, 'meal': 'lunch',
-                          'service_date': served.isoformat(),
-                          'menu': {'rice': 'dal_khichdi'}}],
+        'app_settings': [], 'week_signatures': [], 'menu_history': history,
     })
     monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
     monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
@@ -191,36 +257,8 @@ def test_a_saved_khichdi_blocks_the_whole_family_for_three_weeks(monkeypatch, pu
     api_app.app.config['TESTING'] = True
     from api.rate_limit import reset_for_tests
     reset_for_tests()
-
     resp = api_app.app.test_client().post('/api/v1/plan', json=BODY)
     body = resp.get_json() or {}
     assert resp.status_code == 200, body.get('error') or body.get('message')
-
-    fam = {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
-           if str(s).strip().lower() == 'north_khichdi'}
-    assert len(fam) > 1, 'one khichdi makes this test a no-repeat check'
-    rices = {iso: str(d['items'].get('rice', {}).get('item_base') or '').lower()
-             for iso, d in body['solution'].items()}
-    hits = {iso: r for iso, r in rices.items() if r in fam}
-    assert not hits, f'khichdi served inside 21 days of {served}: {hits}'
-
-
-def test_one_saved_khichdi_bans_all_seven(pune):
-    """The assertion above can pass by luck — the solver might not have
-    wanted a khichdi that week. This is the one that cannot: the window bans
-    the FAMILY from one member, which is the whole difference between a
-    cadence and a no-repeat rule."""
-    from src.history.history_manager import HistoryManager
-    start = dt.date.fromisoformat(BODY['start_date'])
-    fam = {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
-           if str(s).strip().lower() == 'north_khichdi'}
-    hm = HistoryManager()
-    hm.load_from_dataframes(HistoryManager.explode_history_rows(
-        [{'client_name': CLIENT, 'service_date': (start - dt.timedelta(days=10)).isoformat(),
-          'menu': {'rice': 'dal_khichdi'}}]))
-    dates = [start + dt.timedelta(days=i) for i in range(7)]
-    banned = hm.selector_banned_by_date(dates, fam, 21)
-    assert all(banned[d] == fam for d in dates), banned
-    # ...and lets go on the far side of the window.
-    beyond = [start + dt.timedelta(days=i) for i in range(12, 15)]
-    assert all(not hm.selector_banned_by_date(beyond, fam, 21)[d] for d in beyond)
+    return served, {iso: str(d['items'].get('rice', {}).get('item_base') or '').lower()
+                    for iso, d in body['solution'].items()}

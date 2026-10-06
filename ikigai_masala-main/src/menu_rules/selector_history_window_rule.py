@@ -19,16 +19,38 @@ The rule pairs with a within-plan cap (`selector_frequency` `max`/`daily_max`):
 this rule stops the selector recurring *across* plans, the cap stops it
 recurring *within* one. For windows longer than the horizon (the only ones that
 need history at all) a `max: 1` within-plan cap plus this window is exactly
-"once per window_days".
+"at most once per window_days".
 
-`apply()` is a deliberate no-op — the enforcement is the pre-computed ban, not
-a CP-SAT constraint. `matching_items()` and `window_days` are what `api.app`
-reads to build that ban; `diagnose()` reports a selector that matches nothing so
-an inert rule is visible rather than silently doing nothing.
+**`at_least_once_per_window` turns the ceiling into a cadence.** "Khichdi once
+in three weeks" is two requirements wearing one sentence: not twice inside the
+window, AND not never. The ban half is satisfied by serving none at all, so on
+its own it reads as enforced and lets a dish quietly disappear for months —
+the same shape as the sprouts-gravy defect v2.07.01 found at Corning Chakan, a
+cap written where a floor was asked for. Opt-in, so the other thirteen windows
+in the fleet are unchanged.
+
+The floor cannot be a pre-computed ban, because a ban removes candidates and a
+floor demands one, so this half IS a CP-SAT constraint: when history says the
+family is overdue, at least one cell in the horizon must take a matching dish.
+It reads `recency_by_item` from the solver context — the same map the freshness
+objective uses, read the other way round, since a dish ABSENT from it was never
+served and is therefore maximally overdue rather than maximally fresh.
+
+**The gap it guarantees is `window_days + horizon - 1`, not `window_days`.** A
+plan may place the dish on any of its days, so a family that falls due on the
+first day of a week can legitimately be served on the last. Pinning the exact
+date would guarantee the tighter bound and is deliberately not done: it would
+fix the dish to one weekday for ever and fight every other rule on the slot for
+no benefit a kitchen can see. The config comment on each floor says the real
+number.
+
+`diagnose()` reports a selector that matches nothing so an inert rule is visible
+rather than silently doing nothing.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
@@ -42,7 +64,13 @@ from .base_menu_rule import (
     DiagnosticSeverity,
     MenuRuleType,
 )
+from .relaxations import RELAXATION
 from .selector_frequency_rule import SelectorFrequencyRule
+
+# Inside the `src.menu_rules` tree `RelaxationCapture` listens on — a record
+# logged outside it reaches nobody and /plan answers 200 with an empty
+# `relaxations` list, which is the silent half of note 31.
+logger = logging.getLogger(__name__)
 
 
 class SelectorHistoryWindowRule(BaseMenuRule):
@@ -52,8 +80,10 @@ class SelectorHistoryWindowRule(BaseMenuRule):
         "name": "fish_once_per_15_days",
         "selector": {"flag": "is_fish_dish"},   # selector_frequency grammar
         "exclude": {...},                        # optional
-        "base_slot": "nonveg_main",              # optional (diagnose only)
-        "window_days": 15
+        "base_slot": "nonveg_main",              # scopes the ban; required
+                                                 # for the floor
+        "window_days": 15,
+        "at_least_once_per_window": false        # optional; adds the floor
     }
     """
 
@@ -65,6 +95,8 @@ class SelectorHistoryWindowRule(BaseMenuRule):
         self.base_slot: Optional[str] = rule_config.get('base_slot')
         wd = rule_config.get('window_days')
         self.window_days: Optional[int] = int(wd) if wd is not None else None
+        self.at_least_once_per_window: bool = bool(
+            rule_config.get('at_least_once_per_window', False))
 
     def validation_errors(self) -> List[str]:
         errs: List[str] = []
@@ -72,6 +104,13 @@ class SelectorHistoryWindowRule(BaseMenuRule):
             errs.append("a valid 'selector' is required")
         if not self.window_days or self.window_days < 1:
             errs.append("'window_days' must be a positive integer")
+        if self.at_least_once_per_window and not self.base_slot:
+            # The ban can go slot-wide; the floor must not. Unscoped, a leafy
+            # DAL would satisfy "a leafy veg_dry every fortnight" and the slot
+            # the cadence is about would still never see one — satisfied on
+            # paper, missing on the plate, which is the exact failure the
+            # floor exists to prevent.
+            errs.append("'at_least_once_per_window' requires a 'base_slot'")
         return errs
 
     def validate_config(self) -> bool:
@@ -102,11 +141,77 @@ class SelectorHistoryWindowRule(BaseMenuRule):
             mask = mask & (df['course_type'].map(_norm_str) == _norm_str(self.base_slot))
         return {str(v).strip().lower() for v in df.loc[mask, 'item'].tolist()}
 
+    #: The family resolved against this city's ontology, set by
+    #: ``prepare_solver_inputs`` at the same moment it resolves the ban. The
+    #: floor cannot resolve it itself — ``apply()`` is handed no ontology frame
+    #: — and must NOT read it off the candidate rows, which are what is left
+    #: AFTER the ceiling's ban: in the week following a khichdi there are none,
+    #: so the clock would read "never served" at exactly the moment the dish
+    #: was served most recently.
+    resolved_items: Set[str] = frozenset()
+
+    def _days_since_last(self, recency: Dict[str, int],
+                         family: Set[str]) -> Optional[int]:
+        """Days since ANY dish of the family was last served, or None if none
+        of them was served inside the queried history window.
+
+        ``min`` because the family's clock is set by its most recent member:
+        a khichdi five days ago makes the family five days old even if a
+        different khichdi last ran a year back.
+        """
+        seen = [recency[i] for i in family if i in recency]
+        return min(seen) if seen else None
+
     def apply(self, model: cp_model.CpModel, variables: Dict[str, Any],
               menu_data: Any, context: Dict[str, Any]) -> None:
-        # The window is enforced by a pre-computed history ban (see module
-        # docstring), not a CP-SAT constraint.
-        pass
+        # The CEILING is enforced by a pre-computed history ban (see module
+        # docstring), not by a constraint. Only the optional floor is CP-SAT.
+        if not self.at_least_once_per_window or self._inc is None:
+            return
+        cells = context.get('cells') or []
+        dates = context.get('dates') or []
+        if not cells or not dates or not self.window_days:
+            return
+
+        lits = []
+        for cell in cells:
+            if self.base_slot and cell.base_slot != self.base_slot:
+                continue
+            for var, row in zip(cell.x_vars, cell.cand_rows):
+                if self._row_matches(row):
+                    lits.append(var)
+
+        # Is the family overdue? Asked of the ONTOLOGY rather than of the
+        # candidates, and asked BEFORE the availability check below, because
+        # the two questions have to stay apart. The candidates are what is left
+        # after the ceiling's own ban, so in the week after a khichdi there are
+        # none — reading the clock off them would say "never served" at exactly
+        # the moment the dish was served most recently, which is backwards.
+        days_since = self._days_since_last(
+            context.get('recency_by_item') or {}, set(self.resolved_items))
+        # `None` means the family is absent from the history window entirely,
+        # so it is overdue by definition. This is the one place `recency_by_item`
+        # must NOT be read the way the freshness objective reads it, where a
+        # missing dish is simply "fresh".
+        if days_since is not None and days_since < self.window_days:
+            return      # served recently enough; the ceiling governs from here
+
+        # Due, and nothing to serve it with: the counter does not run the slot,
+        # or every member of the family is cooled down. Degrade rather than
+        # fail, and stamp it, because a cadence that quietly stopped holding is
+        # indistinguishable from one that held (note 31). Only reachable when
+        # the floor was actually DUE — a stand-down logged when nothing was
+        # asked of the rule would make the channel mean two things.
+        if not lits:
+            logger.info(
+                "%s: a %s from this cadence is due but none is available "
+                "anywhere in the horizon, so the floor is not applied",
+                self.name, self.base_slot or 'dish',
+                extra={RELAXATION: self.name},
+            )
+            return
+
+        model.AddBoolOr(lits)
 
     def diagnose(self, ctx: DiagnoseContext) -> List[Diagnostic]:
         diags: List[Diagnostic] = []

@@ -18,7 +18,7 @@ priority rather than an ultimatum.
 The selector deliberately reads `primary_protein` and the dish NAME for paneer
 and never `key_ingredient`: that column is the de-facto default for a Chinese
 dish in this ontology, which is why a Thai green curry used to count as a paneer
-gravy (`Chain rules/definitional_flags.py`).
+gravy (the deleted `definitional_flags` step).
 """
 
 from __future__ import annotations

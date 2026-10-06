@@ -377,7 +377,16 @@ def _logger_calls():
 # first narrowing that can run out of dishes. Chennai holds no Chinese salad at
 # all, so a Chinese day there keeps the ordinary salad pool — a rule that
 # quietly stops governing a slot, said out loud.
-STAMPED_SITES = 18
+# 18 -> 19: `selector_history_window` gained an opt-in FLOOR, and a floor can
+# be due with nothing to meet it — every khichdi cooled down, or the counter
+# not running the slot. It stands down rather than failing the menu, and only
+# when the cadence was actually due: a stand-down logged when nothing was
+# asked of the rule would make this channel mean two things.
+# 19 -> 20: `selector_frequency` gained `allowed_months`, a third ban axis
+# beside the theme and the weekday. Same degrade-rather-than-fail path as its
+# two siblings: a slot that holds nothing but out-of-season dishes keeps them,
+# because an empty plate is worse than an out-of-season mango.
+STAMPED_SITES = 20
 
 
 class TestEveryRelaxationIsStamped:

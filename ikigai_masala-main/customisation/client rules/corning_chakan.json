@@ -4,6 +4,12 @@
     "disable": [
       "leafy_veg_dry_15d_window"
     ],
+    "_meal_shared_why": "'dessert, soup and indian bread shall be the same as Lunch' — the DINNER service repeats the lunch dish for these three slots, on the same day. It is the exact opposite of the planner's default, which bans every lunch dish at dinner (note 39), so it cannot be a solver rule: the two services are separate solves and neither can see the other. The planner pins the lunch dish in and leaves these slots out of the exclusion it would otherwise send. `bread` is here for completeness and is already true by another route — the chapati pin below is client-wide, so both services serve it anyway; listing it means the requirement survives the pin being changed. Soup and dessert are the halves that actually need this: both are day-restricted at this site and the dish varies by day.",
+    "meal_shared_categories": [
+      "dessert",
+      "soup",
+      "bread"
+    ],
     "use": [],
     "rules": [
       {
@@ -182,17 +188,18 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Khichdi once in three weeks.' Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi), and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. Paired with the weekly cap below for the reason the biryani pair above exists: a backward window cannot see the week it is planning. NOT A FLOOR — this caps khichdi at one per 21 days and cannot guarantee one is served every third week; a weekly solve has no way to know it is the third week. That half needs a cross-plan cadence rule the system does not have.",
-        "name": "corning_chakan_khichdi_21d_window",
+        "_comment": "'Khichdi once in fifteen days' is a CADENCE, so this rule is both halves. The ceiling is the 15-day backward window: no second khichdi inside fifteen days of a saved one. The floor is `at_least_once_per_window`: once the family has not been served for 15 days, the plan must serve one. The ceiling alone is satisfied by serving NONE — the sprouts-gravy defect of v2.07.01, a cap written where a floor was asked for, which reads as enforced and is not. Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi) and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. THE GUARANTEED GAP IS 15 DAYS PLUS THE HORIZON MINUS ONE (21 on a 7-day plan): the floor says 'somewhere in this plan', not 'on this date', because pinning the date would fix khichdi to one weekday for ever. The floor stands down, saying so, on a horizon where every khichdi is banned by the item cooldown.",
+        "name": "corning_chakan_khichdi_15d_window",
         "type": "selector_history_window",
         "base_slot": "rice",
         "selector": {
           "sub_category": "north_khichdi"
         },
-        "window_days": 21
+        "window_days": 15,
+        "at_least_once_per_window": true
       },
       {
-        "_comment": "The forward half of 'khichdi once in three weeks': at most one in the week being solved. Same selector as the window above, deliberately — two halves of one requirement must not be able to disagree about what a khichdi is.",
+        "_comment": "The forward half of 'khichdi once in fifteen days': at most one in the week being solved. Same selector as the window above, deliberately — two halves of one requirement must not be able to disagree about what a khichdi is.",
         "name": "corning_chakan_khichdi_weekly",
         "type": "selector_frequency",
         "base_slot": "rice",

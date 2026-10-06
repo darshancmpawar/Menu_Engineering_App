@@ -115,6 +115,17 @@ _TEXT_COLS = {
 #: surprise anyone, and two hand-typed copies could drift into exactly that.
 _WEEKDAY_TOKENS = WEEKDAY_INDEX
 
+#: Month names and numbers a config may write. Derived from one list so the
+#: short and long spellings cannot disagree, and numbers are accepted because
+#: "only in 3-6" is how a season is often written down.
+_MONTH_NAMES = ('january', 'february', 'march', 'april', 'may', 'june', 'july',
+                'august', 'september', 'october', 'november', 'december')
+_MONTH_TOKENS = {
+    **{n: i for i, n in enumerate(_MONTH_NAMES, 1)},
+    **{n[:3]: i for i, n in enumerate(_MONTH_NAMES, 1)},
+    **{str(i): i for i in range(1, 13)},
+}
+
 
 def _iso_day(d) -> str:
     """A date, or something spelling one, as ``YYYY-MM-DD``.
@@ -210,6 +221,30 @@ class SelectorFrequencyRule(BaseMenuRule):
         # and start mid-week, so "Thursday" is ambiguous inside one plan. The
         # caller resolves its weekday map to concrete dates once, where it can
         # see the horizon; see `src/application/regions.py`.
+        # Restrict the selector to named MONTHS. The third ban axis beside
+        # `allowed_day_types` (a cuisine) and `forbidden_weekdays` (a service
+        # day): "mango only March to June" is about the SEASON, which neither
+        # of the others can say. Not `seasonal_ban` either — that rule is
+        # GENERATED per plan from the owner's high-risk sheet and must not be
+        # hand-edited, and this is a standing menu policy rather than a
+        # produce-safety list.
+        #
+        # An unreadable token is a config ERROR rather than a skipped entry:
+        # dropping it silently would leave `allowed_months` holding fewer
+        # months than the author wrote, which bans MORE than they asked for
+        # and reads as working (note 9).
+        self.allowed_months: Optional[Set[int]] = None
+        self._bad_months: List[str] = []
+        am = rule_config.get('allowed_months')
+        if am:
+            months = set()
+            for tok in am:
+                key = str(tok).strip().lower()
+                if key in _MONTH_TOKENS:
+                    months.add(_MONTH_TOKENS[key])
+                else:
+                    self._bad_months.append(str(tok))
+            self.allowed_months = months or None
         self.only_on_dates: Optional[Set[str]] = None
         ood = rule_config.get('only_on_dates')
         if ood:
@@ -317,6 +352,7 @@ class SelectorFrequencyRule(BaseMenuRule):
                                    self.min_per_week)) \
                 and not self.non_consecutive \
                 and not self.forbidden_weekdays \
+                and self.allowed_months is None \
                 and self.allowed_day_types is None:
             # `allowed_day_types` stands alone for the same reason
             # `forbidden_weekdays` does: both are bans, and "south-Indian bread
@@ -326,7 +362,12 @@ class SelectorFrequencyRule(BaseMenuRule):
             # horizon.
             errs.append("at least one of max / max_per_week / min / min_per_week "
                         "/ exact / daily_max / non_consecutive / "
-                        "forbidden_weekdays / allowed_day_types is required")
+                        "forbidden_weekdays / allowed_day_types / allowed_months "
+                        "is required")
+        if self._bad_months:
+            errs.append(
+                f"allowed_months has unreadable month(s): {self._bad_months}. "
+                f"Use a name ('march', 'mar') or a number 1-12.")
         if self.exact is not None and self.max_per_week is not None:
             errs.append("exact cannot be combined with max_per_week")
         if self.exact is not None and self.min_per_week is not None:
@@ -410,6 +451,21 @@ class SelectorFrequencyRule(BaseMenuRule):
                         "%s: day %d (%s) is outside allowed_day_types but the "
                         "slot has nothing else to offer; ban skipped",
                         self.name, di, day_type,
+                        extra={RELAXATION: self.name},
+                    )
+            # Out-of-season ban, same degrade-rather-than-fail rule as the two
+            # above. A month is a property of the DATE, so this reads `dates`
+            # rather than the day's theme or its weekday.
+            if self.allowed_months is not None and di < len(dates):
+                month = getattr(dates[di], 'month', None)
+                if month is not None and month not in self.allowed_months:
+                    if self._ban_leaves_every_cell_fillable(day_cells):
+                        for lit in lits:
+                            model.Add(lit == 0)
+                        continue
+                    logger.info(
+                        "%s: day %d is outside allowed_months but the slot has "
+                        "nothing else to offer; ban skipped", self.name, di,
                         extra={RELAXATION: self.name},
                     )
             # Weekday ban, same degrade-rather-than-fail rule as the theme ban

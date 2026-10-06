@@ -439,6 +439,24 @@ class MenuRuleLoader:
         """
         return self._client_string_list(client_name, 'shared_categories')
 
+    def get_meal_shared_categories(self, client_name: str) -> List[str]:
+        """Base slots a LATER service copies from the first one, same day.
+
+        The twin of ``shared_categories``, one axis over: that one syncs a
+        slot across COUNTERS within a service, this one syncs it across
+        SERVICES within a counter. Corning Chakan states it plainly — "dessert,
+        soup and indian bread shall be the same as lunch" — and nothing else
+        could express it, because the two services are separate solves and the
+        planner's default is the opposite: every lunch dish is BANNED at dinner
+        (note 39).
+
+        Lives in the client rules file rather than a `clients` column because
+        it needs no editor control and no migration; the client-config endpoint
+        serves it beside `shared_categories` so the planner reads both the same
+        way.
+        """
+        return self._client_string_list(client_name, 'meal_shared_categories')
+
     def get_shared_category_exclusions(self, client_name: str) -> List[str]:
         """Counters that must NOT receive the shared-category pins.
 

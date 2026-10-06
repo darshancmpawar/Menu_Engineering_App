@@ -411,8 +411,8 @@ class TestNoCrossCityWorkbookReads:
         That was true and cost 4.8 s of cold start to produce about eight short
         strings.
 
-        The answer is now precomputed into `city_items/pool_tokens.json`
-        (Chain rules/build_pool_token_map.py), so the endpoint opens nothing. Kept as a
+        The answer is now read from the committed `city_items/pool_tokens.json`,
+        so the endpoint opens nothing. Kept as a
         cross-city test rather than deleted: reading zero workbooks is a strictly
         stronger statement of "no cross-city read" than reading both was.
         """
@@ -421,7 +421,8 @@ class TestNoCrossCityWorkbookReads:
         assert traced == [], (
             'expected no workbook reads — is pool_tokens.json missing? The '
             'endpoint falls back to parsing every workbook when it is, which is '
-            'slow but not wrong: run Chain rules/build_pool_token_map.py')
+            'slow but not wrong. The script that built the map went with the '
+            'correction chain, so the file is now maintained by hand.')
 
     def test_it_still_reports_pool_tokens_for_both_cities(self, fleet_api):
         """The speed change must not have cost the information. Bangalore has real

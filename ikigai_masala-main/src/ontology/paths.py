@@ -102,9 +102,13 @@ def _city_ontology_categories() -> dict:
     return _city_categories_cache
 
 
-#: Pool tokens per workbook, precomputed by `Chain rules/build_pool_token_map.py`
-#: so `/editor-metadata` does not parse every city's workbook to answer a
-#: question about eight short strings.
+#: Pool tokens per workbook, committed so `/editor-metadata` does not parse
+#: every city's workbook to answer a question about eight short strings. The
+#: script that built it was part of the deleted correction chain, so this file
+#: is now a committed artefact with no generator: a city whose workbook gains
+#: or loses a pool token needs the map edited, or it silently answers stale.
+#: `pool_tokens_for_city` returning None is the safe direction — slow, never
+#: wrong — but it cannot catch a token that merely CHANGED.
 POOL_TOKEN_MAP_PATH = CITY_ITEMS_DIR / 'pool_tokens.json'
 
 
@@ -112,10 +116,9 @@ def pool_tokens_for_city(city=None) -> Optional[list]:
     """Committed pool tokens for *city*, or ``None`` when the map cannot answer.
 
     ``None`` means "compute it from the workbook" — an absent, unreadable or
-    incomplete map makes a caller slow, never wrong. Read here rather than
-    imported from the script that writes it: `Chain rules/` is developer
-    tooling, not a runtime dependency, and an import of it that quietly starts
-    failing would look exactly like a cold cache.
+    incomplete map makes a caller slow, never wrong. It was always read as a
+    committed file rather than imported from the developer script that wrote
+    it, which is why deleting that script changed nothing here.
     """
     try:
         with open(POOL_TOKEN_MAP_PATH, encoding='utf-8') as fh:

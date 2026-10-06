@@ -68,7 +68,7 @@ class TestOntology:
         Four of the new clients declare the slot and three state a buttermilk
         rule, and an empty pool is not a quiet degradation: TCL went straight to
         INFEASIBLE with `welcome_drink (0 distinct item(s) for 5 day-slot(s))`.
-        `Chain rules/chennai_client_pools.py` imports 28, ten of them buttermilks,
+        the deleted `chennai_client_pools` step imports 28, ten of them buttermilks,
         and the category is declared so an empty pool now fails at build time
         with the slot named instead of at solve time without.
         """
@@ -147,7 +147,7 @@ class TestStaplesThatWouldOtherwiseStarve:
     """Chennai's spine slots run most days, so a small pool empties inside a
     single plan unless a staple declaration covers it.
 
-    Two of them have since been deepened on purpose (`Chain rules/expand_side_pools.py`):
+    Two of them have since been deepened on purpose (the deleted `expand_side_pools` step):
     `rasam` and `sambar` are NOT cooldown-exempt — a kitchen carries real variety
     there — so they were fixed with dishes instead of a relaxation. `curd_rice`
     is still genuinely tiny and still depends on its staple rule.

@@ -50,5 +50,11 @@ class SolverContext(TypedDict):
     # deliberately repeat a dish; folded into unique_items' repeatable set.
     extra_repeatable: Dict[str, Any]
     recent_sigs: Set[str]
+    # {item_base: days since it was last served before the horizon}. A
+    # dish absent from the map was not served inside the queried history
+    # window, which for a cadence FLOOR means "overdue" rather than
+    # "recent" — the opposite of what the freshness objective reads it as,
+    # so each consumer has to say which it means.
+    recency_by_item: Dict[str, int]
     find_cells_fn: Callable
     link_any_fn: Callable

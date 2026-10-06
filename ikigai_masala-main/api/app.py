@@ -1399,6 +1399,14 @@ def get_client_config(client_name):
             # menu, and the shared list is otherwise all-or-nothing per client.
             'shared_categories_excluded_counters':
                 MenuRuleLoader().get_shared_category_exclusions(client_name),
+            # Base slots a LATER service repeats from the first, same day — the
+            # twin of `shared_categories`, one axis over. File-only for the same
+            # reason as the line above: no editor control and no migration. The
+            # planner both PINS these into dinner and leaves them OUT of the
+            # exclusion it would otherwise send, since the default is that
+            # dinner may not reprint lunch at all.
+            'meal_shared_categories':
+                MenuRuleLoader().get_meal_shared_categories(client_name),
             # Standing weekday -> region pattern. `{}` when nothing is stored
             # and when the column predates this feature, so the planner treats
             # both the same: no regional days until somebody picks one.
