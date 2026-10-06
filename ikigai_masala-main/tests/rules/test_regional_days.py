@@ -79,16 +79,30 @@ def regions():
 # --------------------------------------------------------------------------
 
 
-class TestTheColumnGatesOnAdminTypeOnly:
-    """`state_confidence` is `high` on 9 Bangalore rows and 0 Pune ones, and
-    `region_authority` has no UNRESOLVED bucket at all in Pune or Hyderabad
-    while Bangalore is 66% of it. Neither is comparable across cities, so
-    `admin_type` is the gate."""
+class TestWhatCountsAsARegion:
+    """A region is any NAMED CUISINE, and the only thing refused is a bucket
+    that names none.
+
+    This used to gate on `admin_type`, which separates Indian states from
+    foreign cuisines — a true distinction and the wrong one here. It put
+    Continental (525 Bangalore dishes) and Indo-Chinese (262) on the same side
+    of the line as "Pan-North India", which is 2,092 dishes and not a cuisine
+    at all. A Continental Friday is the same editorial decision as a
+    Maharashtrian one, so the gate is now the bucket, not the passport.
+
+    (`state_confidence` is `high` on 9 Bangalore rows and 0 Pune ones, and
+    `region_authority` has no UNRESOLVED bucket in Pune or Hyderabad while
+    Bangalore is 66% of it. Neither is comparable across cities, which is why
+    neither is the gate either.)"""
 
     def test_a_pan_level_bucket_is_not_a_region(self, regions):
-        names = {r.name for r in regions}
-        assert 'Pan-North India' not in names
-        assert 'Europe (foreign)' not in names
+        """The one exclusion, and the whole of it."""
+        assert 'Pan-North India' not in {r.name for r in regions}
+
+    def test_a_foreign_cuisine_is_a_region(self, regions):
+        """Continental and Indo-Chinese are the two this was asked for; both
+        are `foreign` or `non_state` and both carry real depth."""
+        assert 'Europe (foreign)' in {r.name for r in regions}
 
     def test_real_states_are_found_with_their_depth(self, regions):
         tn = region_by_name(regions, 'Tamil Nadu')
@@ -637,3 +651,46 @@ class TestTheSoftHalfRefusesToLookScopedWhenItIsNot:
             'day_types': ['north'], 'only_on_dates': ['2026-09-24']})
         assert not r.validate_config()
         assert any('only_on_dates' in e for e in r.validation_errors())
+
+
+class TestTheRealListsOfferTheCuisines:
+    """Measured on the shipped workbooks, not on a fixture.
+
+    The point of admitting named cuisines is what it makes AVAILABLE, and that
+    is a property of the five city lists rather than of the rule. Chennai in
+    particular had exactly one themeable region before this and has three now,
+    which is the difference between a regional day being a feature that site
+    can use and a dropdown with one entry.
+    """
+
+    @staticmethod
+    def _themeable(city):
+        import pandas as pd
+        from src.ontology.paths import city_excel_path
+        df = pd.read_excel(city_excel_path(city))
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        return {r.name for r in themeable(measure_regions(df))}
+
+    def test_continental_is_offered_where_the_dishes_are(self):
+        assert 'Continental' in self._themeable('bangalore')
+        assert 'Continental' in self._themeable('pune')
+
+    def test_indo_chinese_is_offered(self):
+        assert 'Indo-Chinese' in self._themeable('bangalore')
+        assert 'Indo-Chinese' in self._themeable('ncr')
+
+    def test_a_thin_city_still_gains_options(self):
+        """Chennai: one themeable region before, three after."""
+        got = self._themeable('chennai')
+        assert {'Tamil Nadu', 'Indo-Chinese', 'Continental'} <= got
+
+    def test_no_pan_bucket_reaches_any_city(self):
+        for city in ('bangalore', 'chennai', 'hyderabad', 'ncr', 'pune'):
+            names = {n.lower() for n in self._themeable(city)}
+            assert not any(n.startswith('pan-') for n in names), city
+
+    def test_states_did_not_lose_their_place(self):
+        """Widening admission must not displace anything: the rule only ever
+        adds, and a state that was themeable stays themeable."""
+        assert {'Karnataka', 'Tamil Nadu', 'Punjab'} <= self._themeable('bangalore')
+        assert 'Maharashtra' in self._themeable('pune')

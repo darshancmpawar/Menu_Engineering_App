@@ -51,6 +51,12 @@
   .pill { display: inline-block; padding: 2px 9px; border-radius: 99px;
           font-size: 9.5px; font-weight: 700; text-transform: uppercase;
           letter-spacing: 0.04em; align-self: flex-start; }
+  /* `.day` stacks its children, so a day carrying both a theme and a region
+     put one pill under the other and made the column taller than its
+     neighbours. They belong on one line: the day is a North day AND a
+     Maharashtra day, not two facts in sequence. Wraps rather than squeezes,
+     because a narrow column with two long names has nowhere else to go. */
+  .day .pills { display: flex; flex-wrap: wrap; gap: 5px; align-self: flex-start; }
   .why  { background: transparent; border: 1px solid rgba(255,255,255,0.35);
           color: #FFFFFF; border-radius: 99px; font-size: 11px;
           font-weight: 700; padding: 4px 10px;
@@ -222,11 +228,13 @@
       h.push('<div class="day"><span class="lbl">' + esc(d.label) +
              (d.has_issue ? '<span class="dot-issue" title="Something to look at"></span>' : '') +
              '</span>');
+      h.push('<span class="pills">');
       h.push('<span class="pill" style="background:' + t[0] + ';color:' + t[1] + '">' +
              esc(d.theme_label || d.theme) + '</span>');
       if (d.region) {
         h.push('<span class="pill" style="background:#FFF6E3;color:#6B4E00;">' + esc(d.region) + '</span>');
       }
+      h.push('</span>');
       // Only for a day there is actually something to say about. Rendered
       // unconditionally it was a control that toggled to "Hide" and opened
       // nothing, because the panel below is guarded on the same lookup.
