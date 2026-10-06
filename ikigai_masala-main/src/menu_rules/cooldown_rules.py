@@ -24,7 +24,8 @@ from ortools.sat.python import cp_model
 from ..history.history_manager import HistoryManager
 from ..preprocessor.column_mapper import _norm_str
 from src.constants import (
-    BASE_SLOT_NAMES, REPEATABLE_SLOTS, COOLDOWN_EXEMPT_SLOTS, repeatable_row,
+    BASE_SLOT_NAMES, COOLDOWN_EXEMPT_SLOTS, DEFAULT_ITEM_COOLDOWN_DAYS,
+    REPEATABLE_SLOTS, repeatable_row,
 )
 from .base_menu_rule import (
     BaseMenuRule,
@@ -52,8 +53,8 @@ class ItemCooldownMenuRule(BaseMenuRule):
     Config:
     {
         "type": "item_cooldown",
-        "name": "item_cooldown_20d",
-        "cooldown_days": 20
+        "name": "item_cooldown_21d",
+        "cooldown_days": 21
     }
     """
 
@@ -67,7 +68,8 @@ class ItemCooldownMenuRule(BaseMenuRule):
     def __init__(self, rule_config: Dict[str, Any]):
         super().__init__(rule_config)
         self.rule_type = MenuRuleType.ITEM_COOLDOWN
-        self.cooldown_days = rule_config.get('cooldown_days', 20)
+        self.cooldown_days = rule_config.get(
+            'cooldown_days', DEFAULT_ITEM_COOLDOWN_DAYS)
 
     def validate_config(self) -> bool:
         return self.cooldown_days >= 0
@@ -111,7 +113,7 @@ class ItemCooldownMenuRule(BaseMenuRule):
         # the same staple is meant to recur, so history bans don't apply.
         # COOLDOWN_EXEMPT_SLOTS (curd_side/curd_rice) are exempt from the ban too,
         # but KEEP unique_items: small condiment pools must not be drained empty
-        # by the 20-day hard ban, yet should still vary within the week and only
+        # by the 21-day hard ban, yet should still vary within the week and only
         # repeat once every distinct dish is used (freshness rotates them).
         if base_slot in REPEATABLE_SLOTS or base_slot in COOLDOWN_EXEMPT_SLOTS:
             return pool
@@ -119,7 +121,7 @@ class ItemCooldownMenuRule(BaseMenuRule):
         banned = banned_by_date.get(date, set())
         if not banned or len(pool) == 0:
             return pool
-        # A staple item recurs by design, so the 20-day window never bans it
+        # A staple item recurs by design, so the 21-day window never bans it
         # — same exemption the plain-curd slot gets above, applied per item
         # instead of per slot. Two sources, both honoured: the ontology-wide
         # flags in constants (the chicken kebab) and the per-city/per-client

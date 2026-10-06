@@ -2,10 +2,10 @@
   "description": "chennai menu rules — standalone (no `extends`), because inheriting Bangalore's ruleset keyed a third of its rules on flags Chennai's list leaves at 0. Chennai has NO welcome drinks at all (no `welcome_drink` course_type, `is_welcome_drink` = 0 across 361 rows), so every drink rule Bangalore ships was silently inert here. NOTE ON SCOPE: this is the engine skeleton plus the caps that are provable from the item list — it is NOT a transcription of a Chennai rulebook, because none has been supplied. Pune's 36 rules came from `Pune_menu_rulebook_101.xlsx`; the equivalent regional rules for Chennai (which kuzhambu on which day, poriyal/kootu rotation, rasam cadence) still need that document. Everything below is either universal engine behaviour or a cap whose selector was verified to match real Chennai items — see tests/test_chennai_rules.py, which fails if any rule stops matching.",
   "rules": [
     {
-      "_comment": "20-day item cooldown, same window as every other city.",
-      "name": "item_cooldown_20d",
+      "_comment": "21-day item cooldown, same window as every other city. Three weeks, and it spans SERVICES: `explode_history_rows` drops the `meal` column, so a dish served at dinner is banned from lunch for the same three weeks and the other way round.",
+      "name": "item_cooldown_21d",
       "type": "item_cooldown",
-      "cooldown_days": 20
+      "cooldown_days": 21
     },
     {
       "_comment": "No dish twice inside one plan.",
@@ -21,6 +21,7 @@
     },
     {
       "_comment": "Theme filter. `welcome_drink` is not in the exempt list because Chennai has no welcome drinks to exempt. `sambar`, `rasam`, `curd`, `curd_side` and `curd_rice` ARE exempt: they are the South Indian spine of every Chennai lunch and must survive a north or biryani themed day — without the exemption a north day filters the sambar pool to nothing and the slot silently drops. `dessert` is exempt for a measured reason: 26 of Chennai's 28 desserts are tagged cuisine_family=north_indian and only 2 (badusha, mysore_pak) south_indian, so a south day narrowed the dessert pool to TWO dishes and any week with 3+ south days was INFEASIBLE on uniqueness alone. The tagging is also wrong — payasam, semiya_payasam and all three kesaris are South Indian and filed north — but exempting the slot is the right fix regardless: a canteen dessert is not what makes a day South Indian, and the ruleset should not depend on 5 dishes being re-tagged to stay feasible. `bread` is exempt because the sample week contradicts theming it: Toast Tab serves CHAPPATHI / CHAPATHI / PARATHA on its South Indian days, but the filter narrows bread to the 10 south-tagged rows, which are the dosai and idly family — so a themed bread slot produced 'podi idly' as the bread row on a south day. A Chennai canteen serves chapati alongside a Tamil meal every day; bread is not what makes the day South Indian.",
+      "_comment2": "`slot_pool_by_theme` is the one place a theme overrides the exempt list above, because it is written down rather than inferred: on a Chinese day the soup, the salad and the bread are named. Chennai's list has 4 Chinese soups and 12 chapati-family breads, and ZERO Chinese salads — the salad narrowing therefore degrades here every time and stamps the relaxation, which is the honest outcome and is left in rather than deleted so the explanation names it. Exempting `bread` from the CUISINE filter and holding it to the chapati family on a Chinese day are not in conflict: the exemption exists so a south day is not forced onto podi idly, and the chapati family is exactly the bread the comment above says a Chennai canteen serves every day.",
       "name": "theme_cuisine_filter",
       "type": "theme_slot_filter",
       "exempt_slots": [
@@ -37,7 +38,20 @@
         "dessert",
         "bread",
         "veg_dry"
-      ]
+      ],
+      "slot_pool_by_theme": {
+        "chinese": {
+          "soup": {
+            "cuisine_family": "chinese"
+          },
+          "salad": {
+            "cuisine_family": "chinese"
+          },
+          "bread": {
+            "flag": "is_plain_phulka_chapathi"
+          }
+        }
+      }
     },
     {
       "_comment": "Colour variety. Chennai's list is brown-heavy — 194 of 361 rows (54%) are brown, against 67 red and 34 yellow — so Pune's flat cap of 2 per colour is too tight here: a day drawing 6 colour slots from a 54%-brown pool needs somewhere to put the third brown dish. This uses Bangalore's asymmetric shape instead: every colour capped at 2, with ONE colour allowed to reach 3.",
@@ -67,7 +81,7 @@
       }
     },
     {
-      "_comment": "Rasam is a staple, and this one is load-bearing: the list holds exactly TWO rasam dishes (rasam, jeera_rasam) and a Chennai counter serves rasam most days. Under unique_items + the 20-day cooldown the slot is empty by day 3 of the first plan, never mind week 2. Rasam is the daily tamarind broth, not a variety slot — the same call as steamed rice.",
+      "_comment": "Rasam is a staple, and this one is load-bearing: the list holds exactly TWO rasam dishes (rasam, jeera_rasam) and a Chennai counter serves rasam most days. Under unique_items + the 21-day cooldown the slot is empty by day 3 of the first plan, never mind week 2. Rasam is the daily tamarind broth, not a variety slot — the same call as steamed rice.",
       "name": "rasam_is_a_staple",
       "type": "repeatable_items",
       "base_slot": "rasam",
@@ -163,6 +177,43 @@
       },
       "base_slot": "bread",
       "max_per_week": 1
+    },
+    {
+      "_comment": "Dosa, idly, uthappam and adai/pesarattu belong to a South Indian day and nowhere else. Led by SUB_CATEGORY because Chennai is where the flags leak worst: `is_dosa_family` and `is_rice_bread` catch 42 of the 100 breads and the sub_categories catch 61, and the 20 the flags miss include `idli` itself, `masala_idli`, `podi_idli`, `onion_uthappam` and `pesarattu`. A generated week proved it — with the flags alone the rule moved the dosas off a biryani Monday and a mix Wednesday and left `masala_idli` and `tri_color_idli` standing in their place. `idli_/_steamed` also holds the poha, upma, sevai and idiyappam rows, which belong to the same tiffin family and are wanted here. `rotis` and `wheat-based_dosa` are omitted: Chennai's list has neither sub_category, and a branch that matches nothing is the cheap half of note 9's failure. 62 of 100 held back is the heaviest share of the five lists, a deliberate consequence of the owner's instruction and the one city where it bites, because a Chennai canteen does serve dosa on an ordinary day. Chapati is a declared staple here (`plain_chapati_may_repeat`), so a day this narrows always has a bread to fall back on; the ban degrades anyway on a day whose pool is nothing else, and says so.",
+      "name": "south_bread_south_day_only",
+      "type": "selector_frequency",
+      "selector": {
+        "any_of": [
+          {
+            "sub_category": "classic_dosa"
+          },
+          {
+            "sub_category": "masala_/_flavoured_dosa"
+          },
+          {
+            "sub_category": "millet-based_dosa"
+          },
+          {
+            "sub_category": "lentil-based_dosa_(adai/pesarattu)"
+          },
+          {
+            "sub_category": "uthappam"
+          },
+          {
+            "sub_category": "idli_/_steamed"
+          },
+          {
+            "flag": "is_dosa_family"
+          },
+          {
+            "flag": "is_rice_bread"
+          }
+        ]
+      },
+      "base_slot": "bread",
+      "allowed_day_types": [
+        "south"
+      ]
     },
     {
       "_comment": "Baby corn once a week. Matched on the dish NAME, not `key_ingredient` — in Chennai all 4 baby-corn rows agree on both, but Bangalore's list showed key_ingredient='baby_corn' is the de-facto default for a mixed salad (67 rows, 3 of them actually baby corn), so the name is the trustworthy column across cities.",

@@ -33,6 +33,10 @@ from src.constants import (
     BASE_SLOT_NAMES as BASE_SLOTS,
     canonical_weekday,
     CONST_SLOTS,
+    # Re-exported, not used here: `api.app` and the API's own test import it
+    # from this module. The number itself moved to `constants` so the rule
+    # default, the history reader and this column's default cannot drift.
+    DEFAULT_ITEM_COOLDOWN_DAYS,  # noqa: F401
     DEFAULT_OFF_SLOTS,
     DEFAULT_WEEKDAY_THEMES,
     MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
@@ -102,11 +106,6 @@ AVAILABLE_THEMES: List[str] = [
 # the ``clients`` row (not per-counter). ``None``/empty means "unset".
 AVAILABLE_CITIES: List[str] = ['Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'NCR']
 
-# Default item-cooldown window (days): an item served within this many days
-# before a date is banned from that date. Mirrors the shipped
-# ``item_cooldown_20d`` rule / ``banned_items_by_date`` default. Per-client
-# overridable via the ``clients.item_cooldown_days`` column (None = default).
-DEFAULT_ITEM_COOLDOWN_DAYS: int = 20
 _MAX_ITEM_COOLDOWN_DAYS: int = 60
 
 

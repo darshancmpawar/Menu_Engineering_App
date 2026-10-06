@@ -2,9 +2,9 @@
   "description": "Complete menu rules for Indian lunch menu planning — matches old app rule set",
   "rules": [
     {
-      "name": "item_cooldown_20d",
+      "name": "item_cooldown_21d",
       "type": "item_cooldown",
-      "cooldown_days": 20
+      "cooldown_days": 21
     },
     {
       "name": "ricebread_gap_10d",
@@ -12,6 +12,7 @@
       "gap_days": 10
     },
     {
+      "_comment": "`slot_pool_by_theme` says what the REST of a themed plate is, which until now was nothing: `soup` and `salad` are exempt from cuisine narrowing (an infused water carries no region) so a Chinese day served Indian soup and Indian salad, and `bread` came back whatever the pool offered because the Chinese flag map covers only rice, veg_gravy and nonveg_main. Measured over the five lists: 27 Chinese soups and 19 Chinese salads in this one, 7 and 1 in NCR. Bread on a Chinese day is held to the chapati family — `is_plain_phulka_chapathi` is the whole family, plain and flavoured both (60 rows here, 14 in NCR), so one flag says it. A theme whose pool cannot cover the slot's cells is dropped for that day and stamped, because one dish is worse than none.",
       "name": "theme_cuisine_filter",
       "type": "theme_slot_filter",
       "exempt_slots": [
@@ -23,7 +24,20 @@
         "soup",
         "salad",
         "healthy_rice"
-      ]
+      ],
+      "slot_pool_by_theme": {
+        "chinese": {
+          "soup": {
+            "cuisine_family": "chinese"
+          },
+          "salad": {
+            "cuisine_family": "chinese"
+          },
+          "bread": {
+            "flag": "is_plain_phulka_chapathi"
+          }
+        }
+      }
     },
     {
       "name": "unique_items_session",
@@ -315,6 +329,49 @@
       },
       "base_slot": "bread",
       "max_per_week": 1
+    },
+    {
+      "_comment": "Dosa, idly, uthappam, adai/pesarattu and the akki/ragi/jowar rotti family belong to a South Indian day and nowhere else. Led by SUB_CATEGORY, with the two flags behind it, because the flags leak and the measurement says so: `is_dosa_family` and `is_rice_bread` together catch 75 of this city's 321 breads, the eight sub_categories catch 86, and the union is 88. The 13 the flags miss are akki_roti, ragi/jowar/bajra roti, pesarattu and carrot uttappam — exactly the family the client named. The flags are kept for the 2 rows filed the other way (`jeera_chapati_dosa`, `methi_chapati_dosa`, under a chapatti sub_category) and for Chennai's `mexican_dosa`, filed under herb_bread. NOT matched on the dish NAME: `appam_chapati` is a plain chapati, `dosakai_sambar` is a cucumber sambar, and `akki` is inside `sabakki` and `avalakki`. 88 held back here leaves 233 for the other days; NCR holds back 8 of 47. The `rotis` sub_category is city-specific and is NOT in Pune's ruleset, where it means bhakari. The ban degrades on a day whose bread pool is nothing else, and says so.",
+      "name": "south_bread_south_day_only",
+      "type": "selector_frequency",
+      "selector": {
+        "any_of": [
+          {
+            "sub_category": "classic_dosa"
+          },
+          {
+            "sub_category": "masala_/_flavoured_dosa"
+          },
+          {
+            "sub_category": "millet-based_dosa"
+          },
+          {
+            "sub_category": "wheat-based_dosa"
+          },
+          {
+            "sub_category": "lentil-based_dosa_(adai/pesarattu)"
+          },
+          {
+            "sub_category": "uthappam"
+          },
+          {
+            "sub_category": "idli_/_steamed"
+          },
+          {
+            "sub_category": "rotis"
+          },
+          {
+            "flag": "is_dosa_family"
+          },
+          {
+            "flag": "is_rice_bread"
+          }
+        ]
+      },
+      "base_slot": "bread",
+      "allowed_day_types": [
+        "south"
+      ]
     },
     {
       "name": "leafy_veg_dry_weekly",

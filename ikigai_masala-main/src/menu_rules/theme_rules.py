@@ -17,6 +17,7 @@ Four rules that together enforce the weekday → cuisine-theme mapping:
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Any, Dict, List, Set
 
 import pandas as pd
@@ -34,6 +35,13 @@ from .base_menu_rule import (
     MenuRuleType,
     MenuRuleSeverity,
 )
+from .relaxations import RELAXATION
+from .selector_frequency_rule import SelectorFrequencyRule
+
+# `src.menu_rules.theme_rules` — inside the tree `RelaxationCapture` listens
+# on. A relaxation logged outside it reaches nobody and /plan answers 200 with
+# an empty `relaxations` list, which is the silent half of note 31.
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +307,29 @@ class ThemeSlotFilterRule(BaseMenuRule):
         self.indian_slots_by_theme: Dict[str, Set[str]] = {
             t: {'veg_dry'} for t in self.indian_veg_dry_themes
         }
+        # {theme: {slot: selector}} — on THAT theme day, narrow THAT slot to
+        # the dishes the selector matches. The flag maps above say what a
+        # themed MAIN is; this says what the rest of the plate does, which was
+        # previously nothing at all: soup, salad and starter are canonically
+        # exempt from cuisine narrowing (an infused water carries no region),
+        # so on a Chinese day they came back Indian, and bread came back
+        # whatever the pool offered because no Chinese bread exists.
+        #
+        # An explicit per-theme instruction OVERRIDES that exemption, because
+        # it is not the cuisine filter guessing — somebody wrote it down.
+        # Selectors are parsed by `SelectorFrequencyRule`, so there is one
+        # selector dialect in this codebase rather than two that drift.
+        self.slot_pool_by_theme: Dict[str, Dict[str, Any]] = {}
+        for theme, slots in (rule_config.get('slot_pool_by_theme') or {}).items():
+            if not isinstance(slots, dict):
+                continue
+            parsed = {}
+            for slot, sel in slots.items():
+                m = SelectorFrequencyRule._parse_matcher(sel)
+                if m is not None:
+                    parsed[str(slot).strip().lower()] = m
+            if parsed:
+                self.slot_pool_by_theme[str(theme).strip().lower()] = parsed
         for theme, slots in (rule_config.get('indian_slots_by_theme') or {}).items():
             key = str(theme).strip().lower()
             self.indian_slots_by_theme.setdefault(key, set()).update(
@@ -318,6 +349,14 @@ class ThemeSlotFilterRule(BaseMenuRule):
 
         cfg = filter_context.get('cfg')
 
+        # An explicit per-theme narrowing wins over the theme's own filter and
+        # over the cuisine exemption, and RETURNS: letting the dispatch below
+        # run too would narrow a Chinese day's bread to Chinese breads, of
+        # which every city has none.
+        narrowed = self._narrow_for_theme(pool, base_slot, day_type, cfg)
+        if narrowed is not None:
+            return narrowed
+
         if day_type == 'chinese':
             return self._filter_chinese(pool, base_slot, cfg)
         if day_type == 'continental':
@@ -328,6 +367,49 @@ class ThemeSlotFilterRule(BaseMenuRule):
             return self._filter_cuisine(pool, base_slot, day_type, cfg)
         # 'mix', 'holiday', 'normal' — no theme filtering
         return pool
+
+    def _narrow_for_theme(self, pool: pd.DataFrame, base_slot: str,
+                          day_type: str, cfg: Any):
+        """`slot_pool_by_theme` applied, or None when nothing is declared.
+
+        Degrades rather than starves, and the threshold is the slot's CELL
+        COUNT, not one: NCR's list holds exactly one Chinese salad, and a
+        two-salad counter narrowed to it is INFEASIBLE on uniqueness while a
+        counter that kept the ordinary pool plans fine. One dish is worse than
+        none — the same thing `_combo_variant_cells` learned, for the same
+        reason. The shortfall is stamped so the explanation names the theme
+        that did not hold instead of showing a plausible plan (note 31).
+
+        ponytail: NOT mirrored in `_project_filter_size`, so the pre-flight
+        says nothing about this narrowing — `diagnose()` skips every slot in
+        `exempt_slots`, which is exactly the set this rule exists to override.
+        The ceiling is one of reporting, never of behaviour: the stand-down
+        already reaches /plan through the relaxation channel, by name, and the
+        two cases the pre-flight would add (an INFO that Bangalore's bread went
+        321 → 60 on a Chinese day, and an earlier warning for Chennai's zero
+        Chinese salads) are the same fact a few seconds sooner. To upgrade,
+        let `diagnose()` past the exempt check when a slot has a declared pool
+        for that theme and project through this method rather than
+        `_project_filter_size`, which cannot see `slot_counts` and so cannot
+        tell a narrowing from a stand-down.
+        """
+        matcher = (self.slot_pool_by_theme.get(str(day_type or '').lower(), {})
+                   .get(str(base_slot or '').lower()))
+        if matcher is None or len(pool) == 0:
+            return None
+        keep = pool.apply(
+            lambda r: SelectorFrequencyRule._matches(r, matcher), axis=1)
+        have = int(keep.sum())
+        cells = int((getattr(cfg, 'slot_counts', None) or {}).get(base_slot, 1) or 1)
+        if have < cells:
+            logger.info(
+                "%s: a %s day's %s has %d dish(es) for %d cell(s), so the "
+                "theme is not applied there — the ordinary pool is used",
+                self.name, day_type, base_slot, have, cells,
+                extra={RELAXATION: self.name},
+            )
+            return pool
+        return pool[keep]
 
     def _stays_indian(self, base_slot: str, day_type: str) -> bool:
         """True when *base_slot* is declared to stay Indian on a *day_type* day."""

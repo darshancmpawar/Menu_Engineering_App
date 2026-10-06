@@ -180,8 +180,31 @@
           ]
         },
         "max_per_week": 1
+      },
+      {
+        "_comment": "'Khichdi once in three weeks.' Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi), and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. Paired with the weekly cap below for the reason the biryani pair above exists: a backward window cannot see the week it is planning. NOT A FLOOR — this caps khichdi at one per 21 days and cannot guarantee one is served every third week; a weekly solve has no way to know it is the third week. That half needs a cross-plan cadence rule the system does not have.",
+        "name": "corning_chakan_khichdi_21d_window",
+        "type": "selector_history_window",
+        "base_slot": "rice",
+        "selector": {
+          "sub_category": "north_khichdi"
+        },
+        "window_days": 21
+      },
+      {
+        "_comment": "The forward half of 'khichdi once in three weeks': at most one in the week being solved. Same selector as the window above, deliberately — two halves of one requirement must not be able to disagree about what a khichdi is.",
+        "name": "corning_chakan_khichdi_weekly",
+        "type": "selector_frequency",
+        "base_slot": "rice",
+        "selector": {
+          "sub_category": "north_khichdi"
+        },
+        "max_per_week": 1
       }
     ],
-    "constant_items": {}
+    "constant_items": {
+      "_comment": "'Indian Bread staple only Chapati' — the same dish every day, which is what this fleet's rulebooks mean by a staple ('like white rice and pickle'). A pin, not a rule: a `slot_composition` or a `repeatable_items` on the chapati FAMILY would let the slot rotate between plain, palak, carrot and beetroot chapati, which is a variety rule where the client asked for one bread. Pinned to `chapati`, which is a real Pune row; `phulka` is the other dish Pune's R36 staple exemption names and it is not pinned, so the pin alone decides. Same shape as ICON Chn, DXC, SAEL and Corning NCR.",
+      "bread": "chapati"
+    }
   }
 }
