@@ -382,7 +382,11 @@ def _logger_calls():
 # not running the slot. It stands down rather than failing the menu, and only
 # when the cadence was actually due: a stand-down logged when nothing was
 # asked of the rule would make this channel mean two things.
-STAMPED_SITES = 19
+# 19 -> 20: `selector_frequency` gained `allowed_months`, a third ban axis
+# beside the theme and the weekday. Same degrade-rather-than-fail path as its
+# two siblings: a slot that holds nothing but out-of-season dishes keeps them,
+# because an empty plate is worse than an out-of-season mango.
+STAMPED_SITES = 20
 
 
 class TestEveryRelaxationIsStamped:
