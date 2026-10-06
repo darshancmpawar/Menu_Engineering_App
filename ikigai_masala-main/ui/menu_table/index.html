@@ -86,6 +86,14 @@
   /* Non-veg is the one thing in a cell worth reading before the dish name.
      Red here is unambiguous because the colour itself lives in the dot. */
   .cell.nonveg .nm { color: #C40D1B; font-weight: 700; }
+  /* The regional marker. Deliberately the SAME ink as the region pill in the
+     day header, because they are one fact seen twice: the header says the day
+     is a Tamil Nadu day, the R says which dishes make it one. A regional day
+     is a floor rather than a filter, so the other dishes on the day are
+     ordinary and nothing but this says so. */
+  .cell .rgn { flex-shrink: 0; font-size: 9px; font-weight: 700; line-height: 1;
+               padding: 2px 3px; border-radius: 3px; background: #FFF6E3;
+               color: #6B4E00; letter-spacing: .02em; }
   .cell .tail { margin-left: auto; flex-shrink: 0; display: flex;
                 align-items: center; }
 
@@ -278,6 +286,11 @@
                (c.color === "W" ? ';border:1px solid #AEAEAE' : '') + '"></span>');
         if (c.pinned) h.push(ICON.pin);
         h.push('<span class="nm">' + esc(c.name) + '</span>');
+        if (c.regional) {
+          h.push('<span class="rgn" title="' +
+                 esc((d.region || "Regional") + " dish \u2014 this is why today is a " +
+                     (d.region || "regional") + " day") + '">R</span>');
+        }
         // At most ONE marker, and in this order: a tick for what you picked
         // beats a warning you have already responded to by picking it.
         if (on) h.push('<span class="tail">' + ICON.tick + '</span>');

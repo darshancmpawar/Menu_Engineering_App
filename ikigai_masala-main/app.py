@@ -1309,6 +1309,17 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
             b["solution"] = solution
             if day_types:
                 b["day_types"] = day_types
+            # This IS the apply-a-region path, so the day that just became
+            # regional has to pick up its header name and its R marks here —
+            # merged per date rather than replaced, because a regenerate
+            # touches only the changed days and the rest of the week keeps
+            # whatever region it already had.
+            if result.get("region_days"):
+                b["regions"] = {**(b.get("regions") or {}),
+                                **result["region_days"]}
+            if result.get("regional_dishes"):
+                b["regional_dishes"] = {**(b.get("regional_dishes") or {}),
+                                        **result["regional_dishes"]}
             b["source"] = "modified"
             touched += 1
         problems.extend(result.get("region_problems") or [])

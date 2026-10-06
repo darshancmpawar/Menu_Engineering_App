@@ -50,6 +50,11 @@ def _color_key(item: str) -> str:
     return m.group(1) if m else ""
 
 
+def _plain_name(item: str) -> str:
+    """The ontology spelling: colour suffix off, trimmed, lowercased."""
+    return _COLOR_SUFFIX.sub("", str(item or "")).strip().lower()
+
+
 def cell_keys(by_date: Optional[dict]) -> set:
     """``{iso: {slot_id, …}}`` → ``{"<slot_id>|<iso>", …}``.
 
@@ -157,6 +162,7 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
               warned: Optional[set] = None,
               modified: Optional[set] = None,
               regions: Optional[dict] = None,
+              regional_dishes: Optional[dict] = None,
               issues: Optional[set] = None,
               shared: Optional[set] = None) -> dict:
     """Shape a plan block into the component's arguments.
@@ -170,6 +176,12 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
     pinned, warned = pinned or set(), warned or set()
     modified, issues = modified or set(), issues or set()
     regions = regions or {}
+    # {iso: {normalised dish name}} — which dishes on a regional day are FROM
+    # that region. A regional day is a floor, not a filter, so the day holds
+    # regional dishes beside ordinary ones and the name alone cannot say
+    # which; the server answers from `state_origin` (api/app.py).
+    regional_by_day = {str(iso): {_plain_name(n) for n in names or ()}
+                       for iso, names in (regional_dishes or {}).items()}
     # BASE slots, not expanded ones: `shared_categories` is configured as
     # `dal`, and the counter serves `dal__1` and `dal__2`.
     shared = {str(s).strip() for s in (shared or set()) if str(s).strip()}
@@ -223,6 +235,14 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
                 "pinned": k in pinned,
                 "warn": k in warned,
                 "modified": k in modified,
+                # Marked in the cell with an R, because the regional day is
+                # the one thing on this table a reader cannot work out by
+                # looking at the dishes.
+                # `_COLOR_SUFFIX` is stripped on BOTH sides: the flat plan
+                # carries `khandeshi_khichadi(R)` while the server answers
+                # `khandeshi_khichadi`, and comparing them raw marks nothing
+                # at all — silently, which is how this first shipped.
+                "regional": _plain_name(raw) in regional_by_day.get(iso, ()),
                 "title": str(raw),
             }
         rows.append({
@@ -254,7 +274,9 @@ def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
         pinned=cell_keys(block.get("pinned")),
         warned=warned_cells(block.get("rule_diagnostics"), plan),
         modified=cell_keys(block.get("modified")),
-        regions=block.get("regions"), issues=block.get("issues"),
+        regions=block.get("regions"),
+        regional_dishes=block.get("regional_dishes"),
+        issues=block.get("issues"),
         shared=block.get("shared_categories"),
     )
     height = _CHROME_PX + _ROW_PX * (len(args["rows"]) + 1)

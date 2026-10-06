@@ -51,6 +51,14 @@ def flatten_result(result: dict) -> dict:
         # Rules the solve under-enforced. Only observable while the solver runs,
         # so /explain cannot recompute them — they ride along or they are lost.
         "relaxations": result.get("relaxations", []),
+        # The regional day actually in force per date, and WHICH dishes carry
+        # it. Both come from the server because neither is recoverable from
+        # the menu: a regional day is a floor, not a filter, so a Tamil Nadu
+        # Thursday holds Tamil dishes beside ordinary ones and only
+        # `state_origin` can tell them apart. The table draws the region in
+        # the day header and an R on those cells.
+        "regions": result.get("region_days") or {},
+        "regional_dishes": result.get("regional_dishes") or {},
         "source": "solver",
         "error": None,
     }
