@@ -36,9 +36,39 @@ from ..preprocessor.column_mapper import _norm_cell
 REGION_COL = 'state_origin'
 ADMIN_COL = 'admin_type'
 
-#: `admin_type` values that carry a real region. The other two — `non_state`
-#: and `foreign` — are the pan-level buckets above.
+#: `admin_type` values that carry an INDIAN state. Kept as its own name
+#: because several callers mean the states specifically.
 STATE_ADMIN_TYPES = frozenset({'state', 'union_territory'})
+
+#: `state_origin` values that are not a cuisine but the ABSENCE of one — the
+#: pan-level buckets a dish lands in when nothing more specific applies. These
+#: are the only origins a regional day may not be built from: "Pan-North India"
+#: is 2,092 Bangalore dishes and 710 Pune ones, which is not a theme, it is
+#: most of the list.
+PAN_ORIGINS = frozenset({'pan-india', 'pan-north india', 'pan-south india'})
+
+
+def is_regionable(origin: str) -> bool:
+    """May a regional day be built from this `state_origin`?
+
+    Any named cuisine may: a state, and equally Continental, Indo-Chinese,
+    Mughlai or Italian, because a Continental Friday is the same editorial
+    decision as a Maharashtrian one and the lists carry the dishes for it.
+    Only the pan-level buckets are refused, because they name no cuisine.
+
+    `admin_type` is deliberately NOT consulted. It separates Indian states
+    from foreign cuisines, which is a true distinction and the wrong one here
+    — it put Continental (525 Bangalore dishes) and Indo-Chinese (262) on the
+    same side of the line as "Pan-North India", which is not a cuisine at all.
+
+    DEPTH is not decided here either. A cuisine with two dishes is admitted
+    and then reported as too thin by `Region.is_themeable`, which is what puts
+    it in the picker greyed out WITH ITS COUNT rather than missing — the
+    picker's whole argument is that a region silently absent reads as
+    forgotten.
+    """
+    origin = (origin or '').strip().lower()
+    return bool(origin) and origin not in PAN_ORIGINS
 
 #: Distinct regional dishes a slot needs before it can carry a WEEKLY regional
 #: day. A weekly day comes round about three times inside the 20-day item
@@ -182,7 +212,12 @@ def has_region_data(df) -> bool:
 
 
 def measure_regions(df) -> Tuple[Region, ...]:
-    """Every single-state region in *df*, with its per-slot depth.
+    """Every region in *df* a day could be built from, with its per-slot depth.
+
+    "Region" here means a named cuisine, not only an Indian state: Continental
+    and Indo-Chinese carry hundreds of dishes in the bigger lists and a
+    Continental Friday is the same editorial decision as a Maharashtrian one.
+    Only the pan-level buckets are excluded — see `is_regionable`.
 
     Returns regions that are too thin to theme as well as ones that are not:
     the picker greys those out *with their counts*, so an operator can see a
@@ -194,14 +229,14 @@ def measure_regions(df) -> Tuple[Region, ...]:
     if 'course_type' not in df.columns or 'item' not in df.columns:
         return ()                              # pragma: no cover - malformed
 
-    admin = df[ADMIN_COL].map(_norm_cell)
     states = df[REGION_COL].map(_norm_cell)
     course = df['course_type'].map(_norm_cell)
     cuisine = (df['cuisine_family'].map(_norm_cell)
                if 'cuisine_family' in df.columns else None)
     names = df['item'].map(_norm_cell)
 
-    keep = admin.isin(STATE_ADMIN_TYPES) & (states != '') & (names != '')
+    keep = ((states != '') & (names != '')
+            & ~states.isin(PAN_ORIGINS))
     if not bool(keep.any()):
         return ()
 

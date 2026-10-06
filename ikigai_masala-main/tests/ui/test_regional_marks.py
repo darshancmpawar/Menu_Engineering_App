@@ -113,3 +113,33 @@ class TestTheTableMarksThem:
 if __name__ == '__main__':      # a runnable check without pytest
     import pytest
     raise SystemExit(pytest.main([__file__, '-q']))
+
+
+class TestTheMarkerIsStillVisible:
+    """The R's style is load-bearing and invisible to every test above.
+
+    It reads across a wide table only because it is a filled dark disc with
+    white text; it sits at the right edge only because of two CSS rules that
+    work as a pair. Drop either and the mark drifts into the middle of the
+    cell beside the dish name — a layout regression no data test can see, and
+    one nobody would notice in a diff. Verified in a real browser once; this
+    is what stops it being quietly undone.
+    """
+
+    @staticmethod
+    def _css():
+        import pathlib
+        return (pathlib.Path(__file__).resolve().parents[2]
+                / 'ui' / 'menu_table' / 'index.html').read_text()
+
+    def test_it_is_a_dark_disc_with_white_text(self):
+        css = self._css()
+        assert 'border-radius: 50%; background: #131313; color: #FFFFFF;' in css
+
+    def test_it_is_pushed_to_the_right_edge(self):
+        assert '.cell .rgn { margin-left: auto;' in self._css()
+
+    def test_a_marker_beside_it_does_not_get_a_second_auto_margin(self):
+        """Two `auto` margins split the free space between them, which strands
+        the R mid-cell whenever a tick, warning or redo shares the row."""
+        assert '.cell .rgn + .tail { margin-left: 4px; }' in self._css()
