@@ -151,7 +151,8 @@ def shared_items_from_solution(
 MIN_MEAL_DIFFERENCE = 0.35
 
 
-def dishes_from_solution(raw_solution: Dict[str, Any]) -> Dict[str, list]:
+def dishes_from_solution(raw_solution: Dict[str, Any],
+                         keep_slots=()) -> Dict[str, list]:
     """``{iso_date: [item_base, …]}`` — every dish a solved plan serves.
 
     Fed to the SECOND meal's ``/plan`` as ``exclude_items`` so dinner does not
@@ -165,13 +166,23 @@ def dishes_from_solution(raw_solution: Dict[str, Any]) -> Dict[str, list]:
     merged into `banned_by_date`, and the item-cooldown pre-filter exempts a
     declared staple from that map — so the daily curd and the plain chapati
     still repeat at dinner, which is what a canteen serves.
+
+    *keep_slots* are base slots the later service is MEANT to repeat — Corning
+    Chakan's "dessert, soup and indian bread shall be the same as Lunch". Their
+    dishes are left out of the ban entirely rather than pinned-then-banned:
+    `merge_shared_items` pins into `forced_items` and the ban goes into
+    `banned_by_date`, and a cell narrowed to a dish that is also banned has no
+    candidate at all. One instruction, applied in one place.
     """
+    keep = {str(s).strip() for s in (keep_slots or ()) if str(s).strip()}
     dishes: set = set()
     for day_data in (raw_solution or {}).values():
         items = day_data.get('items') if isinstance(day_data, dict) else None
         if not isinstance(items, dict):
             continue
-        for meta in items.values():
+        for slot_id, meta in items.items():
+            if str(slot_id).split('__')[0] in keep:
+                continue
             name = meta.get('item_base') or meta.get('item') if isinstance(meta, dict) else meta
             if name:
                 dishes.add(str(name))

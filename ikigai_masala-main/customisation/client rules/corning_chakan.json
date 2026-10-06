@@ -4,6 +4,12 @@
     "disable": [
       "leafy_veg_dry_15d_window"
     ],
+    "_meal_shared_why": "'dessert, soup and indian bread shall be the same as Lunch' — the DINNER service repeats the lunch dish for these three slots, on the same day. It is the exact opposite of the planner's default, which bans every lunch dish at dinner (note 39), so it cannot be a solver rule: the two services are separate solves and neither can see the other. The planner pins the lunch dish in and leaves these slots out of the exclusion it would otherwise send. `bread` is here for completeness and is already true by another route — the chapati pin below is client-wide, so both services serve it anyway; listing it means the requirement survives the pin being changed. Soup and dessert are the halves that actually need this: both are day-restricted at this site and the dish varies by day.",
+    "meal_shared_categories": [
+      "dessert",
+      "soup",
+      "bread"
+    ],
     "use": [],
     "rules": [
       {
