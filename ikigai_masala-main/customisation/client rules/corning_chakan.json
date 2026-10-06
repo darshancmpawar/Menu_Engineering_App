@@ -182,14 +182,15 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Khichdi once in three weeks.' Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi), and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. Paired with the weekly cap below for the reason the biryani pair above exists: a backward window cannot see the week it is planning. NOT A FLOOR — this caps khichdi at one per 21 days and cannot guarantee one is served every third week; a weekly solve has no way to know it is the third week. That half needs a cross-plan cadence rule the system does not have.",
+        "_comment": "'Khichdi once in three weeks' is a CADENCE, so this rule is both halves. The ceiling is the 21-day backward window: no second khichdi inside three weeks of a saved one. The floor is `at_least_once_per_window`: once the family has not been served for 21 days, the plan must serve one. The ceiling alone is satisfied by serving NONE — the sprouts-gravy defect of v2.07.01, a cap written where a floor was asked for, which reads as enforced and is not. Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi) and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. THE GUARANTEED GAP IS 21 DAYS PLUS THE HORIZON MINUS ONE (27 on a 7-day plan): the floor says 'somewhere in this plan', not 'on this date', because pinning the date would fix khichdi to one weekday for ever. The floor stands down, saying so, on a horizon where every khichdi is banned by the item cooldown.",
         "name": "corning_chakan_khichdi_21d_window",
         "type": "selector_history_window",
         "base_slot": "rice",
         "selector": {
           "sub_category": "north_khichdi"
         },
-        "window_days": 21
+        "window_days": 21,
+        "at_least_once_per_window": true
       },
       {
         "_comment": "The forward half of 'khichdi once in three weeks': at most one in the week being solved. Same selector as the window above, deliberately — two halves of one requirement must not be able to disagree about what a khichdi is.",

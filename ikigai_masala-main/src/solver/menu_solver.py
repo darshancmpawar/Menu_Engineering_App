@@ -1061,6 +1061,7 @@ class MenuSolver:
             # repetition and the rule that forbids one cannot disagree.
             'extra_repeatable': self._repeatable_declarations(),
             'recent_sigs': self.recent_sigs,
+            'recency_by_item': self.recency_by_item,
             'find_cells_fn': _make_find_cells(cells),
             'link_any_fn': _link_any,
         }

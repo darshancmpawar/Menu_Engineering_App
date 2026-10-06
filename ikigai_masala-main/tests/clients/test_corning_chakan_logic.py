@@ -143,8 +143,7 @@ def test_the_indian_bread_is_chapati_every_day(week):
 
 
 def test_at_most_one_khichdi_in_the_week(week, pune):
-    """The forward half of 'khichdi once in three weeks'. The backward half
-    is a 21-day history window, which a single generated week cannot show."""
+    """The within-plan cap. The cross-plan halves are below."""
     fam = {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
            if str(s).strip().lower() == 'north_khichdi'}
     n = sum(1 for r in _slot(week, 'rice').values() if r in fam)
@@ -224,3 +223,58 @@ def test_one_saved_khichdi_bans_all_seven(pune):
     # ...and lets go on the far side of the window.
     beyond = [start + dt.timedelta(days=i) for i in range(12, 15)]
     assert all(not hm.selector_banned_by_date(beyond, fam, 21)[d] for d in beyond)
+
+
+def test_a_khichdi_appears_when_the_cadence_falls_due(monkeypatch, pune):
+    """The FLOOR, which is the half 'once in three weeks' also means.
+
+    A ceiling alone is satisfied by serving no khichdi ever — the sprouts
+    gravy defect of v2.07.01 in a second place — so this seeds a khichdi 21
+    days back and checks one comes round again. Paired with the test above it:
+    not twice inside the window, and not never.
+    """
+    served, rices = _solve_with_history(monkeypatch, 21, 'dal_khichdi')
+    fam = _khichdi_family(pune)
+    hits = {iso: r for iso, r in rices.items() if r in fam}
+    assert hits, f'nothing from the khichdi family {21} days after {served}'
+
+
+def test_and_a_client_with_no_history_at_all_gets_one(monkeypatch, pune):
+    """A family absent from the history window is OVERDUE, not fresh — the
+    opposite of how the freshness objective reads the same map."""
+    _served, rices = _solve_with_history(monkeypatch, None, None)
+    assert {iso: r for iso, r in rices.items() if r in _khichdi_family(pune)}
+
+
+def _khichdi_family(pune):
+    return {str(i).lower() for i, s in zip(pune['item'], pune['sub_category'])
+            if str(s).strip().lower() == 'north_khichdi'}
+
+
+def _solve_with_history(monkeypatch, days_ago, item):
+    """One Corning Chakan week with a single dish seeded `days_ago` back."""
+    from tests.fake_supabase import FakeSupabase
+    from tests.client_fixtures import CLIENTS
+    import src.db as db_mod
+    import api.app as api_app
+
+    start = dt.date.fromisoformat(BODY['start_date'])
+    served = None if days_ago is None else start - dt.timedelta(days=days_ago)
+    history = [] if served is None else [{
+        'client_name': CLIENT, 'meal': 'lunch',
+        'service_date': served.isoformat(), 'menu': {'rice': item}}]
+    fake = FakeSupabase(seed={
+        'clients': [dict(next(c for c in CLIENTS if c['name'] == CLIENT))],
+        'app_settings': [], 'week_signatures': [], 'menu_history': history,
+    })
+    monkeypatch.setattr(db_mod, '_sb_client', fake, raising=False)
+    monkeypatch.setattr(api_app, '_client_loader', None, raising=False)
+    api_app.reset_caches()
+    api_app.app.config['TESTING'] = True
+    from api.rate_limit import reset_for_tests
+    reset_for_tests()
+    resp = api_app.app.test_client().post('/api/v1/plan', json=BODY)
+    body = resp.get_json() or {}
+    assert resp.status_code == 200, body.get('error') or body.get('message')
+    return served, {iso: str(d['items'].get('rice', {}).get('item_base') or '').lower()
+                    for iso, d in body['solution'].items()}

@@ -302,8 +302,12 @@ class TestItemCooldownMenuRule:
         assert rule.validate_config()
 
     def test_cooldown_default(self):
+        """Read from the one constant rather than restated here: a literal in
+        this assertion is a fifth copy of the window, and the point of moving
+        it to `constants` was that four were already too many."""
+        from src.constants import DEFAULT_ITEM_COOLDOWN_DAYS
         rule = ItemCooldownMenuRule({"name": "cd", "type": "item_cooldown"})
-        assert rule.cooldown_days == 20
+        assert rule.cooldown_days == DEFAULT_ITEM_COOLDOWN_DAYS
 
     def test_rule_type(self):
         rule = ItemCooldownMenuRule({"name": "cd", "type": "item_cooldown"})

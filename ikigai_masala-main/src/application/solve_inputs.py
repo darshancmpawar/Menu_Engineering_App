@@ -642,11 +642,16 @@ def prepare_solver_inputs(
     # selector to concrete item names against this city's ontology now, so the
     # history layer can ban the whole family on dates within the window of a
     # saved occurrence (see SelectorHistoryWindowRule).
-    selector_windows = [
-        (r.matching_items(df), r.window_days)
-        for r in rules
-        if isinstance(r, SelectorHistoryWindowRule) and r.window_days
-    ]
+    # `resolved_items` is handed back to the rule because its optional FLOOR
+    # half (`at_least_once_per_window`) runs inside CP-SAT, where there is no
+    # ontology frame to resolve the selector against — and it must not read the
+    # family off the candidate rows, which are what is left AFTER the ban this
+    # same set builds.
+    selector_windows = []
+    for r in rules:
+        if isinstance(r, SelectorHistoryWindowRule) and r.window_days:
+            r.resolved_items = r.matching_items(df)
+            selector_windows.append((r.resolved_items, r.window_days))
     banned, rb_ban, recent_sigs, recency_by_item = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,
