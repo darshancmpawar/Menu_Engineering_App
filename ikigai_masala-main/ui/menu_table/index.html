@@ -86,16 +86,23 @@
   /* Non-veg is the one thing in a cell worth reading before the dish name.
      Red here is unambiguous because the colour itself lives in the dot. */
   .cell.nonveg .nm { color: #C40D1B; font-weight: 700; }
-  /* The regional marker. Deliberately the SAME ink as the region pill in the
-     day header, because they are one fact seen twice: the header says the day
-     is a Tamil Nadu day, the R says which dishes make it one. A regional day
-     is a floor rather than a filter, so the other dishes on the day are
-     ordinary and nothing but this says so. */
-  .cell .rgn { flex-shrink: 0; font-size: 9px; font-weight: 700; line-height: 1;
-               padding: 2px 3px; border-radius: 3px; background: #FFF6E3;
-               color: #6B4E00; letter-spacing: .02em; }
+  /* The regional marker: a filled disc with a white R, at the cell's right
+     edge. A regional day is a floor rather than a filter, so the rest of the
+     day's dishes are ordinary and nothing but this says which ones the region
+     bought — it has to carry that across a wide table at a glance, which is
+     why it is the strongest mark in the cell rather than the header pill's
+     amber. The header has room to name the region in words; this has one
+     letter, and needed the contrast more than the colour match. */
+  .cell .rgn { margin-left: auto; flex-shrink: 0; width: 16px; height: 16px;
+               border-radius: 50%; background: #131313; color: #FFFFFF;
+               font-size: 10px; font-weight: 700; line-height: 1;
+               display: flex; align-items: center; justify-content: center; }
   .cell .tail { margin-left: auto; flex-shrink: 0; display: flex;
                 align-items: center; }
+  /* The R has already claimed the right edge, so a marker beside it takes an
+     ordinary gap. Two `auto` margins split the free space between them and
+     would strand the R in the middle of the cell. */
+  .cell .rgn + .tail { margin-left: 4px; }
 
   .explain { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr);
              gap: 18px; padding: 14px 16px; background: #FFFBF2;
