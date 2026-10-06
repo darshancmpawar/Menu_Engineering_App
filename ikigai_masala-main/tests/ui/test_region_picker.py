@@ -64,10 +64,12 @@ def _day(theme, **kw):
 
 
 class TestWhatTheMenuOffers:
-    def test_a_south_day_offers_only_the_south_regions(self):
-        d = _day('south')
-        assert [o['name'] for o in d['options']] == [
-            'No region', 'Tamil Nadu', 'Karnataka']
+    def test_the_regions_that_suit_the_day_come_first(self):
+        """Every region is pickable; the ones whose cuisine matches the day's
+        theme are listed first, because they are the ones that will fill."""
+        names = [o['name'] for o in _day('south')['options']]
+        assert names[:3] == ['No region', 'Tamil Nadu', 'Karnataka']
+        assert 'Punjab' in names
 
     def test_an_offered_region_carries_its_depth(self):
         """The number is the argument for the choice, so it sits beside the
@@ -75,11 +77,15 @@ class TestWhatTheMenuOffers:
         d = _day('south')
         assert {o['name']: o['meta'] for o in d['options']}['Karnataka'] == '11 slots'
 
-    def test_a_wrong_cuisine_region_is_shown_greyed_with_its_family(self):
-        d = _day('south')
-        assert {w['name']: w['meta'] for w in d['wrong']} == {
-            'Punjab': 'North Indian'}
-        assert 'South' in d['wrong_label']
+    def test_an_off_theme_region_is_pickable_under_its_own_heading(self):
+        """It used to be a greyed list you could read and not choose. The floor
+        relaxes per day to what the pool can place and stamps a relaxation when
+        it does, so a mismatched pick comes back honest and thin rather than
+        broken — which makes refusing it the picker overruling the planner."""
+        punjab = next(o for o in _day('south')['options'] if o['name'] == 'Punjab')
+        assert punjab['value'] == 'Punjab'
+        assert 'North Indian' in punjab['meta']
+        assert 'South' in punjab['group']
 
     def test_a_thin_region_is_named_in_the_footer_not_dropped(self):
         """Greyed and counted rather than hidden — otherwise an operator cannot
@@ -89,27 +95,39 @@ class TestWhatTheMenuOffers:
         assert 'Bangalore' in d['thin_label']
 
     def test_every_region_reaches_the_menu_somewhere(self):
-        """The guarantee the whole component exists for: offered, greyed as
-        wrong-cuisine, or named as too thin — never simply absent."""
+        """The guarantee the whole component exists for: offered, or named as
+        too thin — never simply absent."""
         for theme in ('south', 'north', 'mix', 'chinese'):
             d = _day(theme)
             seen = ({o['name'] for o in d['options'] if o['value']}
-                    | {w['name'] for w in d['wrong']}
                     | set(d['thin'].replace(' and 0 more', '').split(', ')))
             for r in META['regions']:
                 assert r['name'] in seen, (theme, r['name'])
 
-    def test_a_flag_narrowed_theme_takes_no_region_at_all(self):
-        """chinese / biryani / continental narrow the mains by FLAG, so a
-        region's dishes are gone before any floor could be read. The chip is
-        disabled and says why, rather than opening an empty menu."""
-        d = _day('chinese')
-        assert d['disabled'] and 'no region fits' in d['title']
+    def test_every_themeable_region_is_PICKABLE_on_every_theme(self):
+        """The ask: a north day is not limited to north regions, and a Chinese
+        day can take one at all."""
+        themeable = {r['name'] for r in META['regions'] if r.get('themeable')}
+        for theme in ('south', 'north', 'mix', 'chinese', 'biryani', 'holiday'):
+            pickable = {o['name'] for o in _day(theme)['options'] if o['value']}
+            assert pickable == themeable, (theme, pickable)
 
-    def test_an_unknown_theme_offers_nothing_rather_than_everything(self):
-        """Fail closed: a theme the compatibility map has not heard of must not
-        silently offer every region."""
-        assert _day('holiday')['disabled']
+    def test_a_flag_narrowed_theme_can_still_take_a_region(self):
+        """chinese / biryani / continental narrow the mains by FLAG, which is
+        why none of their cuisines matches a region. That used to disable the
+        day outright; it now opens with every region under the off-theme
+        heading, because the planner — not the picker — decides what a day can
+        carry, and it degrades honestly when the answer is "not much"."""
+        d = _day('chinese')
+        assert not d['disabled']
+        assert {o['name'] for o in d['options'] if o['value']}
+        assert all(o['group'] for o in d['options'] if o['value'])
+
+    def test_an_unknown_theme_still_offers_its_regions(self):
+        """A theme the compatibility map has not heard of matches no cuisine,
+        so everything lands under the off-theme heading rather than nowhere."""
+        d = _day('holiday')
+        assert not d['disabled'] and [o for o in d['options'] if o['value']]
 
     def test_no_region_is_always_an_option_so_a_day_can_be_cleared(self):
         d = _day('south')
@@ -117,8 +135,10 @@ class TestWhatTheMenuOffers:
                                    'meta': 'theme only'}
 
     def test_empty_metadata_disables_the_day_rather_than_raising(self):
+        """The one case that still disables a chip: the CITY has no region
+        deep enough to carry a day — never the day's own theme."""
         d = region_day_args({}, [MON], {MON: 'south'})[0]
-        assert d['disabled'] and d['wrong'] == [] and d['thin'] == ''
+        assert d['disabled'] and d['thin'] == '' and 'no region' in d['title']
 
 
 class TestWhatTheChipSays:
@@ -164,3 +184,22 @@ class TestSavingAsAWeeklyDefault:
 
     def test_nothing_in_nothing_out(self):
         assert _weekday_map_from_dates({}) == {}
+
+
+class TestTheHeadingSaysWhyTheyAreOffTheme:
+    """Two different reasons a region is not in the day's own cuisine, and
+    saying the wrong one is a small lie the operator can check."""
+
+    def test_a_cuisine_theme_says_the_cuisine_does_not_match(self):
+        punjab = next(o for o in _day('south')['options'] if o['name'] == 'Punjab')
+        assert "Not a South day's cuisine" in punjab['group']
+
+    def test_a_flag_narrowed_theme_does_not_claim_a_cuisine_mismatch(self):
+        """`chinese` narrows by dish type and lists NO cuisines, so everything
+        lands here — including Indo-Chinese, which is plainly a Chinese day's
+        cuisine. Telling an operator otherwise is wrong on its face."""
+        d = _day('chinese')
+        groups = {o['group'] for o in d['options'] if o['value']}
+        assert groups == {"A Chinese day picks its mains by dish type, "
+                          "so a region fills what is left"}
+        assert not any("Not a Chinese day's cuisine" in g for g in groups)

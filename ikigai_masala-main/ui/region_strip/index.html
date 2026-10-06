@@ -82,6 +82,13 @@
 
   /* Rejected regions are SHOWN, greyed, each with its reason. Hidden instead,
      a region reads as forgotten and nobody can tell it was weighed. */
+  /* The heading above the off-theme regions. They are pickable like any
+     other — the label says what the day's theme will do to them, it does not
+     fence them off. */
+  .grp { padding: 9px 10px 4px; margin-top: 4px; border-top: 1px solid #F0F0F0;
+         font-size: 10.5px; font-weight: 800; color: #777777;
+         text-transform: uppercase; letter-spacing: .04em; line-height: 1.35; }
+  .opt.off .n { color: #555555; }
   .wrong { padding: 8px 6px 6px; border-top: 1px solid #F0F0F0; }
   .wrong .lbl { font-size: 10.5px; font-weight: 800; color: #777777;
                 text-transform: uppercase; letter-spacing: 0.05em;
@@ -186,23 +193,23 @@
         h.push('<div class="mh"><div class="t">' + esc(d.menu_title || "") +
                '</div><div class="s">' + esc(d.menu_sub || "") + '</div></div>');
         h.push('<div class="body">');
+        var group = null;
         (d.options || []).forEach(function (o, oi) {
           var on = (picks[d.iso] || "") === (o.value || "");
-          h.push('<button class="opt' + (on ? ' on' : '') + '" role="menuitemradio"' +
+          // A heading when the group changes, inside the SAME list: every
+          // entry stays pickable and `data-opt` keeps one index space.
+          if ((o.group || null) !== group) {
+            group = o.group || null;
+            if (group) h.push('<div class="grp">' + esc(group) + '</div>');
+          }
+          h.push('<button class="opt' + (on ? ' on' : '') +
+                 (o.group ? ' off' : '') + '" role="menuitemradio"' +
                  ' aria-checked="' + on + '" data-opt="' + i + ':' + oi + '">' +
                  '<span class="n">' + esc(o.name) + '</span>' +
                  '<span class="r"><span class="m">' + esc(o.meta || "") + '</span>' +
                  (on ? TICK : "") + '</span></button>');
         });
         h.push('</div>');
-        if ((d.wrong || []).length) {
-          h.push('<div class="wrong"><div class="lbl">' + esc(d.wrong_label || "") + '</div>');
-          d.wrong.forEach(function (w) {
-            h.push('<div class="w"><span>' + esc(w.name) + '</span>' +
-                   '<span class="m">' + esc(w.meta || "") + '</span></div>');
-          });
-          h.push('</div>');
-        }
         if (d.thin) {
           h.push('<div class="thin"><b>' + esc(d.thin_label || "Too few dishes here:") +
                  '</b> ' + esc(d.thin) + '</div>');
