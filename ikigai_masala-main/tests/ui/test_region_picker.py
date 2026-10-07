@@ -17,7 +17,11 @@ from __future__ import annotations
 
 import ast as _ast
 import datetime as dt
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from ui.region_strip import region_day_args
 
@@ -203,3 +207,18 @@ class TestTheHeadingSaysWhyTheyAreOffTheme:
         assert groups == {"A Chinese day picks its mains by dish type, "
                           "so a region fills what is left"}
         assert not any("Not a Chinese day's cuisine" in g for g in groups)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="no node on this box")
+def test_the_strip_shrinks_back_when_a_region_menu_closes():
+    """`setHeight` reports the strip's height and Streamlit sizes the iframe
+    from it. `document.documentElement.scrollHeight` cannot report less than
+    the iframe's own viewport, so growing the frame to clear an open menu
+    pinned the measurement there: closing the menu left a gap the height of
+    the menu, for the rest of the session. Run through node where there is
+    one, against the shipped HTML — see `test_colour_dishes_js.py`.
+    """
+    script = Path(__file__).parent / "js" / "component_height.test.js"
+    r = subprocess.run([shutil.which("node"), str(script)],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
