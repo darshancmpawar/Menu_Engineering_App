@@ -131,7 +131,17 @@
     window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, extra || {}), "*");
   }
   function setHeight() {
-    post("streamlit:setFrameHeight", {height: document.documentElement.scrollHeight});
+    // Measure the CONTENT, not `document.documentElement`: `scrollHeight` can
+    // never report LESS than the iframe's own viewport, so a table that gets
+    // SHORTER — switching to a client with fewer slots — would be pinned at
+    // the taller measurement and leave a blank gap under itself. Python still
+    // passes an initial `height`, which masked this; measuring `#root` means
+    // the component is right on its own rather than by that arrangement.
+    // Same fix as `ui/region_strip/index.html`.
+    var root = document.getElementById("root");
+    post("streamlit:setFrameHeight", {height: Math.ceil(
+      root ? root.getBoundingClientRect().height
+           : document.documentElement.scrollHeight)});
   }
   function setValue(value) {
     post("streamlit:setComponentValue", {value: value, dataType: "json"});

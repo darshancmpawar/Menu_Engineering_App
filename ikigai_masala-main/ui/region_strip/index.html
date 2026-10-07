@@ -128,13 +128,25 @@
   var ARGS = null;
   var open = null;          // which day's menu is open; local, no rerun to open one
   var picks = {};
+  var SHADOW_PX = 4;        // room for the strip's drop shadow, so it is not clipped
 
   function setHeight() {
     // An open menu is absolutely positioned, so it does NOT extend
     // `scrollHeight` — measuring the document alone reports the strip's own
     // height and Streamlit clips the menu to it. Take the lower of the two
     // edges instead, plus a little room for the drop shadow.
-    var h = document.documentElement.scrollHeight;
+    //
+    // Measure the CONTENT (`#root`), never `document.documentElement`:
+    // `scrollHeight` can never report LESS than the iframe's own viewport, so
+    // once an open menu has grown the frame the measurement is pinned at the
+    // taller value and closing the menu leaves a blank gap exactly the height
+    // of the menu that was open. A one-way ratchet — the strip grew when the
+    // first region menu opened and never came back down, which on a wide
+    // screen reads as a hole between the strip and the rest of the page.
+    // `#root` is the only child, so its box IS the content.
+    var root = document.getElementById("root");
+    var h = root ? root.getBoundingClientRect().height + SHADOW_PX
+                 : document.documentElement.scrollHeight;
     var m = document.querySelector(".menu");
     if (m) h = Math.max(h, m.getBoundingClientRect().bottom + window.scrollY + 12);
     post("streamlit:setFrameHeight", {height: Math.ceil(h)});
