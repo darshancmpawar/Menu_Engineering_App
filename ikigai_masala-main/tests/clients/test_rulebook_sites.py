@@ -214,6 +214,7 @@ def test_phonepe_drink_staple_survives_the_no_repeat_colour_rule(api, monkeypatc
     ('Corning', 'NCR', {'thu'}),
     ('ChrysCapital Advisors', 'Pune', {'tue'}),
     ('Carelon', 'NCR', {'mon', 'thu', 'sat'}),
+    ('Corning Chakan', 'Pune', {'wed', 'sat'}),
 ])
 def test_exactly_one_carb_a_day(api, client, city, white_days):
     """'when white rice is there there is not flavour rice and vice verse',
@@ -221,7 +222,7 @@ def test_exactly_one_carb_a_day(api, client, city, white_days):
     `_comment` says which sample week they came from); what the client stated
     and this asserts is that the two never share a day and never both miss one.
     """
-    days = 7 if client == 'Carelon' else 5
+    days = 7 if client in ('Carelon', 'Corning Chakan') else 5
     solution = _plan(api, client, days=days)
     white = set(_by_weekday(solution, 'white_rice'))
     flavour = set(_by_weekday(solution, 'rice'))

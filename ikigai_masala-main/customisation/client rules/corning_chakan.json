@@ -148,6 +148,29 @@
         ]
       },
       {
+        "_comment": "'Either flavour rice or white rice on a day, not both' — the flavoured-rice slot runs Monday, Tuesday, Thursday, Friday and Sunday. Same shape as Amadeus Pune (and Gartner, Ikea, Stryker NCR): two day-restrictions whose weekday lists are exact COMPLEMENTS, rather than a mutual exclusion between the two slots, so the pair can never both drop and leave a day with no rice at all. Before this both slots ran every day — a real 7-day solve served a flavoured rice AND steamed rice on all seven, which is what the client was reporting. Five flavoured days is the top of the stated 'four to five'. The days are fixed rather than solver-chosen because `white_rice` is a stamped constant, not a candidate the solver picks (src/constants.py CONST_SLOTS), so nothing in the model can trade one against the other. Standing the slot down on Wednesday costs no themed rice: this counter's theme_map makes Wednesday SOUTH, not biryani, and the biryani and khichdi cadences below still have five days to land on.",
+        "name": "corning_chakan_flavour_rice_mon_tue_thu_fri_sun",
+        "type": "slot_day_restriction",
+        "base_slot": "rice",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri",
+          "sun"
+        ]
+      },
+      {
+        "_comment": "The other half: white rice on exactly the two days the flavoured-rice slot stands down. Written as its own weekday list rather than derived from the rule above because a constant slot is stamped AFTER the solve and has no cell to key off — a `slot_day_restriction` on a const slot used to be a silent no-op and the staple appeared every day anyway (menu_solver `_rows_to_week_plan` now honours skip_cells for them). The site serves seven days, so the two lists must union to all seven or a day comes out with no rice at all; if the flavoured-rice days change, this list changes with them.",
+        "name": "corning_chakan_white_rice_wed_sat",
+        "type": "slot_day_restriction",
+        "base_slot": "white_rice",
+        "allowed_weekdays": [
+          "wed",
+          "sat"
+        ]
+      },
+      {
         "_comment": "'Biryani should be served maximum once in 15 days.' Pune's `mixedveg_pulao_biryani_weekly` caps the mixed-veg pulao/biryani family at one day a WEEK, which permits two inside any 15 days. This is the half that looks BACKWARDS, and it reads saved history rather than only the week being solved, so a plan starting the day after a biryani still waits. SELECTED BY NAME AS WELL AS FLAG, and the flag alone would have made this rule nearly inert: `is_biryani_item` is set on 3 of the 15 biryanis in Pune's rice pool, and a first version of this rule using the flag alone let a real week serve kolakata_stye_aloo_biryani on the Thursday and mughalai_veg_biryani on the Saturday while reporting zero. The missing flags are a dataset matter for the list's owner; the name carries the rule until they are set. `biryani_rice` is included deliberately — for a cap, counting an ambiguous dish costs a day of variety, missing one costs the rule. Paired with `corning_chakan_biryani_weekly` below, because this rule alone does not bind inside the week being solved: with it in place and no saved history, a real week served a biryani on the Thursday AND the Saturday. Pune uses the same pair for kadhi (`kadhi_weekly` + `kadhi_15d_window`) for exactly this reason.",
         "name": "corning_chakan_biryani_15d_window",
         "type": "selector_history_window",
