@@ -188,9 +188,14 @@ class TestPerCityCaches:
         assert pune_df is not blr_df
         assert hyd_df is not blr_df
         assert len(pune_df) < len(blr_df)
-        # Hyderabad was seeded FROM Bangalore, so it is a superset, not a subset
-        # — and a separate cache entry, which is the assertion that matters.
-        assert len(hyd_df) > len(blr_df)
+        # Hyderabad was seeded FROM Bangalore and keeps its own dishes on top,
+        # so the two differ in CONTENT as well as identity. Deliberately not a
+        # size comparison any more: the corrected Bangalore list added 113
+        # dishes the Hyderabad workbook was not re-cut to carry, so which of
+        # the two is longer is the owner's business rather than an invariant
+        # this layer can hold. The separate cache entry above is the assertion
+        # that matters. See tests/cities/test_hyderabad_ontology.py.
+        assert set(hyd_df['item']) != set(blr_df['item'])
         # bangalore (shared with the fallback city) + pune + hyderabad
         assert api_app.ontology_repository.cache_sizes()['menu_data'] == 3
 
