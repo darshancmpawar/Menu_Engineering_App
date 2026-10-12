@@ -248,7 +248,8 @@
     "thotakura",
     "\\bharive\\b",
     "mulai ?keerai",
-    "arai ?keerai"
+    "arai ?keerai",
+    "\\bmath\\b"
    ]
   },
   "methi": {
@@ -571,7 +572,8 @@
    "name_patterns": [
     "spring onion",
     "scallion",
-    "green onion"
+    "green onion",
+    "hara ?pyaa?z"
    ]
   },
   "ginger": {
@@ -585,7 +587,7 @@
    ],
    "name_patterns": [
     "\\bginger\\b",
-    "\\badrak\\b",
+    "\\badrak\\w*",
     "\\binji\\b"
    ]
   },
