@@ -809,6 +809,27 @@
         "may",
         "june"
       ]
+    },
+    {
+      "_comment": "PAIRING, STRONG. Poori and bhatura want an aloo or a chana gravy beside them; an arbitrary gravy is the clearest mismatch on this plate. SOFT and objective-only: an absent target costs one low-tier unit on that day and never feasibility, so a day the rules cannot pair simply goes unpaired. Weight 3e6 is the STRONG rung — above the freshness bonus (<=90,000 per candidate) and the random tie-break (<=1,000 per cell) by more than 10x so it is not lost in the noise, and 1000x under one MEDIUM unit so it can never outbid a rulebook or client rule (note 32). Measured on the current workbooks: 12 trigger rows against 209 targets in Bangalore (19.7% of the veg_gravy pool), 3/20 in Pune, 1/56 in NCR, 12/209 in Hyderabad, and 76 of 90 fleet counters have a real gradient. NOT shipped to Chennai, which carries 4 target rows — under the 5-row floor, where the item cooldown would starve the pair and the rule would read as enforced while doing nothing (note 9).",
+      "name": "pair_poori_with_aloo_or_chana",
+      "type": "soft_preference",
+      "mode": "prefer_with",
+      "priority": "low",
+      "weight": 3000000,
+      "selector_a": {
+        "sub_category": "poori_/_bhatura"
+      },
+      "base_slot_a": "bread",
+      "selector_b": {
+        "any_flag": [
+          "is_aloo_gravy",
+          "is_chana_gravy",
+          "is_kabuli_chana_gravy",
+          "is_black_chana_gravy"
+        ]
+      },
+      "base_slot_b": "veg_gravy"
     }
   ]
 }
