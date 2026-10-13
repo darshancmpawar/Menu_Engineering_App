@@ -67,6 +67,9 @@ def test_the_pairing_gap_baseline(fake_supabase, capsys):
     rows = {c['name']: c for c in CLIENTS}
     missing = [n for n in SAMPLE if n not in rows]
     assert not missing, f'sample names no longer in the fixture: {missing}'
+    # The shared fixture seeds ONE client (Rippling); these ten have to be put
+    # in deliberately, the same way `test_theme_slot_pools::_solve` does it.
+    fake_supabase.seed('clients', [dict(rows[n]) for n in SAMPLE])
 
     totals = collections.Counter()
     kinds = collections.Counter()
