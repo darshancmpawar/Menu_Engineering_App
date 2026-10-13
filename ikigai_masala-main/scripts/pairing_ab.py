@@ -24,6 +24,15 @@ What it reports, per the gate:
   menu change      cells that differ between the arms. Zero means the rule
                    changes nothing and is dropped.
   distinct dishes  a variety proxy: the rule must not buy a pair by repeating.
+
+**The NOISE FLOOR is measured first and printed beside the result, because
+without it the menu-change row is unreadable.** This solver does not reproduce
+its own output: the same client, the same date, the same config and the same
+seed solved twice differ in ~40% of cells, with `num_workers=1` no better than
+4. So a rule that changes 20% of cells has changed nothing — it is half the
+noise. Any menu-change figure at or below the floor is reported as NOISE rather
+than as an effect, and the rule's verdict rests on the trigger/pair rates, which
+are rates over many days rather than a diff of two plans.
 """
 
 from __future__ import annotations
@@ -99,6 +108,10 @@ def _solve(client_name, row, cfg, start, days, drop_rule=None):
         return None, f'{type(exc).__name__}'
 
 
+def pct_(n, d):
+    return f'{100.0 * n / d:.1f}%' if d else 'n/a'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('rule', help='the rule name to A/B, e.g. pair_poori_with_aloo_or_chana')
@@ -145,9 +158,29 @@ def main():
             break
     print(f'  clients x dates: {len(picked)} x {len(dates)}\n')
 
+    noise_changed = noise_cells = 0
     tot = {'trig_off': 0, 'pair_off': 0, 'trig_on': 0, 'pair_on': 0,
            'infeas_off': 0, 'infeas_on': 0, 'relax_off': 0, 'relax_on': 0,
            'cells': 0, 'changed': 0, 'dishes_off': set(), 'dishes_on': set()}
+
+    # The noise floor: the SAME arm solved twice. Everything the menu-change
+    # row claims has to clear this to mean anything.
+    if picked:
+        _n = picked[0]['name']
+        _cfg = loader.get_client_configs_from_row(_n, picked[0])[0][1]
+        _d = dt.date.fromisoformat(dates[0])
+        _a, _ = _solve(_n, picked[0], _cfg, _d, args.days, drop_rule=args.rule)
+        _b, _ = _solve(_n, picked[0], _cfg, _d, args.days, drop_rule=args.rule)
+        if _a and _b:
+            for _k in set(_a) & set(_b):
+                _ia = _a[_k].get('items', _a[_k]); _ib = _b[_k].get('items', _b[_k])
+                for _sid in set(_ia) | set(_ib):
+                    noise_cells += 1
+                    if _strip(str(_ia.get(_sid))) != _strip(str(_ib.get(_sid))):
+                        noise_changed += 1
+        print(f'  noise floor (same arm solved twice): '
+              f'{noise_changed} of {noise_cells} cells '
+              f'({pct_(noise_changed, noise_cells)})\n')
 
     for row in picked:
         name = row['name']
@@ -183,21 +216,22 @@ def main():
                         if _strip(str(ia.get(sid))) != _strip(str(ib.get(sid))):
                             tot['changed'] += 1
 
-    def pct(n, d):
-        return f'{100.0 * n / d:.1f}%' if d else 'n/a'
-
     print('=' * 70)
     print(f"{'metric':34}{'OFF':>13}{'ON':>13}   gate")
     print('-' * 70)
     print(f"{'trigger days':34}{tot['trig_off']:>13}{tot['trig_on']:>13}")
     print(f"{'  of which paired':34}"
-          f"{pct(tot['pair_off'], tot['trig_off']):>13}"
-          f"{pct(tot['pair_on'], tot['trig_on']):>13}   +20 points")
+          f"{pct_(tot['pair_off'], tot['trig_off']):>13}"
+          f"{pct_(tot['pair_on'], tot['trig_on']):>13}   +20 points")
     print(f"{'INFEASIBLE solves':34}{tot['infeas_off']:>13}{tot['infeas_on']:>13}   must be 0")
     print(f"{'relaxations':34}{tot['relax_off']:>13}{tot['relax_on']:>13}   must not rise")
     print(f"{'distinct dishes served':34}{len(tot['dishes_off']):>13}{len(tot['dishes_on']):>13}   no worse")
+    _rate = (tot['changed'] / tot['cells']) if tot['cells'] else 0
+    _floor = (noise_changed / noise_cells) if noise_cells else 0
+    _verdict = 'NOISE (at or under the floor)' if _rate <= _floor else 'above the floor'
     print(f"{'menu change (cells differing)':34}"
-          f"{tot['changed']:>13} of {tot['cells']}   0 => drop the rule")
+          f"{tot['changed']:>13} of {tot['cells']}   {pct_(tot['changed'], tot['cells'])}"
+          f" vs floor {pct_(noise_changed, noise_cells)} -> {_verdict}")
     print('=' * 70)
     if tot['trig_off'] == 0 and tot['trig_on'] == 0:
         print('VERDICT: the trigger never appeared. The rule had nothing to act on\n'
