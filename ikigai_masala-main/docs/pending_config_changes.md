@@ -8,6 +8,30 @@ Ordered by whether a client's menu is wrong without it.
 
 ---
 
+## 0. Waters: a shared category nothing can supply — OUTSTANDING
+
+`clients.shared_categories` for **Waters** is `['nonveg_main']`, while its
+PRIMARY counter is `Roti Veg Combo`, which has no `nonveg_main` slot. A shared
+category is taken from the primary counter's menu, so there is nothing to
+extract: measured, **zero** shared items across a four-counter site, two of
+which (`Roti Non Veg Combo`, `Non Veg Rice Combo`) do serve non-veg and could
+have been synced. The toggle is on, the multiselect lists the category, and
+nothing is shared.
+
+Pick one, depending on what the client actually asked for:
+
+| Option | Change | Effect |
+|---|---|---|
+| a | Reorder `counters` so a non-veg counter is first | the two non-veg counters sync; the veg counters are unaffected (they have no such slot) |
+| b | Clear `shared_categories` to `[]` | states the truth — nothing is shared — and the editor stops implying otherwise |
+
+The API now REFUSES this combination on write (`_validated_shared_categories`),
+so the next edit through the editor will not save until it is resolved. The
+stored row is not rewritten by that check — it only runs on a write — so this
+needs applying by hand.
+
+---
+
 ## 1. Database values a rule depends on — ALL APPLIED
 
 Nothing outstanding. Every row that was on this list is live in the current
