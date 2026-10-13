@@ -270,7 +270,7 @@ class _Cell:
         self.cand_df = cand_df
         self.theme_pref_flags = list(theme_pref_flags)
         self.x_vars: List[cp_model.IntVar] = []
-        self.cand_rows: List[pd.Series] = []
+        self.cand_rows: List[dict] = []
 
 
 # ---------------------------------------------------------------------------
@@ -1177,8 +1177,23 @@ class MenuSolver:
             x_vars: List = []
             cand_rows: List = []
 
-            for j in range(len(cell.cand_df)):
-                row = cell.cand_df.iloc[j]
+            # The whole frame at once, as plain dicts, rather than
+            # `.iloc[j]` per row. A city pool is 143 columns wide, so every
+            # `.iloc[j]` pays `fast_xs` -> `interleaved_dtype` ->
+            # `find_common_type` to build one object Series: measured on
+            # Bangalore's `veg_gravy`, 207 ms against 54 ms for the frame in
+            # one call. `to_numpy(dtype=object)` is a further 5x over
+            # `to_dict('records')` (1.3 ms against 7.1 ms on a 40-row sample)
+            # because `to_dict` walks column by column; the two agree value
+            # for value on all 161,733 cells of the five workbooks.
+            # The rows stay dicts for the rule layer, where `row.get(col)` is
+            # a `dict.get` rather than a `Series.__getitem__` — 0.4 ms against
+            # 2.7 ms per pass, over ~700k calls in one /plan. Nothing
+            # downstream uses a Series API; several rule tests already pass
+            # dicts here.
+            _cols = list(cell.cand_df.columns)
+            for j, _vals in enumerate(cell.cand_df.to_numpy(dtype=object)):
+                row = dict(zip(_cols, _vals))
                 item_base = _norm_str(row.get('item', ''))
                 var = model.NewBoolVar(f'x_d{di}_{slot_id}_{j}')
                 x_vars.append(var)
