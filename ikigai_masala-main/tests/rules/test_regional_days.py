@@ -26,7 +26,8 @@ import pytest
 from ortools.sat.python import cp_model
 
 from src.application.regions import (
-    normalize_region_map, region_rule_configs, resolve_region_days,
+    REGION_MAIN_SLOTS, normalize_region_map, region_rule_configs,
+    resolve_region_days,
 )
 from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule, _iso_day
 from src.menu_rules.soft_preference_rule import SoftPreferenceRule
@@ -386,34 +387,67 @@ class TestNormalizingAStoredMap:
 
 
 class TestTheGeneratedRules:
-    def test_one_pair_per_region_not_per_date(self, regions):
+    def test_one_set_per_region_not_per_date(self, regions):
         tn = region_by_name(regions, 'Tamil Nadu')
         cfgs = region_rule_configs({'2026-09-24': tn, '2026-10-01': tn})
-        assert len(cfgs) == 2
-        assert {c['type'] for c in cfgs} == {'selector_frequency', 'soft_preference'}
-        assert cfgs[0]['only_on_dates'] == ['2026-09-24', '2026-10-01']
+        assert len(cfgs) == 3
+        assert [c['type'] for c in cfgs] == [
+            'selector_frequency', 'soft_preference', 'soft_preference']
+        assert all(c['only_on_dates'] == ['2026-09-24', '2026-10-01']
+                   for c in cfgs)
 
-    def test_both_rules_are_valid_and_scoped(self, regions):
+    def test_every_rule_is_valid_and_scoped(self, regions):
         tn = region_by_name(regions, 'Tamil Nadu')
-        floor, prefer = region_rule_configs({'2026-09-24': tn})
+        floor, prefer, mains = region_rule_configs({'2026-09-24': tn})
         hard = SelectorFrequencyRule(floor)
-        soft = SoftPreferenceRule(prefer)
         assert hard.validate_config(), hard.validation_errors()
-        assert soft.validate_config(), soft.validation_errors()
         assert hard.only_on_dates == {'2026-09-24'}
-        assert soft.only_on_dates == {'2026-09-24'}
+        for cfg in (prefer, mains):
+            soft = SoftPreferenceRule(cfg)
+            assert soft.validate_config(), soft.validation_errors()
+            assert soft.only_on_dates == {'2026-09-24'}
 
-    def test_the_soft_half_is_low_tier(self, regions):
+    def test_the_plate_wide_preference_is_low_tier(self, regions):
         """Above freshness in a cell, below every real rule — a regional day
         must never cost a colour, a protein or a client's own frequency."""
         tn = region_by_name(regions, 'Tamil Nadu')
-        _, prefer = region_rule_configs({'2026-09-24': tn})
+        _floor, prefer, _mains = region_rule_configs({'2026-09-24': tn})
         assert prefer['priority'] == 'low'
+
+    def test_the_main_cells_are_preferred_a_tier_higher(self, regions):
+        """A plate can carry a regional sambar, rasam, salad and dal and still
+        eat as an ordinary menu. Measured on a real Karnataka Wednesday: with
+        the plate-wide LOW preference alone, eight of fourteen cells came back
+        regional and the three that did not were the rice, the non-veg main and
+        one veg dry — against 78, 29 and 166 Karnataka candidates. Those cells
+        lose at LOW precisely because they are the contested ones. Promoting
+        just them took the same plate to ten of fourteen, with the rice and the
+        non-veg main both regional.
+
+        MEDIUM and SOFT, not a floor: a hard floor over the most constrained
+        slots is how "a Karnataka chicken gravy" meets `nonveg_main_daily_pair`
+        and the day comes back INFEASIBLE instead of merely ordinary.
+        """
+        tn = region_by_name(regions, 'Tamil Nadu')
+        _floor, _prefer, mains = region_rule_configs({'2026-09-24': tn})
+        assert mains['priority'] == 'medium'
+        assert mains['mode'] == 'prefer_cells'
+        assert set(mains['base_slot']) <= set(REGION_MAIN_SLOTS)
+        # and it never reaches a cell the region has no depth in
+        assert set(mains['base_slot']) <= set(tn.usable_slots())
+
+    def test_a_region_with_no_main_depth_gets_no_main_rule(self, regions):
+        """The promotion is scoped to slots the region can actually fill. A
+        region deep only in the sides yields the pair and nothing more, rather
+        than a MEDIUM rule over cells it would lose anyway."""
+        tn = region_by_name(regions, 'Tamil Nadu')
+        cfgs = region_rule_configs({'2026-09-24': tn}, served_base_slots=['dal', 'sambar', 'rasam', 'salad'])
+        assert [c['type'] for c in cfgs] == ['selector_frequency', 'soft_preference']
 
     def test_the_selector_is_the_state_column(self, regions):
         tn = region_by_name(regions, 'Tamil Nadu')
-        floor, _ = region_rule_configs({'2026-09-24': tn})
-        assert floor['selector'] == {'state_origin': 'Tamil Nadu'}
+        cfgs = region_rule_configs({'2026-09-24': tn})
+        assert all(c['selector'] == {'state_origin': 'Tamil Nadu'} for c in cfgs)
 
 
 class TestTheStateOriginSelector:

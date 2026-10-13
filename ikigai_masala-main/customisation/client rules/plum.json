@@ -7,10 +7,7 @@
         "as": "plum_pulao_exact_3"
       },
       {
-        "ref": "plain_chapati_twice_a_week",
-        "as": "plum_chapati_exact_2"
-      },
-      {
+        "_comment": "`plain_chapati_twice_a_week` was here, and it made this counter INFEASIBLE on every start date tried. The library rule means 'plain chapati on exactly two days; OTHER DAYS VARY', which presumes a bread slot that varies — and `constant_items` below pins `bread` to plain chapati on EVERY day. Five forced days against a cap of two: no menu can satisfy both. The pin is the client-specific, deliberate statement and the library ref is the copy-paste, so the ref went. The fleet shows the shape a daily bread pin takes — Booking.com and DXC both pin plain chapati daily and pair it with a staple/repeatable declaration, never with a frequency cap. No staple ref is added, because none is needed: a pinned cell is narrowed to its one dish and `unique_items` never sees it, which a solve with only this rule removed confirms. If the client ever does want a varying bread slot, the ref comes back and the pin goes at the same time — one without the other is this bug again.",
         "ref": "paneer_once_a_week",
         "as": "plum_paneer_exact_1"
       },

@@ -189,6 +189,19 @@ def test_every_counter_generates(live_clients, client_name, idx, counter_name):
     for day_key, day in solution.items():
         d = dt.date.fromisoformat(day_key)
         items = day['items']
+        # A day the client does not cook on is a BLANK column, not a missing
+        # one (note 29): the horizon spans five weekdays and Clario, Piramel
+        # and Quince serve a subset, so the rest come back marked and empty.
+        # Every slot being blank on those is the feature, not a counter failing
+        # to fill one — but an UNMARKED empty day would still be a failure, so
+        # the flag is what skips it and the emptiness is asserted, not assumed.
+        # `tests/platform/test_non_working_days_are_blank.py` pins the shape.
+        if day.get('is_working_day') is False:
+            assert not any(str(v.get('item') if isinstance(v, dict) else v).strip()
+                           for v in items.values()), (
+                f"{client_name}/{counter_name} {day_key}: marked not-working "
+                f"but carries dishes")
+            continue
         for slot_id in cfg.active_slots:
             if cell_is_skipped(skip, d, slot_id):
                 continue
@@ -207,16 +220,17 @@ def test_every_counter_generates(live_clients, client_name, idx, counter_name):
             )
 
 
-@pytest.mark.slow
-def test_working_days_shrink_the_horizon(live_clients):
-    """Quince runs Wed/Thu/Fri — the plan must contain only those days."""
-    resp, body = _plan(live_clients, 'Quince', 0)
-    assert resp.status_code == 200, body.get('error')
-    days = {
-        dt.date.fromisoformat(k).strftime('%A').lower()
-        for k in body['solution']
-    }
-    assert days == {'wednesday', 'thursday', 'friday'}, days
+# `test_working_days_shrink_the_horizon` lived here and asserted that a Quince
+# plan contains ONLY Wed/Thu/Fri. Note 29 deliberately reversed that: five days
+# asked for is five columns back whatever the client's week is, the unserved
+# ones blank and marked `is_working_day: False`, because closing the gap made
+# "5 days" mean a different number of columns per client. The test was never
+# updated, so it failed on main while describing behaviour the product had
+# dropped — the worst kind of red, one everybody learns to scroll past.
+# `tests/platform/test_non_working_days_are_blank.py` is the canonical guard
+# and covers Quince and Clario against these same live rows, including that
+# every SERVED day still has a full menu. Deleted rather than rewritten here:
+# a second, weaker copy of that file is how the two came to disagree.
 
 
 @pytest.mark.slow

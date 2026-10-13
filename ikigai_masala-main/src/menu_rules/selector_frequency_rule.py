@@ -660,6 +660,58 @@ class SelectorFrequencyRule(BaseMenuRule):
                 days += 1
         return days, len(distinct)
 
+    def _pinned_dates(self, ctx: "DiagnoseContext") -> List[Any]:
+        """Dates a client's ``constant_items`` pin forces a match onto.
+
+        A pin narrows the cell to ONE dish, so when that dish matches the
+        selector the day counts against ``max`` exactly as hard as a pool with
+        nothing else in it — the third way to force a day, beside an exhausted
+        pool and a composition, and the one nothing was reading.
+
+        Plum is the case: `constant_items: {"bread": "plain chapati"}` puts
+        `plain_chapati` on all five days, while `plain_chapati_twice_a_week`
+        (`is_plain_phulka_chapathi`, min 2 max 2) allows exactly two. Five
+        forced days against a cap of two, so /plan answered 500 INFEASIBLE
+        while this very pass reported `would_succeed: true` with no warnings —
+        the same silence that made the Amadeus theme collision worth catching.
+
+        The pin is resolved against the ontology rather than matched as text:
+        `forced_items` already holds the canonical spelling (note 28), and a
+        selector reads COLUMNS, so there is nothing to match against without
+        the row.
+        """
+        forced = getattr(getattr(ctx, 'cfg', None), 'forced_items', None) or {}
+        if not forced or ctx.df is None or not len(ctx.df):
+            return []
+        wanted = {d for d in ctx.dates}
+        rows_by_name = {}
+        out: List[Any] = []
+        for key, name in forced.items():
+            try:
+                d, slot_id = key
+            except (TypeError, ValueError):
+                continue
+            if d not in wanted:
+                continue
+            base = str(slot_id).split('__')[0]
+            if self.base_slot and base != self.base_slot:
+                continue
+            if self.base_slot is None and ctx.active_base_slots is not None \
+                    and base not in ctx.active_base_slots:
+                continue
+            key_name = _norm_str(str(name))
+            if key_name not in rows_by_name:
+                hit = ctx.df[ctx.df['item'].astype(str).map(_norm_str) == key_name]
+                rows_by_name[key_name] = (
+                    hit.iloc[0] if len(hit) else None)
+            row = rows_by_name[key_name]
+            # A pin naming a dish the city does not carry is stamped after the
+            # solve and narrows nothing, so it forces no day — the same reason
+            # it cannot be validated against the ontology at write time.
+            if row is not None and self._row_matches(row):
+                out.append(d)
+        return out
+
     def _forced_days(self, ctx: "DiagnoseContext") -> int:
         """Days on which a match is *unavoidable* for this rule's slot.
 
@@ -680,9 +732,14 @@ class SelectorFrequencyRule(BaseMenuRule):
             # on the plate. Chennai's slot-less `kootu_twice_weekly` against
             # TCL's "the dal is a kootu, daily" was invisible until this.
             from .slot_composition_rule import days_forced_by_composition
-            return days_forced_by_composition(
+            by_comp = days_forced_by_composition(
                 self._peer_rules, ctx, None, self._row_matches,
             )
+            # A pin forces this kind of cap hardest of all: with no slot scope
+            # the rule counts a match ANYWHERE on the plate, so one pinned dish
+            # settles the day on its own.
+            self._forced_dates = sorted(set(self._pinned_dates(ctx)))
+            return max(by_comp, len(self._forced_dates))
         active = ctx.active_base_slots
         if active is not None and self.base_slot not in active:
             return 0
@@ -715,6 +772,7 @@ class SelectorFrequencyRule(BaseMenuRule):
         by_composition = dates_forced_by_composition(
             self._peer_rules, ctx, self.base_slot, self._row_matches,
         )
+        self._forced_dates.extend(self._pinned_dates(ctx))
         # Dates, not counts — see the same change in `nonveg_rules.py`. A
         # `max_per_week` cap needs to know WHICH days are forced so it can ask
         # whether any single week exceeds it.

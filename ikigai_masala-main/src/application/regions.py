@@ -30,6 +30,20 @@ from ..constants import WEEKDAY_NAMES, canonical_weekday
 from ..menu_rules.selector_frequency_rule import _iso_day as _iso
 from ..ontology.regions import MIN_REGION_SLOTS, Region, region_by_name
 
+#: The cells that decide whether a day READS regional, in the order a kitchen
+#: names them. A plate can carry a regional sambar, rasam, salad and dal and
+#: still eat as an ordinary menu, because the dishes a diner registers as the
+#: meal are the rice, the two veg mains, the non-veg main and the sweet. Scoped
+#: to a `prefer_cells` rule one tier above the plate-wide one — never to a hard
+#: floor, which over these slots is the one shape that can make a day
+#: impossible rather than merely ordinary. `dal`, `sambar` and `soup` are
+#: deliberately NOT here: they are already the easy cells the plate-wide
+#: preference wins on its own, and promoting them would spend the tier on
+#: cells that were never contested.
+REGION_MAIN_SLOTS: Tuple[str, ...] = (
+    'rice', 'veg_gravy', 'veg_dry', 'nonveg_main', 'dessert',
+)
+
 
 def normalize_region_map(value: Any, regions: Sequence[Region]) -> Dict[str, str]:
     """A stored `region_map` -> `{weekday: canonical region name}`.
@@ -191,6 +205,40 @@ def region_rule_configs(
                 f"Regional day: prefer {name} dishes in the remaining "
                 f"{', '.join(slots)} cells, where no rule objects."),
         })
+        mains = [s for s in REGION_MAIN_SLOTS if s in slots]
+        if mains:
+            out.append({
+                'name': f'region_{slug}_prefer_mains',
+                'type': 'soft_preference',
+                'enabled': True,
+                'mode': 'prefer_cells',
+                'selector': selector,
+                'base_slot': mains,
+                # MEDIUM, where the rule above is LOW, and the whole reason this
+                # second rule exists. Measured on a real Karnataka Wednesday:
+                # eight of fourteen cells came back regional and the three that
+                # did not were the rice, the non-veg main and one veg dry —
+                # the dishes a diner actually reads as the meal — against 78,
+                # 29 and 166 Karnataka candidates respectively. A single LOW
+                # preference loses those cells precisely BECAUSE they are the
+                # contested ones: the theme filter, the compositions and the
+                # colour and protein rules all have an opinion about a rice and
+                # a non-veg main, and none of them has one about a rasam. So
+                # the day filled up at the edges and read as an ordinary menu.
+                #
+                # Still SOFT, and that is the safety: a floor scoped to these
+                # five would be hard, and a hard floor over the most
+                # constrained slots is how "Karnataka chicken gravy" meets
+                # `nonveg_main_daily_pair` and returns INFEASIBLE. This can
+                # only ever outbid LOW rules and the freshness objective; every
+                # hard constraint and the whole HIGH tier still win.
+                'priority': 'medium',
+                'only_on_dates': list(isos),
+                '_comment': (
+                    f"Regional day: the MAIN cells ({', '.join(mains)}) are "
+                    f"what makes the day read as {name}, so they are preferred "
+                    f"a tier above the rest of the plate."),
+            })
     return out
 
 

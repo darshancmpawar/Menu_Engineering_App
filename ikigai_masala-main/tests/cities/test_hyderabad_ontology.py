@@ -162,13 +162,30 @@ class TestWhatQuestAdded:
         hold whether or not this import ever ran."""
         assert dish not in _names(blr), dish
 
-    def test_it_is_a_strict_superset_of_the_seed(self, hyd, blr):
+    def test_it_keeps_its_own_rows_and_the_drift_from_the_seed_is_pinned(
+            self, hyd, blr):
         """Nothing may be LOST in the seeding. `expand_side_pools` used to drop
         four (`sambaram`, `pretzel`, `a2b_juice`, `tea_cake`): its un-share pass
         read every blocklisted name in a non-master city as a bad cross-city
         share, which is true of a city built from its own list and false of one
-        seeded from the master."""
-        assert _names(hyd) > _names(blr)
+        seeded from the master.
+
+        That seeding is now HISTORY: `expand_side_pools` is deleted and the five
+        workbooks are the owner's source, each supplied on its own. So the city
+        Hyderabad was cut from can move ahead of it, and has — the corrected
+        Bangalore list added 113 dishes the Hyderabad workbook was not re-cut to
+        carry. Whether to mirror them is the owner's call, and writing them into
+        a city list here is exactly what this repo does not do, so the drift is
+        PINNED rather than asserted away: it goes to zero the day they are
+        mirrored, and a move in either direction has to be deliberate. Pinned
+        for the same reason `test_the_count_is_the_import_s_own` is.
+
+        The half that was always the point still holds outright — seeding never
+        cost Hyderabad a row of its own.
+        """
+        assert _names(hyd) - _names(blr), 'Hyderabad lost its own additions'
+        drift = sorted(_names(blr) - _names(hyd))
+        assert len(drift) == 113, (len(drift), drift[:10])
 
     def test_the_count_is_the_import_s_own(self, quest_rows):
         """Was 101, then 95, now 89.

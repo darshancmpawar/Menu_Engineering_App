@@ -128,6 +128,69 @@ class TestMatcher:
         df = _df([('subz_jalfrezi', 'mixed_vegetables', 0)])
         assert not m.mask(df, sorted(bans_for('Bangalore', OCT).red)).any()
 
+    @pytest.mark.parametrize('name,key,veg', [
+        # A ban is written in one word and the kitchen writes another. Each of
+        # these was measured MISSING against the real lists before the pattern
+        # that catches it was added.
+        ('adraki_dal', 'urad_dal', 'ginger'),          # `\badrak\b` could not see "adraki"
+        ('gobi_adraki', 'cauliflower', 'ginger'),      # 31 dish rows fleet-wide, NCR's 9 among them
+        ('chicken_adrakhi', 'chicken', 'ginger'),      # and the `adrakhi` spelling beside it
+        ('math_chi_bhaji', 'leafy_greens', 'amaranth'),  # Marathi for amaranth greens
+        ('aloo_hara_pyaz', 'potato', 'spring onion'),  # Hindi for spring onion
+        ('makai_mutter_harapyaza', 'corn', 'spring onion'),
+    ])
+    def test_a_ban_catches_the_word_the_kitchen_actually_writes(self, m, name, key, veg):
+        assert veg in m.vegetables_in(name, key), (
+            f'{name!r} is {veg} and the ban does not see it')
+
+    def test_no_ban_is_silently_inert(self, m):
+        """Note 9, for the ban list: a vegetable a city bans but that matches no
+        dish in that city's workbook removes nothing, and says nothing while it
+        does so. That is how a ban written as `adrak` sat over nine NCR `adraki`
+        dishes and reported success.
+
+        The survivors below are pinned rather than asserted away, because two
+        causes are legitimate and one is not:
+
+        * a fruit or vegetable the city simply has no dish for — sapota
+          anywhere, papaya/grapes/guava/muskmelon, broccoli outside the south,
+          bitter gourd in Chennai (checked: no pavakkai, karela or hagalkai in
+          its list at all), curry leaves in Pune, which season a tempering and
+          never name a dish;
+        * `amaranth` in Bangalore and Chennai, where the greens are filed under
+          the generic `keerai` name with `key_ingredient: leafy_greens`. Which
+          green it is cannot be recovered from the workbook, so it is the
+          owner's to resolve at source; the `leafy vegetables` group is what
+          actually catches those dishes today.
+
+        Anything NEW here is the third cause — a naming mismatch — and it fails
+        this test rather than quietly banning nothing.
+        """
+        import json as _json
+        from src.ontology.repository import repository
+        year = _json.loads((ROOT / 'data' / 'configs' / 'seasonal_bans'
+                            / '2026.json').read_text())
+        known = {
+            'Bangalore': {'amaranth', 'sapota'},
+            'Chennai': {'amaranth', 'bitter gourd', 'broccoli', 'grapes', 'guava',
+                        'muskmelon', 'papaya', 'sapota', 'small tomato', 'spring onion'},
+            'Hyderabad': {'sapota'},
+            'NCR': {'avocado', 'broccoli', 'grapes', 'guava', 'muskmelon', 'papaya',
+                    'pomegranate', 'sapota', 'small tomato', 'watermelon'},
+            'Pune': {'curry leaves', 'grapes', 'muskmelon', 'papaya', 'pomegranate',
+                     'sapota', 'watermelon'},
+        }
+        for city, region in year['region_for_city'].items():
+            banned = set()
+            for months in year['months'].values():
+                block = months.get(region) or {}
+                for key in ('red', 'yellow', 'salad_bans'):
+                    banned |= set(block.get(key, []))
+            df, _pools = repository.menu_data(city)
+            inert = {v for v in banned if not m.mask(df, [v]).any()}
+            assert inert == known.get(city, set()), (
+                f'{city}: bans matching no dish changed — {inert ^ known.get(city, set())}')
+
 
 # --- the rule ------------------------------------------------------------------
 

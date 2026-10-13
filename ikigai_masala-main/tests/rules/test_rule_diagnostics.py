@@ -76,6 +76,9 @@ class _StubSolverCfg:
     rice_exclude_items: Set[str] = field(default_factory=set)
     theme_map: Optional[Dict[str, str]] = None
     active_base_slots: Optional[List[str]] = None
+    #: `{(date, slot_id): item}` — a client's `constant_items` pins, which
+    #: force a cell to one dish and so can contradict a frequency cap.
+    forced_items: Dict[Tuple[dt.date, str], str] = field(default_factory=dict)
 
 
 def _ctx(
@@ -88,6 +91,7 @@ def _ctx(
     slot_counts: Optional[Dict[str, int]] = None,
     df: Optional[pd.DataFrame] = None,
     active_base_slots: Optional[List[str]] = None,
+    forced_items: Optional[Dict[Tuple[dt.date, str], str]] = None,
 ) -> DiagnoseContext:
     dates = dates or [dt.date(2026, 5, 11)]
     day_types = day_types or {d: 'mix' for d in dates}
@@ -95,7 +99,7 @@ def _ctx(
         pools=pools,
         dates=dates,
         day_types=day_types,
-        cfg=_StubSolverCfg(),
+        cfg=_StubSolverCfg(forced_items=forced_items or {}),
         df=df if df is not None else pd.DataFrame(),
         banned_by_date=banned_by_date or {},
         ricebread_ban_day=ricebread_ban_day or {},
@@ -635,3 +639,76 @@ class TestNonvegBiryaniDiagnose:
         diags = rule.diagnose(ctx)
         # Constraint is a no-op (no biryani items) — INFO so users know.
         assert diags and diags[0].severity == DiagnosticSeverity.INFO
+
+
+class TestAPinCanContradictAFrequencyCap:
+    """A `constant_items` pin is the THIRD way a day can be forced, beside an
+    exhausted pool and a composition, and it was the one nothing read.
+
+    Plum is the case this came from: `constant_items: {"bread": "plain
+    chapati"}` puts `plain_chapati` on all five days while the library rule
+    `plain_chapati_twice_a_week` allows exactly two. /plan answered 500
+    INFEASIBLE on every start date while this very pass reported
+    `would_succeed: true` with no warnings at all.
+    """
+
+    DATES = [dt.date(2026, 8, 3) + dt.timedelta(days=i) for i in range(5)]
+    DF = pd.DataFrame([
+        {'item': 'plain_chapati', 'is_plain_phulka_chapathi': 1},
+        {'item': 'butter_naan', 'is_plain_phulka_chapathi': 0},
+    ])
+    POOLS = {'bread': DF}
+
+    def _rule(self, **extra):
+        cfg = {'name': 'chapati_twice', 'type': 'selector_frequency',
+               'base_slot': 'bread',
+               'selector': {'flag': 'is_plain_phulka_chapathi'},
+               'min': 2, 'max': 2}
+        cfg.update(extra)
+        r = SelectorFrequencyRule(cfg)
+        r._peer_rules = []
+        return r
+
+    def _pins(self, item='plain_chapati', days=5):
+        return {(d, 'bread'): item for d in self.DATES[:days]}
+
+    def test_a_daily_pin_past_the_cap_is_an_error(self):
+        ctx = _ctx(self.POOLS, dates=self.DATES, df=self.DF,
+                   active_base_slots=['bread'], forced_items=self._pins())
+        diags = self._rule().diagnose(ctx)
+        errs = [d for d in diags if d.severity is DiagnosticSeverity.ERROR]
+        assert errs, [d.message for d in diags]
+        assert '5' in errs[0].message and '2' in errs[0].message, errs[0].message
+        assert errs[0].suggestion, 'an error must say how to fix it'
+
+    def test_a_pin_within_the_cap_is_not(self):
+        """Two pinned days against `max: 2` is exactly what was asked for."""
+        ctx = _ctx(self.POOLS, dates=self.DATES, df=self.DF,
+                   active_base_slots=['bread'],
+                   forced_items=self._pins(days=2))
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity is DiagnosticSeverity.ERROR]
+
+    def test_a_pin_on_a_dish_the_rule_does_not_match_forces_nothing(self):
+        ctx = _ctx(self.POOLS, dates=self.DATES, df=self.DF,
+                   active_base_slots=['bread'],
+                   forced_items=self._pins(item='butter_naan'))
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity is DiagnosticSeverity.ERROR]
+
+    def test_an_off_ontology_pin_forces_nothing(self):
+        """A pin naming a dish the city does not carry is stamped AFTER the
+        solve and narrows no cell, so it cannot contradict a cap. Reporting one
+        would block /plan for a counter that generates perfectly well."""
+        ctx = _ctx(self.POOLS, dates=self.DATES, df=self.DF,
+                   active_base_slots=['bread'],
+                   forced_items=self._pins(item='some_bread_bangalore_lacks'))
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity is DiagnosticSeverity.ERROR]
+
+    def test_a_pin_in_another_slot_is_not_counted(self):
+        pins = {(d, 'rice'): 'plain_chapati' for d in self.DATES}
+        ctx = _ctx(self.POOLS, dates=self.DATES, df=self.DF,
+                   active_base_slots=['bread'], forced_items=pins)
+        assert not [d for d in self._rule().diagnose(ctx)
+                    if d.severity is DiagnosticSeverity.ERROR]
