@@ -13,10 +13,12 @@ import subprocess
 
 import pytest
 
-TEST_JS = pathlib.Path(__file__).parent / 'js' / 'pick_results.test.js'
+JS_DIR = pathlib.Path(__file__).parent / 'js'
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='no node on this box')
-def test_pick_search_matching_ranking_and_locks():
-    out = subprocess.run(['node', str(TEST_JS)], capture_output=True, text=True)
+@pytest.mark.parametrize('name', ['pick_results.test.js', 'pick_focus.test.js'])
+def test_pick_component_behaviour(name):
+    out = subprocess.run(['node', str(JS_DIR / name)],
+                         capture_output=True, text=True)
     assert out.returncode == 0, out.stdout + out.stderr

@@ -214,6 +214,7 @@
   var mode = "auto";          // "auto" | "pick"
   var pickCell = null;        // "<slot>|<iso>" being edited
   var query = "";
+  var caret = 0;              // where the cursor was, to put it back
   var highlight = 0;          // index into the SELECTABLE results
   var applying = false;       // an Apply is in flight; ignore a second one
   var status = "";
@@ -649,7 +650,27 @@
     h.push('</div>');
     document.getElementById("root").innerHTML = h.join("");
     wire();
+    restoreFocus();
     setHeight();
+  }
+
+  function restoreFocus() {
+    // A full render replaces every node, the search input included, so the
+    // caret lands nowhere and the planner has to click back into the box
+    // after EVERY keystroke. `renderResults` avoids the rebuild for typing,
+    // but it is not the only thing that rebuilds: each keystroke changes the
+    // number of results, which changes the height, which makes us post
+    // `setFrameHeight`, and Streamlit answers a resize with a fresh
+    // `streamlit:render` — straight back into `render()`.
+    //
+    // So rather than hunting every path that can rebuild the table, put the
+    // caret back after all of them. Cheap, and it cannot be defeated by a
+    // path nobody thought of.
+    if (!pickCell || applying) return;
+    var input = document.querySelector("[data-q]");
+    if (!input || document.activeElement === input) return;
+    input.focus();
+    try { input.setSelectionRange(caret, caret); } catch (e) { /* not a text input */ }
   }
 
   function renderResults() {
@@ -743,8 +764,12 @@
     if (input) {
       input.oninput = function () {
         query = input.value;
+        caret = input.selectionStart;
         highlight = 0;        // a new query invalidates the old highlight
         renderResults();
+      };
+      input.onclick = input.onkeyup = function () {
+        caret = input.selectionStart;
       };
       input.onkeydown = function (e) {
         var sel = selectable();

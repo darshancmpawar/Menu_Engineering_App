@@ -638,30 +638,53 @@ def _render_diagnostics_expander(diagnostics, summary):
                 )
 
 
+def _subtitle_html(busy: str = "") -> str:
+    """The page subtitle, describing the state the page is ACTUALLY in.
+
+    It used to read "Generated plan for X" from the moment a client was
+    picked. Streamlit renders top-down and the Generate handler runs far
+    below this line, so during a solve the header announced a generated plan
+    while the body under it still said "Ready to plan" and a spinner was
+    turning. The claim was wrong before the first solve, wrong during it, and
+    right only afterwards.
+
+    `busy` is set through the placeholder below once the work is under way —
+    the header has already been drawn by then, so a live status needs a slot
+    that can be rewritten rather than a value that can be recomputed.
+    """
+    name = st.session_state.get("client_name")
+    if not name:
+        return ('<p class="page-subtitle">Select a client and generate a plan '
+                'to get started</p>')
+    safe = html.escape(name)
+    if busy:
+        return (f'<p class="page-subtitle">{html.escape(busy)} for {safe}'
+                f'<span class="dots">\u2026</span></p>')
+    if not (st.session_state.get("plan_blocks") or []):
+        return f'<p class="page-subtitle">Ready to plan for {safe}</p>'
+    src = st.session_state.get("plan_source")
+    badge_html = ""
+    if src in _SOURCE_BADGES:
+        bg, fg, label, title_attr = _SOURCE_BADGES[src]
+        badge_html = (
+            f'<span class="plan-source-badge" '
+            f'title="{html.escape(title_attr)}" '
+            f'style="display:inline-block;margin-left:0.6rem;'
+            f'padding:2px 10px;border-radius:99px;font-size:0.7rem;'
+            f'font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
+            f'background:{bg};color:{fg};vertical-align:middle;">'
+            f'{html.escape(label)}</span>'
+        )
+    return (f'<p class="page-subtitle">Generated plan for {safe}'
+            f'{badge_html}</p>')
+
+
 with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
-    if st.session_state.client_name:
-        src = st.session_state.get("plan_source")
-        badge_html = ""
-        if src in _SOURCE_BADGES:
-            bg, fg, label, title_attr = _SOURCE_BADGES[src]
-            badge_html = (
-                f'<span class="plan-source-badge" '
-                f'title="{html.escape(title_attr)}" '
-                f'style="display:inline-block;margin-left:0.6rem;'
-                f'padding:2px 10px;border-radius:99px;font-size:0.7rem;'
-                f'font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
-                f'background:{bg};color:{fg};vertical-align:middle;">'
-                f'{html.escape(label)}</span>'
-            )
-        st.markdown(
-            f'<p class="page-subtitle">Generated plan for '
-            f'{html.escape(st.session_state.client_name)}{badge_html}</p>',
-            unsafe_allow_html=True)
-    else:
-        st.markdown(
-            '<p class="page-subtitle">Select a client and generate a plan to get started</p>',
-            unsafe_allow_html=True)
+    # A slot, not a line: the work that changes this state happens hundreds of
+    # lines below, after Streamlit has already painted here.
+    _subtitle_slot = st.empty()
+    _subtitle_slot.markdown(_subtitle_html(), unsafe_allow_html=True)
 with _hdr_col2:
     if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
         st.session_state.view = "editor"
@@ -1821,6 +1844,8 @@ if generate_clicked:
                 saved = {"exists": False}
 
             if saved.get("exists"):
+                _subtitle_slot.markdown(
+                    _subtitle_html("Loading saved plan"), unsafe_allow_html=True)
                 with st.spinner(f"Loading saved plan for {selected_client}..."):
                     blk = flatten_result(saved)
                     blk["name"] = counter_names[0]
@@ -1841,6 +1866,8 @@ if generate_clicked:
             # one, or dinner would happily reprint breakfast.
             served_so_far: dict = {}
             carried_over: dict = {}
+            _subtitle_slot.markdown(_subtitle_html(label),
+                                    unsafe_allow_html=True)
             with st.spinner(f"{label} for {selected_client}..."):
                 for _i, _meal in enumerate(plan_meals):
                     blocks, d, s = _solve_counters(
