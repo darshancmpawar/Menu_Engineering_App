@@ -34,7 +34,8 @@ class SolutionFormatter:
                  theme_map: Optional[Dict[str, str]] = None,
                  nonveg_items: Optional[Set[str]] = None,
                  served_dates: Optional[Set[dt.date]] = None,
-                 pinned_cells: Optional[Set[Any]] = None):
+                 pinned_cells: Optional[Set[Any]] = None,
+                 manual_cells: Optional[Set[Any]] = None):
         self.week_plan = week_plan
         self.dates = dates
         self._theme_map = theme_map
@@ -59,6 +60,14 @@ class SolutionFormatter:
         # told it to". Empty means "not reported" (no markers), never
         # "nothing is pinned".
         self._pinned_cells = pinned_cells or set()
+        # ``{(date, slot_id)}`` a PLANNER chose by name rather than the solver
+        # (`/pick`). The opposite marker to the one above: pinned means the
+        # client's configuration fixed the cell, manual means a person
+        # overrode it, possibly against the rules. The table shows them
+        # differently because the planner can undo one and not the other.
+        # Empty means "not reported", never "nothing was picked" — the server
+        # is stateless and only ever reports the picks of the request in hand.
+        self._manual_cells = manual_cells or set()
 
     def _is_nonveg(self, item_base: str, slot_id: str = '') -> bool:
         """Is this dish non-vegetarian?
@@ -105,5 +114,6 @@ class SolutionFormatter:
                     'item_base': item_base,
                     'is_nonveg': self._is_nonveg(item_base, slot_id),
                     'is_pinned': (d, slot_id) in self._pinned_cells,
+                    'is_manual': (d, slot_id) in self._manual_cells,
                 }
         return result

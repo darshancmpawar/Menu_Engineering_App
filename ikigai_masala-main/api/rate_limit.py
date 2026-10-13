@@ -126,6 +126,13 @@ _LIMITS: Dict[str, _TokenBucketLimiter] = {
     "diagnose": _TokenBucketLimiter(
         name="diagnose", capacity=20, refill_per_second=20 / 60.0,
     ),  # 20 per minute, burst 20
+    # /pick runs no solver at all — it stamps a dish and audits one cell — so
+    # it is the cheap class. Its own bucket rather than a share of
+    # /diagnose's: a planner correcting half a dozen cells should not spend
+    # the pre-flight budget they will want on the next Generate.
+    "pick": _TokenBucketLimiter(
+        name="pick", capacity=20, refill_per_second=20 / 60.0,
+    ),  # 20 per minute, burst 20
 }
 
 

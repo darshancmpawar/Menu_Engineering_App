@@ -91,13 +91,14 @@ from api.explain_llm import (
     explain_plan, explain_chef_read, chef_attrs_from_dataframe,
     city_dish_names_from_dataframe,
 )
-from src.solver.menu_solver import MenuSolver
+from src.solver.menu_solver import MenuSolver, pinned_cells_for_config
 from src.solver._helpers import (
     strip_color_suffix,
     items_from_day as _items_from_day,
 )
 from src.solver.solution_formatter import SolutionFormatter
 from src.solver.regenerator import MenuRegenerator
+from src.solver.picker import CHECKED, NOT_CHECKED, PickError, apply_picks
 
 logger = logging.getLogger(__name__)
 
@@ -779,6 +780,28 @@ def regenerate_cells():
             dt.date.fromisoformat(d_str): set(slot_list)
             for d_str, slot_list in replace_slots_raw.items()
         }
+        # D3, server side. A pinned cell is one the solver did not choose —
+        # a global staple, a `forced_items` pin, a client constant — and
+        # neither Regenerate nor Pick may replace it. Until now only the
+        # table markup enforced that (a pinned cell carries no `data-cell`,
+        # so it cannot be ticked), which left a stale tab, a replayed request
+        # or any other client free to ask for one and be served. Rejected
+        # before the solve, so nothing is spent on a request that should not
+        # have been made.
+        pinned = pinned_cells_for_config(inputs.cfg, inputs.skip_cells)
+        blocked = [{'date': d.isoformat(), 'slot_id': slot_id}
+                   for d in sorted(replace_mask)
+                   for slot_id in sorted(replace_mask[d])
+                   if (d, slot_id) in pinned]
+        if blocked:
+            metrics.incr('regenerate_requests_total', outcome='pinned_cell')
+            return jsonify({
+                'success': False, 'code': 'pinned_cell',
+                'error': ("That cell is pinned by a client rule. Search and "
+                          "Regenerate can't change it."),
+                'details': {'cells': blocked},
+            }), 400
+
         # Optional: items already suggested for a cell this session, so repeated
         # regenerations keep giving something new instead of cycling A->B->A.
         # Shape: {iso_date: {slot_id: [item, …]}}.
@@ -848,6 +871,114 @@ def regenerate_cells():
     except Exception as e:
         logger.error("Unexpected error in regenerate: %s", e, exc_info=True)
         return _internal_error_response(500)
+
+
+@app.route('/api/v1/pick', methods=['POST'])
+@rate_limit("pick")
+def pick_dish():
+    """Put a named dish in a cell. No CP-SAT, so no `solver_gate`.
+
+    The planner has already decided; this records the decision and reports
+    what it costs (decision D2). Deliberately NOT a solve — see
+    `src/solver/picker.py` for why pinning the dish and regenerating is the
+    wrong shape, and for the two things a pick may not do.
+
+    Everything the request does not name comes back byte-identical, because
+    nothing else was recomputed: `base_plan` is copied, the picked cells are
+    stamped, and the result is formatted.
+    """
+    try:
+        data = request.get_json() or {}
+        base_plan_raw = data.get('base_plan') or {}
+        picks_raw = data.get('picks') or {}
+        if not base_plan_raw:
+            return _pick_error('bad_request', 'base_plan is required',
+                               {'field': 'base_plan'})
+        if not picks_raw:
+            return _pick_error('bad_request', 'Pick at least one dish.',
+                               {'field': 'picks'})
+
+        _require_known_client(data.get('client_name'))
+        _idx, _cname, _ccount, client_cfg = _resolve_counter(
+            data.get('client_name'), data)
+        inputs = _prepare_solver_inputs(data, client_cfg=client_cfg)
+
+        try:
+            base_plan = {
+                dt.date.fromisoformat(d_str): _items_from_day(slots)
+                for d_str, slots in base_plan_raw.items()
+            }
+            picks = {
+                dt.date.fromisoformat(d_str): {str(k): v for k, v in (slots or {}).items()}
+                for d_str, slots in picks_raw.items()
+            }
+        except (TypeError, ValueError) as exc:
+            return _pick_error('bad_date', f'Unreadable date in the request: {exc}')
+
+        # The CITY list, not the client's narrowed pools (decision D4).
+        # Verified: `repository.menu_data` builds pools from the whole
+        # workbook, while `filtered_menu_data` — which is what `inputs.pools`
+        # holds — narrows to the client's `source_pools` (F5). Searching the
+        # narrowed one would make "not in this client's pool" unreachable
+        # instead of a warning the planner may overrule.
+        _city_df, city_pools = ontology_repository.menu_data(inputs.city)
+
+        try:
+            applied = apply_picks(inputs, base_plan, picks, city_pools=city_pools)
+        except PickError as exc:
+            metrics.incr('pick_requests_total', outcome=exc.code)
+            return _pick_error(exc.code, exc.message, exc.details)
+
+        manual_pairs = {(dt.date.fromisoformat(d), s)
+                        for d, slots in applied['manual_cells'].items()
+                        for s in slots}
+        formatter = SolutionFormatter(
+            applied['week_plan'], span_dates(inputs.weekday_dates, inputs),
+            theme_map=inputs.client_cfg.theme_map or None,
+            nonveg_items=_get_nonveg_items(inputs.city),
+            served_dates=set(inputs.weekday_dates),
+            pinned_cells=pinned_cells_for_config(inputs.cfg, inputs.skip_cells),
+            manual_cells=manual_pairs,
+        )
+        metrics.incr('pick_requests_total', outcome='success')
+        return jsonify({
+            'success': True,
+            'changed': applied['changed'],
+            'solution': formatter.to_dict(),
+            'manual_cells': applied['manual_cells'],
+            # Phase 3 fills this. Present and empty from the start so a client
+            # written against the contract never has to special-case its
+            # absence.
+            'exceptions': [],
+            # Always both, always in full. An Exceptions panel that looks
+            # complete and is not is the failure this feature is most exposed
+            # to: the rules missing here exist only inside the CP-SAT model,
+            # and no reading of a finished plan reveals them.
+            'checked': list(CHECKED),
+            'not_checked': list(NOT_CHECKED),
+        })
+
+    except ValueError as e:
+        return _pick_error('unknown_client', str(e))
+    except KeyError as e:
+        return _pick_error('bad_request', str(e))
+    except (FileNotFoundError, OSError) as e:
+        logger.error("Data loading error in pick: %s", e, exc_info=True)
+        return _internal_error_response(500)
+    except Exception as e:
+        logger.error("Unexpected error in pick: %s", e, exc_info=True)
+        return _internal_error_response(500)
+
+
+def _pick_error(code: str, message: str, details=None):
+    """One shape for every `/pick` refusal (contract §2.4).
+
+    `code` is from a closed set so a client can branch on it; `error` is a
+    sentence a planner can read. Nothing is ever applied on a 400 — the plan
+    the client holds is still correct.
+    """
+    return jsonify({'success': False, 'code': code, 'error': message,
+                    'details': details or {}}), 400
 
 
 #: Counter label used when reporting an unknown dish on the single-counter save
