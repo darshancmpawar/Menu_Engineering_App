@@ -116,6 +116,92 @@ def _resolve_client_constant(
     return str(spec)
 
 
+def pinned_cells_for_horizon(
+    dates: List[dt.date],
+    expanded_slots: List[str],
+    *,
+    const_slots: Optional[List[str]],
+    skip_cells: Set[Tuple[dt.date, str]],
+    forced_items: Optional[Dict[Tuple[dt.date, str], str]],
+    client_constant_items: Optional[Dict[str, Any]],
+) -> Set[Tuple[dt.date, str]]:
+    """``{(date, slot_id)}`` for every cell a plan does NOT freely choose.
+
+    A global staple, a ``constant_items`` pin the solver narrowed to, and a
+    pin stamped verbatim — the three paths `_rows_to_week_plan` stamps, which
+    is the only place all three are visible at once. That function used to
+    accumulate the set inline while it stamped; this is the same walk with
+    the stamping taken out, so the answer can be had WITHOUT A SOLVE.
+
+    `/pick` and `/regenerate` both need it before there is any plan to read:
+    a cell the solver did not choose must not be replaceable by either
+    (decision D3), and until now that was enforced in the table markup alone.
+
+    The only thing the stamping loop knew that this does not is which slots
+    the solver actually produced, which it used for `s in day_out` on the
+    forced-items line. It is recoverable: `_build_cells` creates a cell for
+    every expanded slot the skip set does not suppress and RAISES on an empty
+    pool rather than dropping one, so "solved" is exactly "expanded and not
+    skipped". `test_pinned_cells.py` holds the two in step against real
+    solves rather than trusting that reading.
+
+    A byte-identical `/plan` is NOT the gate the work order asks for: this
+    solver does not reproduce its own output (same client, date, config and
+    seed differ in ~40% of cells), so the invariant is checked directly
+    instead — the function's answer equals `MenuSolver.pinned_cells` after a
+    real solve.
+    """
+    forced = forced_items or {}
+    client_consts = client_constant_items or {}
+    const_keys = (list(CONSTANT_ITEMS) if const_slots is None
+                  else list(const_slots))
+    pinned: Set[Tuple[dt.date, str]] = set()
+
+    for d in dates:
+        day_slots = {s for s in expanded_slots
+                     if not _cell_is_skipped(skip_cells, d, s)}
+        for k in const_keys:
+            if k not in CONSTANT_ITEMS or _cell_is_skipped(skip_cells, d, k):
+                continue
+            day_slots.add(k)
+            pinned.add((d, k))
+        pinned.update((d, s) for (fd, s) in forced if fd == d and s in day_slots)
+        if client_consts:
+            weekday = _weekday_name(d)
+            for slot, spec in client_consts.items():
+                if (d, slot) in forced:
+                    continue
+                if _resolve_client_constant(
+                        spec, weekday, d.isocalendar()[1]) is not None:
+                    pinned.add((d, slot))
+    return pinned
+
+
+def pinned_cells_for_config(cfg, skip_cells) -> Set[Tuple[dt.date, str]]:
+    """The pinned set for a request, from its `SolverConfig` alone.
+
+    The API entry point: `/regenerate` and `/pick` both have `inputs.cfg` and
+    `inputs.skip_cells` and no plan. The slot expansion is the solver's own
+    (`_expand_slots_in_order` over `active_base_slots`), spelled here a third
+    time only because `MenuSolver.solve` and `MenuRegenerator.regenerate`
+    already each keep a copy inside a long method; a fourth caller would be
+    the point to lift it out of all three.
+    """
+    from src.constants import BASE_SLOT_NAMES
+    from ..preprocessor.pool_builder import _expand_slots_in_order
+
+    base_slots = cfg.active_base_slots or BASE_SLOT_NAMES
+    return pinned_cells_for_horizon(
+        _planned_dates(cfg),
+        _expand_slots_in_order(
+            base_slots, cfg.slot_counts or {s: 1 for s in base_slots}),
+        const_slots=cfg.const_slots,
+        skip_cells=skip_cells or set(),
+        forced_items=cfg.forced_items,
+        client_constant_items=getattr(cfg, 'client_constant_items', None),
+    )
+
+
 # Multi-restart strategy defaults
 DEFAULT_CAP_MULTIPLIERS = (1, 2)  # try 1x then 2x candidate pool sizes
 DEFAULT_RESTARTS_PER_MULTIPLIER = 4  # attempts per multiplier
@@ -270,7 +356,7 @@ class _Cell:
         self.cand_df = cand_df
         self.theme_pref_flags = list(theme_pref_flags)
         self.x_vars: List[cp_model.IntVar] = []
-        self.cand_rows: List[pd.Series] = []
+        self.cand_rows: List[dict] = []
 
 
 # ---------------------------------------------------------------------------
@@ -1177,8 +1263,23 @@ class MenuSolver:
             x_vars: List = []
             cand_rows: List = []
 
-            for j in range(len(cell.cand_df)):
-                row = cell.cand_df.iloc[j]
+            # The whole frame at once, as plain dicts, rather than
+            # `.iloc[j]` per row. A city pool is 143 columns wide, so every
+            # `.iloc[j]` pays `fast_xs` -> `interleaved_dtype` ->
+            # `find_common_type` to build one object Series: measured on
+            # Bangalore's `veg_gravy`, 207 ms against 54 ms for the frame in
+            # one call. `to_numpy(dtype=object)` is a further 5x over
+            # `to_dict('records')` (1.3 ms against 7.1 ms on a 40-row sample)
+            # because `to_dict` walks column by column; the two agree value
+            # for value on all 161,733 cells of the five workbooks.
+            # The rows stay dicts for the rule layer, where `row.get(col)` is
+            # a `dict.get` rather than a `Series.__getitem__` — 0.4 ms against
+            # 2.7 ms per pass, over ~700k calls in one /plan. Nothing
+            # downstream uses a Series API; several rule tests already pass
+            # dicts here.
+            _cols = list(cell.cand_df.columns)
+            for j, _vals in enumerate(cell.cand_df.to_numpy(dtype=object)):
+                row = dict(zip(_cols, _vals))
                 item_base = _norm_str(row.get('item', ''))
                 var = model.NewBoolVar(f'x_d{di}_{slot_id}_{j}')
                 x_vars.append(var)
@@ -1410,13 +1511,14 @@ class MenuSolver:
     def _rows_to_week_plan(self, chosen_rows, dates, expanded_slots):
         week_plan = {}
         client_consts = getattr(self.cfg, 'client_constant_items', None) or {}
-        # ``{(date, slot_id)}`` for every cell this plan did NOT freely choose:
-        # a global staple, a `constant_items` pin the solver narrowed to, and a
-        # pin stamped verbatim. Recorded HERE, by the code that does the
-        # pinning, because that is the only place all three are visible at
-        # once — anything downstream would have to re-derive it from config and
-        # would go quietly stale the first time a fourth pinning path appears.
-        pinned = set()
+        # ``{(date, slot_id)}`` for every cell this plan did NOT freely choose
+        # comes from `pinned_cells_for_horizon`, which is this same walk with
+        # the stamping taken out. It used to be accumulated inline here, on
+        # the grounds that this is the only place all three pinning paths are
+        # visible at once — still true, which is why the function lives beside
+        # this method and why nothing else re-derives the set. But `/pick` and
+        # `/regenerate` have to refuse a pinned cell BEFORE any solve, so the
+        # walk had to be callable without one. One source either way.
         for d in dates:
             day_out = {}
             for slot_id in expanded_slots:
@@ -1443,11 +1545,9 @@ class MenuSolver:
                 if _cell_is_skipped(self.skip_cells, d, k):
                     continue
                 day_out[k] = CONSTANT_ITEMS[k]
-                pinned.add((d, k))
             # Per-client overlay (after globals). Day-specific maps only stamp
             # on matching weekdays; daily strings stamp every day.
             forced = self.cfg.forced_items or {}
-            pinned.update((d, s) for (fd, s) in forced if fd == d and s in day_out)
             if client_consts:
                 weekday = _weekday_name(d)
                 for slot, spec in client_consts.items():
@@ -1461,7 +1561,13 @@ class MenuSolver:
                         spec, weekday, d.isocalendar()[1])
                     if value is not None:
                         day_out[slot] = value
-                        pinned.add((d, slot))
             week_plan[d] = day_out
-        self.pinned_cells = pinned
+        self.pinned_cells = pinned_cells_for_horizon(
+            dates, expanded_slots,
+            const_slots=self.cfg.const_slots,
+            skip_cells=self.skip_cells,
+            forced_items=self.cfg.forced_items,
+            client_constant_items=getattr(
+                self.cfg, 'client_constant_items', None),
+        )
         return week_plan

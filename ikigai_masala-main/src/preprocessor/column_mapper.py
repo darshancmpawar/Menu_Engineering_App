@@ -12,6 +12,12 @@ from typing import Dict, List, Optional
 # --- Normalization helpers (match old menu_eng_latest_v27.py) ---
 
 def _norm_str(x) -> str:
+    # A str can never be NaN, and `pd.isna` costs more than the rest of this
+    # function put together. The rule layer calls this ~360k times on one
+    # five-day /plan and most of those are already strings, so the type check
+    # pays for itself many times over. Same answer either way.
+    if isinstance(x, str):
+        return x.strip().lower()
     if pd.isna(x):
         return ''
     return str(x).strip().lower()
