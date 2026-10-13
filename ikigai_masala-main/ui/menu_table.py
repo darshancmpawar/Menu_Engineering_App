@@ -124,6 +124,51 @@ def regen_request(picked: Optional[dict], last_nonce=None) -> Optional[dict]:
     return {"nonce": nonce, "cells": by_day} if by_day else None
 
 
+def pick_request(picked: Optional[dict], last_nonce=None) -> Optional[dict]:
+    """A component return → ``{"nonce", "cell": (slot_id, iso), "item"}``.
+
+    `regen_request`'s twin, and for the same two reasons: a component's return
+    value is REPLAYED on every rerun and applying a pick ends in `st.rerun()`,
+    so without the nonce the same dish is re-picked forever; and the cell key
+    is split on the SAME `|` the table joined it with, because splitting it
+    the other way round produces a valid-looking cell that names nothing.
+
+    Returns the cell as a pair rather than the `{iso: [slot]}` map
+    `regen_request` builds: `/pick` takes one dish per cell, so a map of
+    slot LISTS could not say which dish went where.
+    """
+    if not isinstance(picked, dict) or picked.get("action") != "pick":
+        return None
+    nonce = picked.get("nonce")
+    if nonce is not None and nonce == last_nonce:
+        return None
+    slot_id, sep, iso = str(picked.get("cell") or "").partition("|")
+    item = str(picked.get("item") or "").strip()
+    if not (sep and slot_id and iso and item):
+        return None
+    return {"nonce": nonce, "cell": (slot_id, iso), "item": item}
+
+
+def manual_cells_from(exceptions: Optional[list], manual: Optional[dict]) -> set:
+    """``{"<slot>|<iso>"}`` for every cell a planner picked.
+
+    Takes BOTH shapes the server returns because they answer different
+    questions and the table needs the union: `manual_cells` is what the last
+    request picked, `exceptions` is the subset that broke something. A session
+    accumulates picks across several calls, so the caller unions this into
+    what it already holds rather than replacing it.
+    """
+    out = set()
+    for iso, slots in (manual or {}).items():
+        for slot_id in (slots or ()):
+            out.add(f"{slot_id}|{iso}")
+    for entry in (exceptions or ()):
+        iso, slot_id = entry.get("date"), entry.get("slot_id")
+        if iso and slot_id:
+            out.add(f"{slot_id}|{iso}")
+    return out
+
+
 def explain_days(payload: Optional[dict]) -> dict:
     """An `/explain` response → `{iso: {"overview", "checks"}}` for the table.
 
@@ -161,6 +206,7 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
               pinned: Optional[set] = None,
               warned: Optional[set] = None,
               modified: Optional[set] = None,
+              manual: Optional[set] = None,
               regions: Optional[dict] = None,
               regional_dishes: Optional[dict] = None,
               issues: Optional[set] = None,
@@ -175,6 +221,7 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
     nonveg, off_days = nonveg or {}, off_days or set()
     pinned, warned = pinned or set(), warned or set()
     modified, issues = modified or set(), issues or set()
+    manual = manual or set()
     regions = regions or {}
     # {iso: {normalised dish name}} — which dishes on a regional day are FROM
     # that region. A regional day is a floor, not a filter, so the day holds
@@ -235,6 +282,12 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
                 "pinned": k in pinned,
                 "warn": k in warned,
                 "modified": k in modified,
+                # A planner chose this dish by name. The opposite marker to
+                # `pinned`: pinned means the client's config fixed the cell,
+                # manual means a person overrode it, possibly against the
+                # rules. Both are "not the solver's free choice", and showing
+                # one marker for both would hide which of them can be undone.
+                "manual": k in manual,
                 # Marked in the cell with an R, because the regional day is
                 # the one thing on this table a reader cannot work out by
                 # looking at the dishes.
@@ -254,15 +307,76 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
     return {"days": days, "rows": rows}
 
 
+def dish_payload(city_pools, client_pools=None, recency=None,
+                 base_slots=None) -> dict:
+    """The searchable city list, per base slot, in the shape the table sends.
+
+    Columnar, and deliberately so. The obvious row shape
+    (``[{n, d, p, a}, …]``) measures **342 KiB** for the fleet's widest
+    counter, and Streamlit resends every component argument on EVERY rerun.
+    Three changes bring the same information to **106 KiB**:
+
+    * the display name is dropped — it is `name.replace('_',' ').title()`,
+      which the component can do itself;
+    * `p` becomes `out`, the indices NOT in the client's pool, because for
+      most slots that list is empty (a city whose client plans from the whole
+      list, note 15);
+    * `a` becomes `ago`, keyed only for the dishes the recency window
+      actually covers.
+
+    That is why there is no `GET /api/v1/pick-candidates`: the contract makes
+    it conditional on this measurement, and the measurement says embedding is
+    fine. Build it when something measures otherwise.
+
+    `city_pools` is the CITY list (decision D4) — `repository.menu_data`, not
+    `filtered_menu_data`. `client_pools` is the narrowed one, used only to
+    mark `out`.
+    """
+    client_pools, recency = client_pools or {}, recency or {}
+    out = {}
+    for base in sorted(base_slots or city_pools or ()):
+        pool = (city_pools or {}).get(base)
+        if pool is None or not len(pool):
+            continue
+        names = [str(v) for v in pool["item"].tolist()]
+        mine = client_pools.get(base)
+        in_pool = ({str(v).strip().lower() for v in mine["item"].tolist()}
+                   if mine is not None and len(mine) else None)
+        entry = {"n": names}
+        if in_pool is not None:
+            missing = [i for i, n in enumerate(names)
+                       if n.strip().lower() not in in_pool]
+            if missing:
+                entry["out"] = missing
+        ago = {str(i): int(recency[n.strip().lower()])
+               for i, n in enumerate(names) if n.strip().lower() in recency}
+        if ago:
+            entry["ago"] = ago
+        out[base] = entry
+    return out
+
+
 def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
                explain: Optional[dict] = None, meal: str = "",
                reset_token: str = "",
+               dishes: Optional[dict] = None, exceptions: Optional[list] = None,
+               city: str = "", cooldown_days: int = 0,
+               checked: Optional[list] = None, not_checked: Optional[list] = None,
+               status: str = "", status_error: bool = False,
+               locked_item: str = "", locked_on: str = "",
                key: Optional[str] = None) -> Optional[dict]:
-    """Render one service's table. Returns the regenerate request, or None.
+    """Render one service's table. Returns a regenerate OR a pick request.
 
-    The return is `{"action": "regenerate", "cells": ["<slot>|<iso>", …]}` —
-    exactly the cells the planner ticked, which is the shape `/regenerate`
-    already takes as its replace mask.
+    Two return shapes, told apart by `action`:
+
+    * `{"action": "regenerate", "cells": ["<slot>|<iso>", …]}` — the cells the
+      planner ticked, which is the shape `/regenerate` takes as its replace
+      mask.
+    * `{"action": "pick", "cell": "<slot>|<iso>", "item": …}` — one dish the
+      planner chose by name, for `/pick`.
+
+    `dishes` is `dish_payload`'s output: the city list the in-cell search
+    matches against, entirely client-side so typing costs no rerun.
     """
     plan = block.get("plan", {})
     args = day_cells(
@@ -274,6 +388,7 @@ def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
         pinned=cell_keys(block.get("pinned")),
         warned=warned_cells(block.get("rule_diagnostics"), plan),
         modified=cell_keys(block.get("modified")),
+        manual=set(block.get("manual_cells") or ()),
         regions=block.get("regions"),
         regional_dishes=block.get("regional_dishes"),
         issues=block.get("issues"),
@@ -284,5 +399,12 @@ def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
         title=title, meta=meta, hint=hint, meal=meal,
         days=args["days"], rows=args["rows"],
         explain=explain or {}, reset_token=reset_token,
+        dishes=dishes or {}, exceptions=exceptions or [],
+        city=city, cooldown_days=int(cooldown_days or 0),
+        checked=checked or [], not_checked=not_checked or [],
+        # One-shot: the caller pops these off the block, so a status line is
+        # shown once rather than on every rerun until the next pick.
+        status=status, status_error=bool(status_error),
+        locked_item=locked_item, locked_on=locked_on,
         default=None, key=key, height=height,
     )

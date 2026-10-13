@@ -59,6 +59,21 @@ class SolverFailedError(RuntimeError):
         self.summary = summary
 
 
+class PickRejectedError(RuntimeError):
+    """A `/pick` the server refused, with the reason machine-readable.
+
+    `code` is from the contract's closed set (`week_repeat`, `pinned_cell`,
+    `not_a_slot_dish`, `unknown_cell`, `bad_date`, `bad_request`). Subclasses
+    RuntimeError so existing handlers keep catching it.
+    """
+
+    def __init__(self, message: str, code: str = "", details=None):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.details = details or {}
+
+
 def _parse_response(resp: requests.Response, default_error: str) -> Dict[str, Any]:
     """Decode a JSON API response and raise on any non-success.
 
@@ -285,6 +300,58 @@ class MenuApiClient:
             )
         resp = _with_one_retry(_do, retryable=True)
         return _parse_response(resp, "Regenerate failed")
+
+    def pick(
+        self,
+        client_name: str,
+        base_plan: Dict[str, Dict[str, str]],
+        picks: Dict[str, Dict[str, str]],
+        start_date: Optional[str] = None,
+        num_days: int = 5,
+        counter_index: int = 0,
+        meal: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Put named dishes in cells. No solve, so no long timeout.
+
+        Refusals raise :class:`PickRejectedError` rather than a plain
+        RuntimeError, because the planner's next move depends on WHICH
+        refusal it was: a `week_repeat` means the table should lock that dish
+        for the rest of the edit, while a `pinned_cell` means the cell was
+        never editable. A bare message cannot be branched on without matching
+        English text, which breaks the first time the wording is improved.
+        """
+        payload: Dict[str, Any] = {
+            "client_name": client_name,
+            "base_plan": base_plan,
+            "picks": picks,
+            "num_days": num_days,
+            "counter_index": counter_index,
+        }
+        if start_date:
+            payload["start_date"] = start_date
+        if meal:
+            payload["meal"] = meal
+
+        def _do():
+            # 30s, not the solver's budget: `/pick` runs no CP-SAT. A timeout
+            # here means the server is unwell, not that a plan is hard.
+            return self.session.post(
+                f"{self.base_url}/api/v1/pick", json=payload, timeout=30,
+            )
+
+        # Not retryable. A pick is not idempotent in the way a regenerate is:
+        # the first attempt may have applied, and a blind retry would then be
+        # refused as a `week_repeat` against the dish it just placed.
+        resp = _do()
+        ct = resp.headers.get("content-type", "")
+        data = resp.json() if ct.startswith("application/json") else {}
+        if not resp.ok or not data.get("success"):
+            raise PickRejectedError(
+                data.get("error") or f"Pick failed ({resp.status_code})",
+                code=str(data.get("code") or ""),
+                details=data.get("details") or {},
+            )
+        return data
 
     def save(
         self,

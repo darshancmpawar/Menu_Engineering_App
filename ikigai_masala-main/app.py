@@ -52,7 +52,9 @@ def _bridge_streamlit_secrets() -> None:
 
 _bridge_streamlit_secrets()
 
-from ui.api_client import MenuApiClient, RuleDiagnosticsBlockedError
+from ui.api_client import (
+    MenuApiClient, PickRejectedError, RuleDiagnosticsBlockedError,
+)
 from ui.formatters import (
     seasonal_dishes_by_date,
     seasonal_label,
@@ -80,7 +82,10 @@ from ui.planner_view import (
     plan_xlsx,
     XLSX_MIME,
 )
-from ui.menu_table import explain_days, menu_table, regen_request
+from ui.menu_table import (
+    dish_payload, explain_days, manual_cells_from, menu_table,
+    pick_request, regen_request,
+)
 from ui.region_strip import region_day_args, region_strip
 from src.explain.checks import MAIN_COURSES, base_slot
 from src.application.horizon import _weekdays_from
@@ -1030,6 +1035,190 @@ def _apply_regenerate(api, block_index: int, counter_index: int,
             st.error(f"Regeneration failed: {e}")
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def _city_dish_payload(city: str, source_pools_key: str, base_slots: tuple,
+                       recency_key: tuple) -> dict:
+    """The searchable city list, cached across reruns.
+
+    Cached because Streamlit resends every component argument on EVERY rerun
+    and this one is 106 KiB for the fleet's widest counter (measured; the
+    obvious row-shaped payload was 342 KiB, which is why `dish_payload` is
+    columnar). Rebuilding it per rerun would also re-read two pool sets.
+
+    The cache key carries `source_pools` and the recency map rather than the
+    client's name: two counters of one client can narrow to different pools,
+    and the "served N days ago" chip is only right for the recency window the
+    plan was solved against.
+    """
+    from src.ontology import repository
+    from src.preprocessor.pool_builder import _base_slot
+
+    _df, city_pools = repository.menu_data(city or None)
+    client_pools = city_pools
+    if source_pools_key:
+        try:
+            _cdf, client_pools = repository.filtered_menu_data(
+                city or None, list(json.loads(source_pools_key)))
+        except Exception:                                   # noqa: BLE001
+            client_pools = city_pools
+    return dish_payload(
+        city_pools, client_pools=client_pools,
+        recency=dict(recency_key),
+        base_slots=sorted({_base_slot(s) for s in base_slots}))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_pick_config(_api: MenuApiClient, client_name: str) -> dict:
+    """`{city, source_pools, cooldown_days}` for Pick mode.
+
+    From the client config rather than threaded through `_solve_counters`:
+    that function takes nine arguments already and none of this is a solve
+    input. The same 60s TTL as its siblings, so an edit in the admin editor
+    reaches Pick as quickly as it reaches the region picker.
+    """
+    try:
+        cfg = _api.get_client_config(client_name) or {}
+    except Exception:                                       # noqa: BLE001
+        return {}
+    return {
+        "city": cfg.get("city") or "",
+        "source_pools": cfg.get("source_pools") or [],
+        "cooldown_days": int(cfg.get("item_cooldown_days") or 0),
+    }
+
+
+def _pick_dishes(b: dict, counter_index: int) -> dict:
+    """`dish_payload` for one block, or `{}` when the plan is empty.
+
+    Returns nothing for an empty plan so the component hides the Pick toggle
+    entirely: a mode whose only action is impossible is worse than no mode.
+    """
+    plan = b.get("plan") or {}
+    if not plan:
+        return {}
+    cfg = b.get("pick_config") or {}
+    slots = tuple(sorted({s for day in plan.values() for s in day}))
+    try:
+        return _city_dish_payload(
+            cfg.get("city") or "",
+            json.dumps(cfg.get("source_pools") or [], sort_keys=True),
+            slots, ())
+    except Exception as exc:                                # noqa: BLE001
+        # A list that cannot be built costs the planner Pick mode, never the
+        # table. Reported, because a toggle that silently stops appearing is
+        # indistinguishable from one that was never configured.
+        logger.warning("pick dish list unavailable: %s", exc)
+        return {}
+
+
+def _apply_pick(api, block_index: int, counter_index: int,
+                slot_id: str, iso: str, item: str) -> None:
+    """Put a named dish in one cell. Mutates the block and reruns.
+
+    `/pick` runs no solver, so this is the cheap sibling of
+    `_apply_regenerate`: no spinner budget, no exclusion bookkeeping, and on
+    a refusal the plan is left exactly as it was — the server applies nothing
+    on a 400 (contract §2.4), so there is nothing here to roll back.
+
+    A refusal is shown in the TABLE's own status line rather than as an
+    `st.error` above it, because the planner is looking at the cell they just
+    tried to change. A `week_repeat` additionally hands the dish back to the
+    component, which locks it for the rest of the edit: the embedded list can
+    only see the plan on screen, so a dish blocked by saved history is a fact
+    only the server has.
+    """
+    b = st.session_state.plan_blocks[block_index]
+    plan, plan_dates = b["plan"], b["plan_dates"]
+    old_raw = plan.get(iso, {}).get(slot_id, "")
+    try:
+        result = api.pick(
+            client_name=st.session_state.client_name,
+            base_plan=plan, picks={iso: {slot_id: item}},
+            start_date=plan_dates[0], num_days=len(plan_dates),
+            counter_index=counter_index, meal=b.get("meal"))
+    except PickRejectedError as exc:
+        b["pick_status"] = exc.message
+        b["pick_status_error"] = True
+        if exc.code == "week_repeat":
+            b["pick_locked_item"] = exc.details.get("item") or item
+            b["pick_locked_on"] = exc.details.get("on") or ""
+        st.rerun()
+        return
+    except (ConnectionError, OSError, ValueError, RuntimeError) as exc:
+        b["pick_status"] = f"Pick failed: {exc}"
+        b["pick_status_error"] = True
+        st.rerun()
+        return
+
+    solution = result.get("solution", {})
+    flat, day_types = flatten_api_solution(solution)
+    if flat:
+        b["plan"] = flat
+        b["plan_dates"] = sorted(flat.keys())
+        if day_types:
+            b["day_types"] = day_types
+        b["nonveg"] = nonveg_slots_from_solution(solution)
+        b["pinned"] = pinned_slots_from_solution(solution)
+        b["solution"] = solution
+    # Accumulated across calls: the server is stateless and reports only the
+    # picks of the request in hand, while the table has to show every cell
+    # this planner has chosen.
+    b["manual_cells"] = sorted(
+        set(b.get("manual_cells") or ())
+        | manual_cells_from(result.get("exceptions"), result.get("manual_cells")))
+    b["exceptions"] = _merged_exceptions(b.get("exceptions"), result)
+    b["checked"] = result.get("checked") or []
+    b["not_checked"] = result.get("not_checked") or []
+    b["pick_locked_item"] = ""
+
+    new_raw = (b["plan"].get(iso, {}) or {}).get(slot_id, "")
+    broke = sum(len(e.get("violations") or []) for e in (result.get("exceptions") or [])
+                if e.get("date") == iso and e.get("slot_id") == slot_id)
+    try:
+        day_label = dt.date.fromisoformat(iso).strftime("%a %d %b")
+    except ValueError:
+        day_label = iso
+    b["pick_status"] = (
+        f"{format_item_for_ui(new_raw)} applied to {day_label} "
+        f"{display_label_for_slot_id(slot_id)}. "
+        + (f"It breaks {broke} rule(s) and is listed under Exceptions."
+           if broke else "It fits every check."))
+    b["pick_status_error"] = False
+
+    # So a later Auto regenerate of this cell does not flip back to the dish
+    # the planner has just overruled.
+    seen = st.session_state.setdefault("regen_seen", {})
+    k = f"{counter_index}|{iso}|{slot_id}"
+    seen[k] = set(seen.get(k, set())) | {x for x in (old_raw, new_raw) if x}
+
+    if format_item_for_ui(old_raw) != format_item_for_ui(new_raw):
+        st.session_state.changes_log.append({
+            "kind": "pick", "counter": b["name"], "day": day_label,
+            "slot": display_label_for_slot_id(slot_id),
+            "old": format_item_for_ui(old_raw),
+            "new": format_item_for_ui(new_raw),
+        })
+        b["source"] = "modified"
+        st.session_state.plan_source = "modified"
+    st.rerun()
+
+
+def _merged_exceptions(existing, result) -> list:
+    """Session-wide exceptions, keyed by cell.
+
+    A later pick on the SAME cell replaces that cell's entry rather than
+    stacking a second one, and a pick that came back clean clears the cell's
+    old entry — otherwise a planner who fixes their own mistake keeps reading
+    the warning for a dish that is no longer on the plate.
+    """
+    picked = {(d, s) for d, slots in (result.get("manual_cells") or {}).items()
+              for s in (slots or ())}
+    out = [e for e in (existing or [])
+           if (e.get("date"), e.get("slot_id")) not in picked]
+    out.extend(result.get("exceptions") or [])
+    return sorted(out, key=lambda e: (e.get("date", ""), e.get("slot_id", "")))
+
+
 def _render_changes_log() -> None:
     log = st.session_state.get("changes_log") or []
     if not log:
@@ -1477,6 +1666,11 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
     # The counter's name is already the TAB above this table, so the panel
     # heading is the service and the meta is the shape of the grid — which is
     # what somebody scanning two services on one page actually needs.
+    # Read once per render and handed to both the payload builder and the
+    # component, so the city the search runs against and the city named in its
+    # heading cannot disagree.
+    _pick_cfg = _cached_pick_config(api, st.session_state.client_name)
+    b["pick_config"] = _pick_cfg
     _slots = len({s for d in (b.get("plan") or {}).values() for s in d})
     _dishes = sum(len(d) for d in (b.get("plan") or {}).values())
     picked = menu_table(
@@ -1494,6 +1688,19 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
             (st.session_state.get("explanations") or {}).get(
                 _explain_cache_key(b, key_ns))),
         reset_token=f"{key_ns}|{'|'.join(b.get('plan_dates') or [])}",
+        # The searchable city list, the picks made so far, and what the audit
+        # could and could not look at. `dishes` is cached per (client, city,
+        # dates) because Streamlit resends every component argument on every
+        # rerun — see `_pick_dishes`.
+        dishes=_pick_dishes(b, counter_index),
+        exceptions=b.get("exceptions") or [],
+        city=_pick_cfg.get("city") or "",
+        cooldown_days=_pick_cfg.get("cooldown_days") or 0,
+        checked=b.get("checked") or [], not_checked=b.get("not_checked") or [],
+        status=b.pop("pick_status", ""),
+        status_error=b.pop("pick_status_error", False),
+        locked_item=b.pop("pick_locked_item", ""),
+        locked_on=b.pop("pick_locked_on", ""),
         key=f"table_{key_ns}")
     # A component's return value is REPLAYED on every rerun, and handling a
     # regenerate ends in `st.rerun()`. `regen_request` is what makes one press
@@ -1503,6 +1710,15 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
     if req:
         handled[key_ns] = req["nonce"]
         _apply_regenerate(api, block_index, counter_index, req["cells"])
+    # The same replay guard, its own nonce store: a pick and a regenerate are
+    # different actions and sharing one store would let either swallow the
+    # other's first press.
+    picks_handled = st.session_state.setdefault("pick_nonce", {})
+    preq = pick_request(picked, picks_handled.get(key_ns))
+    if preq:
+        picks_handled[key_ns] = preq["nonce"]
+        slot_id, iso = preq["cell"]
+        _apply_pick(api, block_index, counter_index, slot_id, iso, preq["item"])
     _c1, _c2, _rest = st.columns([1, 1, 4])
     with _c2:
         if st.button("Clear", key=f"clear_{key_ns}", use_container_width=True):
