@@ -712,3 +712,52 @@ class TestAPinCanContradictAFrequencyCap:
                    active_base_slots=['bread'], forced_items=pins)
         assert not [d for d in self._rule().diagnose(ctx)
                     if d.severity is DiagnosticSeverity.ERROR]
+
+
+class TestTheCoolingSlotReport:
+    """A counter that serves hot food with nowhere to put something cooling.
+
+    The pairing probe's gaps were all "hot dish, no curd or raita", most of
+    them on counters carrying neither `curd_side` nor `curd`. No pairing rule
+    can fix that — an objective term rewards choosing a dish, and there is no
+    cell to put one in — so it is reported once, as the configuration fact it
+    is, rather than built as a rule that would score nothing and call itself
+    satisfied.
+    """
+
+    HOT = pd.DataFrame([{'item': 'chilli_gravy', 'spice_level': 4},
+                        {'item': 'mild_gravy', 'spice_level': 1}])
+    MILD = pd.DataFrame([{'item': 'mild_gravy', 'spice_level': 1}])
+
+    def _run(self, pools, active):
+        from src.menu_rules.diagnostics import cooling_slot_diagnostics
+        return cooling_slot_diagnostics(_ctx(pools, active_base_slots=active))
+
+    def test_hot_dishes_and_no_cooling_slot_is_reported(self):
+        out = self._run({'veg_gravy': self.HOT}, ['veg_gravy'])
+        assert len(out) == 1
+        assert out[0].severity is DiagnosticSeverity.INFO, 'the plan is fine'
+        assert out[0].affected['hot_dishes'] == 1
+        assert out[0].suggestion
+
+    def test_a_counter_with_curd_side_is_quiet(self):
+        assert self._run({'veg_gravy': self.HOT, 'curd_side': self.MILD},
+                         ['veg_gravy', 'curd_side']) == []
+
+    def test_a_counter_with_plain_curd_is_quiet(self):
+        assert self._run({'veg_gravy': self.HOT, 'curd': self.MILD},
+                         ['veg_gravy', 'curd']) == []
+
+    def test_no_hot_dishes_means_nothing_to_say(self):
+        assert self._run({'veg_gravy': self.MILD}, ['veg_gravy']) == []
+
+    def test_no_counter_scope_is_quiet(self):
+        """Without `active_base_slots` there is no counter to report on, and
+        guessing from the pools would fire on every whole-city diagnose."""
+        assert self._run({'veg_gravy': self.HOT}, None) == []
+
+    def test_a_blank_spice_column_does_not_invent_a_finding(self):
+        """`spice_level` is 0% blank in all five workbooks, which is why this
+        reads it — but a pool without the column must not crash or guess."""
+        assert self._run({'veg_gravy': pd.DataFrame([{'item': 'x'}])},
+                         ['veg_gravy']) == []
