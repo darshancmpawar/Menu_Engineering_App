@@ -37,7 +37,7 @@ import datetime as dt
 import logging
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from src.constants import REPEATABLE_SLOTS
+from src.constants import DEFAULT_ITEM_COOLDOWN_DAYS, REPEATABLE_SLOTS
 from src.preprocessor.column_mapper import _norm_str
 from src.preprocessor.pool_builder import _base_slot
 from ._helpers import strip_color_suffix
@@ -139,6 +139,14 @@ def week_items_in_history(client_name: str, week_dates: List[dt.date]) -> Dict[s
     guarantee). Filtering either one here would quietly narrow D5 to one
     station's lunch.
 
+    **`week_dates` must exclude the dates of the plan being edited.** The plan
+    on screen may already have been saved — `/save` writes per (client, date)
+    and the planner may well have saved before picking — and those rows hold
+    the very dishes now on screen. Counting them would make every dish on a
+    saved plan block itself, and the planner would see "already served on
+    Tuesday" for the dish sitting in Tuesday's cell. The caller does the
+    exclusion, because only it knows the horizon.
+
     A database that cannot be reached is not allowed to turn a block into a
     silent pass: the caller gets the exception.
     """
@@ -236,7 +244,8 @@ def apply_picks(inputs, base_plan: Dict[dt.date, Dict[str, str]],
             changed = True
         week_plan.setdefault(d, {})[slot_id] = stamped
         manual.setdefault(d.isoformat(), []).append(slot_id)
-    return {'week_plan': week_plan, 'manual_cells': manual, 'changed': changed}
+    return {'week_plan': week_plan, 'manual_cells': manual,
+            'changed': changed, 'targets': targets}
 
 
 def _reject_week_repeats(inputs, base_plan, targets, cells, pinned,
@@ -254,8 +263,12 @@ def _reject_week_repeats(inputs, base_plan, targets, cells, pinned,
 
     for week, group in sorted(by_week.items()):
         in_plan = week_items_in_plan(base_plan, week, skip=cells, pinned=pinned)
-        week_dates = sorted(d for d in (inputs.weekday_dates or [])
-                            if _iso_week(d) == week)
+        # The week's days that are NOT in this plan. A saved copy of the plan
+        # on screen would otherwise block every dish against itself — see
+        # `week_items_in_history`. A Wednesday-start plan still sees the
+        # Monday and Tuesday that were saved before it.
+        horizon = set(inputs.weekday_dates or []) | set(base_plan or {})
+        week_dates = sorted(_week_days(week) - horizon)
         in_history = history_lookup(inputs.client_name, week_dates)
         seen_here: Dict[str, dt.date] = {}
         for d, slot_id, item, _row in group:
@@ -272,13 +285,247 @@ def _reject_week_repeats(inputs, base_plan, targets, cells, pinned,
             seen_here[item] = d
 
 
+def _week_days(week: str) -> Set[dt.date]:
+    """The seven dates of an ISO week string (`2026-W45`)."""
+    year, num = week.split('-W')
+    monday = dt.date.fromisocalendar(int(year), int(num), 1)
+    return {monday + dt.timedelta(days=i) for i in range(7)}
+
+
 def _repeat_message(item: str, where: dt.date, source: str) -> str:
+    """Spec 04 §3.5, verbatim: what happened, then why it is refused."""
     pretty = item.replace('_', ' ').capitalize()
     day = where.strftime('%a %-d %b')
     if source == 'history':
-        return (f'{pretty} was already served on {day} this week. '
+        return (f'{pretty} was served on {day} in a saved plan. '
                 f"A dish can't repeat in a week.")
     if source == 'pick':
-        return (f'{pretty} is already one of the dishes you are placing this '
-                f"week ({day}). A dish can't repeat in a week.")
+        return (f'You picked {pretty} twice in one request. '
+                f"A dish can't repeat in a week.")
     return f"{pretty} is already on {day}. A dish can't repeat in a week."
+
+
+# ---------------------------------------------------------------------------
+# The audit: what the pick cost, reported rather than enforced (decision D2)
+# ---------------------------------------------------------------------------
+
+
+def _violation(code: str, rule: str, message: str, details=None) -> Dict[str, Any]:
+    """Every finding is a `warning` in v1.
+
+    The field exists so a later version can add a level without a contract
+    change, and it is deliberately NOT used to sneak a block in: a pick that
+    reaches the audit has already passed every guard, and D2 says the planner
+    decides from here.
+    """
+    return {'code': code, 'rule': rule, 'severity': 'warning',
+            'message': message, 'details': details or {}}
+
+
+def _filter_context(inputs, solver) -> Dict[str, Any]:
+    """The context `pre_filter_pool` is called with during a real solve.
+
+    Borrowed from a `MenuSolver` rather than rebuilt: `_build_day_base_pool_cache`
+    assembles exactly these keys, and the two rule-declaration hooks behind
+    `extra_repeatable` / `extra_cooldown_exempt` walk the loaded rules. A
+    second copy here would be a context that drifts from the one the rules
+    were written against, and the probe would then answer about a solve that
+    never happens. Constructing a `MenuSolver` is free — `__init__` is
+    assignment only, and nothing solves until `solve()` is called.
+    """
+    return {
+        'cfg': inputs.cfg,
+        'banned_by_date': inputs.banned,
+        'ricebread_ban_day': inputs.rb_ban,
+        'pools': inputs.pools,
+        'extra_repeatable': solver._repeatable_declarations(),
+        'extra_cooldown_exempt': solver._declared_repeatable(
+            'cooldown_exempt_item_flags'),
+        'slot_num': None,
+    }
+
+
+def _cooldown_violation(inputs, d: dt.date, item: str) -> Optional[Dict[str, Any]]:
+    banned = {_clean(x) for x in (inputs.banned or {}).get(d, set())}
+    if item not in banned:
+        return None
+    days_ago = (inputs.recency_by_item or {}).get(item)
+    window = getattr(inputs.cfg, 'item_cooldown_days', None) or DEFAULT_ITEM_COOLDOWN_DAYS
+    if days_ago is None:
+        message = (f'Served recently. This client serves a dish at most once '
+                   f'every {window} days.')
+        details = {'window_days': window}
+    else:
+        last = d - dt.timedelta(days=int(days_ago))
+        message = (f'Served {int(days_ago)} days ago '
+                   f'({last.strftime("%a %-d %b")}). '
+                   f"This client's window is {window} days.")
+        details = {'last_served': last.isoformat(), 'days_ago': int(days_ago),
+                   'window_days': window}
+    return _violation('cooldown', 'item_cooldown', message, details)
+
+
+def _client_pool_violation(inputs, base: str, item: str) -> Optional[Dict[str, Any]]:
+    pool = (inputs.pools or {}).get(base)
+    if pool is None or not len(pool):
+        return None
+    if item in {_clean(v) for v in pool['item'].tolist()}:
+        return None
+    return _violation(
+        'client_pool', 'client_pool',
+        f'On the {inputs.city} city list, but not in '
+        f"{inputs.client_name}'s dish pool.",
+        {'base_slot': base})
+
+
+def _ricebread_violation(inputs, d: dt.date, base: str) -> Optional[Dict[str, Any]]:
+    if base != 'bread' or not (inputs.rb_ban or {}).get(d):
+        return None
+    return _violation(
+        'ricebread_gap', 'ricebread_gap',
+        f"Bread isn't allowed on {d.strftime('%a %-d %b')}: the rice-bread "
+        f'gap rule.')
+
+
+def _rule_violations(inputs, d: dt.date, base: str, row, ctx, day_type: str,
+                     covered: bool = False):
+    """Ask each rule's own pre-filter whether it would have removed this dish.
+
+    A one-row frame through the real hook, not a reimplementation of what each
+    rule means: there are ~70 of them and a second reading of any one would be
+    a rule the Exceptions panel describes wrongly. If the row comes back
+    removed, that rule would have kept this dish out of the cell.
+
+    A rule that RAISES is named in `errored` and reported under `not_checked`,
+    never swallowed and never fatal. Losing a constraint silently is the thing
+    this whole feature is most exposed to; an audit that quietly drops a rule
+    looks exactly like one that found nothing.
+    """
+    import pandas as pd
+
+    out, errored = [], []
+    one_row = pd.DataFrame([row])
+    for rule in (inputs.rules or []):
+        name = getattr(rule, 'name', '') or type(rule).__name__
+        fn = getattr(rule, 'pre_filter_pool', None)
+        if not callable(fn):
+            continue
+        try:
+            kept = fn(one_row, d, base, day_type, ctx)
+        except Exception as exc:                            # noqa: BLE001
+            logger.warning('pick audit: rule %r pre_filter_pool raised: %s',
+                           name, exc)
+            errored.append(f'rule:{name} (errored)')
+            continue
+        if kept is None or len(kept):
+            continue
+        if covered and _removal_is_already_reported(fn, one_row, d, base,
+                                                    day_type, ctx):
+            continue
+        detail = ''
+        describe = getattr(rule, 'get_description', None)
+        if callable(describe):
+            try:
+                detail = str(describe() or '')
+            except Exception:                               # noqa: BLE001
+                detail = ''
+        out.append(_violation(
+            f'rule:{name}', name,
+            detail or f'The rule {name} would have kept this dish out of '
+                      f'this cell.'))
+    return out, errored
+
+
+def _removal_is_already_reported(fn, one_row, d, base, day_type, ctx) -> bool:
+    """Did this rule drop the row only because of a fact already reported?
+
+    The item cooldown and the rice-bread gap each have a named code above AND
+    a rule in the loaded set, so their pre-filters restate the same finding
+    under `rule:<name>` — the planner would read "served 5 days ago" twice in
+    different words. Spec §5.1: report each violated thing once, preferring
+    the specific code.
+
+    Decided by RE-PROBING with those two inputs cleared for the day rather
+    than by a list of rule class names. A name list goes stale the first time
+    a client ships its own cooldown rule under another name, and goes stale
+    silently — the duplicate just comes back. This asks the rule itself: if
+    the row survives once the ban maps are empty, the ban is the whole reason
+    it was removed and is already in the response.
+    """
+    probe = dict(ctx)
+    probe['banned_by_date'] = {**(ctx.get('banned_by_date') or {}), d: set()}
+    probe['ricebread_ban_day'] = {**(ctx.get('ricebread_ban_day') or {}), d: False}
+    try:
+        kept = fn(one_row, d, base, day_type, probe)
+    except Exception:                                       # noqa: BLE001
+        return False
+    return kept is not None and len(kept) > 0
+
+
+def _plate_violations(inputs, before_day, after_day) -> List[Dict[str, Any]]:
+    """Checks that PASSED before the pick and fail after it.
+
+    Only the difference, per spec §1.6: a plate that was already short on
+    colour is not the pick's doing, and blaming it would bury the one finding
+    that is. `run_checks` never raises (it skips a check that does), so a
+    broken check costs this audit a line, not the request.
+    """
+    from src.explain.checks import run_checks
+    from src.explain.evidence import attrs_from_dataframe, build_dishes
+
+    attrs = attrs_from_dataframe(inputs.df)
+    was = {c.name: c for c in run_checks(build_dishes(before_day, attrs))}
+    now = {c.name: c for c in run_checks(build_dishes(after_day, attrs))}
+    out = []
+    for name, check in now.items():
+        prior = was.get(name)
+        if prior is None or not getattr(prior, 'passed', True):
+            continue
+        if getattr(check, 'passed', True):
+            continue
+        out.append(_violation(
+            f'plate:{name}', name,
+            str(getattr(check, 'detail', '') or
+                f'{name} passed before this pick and does not now.')))
+    return out
+
+
+def audit_picks(inputs, before_plan, after_plan, targets) -> Tuple[List[Dict], List[str]]:
+    """One `exceptions` entry per pick that broke something, plus extra gaps.
+
+    Returns `(exceptions, extra_not_checked)`. A clean pick produces no entry
+    at all, so an empty list means "nothing we can see", which is why the
+    second half of the pair matters as much as the first.
+    """
+    from .menu_solver import MenuSolver
+    from ._helpers import weekday_type_for_config
+
+    solver = MenuSolver(
+        inputs.pools, inputs.cfg, menu_rules=inputs.rules,
+        banned_by_date=inputs.banned, ricebread_ban_day=inputs.rb_ban,
+        skip_cells=inputs.skip_cells, recency_by_item=inputs.recency_by_item)
+    ctx = _filter_context(inputs, solver)
+
+    exceptions: List[Dict[str, Any]] = []
+    errored: List[str] = []
+    for d, slot_id, item, row in targets:
+        base = _base_slot(slot_id)
+        day_type = weekday_type_for_config(d, inputs.cfg.theme_map)
+        found = [v for v in (
+            _cooldown_violation(inputs, d, item),
+            _client_pool_violation(inputs, base, item),
+            _ricebread_violation(inputs, d, base),
+        ) if v]
+        rule_hits, rule_errors = _rule_violations(
+            inputs, d, base, row, ctx, day_type, covered=bool(found))
+        errored.extend(rule_errors)
+        found.extend(rule_hits)
+        found.extend(_plate_violations(
+            inputs, before_plan.get(d, {}), after_plan.get(d, {})))
+        if found:
+            exceptions.append({
+                'date': d.isoformat(), 'slot_id': slot_id, 'item': item,
+                'replaced': _clean(before_plan.get(d, {}).get(slot_id)),
+                'violations': found,
+            })
+    return exceptions, sorted(set(errored))

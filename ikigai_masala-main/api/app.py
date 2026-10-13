@@ -98,7 +98,9 @@ from src.solver._helpers import (
 )
 from src.solver.solution_formatter import SolutionFormatter
 from src.solver.regenerator import MenuRegenerator
-from src.solver.picker import CHECKED, NOT_CHECKED, PickError, apply_picks
+from src.solver.picker import (
+    CHECKED, NOT_CHECKED, PickError, apply_picks, audit_picks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -929,6 +931,12 @@ def pick_dish():
             metrics.incr('pick_requests_total', outcome=exc.code)
             return _pick_error(exc.code, exc.message, exc.details)
 
+        # The audit runs AFTER the stamp and never blocks (decision D2): by
+        # here every guard has passed and the planner's decision stands. What
+        # it finds is reported; what it could not look at is named.
+        exceptions, errored = audit_picks(
+            inputs, base_plan, applied['week_plan'], applied['targets'])
+
         manual_pairs = {(dt.date.fromisoformat(d), s)
                         for d, slots in applied['manual_cells'].items()
                         for s in slots}
@@ -946,16 +954,16 @@ def pick_dish():
             'changed': applied['changed'],
             'solution': formatter.to_dict(),
             'manual_cells': applied['manual_cells'],
-            # Phase 3 fills this. Present and empty from the start so a client
-            # written against the contract never has to special-case its
-            # absence.
-            'exceptions': [],
+            'exceptions': exceptions,
             # Always both, always in full. An Exceptions panel that looks
             # complete and is not is the failure this feature is most exposed
             # to: the rules missing here exist only inside the CP-SAT model,
-            # and no reading of a finished plan reveals them.
+            # and no reading of a finished plan reveals them. A rule whose
+            # probe raised joins the second list by name rather than being
+            # dropped — an audit that quietly loses a rule looks exactly like
+            # one that found nothing.
             'checked': list(CHECKED),
-            'not_checked': list(NOT_CHECKED),
+            'not_checked': list(NOT_CHECKED) + errored,
         })
 
     except ValueError as e:
