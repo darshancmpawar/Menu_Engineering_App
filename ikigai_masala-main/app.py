@@ -84,7 +84,7 @@ from ui.planner_view import (
 )
 from ui.menu_table import (
     dish_payload, explain_days, manual_cells_from, menu_table,
-    pick_request, regen_request,
+    merged_exceptions, pick_request, regen_request,
 )
 from ui.region_strip import region_day_args, region_strip
 from src.explain.checks import MAIN_COURSES, base_slot
@@ -1166,7 +1166,7 @@ def _apply_pick(api, block_index: int, counter_index: int,
     b["manual_cells"] = sorted(
         set(b.get("manual_cells") or ())
         | manual_cells_from(result.get("exceptions"), result.get("manual_cells")))
-    b["exceptions"] = _merged_exceptions(b.get("exceptions"), result)
+    b["exceptions"] = merged_exceptions(b.get("exceptions"), result)
     b["checked"] = result.get("checked") or []
     b["not_checked"] = result.get("not_checked") or []
     b["pick_locked_item"] = ""
@@ -1201,22 +1201,6 @@ def _apply_pick(api, block_index: int, counter_index: int,
         b["source"] = "modified"
         st.session_state.plan_source = "modified"
     st.rerun()
-
-
-def _merged_exceptions(existing, result) -> list:
-    """Session-wide exceptions, keyed by cell.
-
-    A later pick on the SAME cell replaces that cell's entry rather than
-    stacking a second one, and a pick that came back clean clears the cell's
-    old entry — otherwise a planner who fixes their own mistake keeps reading
-    the warning for a dish that is no longer on the plate.
-    """
-    picked = {(d, s) for d, slots in (result.get("manual_cells") or {}).items()
-              for s in (slots or ())}
-    out = [e for e in (existing or [])
-           if (e.get("date"), e.get("slot_id")) not in picked]
-    out.extend(result.get("exceptions") or [])
-    return sorted(out, key=lambda e: (e.get("date", ""), e.get("slot_id", "")))
 
 
 def _render_changes_log() -> None:

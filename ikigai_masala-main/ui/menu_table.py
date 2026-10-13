@@ -169,6 +169,28 @@ def manual_cells_from(exceptions: Optional[list], manual: Optional[dict]) -> set
     return out
 
 
+def merged_exceptions(existing: Optional[list], result: Optional[dict]) -> list:
+    """Session-wide exceptions, keyed by cell.
+
+    The server is stateless and reports only the picks of the request in hand,
+    while the panel has to show every pick this planner has made. Two rules
+    that are easy to get wrong in opposite directions:
+
+    * a later pick on the SAME cell REPLACES that cell's entry rather than
+      stacking a second one — otherwise the panel grows a warning per attempt
+      and the planner reads about dishes that are no longer on the plate;
+    * a pick that comes back CLEAN clears the cell's old entry, which is the
+      half a naive `existing + new` misses: someone who fixes their own
+      mistake would keep reading the warning they just resolved.
+    """
+    picked = {(d, s) for d, slots in ((result or {}).get("manual_cells") or {}).items()
+              for s in (slots or ())}
+    out = [e for e in (existing or [])
+           if (e.get("date"), e.get("slot_id")) not in picked]
+    out.extend((result or {}).get("exceptions") or [])
+    return sorted(out, key=lambda e: (e.get("date", ""), e.get("slot_id", "")))
+
+
 def explain_days(payload: Optional[dict]) -> dict:
     """An `/explain` response → `{iso: {"overview", "checks"}}` for the table.
 
