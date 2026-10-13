@@ -112,7 +112,9 @@ def _count(pools, slots, matcher):
         if pool is None or not len(pool):
             continue
         tot += len(pool)
-        hit += sum(1 for _i, r in pool.iterrows()
+        # `to_dict('records')` rather than `iterrows()` — `_matches` only does
+        # `row.get`, and this walks every pool of every counter.
+        hit += sum(1 for r in pool.to_dict('records')
                    if SelectorFrequencyRule._matches(r, matcher))
     return hit, tot
 
