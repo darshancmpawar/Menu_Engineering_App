@@ -63,7 +63,7 @@ def _pairing_rule_configs():
     gradient). Reading them from there means the budget is measured against the
     rules that would actually ship, and the two cannot drift apart.
     """
-    from scripts.pairing_opportunity import PAIRS
+    from scripts.pairing_opportunity import PAIRS, PREFERRED
 
     out = []
     for pid, spec in PAIRS.items():
@@ -74,6 +74,10 @@ def _pairing_rule_configs():
             'priority': 'low',
             'selector_a': spec['sel_a'], 'base_slot_a': spec['slots_a'],
             'selector_b': spec['sel_b'], 'base_slot_b': spec['slots_b'],
+            # The SHIPPED weight, not the tier default. This probe first built
+            # every rule at 1e6 while P1 and P2 ship at 3e6, so it measured a
+            # configuration that does not exist and under-reported the mass.
+            'weight': spec.get('weight', PREFERRED),
         })
     return out
 

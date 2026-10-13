@@ -43,6 +43,14 @@ from src.ontology.repository import repository  # noqa: E402
 
 CITIES = ['Bangalore', 'Hyderabad', 'Chennai', 'Pune', 'NCR']
 
+#: The two rungs from the work order. STRONG says "make this pair if the plate
+#: allows it"; PREFERRED (the `low` tier default) says "nice to have, yield to
+#: variety". Carried here rather than only in the rule JSON so the tier-budget
+#: guard measures the weights that actually ship — it first measured all six at
+#: the default and so under-reported the mass by the two STRONG rules.
+STRONG = 3_000_000
+PREFERRED = 1_000_000
+
 #: The §5 catalogue, as the rule JSON would carry it. `slots_b` lists every
 #: pool a target may live in — a combo counter keeps its sambar in
 #: `dal_sambar` or `sambar_rasam`, so naming only `sambar` would read as
@@ -53,7 +61,7 @@ PAIRS = OrderedDict([
         'sel_a': {'sub_category': 'poori_/_bhatura'}, 'slots_a': ['bread'],
         'sel_b': {'any_flag': ['is_aloo_gravy', 'is_chana_gravy',
                                'is_kabuli_chana_gravy', 'is_black_chana_gravy']},
-        'slots_b': ['veg_gravy'],
+        'slots_b': ['veg_gravy'], 'weight': STRONG,
     }),
     ('P2', {
         'name': 'south tiffin -> sambar',
@@ -64,7 +72,7 @@ PAIRS = OrderedDict([
             {'sub_category': 'lentil-based_dosa_(adai/pesarattu)'},
         ]}, 'slots_a': ['bread'],
         'sel_b': {'course_type': 'sambar'},
-        'slots_b': ['sambar', 'dal_sambar', 'sambar_rasam'],
+        'slots_b': ['sambar', 'dal_sambar', 'sambar_rasam'], 'weight': STRONG,
     }),
     ('P3', {
         'name': 'tandoor bread -> rich north gravy or creamy dal',
