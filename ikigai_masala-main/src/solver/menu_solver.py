@@ -43,6 +43,12 @@ from ..menu_rules.unique_items_menu_rule import matches_declared
 # must not happen. The combination split below is solver machinery rather than
 # a rule, but it is a relaxation, so it is stamped on the relaxation channel.
 relax_logger = logging.getLogger(f'{RULES_LOGGER}.combination')
+# Dropping a pin is a relaxation too, and it has to be logged INSIDE the
+# captured tree for the same reason the combination split is — see
+# `tests/explain/test_relaxations.py::TestAStampOutsideTheRulesTreeIsCollectedByNobody`.
+# Its own child name rather than `relax_logger`'s, because that one says
+# `.combination` and a pin that could not be placed is not a combination split.
+pin_relax_logger = logging.getLogger(f'{RULES_LOGGER}.pinned_item')
 from ..preprocessor.pool_builder import _base_slot, _slot_num, _expand_slots_in_order
 from ..preprocessor.column_mapper import _norm_str, _norm_color, _to_bool01
 from .solver_context import SolverContext
@@ -720,11 +726,29 @@ class MenuSolver:
                         # pool it is given, so it must be left intact.
                         pool2 = match
                     else:
-                        logger.info(
-                            "%s on %s: pinned dish %r is not eligible for this "
-                            "slot today (filtered out or absent from the pool); "
-                            "solving the cell normally",
+                        # A pin that cannot be placed DEGRADES — the cell is
+                        # solved normally and carries a different dish — so it
+                        # has to say so (CLAUDE.md point 3). This was a plain
+                        # `logger.info` on `src.solver.menu_solver`: outside the
+                        # captured tree, unstamped, and therefore invisible.
+                        # Measured on the fleet: ICON Chn's Economy Lunch
+                        # diverged from Premium Lunch on 25 of 40 shared cells
+                        # and `/plan` reported `relaxations: []` every time. A
+                        # shared category that quietly stops syncing is exactly
+                        # the "indistinguishable from a satisfied rule" case.
+                        #
+                        # The stamp names the SLOT, not the source, because
+                        # `forced_items` merges a client's `constant_items`
+                        # with another counter's `shared_items` and keeps no
+                        # provenance. The date and dish in the message are what
+                        # makes it actionable either way.
+                        pin_relax_logger.info(
+                            "%s on %s: the pinned dish %r is not eligible for "
+                            "this slot today (filtered out, banned, or absent "
+                            "from this counter's pool), so the cell was solved "
+                            "normally and carries a different dish",
                             slot_id, d.isoformat(), forced,
+                            extra={RELAXATION: f'{base}_pin'},
                         )
 
                 cap = cap_by_slot.get(base, cap_default)

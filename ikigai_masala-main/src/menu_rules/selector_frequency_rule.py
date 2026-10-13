@@ -340,6 +340,41 @@ class SelectorFrequencyRule(BaseMenuRule):
         col = _TEXT_COLS.get(kind, '')
         return _norm_cell(row.get(col, '')) == val
 
+    @staticmethod
+    def matcher_columns(matcher) -> Set[str]:
+        """Which ontology columns a parsed matcher reads.
+
+        Lives beside ``_matches`` and must stay in step with it: a selector
+        kind that reads a column this one forgets would make a frame projected
+        through it answer differently from the full frame — a wrong count that
+        looks like a real one. ``tests/rules/test_prefer_with.py`` pins the two
+        together against the real pools.
+
+        It exists because a city pool is 143 columns wide and the matcher reads
+        two or three of them. Walking the full frame row by row to count
+        matches costs 45 ms per pool; projecting first costs 4. On the /plan
+        pre-flight that is the difference between half a second per request and
+        nothing worth measuring.
+        """
+        out: Set[str] = set()
+        if matcher is None:
+            return out
+        kind, val = matcher
+        if kind == 'flag':
+            out.add(str(val))
+        elif kind == 'any_flag':
+            out.update(str(f) for f in val)
+        elif kind in ('any_of', 'all_of', 'none_of'):
+            for sub in val:
+                out |= SelectorFrequencyRule.matcher_columns(sub)
+        elif kind == 'name_contains':
+            out.add('item')
+        else:
+            col = _TEXT_COLS.get(kind, '')
+            if col:
+                out.add(col)
+        return out
+
     def validate_config(self) -> bool:
         return not self.validation_errors()
 

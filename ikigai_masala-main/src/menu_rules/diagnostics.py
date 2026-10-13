@@ -114,6 +114,10 @@ def run_diagnostics(
     # met before the solver burns time and returns a cryptic INFEASIBLE.
     diagnostics.extend(color_variety_diagnostics(list(rules), ctx))
 
+    # Synthetic cooling-slot pass. Not a rule, and deliberately not one: no
+    # objective term can fix what this reports.
+    diagnostics.extend(cooling_slot_diagnostics(ctx))
+
     diagnostics.sort(key=lambda d: (
         _SEVERITY_ORDER.get(d.severity.value, 99),
         d.rule_type,
@@ -171,6 +175,72 @@ def pool_warnings_projection(diagnostics: Iterable[Diagnostic]) -> List[str]:
 # ---------------------------------------------------------------------------
 # Synthetic pool-size diagnostics (replaces api.app._validate_pools)
 # ---------------------------------------------------------------------------
+
+#: What counts as a hot dish for the cooling-slot report. `spice_level` is 0%
+#: blank in all five city workbooks (measured), which is why this reads that
+#: column and not `key_ingredient` or `primary_protein` — both of which are
+#: substantially blank and would make the finding an artefact of the gaps in
+#: the data rather than of the menu (notes 36 and 37).
+_HOT_SPICE_LEVEL = 3
+
+#: The slots a cooling dish can land in. `curd_rice` is NOT one: it is a rice,
+#: and a counter serving it still has nowhere to put a raita beside a hot gravy.
+_COOLING_SLOTS = ('curd_side', 'curd')
+
+
+def cooling_slot_diagnostics(ctx: DiagnoseContext) -> List[Diagnostic]:
+    """A counter that serves hot food with nowhere to put something cooling.
+
+    The pairing-layer probe found every one of its gaps to be "hot dish, no
+    curd or raita", and most of them on counters whose categories contain
+    neither `curd_side` nor `curd`. That is a CONFIGURATION fact, and the
+    reason this is a diagnostic rather than a pairing rule: an objective term
+    rewards the solver for choosing a dish, and here there is no cell to put
+    one in. A soft rule would load, score nothing and report itself satisfied —
+    note 9, arrived at from the other direction.
+
+    INFO, not WARNING: the plan is correct and the client may well have decided
+    this deliberately (a counter with no curd is a normal thing to sell). It is
+    a conversation to have with whoever configured the counter, not a defect.
+    """
+    slots = ctx.active_base_slots
+    if slots is None:
+        return []                      # no counter scope: nothing to say
+    if set(slots) & set(_COOLING_SLOTS):
+        return []
+    hot = 0
+    for slot in slots:
+        pool = ctx.pools.get(slot)
+        if pool is None or not len(pool) or 'spice_level' not in pool.columns:
+            continue
+        try:
+            import pandas as pd
+            lvl = pd.to_numeric(pool['spice_level'], errors='coerce').fillna(0)
+            hot += int((lvl >= _HOT_SPICE_LEVEL).sum())
+        except Exception:              # noqa: BLE001 — a report must not raise
+            continue
+    if not hot:
+        return []
+    return [Diagnostic(
+        rule='cooling_slot',
+        rule_type='pool_size',
+        severity=DiagnosticSeverity.INFO,
+        phase=DiagnosticPhase.PRE_FILTER,
+        message=(
+            f"This counter can serve {hot} dish(es) at spice level "
+            f"{_HOT_SPICE_LEVEL} or above, but runs no {' or '.join(_COOLING_SLOTS)} "
+            f"slot, so a plate can never carry a cooling side. Nothing is "
+            f"wrong with the menus this produces — there is simply nowhere to "
+            f"put a curd or raita."
+        ),
+        suggestion=(
+            f"If the client wants one, add {_COOLING_SLOTS[0]} to this "
+            f"counter's categories. No rule can supply it: a pairing can only "
+            f"choose what goes in a cell the counter already has."
+        ),
+        affected={'hot_dishes': hot, 'cooling_slots': list(_COOLING_SLOTS)},
+    )]
+
 
 def pool_size_diagnostics(
     rules: Iterable[BaseMenuRule], ctx: DiagnoseContext,

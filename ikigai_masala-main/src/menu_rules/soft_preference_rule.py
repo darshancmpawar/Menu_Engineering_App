@@ -37,6 +37,18 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     day would read chinese-rice-beside-north-dal as a violation, which is the
     theme rules' business, not this one's.
 
+  * ``prefer_with`` — "if a dish matching A is on the plate, a dish matching B
+    should be too". One penalty per day where A is present and B is absent,
+    and nothing on a day where A is absent. The IMPLICATION, not the
+    conjunction: rewarding ``A and B`` would pay the solver to serve A for the
+    bonus, and rewarding each pair would pay it again for every extra target.
+    A day whose B-side has no candidate at all is skipped (a constant the
+    solver cannot act on) and reported by ``diagnose()`` instead. Config:
+    ``selector_a`` + ``base_slot_a`` (the trigger), ``selector_b`` +
+    ``base_slot_b`` (the accompaniment), optional ``day_types`` to confine it
+    to named themes. ``priority`` is the strength: ``medium`` = strong,
+    ``low`` = preferred. Never ``high``/``theme`` — note 32.
+
 Config::
 
     {
@@ -73,7 +85,7 @@ _SCOPES = frozenset({'horizon', 'week', 'day'})
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
     'prefer_day_types', 'prefer_daily', 'prefer_cells', 'match_attribute',
-    'prefer_attribute_spread',
+    'prefer_attribute_spread', 'prefer_with',
 })
 
 
@@ -205,8 +217,17 @@ class SoftPreferenceRule(BaseMenuRule):
             # Only `prefer_daily` reads it. Accepting it elsewhere would be a
             # rule that looks date-scoped and is not — the silent-config failure
             # of note 9, where the plan still comes back and looks fine.
-            errs.append("only_on_dates is supported for prefer_daily only "
-                        f"(mode is {self.mode!r})")
+            errs.append("only_on_dates is supported for prefer_daily and "
+                        f"prefer_cells only (mode is {self.mode!r})")
+        if self.mode == 'prefer_with':
+            if not (self._sel_a and self._sel_b):
+                errs.append("prefer_with requires selector_a and selector_b")
+            if not (self.base_slot_a and self.base_slot_b):
+                errs.append("prefer_with requires base_slot_a and base_slot_b")
+            if self.priority in ('high', 'theme'):
+                errs.append("prefer_with must be priority medium or low: a "
+                            "pairing outranking a client rule is never right, "
+                            "and the high tier is already over-subscribed (note 32)")
         if self.mode == 'match_attribute':
             if not self.group_by:
                 errs.append("match_attribute requires group_by")
@@ -222,6 +243,57 @@ class SoftPreferenceRule(BaseMenuRule):
                 errs.append(
                     "match_attribute requires at least 2 `values` to compare")
         return errs
+
+    def diagnose(self, ctx) -> list:
+        """``prefer_with`` only: say so when the pairing cannot act.
+
+        Pool-level and cheap (no CP-SAT). Both findings are WARNING, because the
+        plan is valid either way; they name the data fact a pairing rule
+        silently depends on (note 9: a selector that matches nothing is the
+        expensive failure).
+        """
+        if self.mode != 'prefer_with' or not (self._sel_a and self._sel_b):
+            return []
+        from .base_menu_rule import Diagnostic, DiagnosticPhase, DiagnosticSeverity
+
+        def _count(slots, matcher):
+            # PROJECT, then walk. This runs on the /plan pre-flight for every
+            # request, and a city pool is 143 columns wide while the matcher
+            # reads two or three. Measured on the real Bangalore `veg_gravy`
+            # (1,061 rows): `iterrows()` over the whole frame 44.6 ms,
+            # `to_dict('records')` over the whole frame 52.4 ms — WORSE — and
+            # the same walk over just the matcher's own columns 4.3 ms. The win
+            # is the projection, not the iteration; the first attempt here
+            # changed only the iteration and made it slower.
+            cols = SelectorFrequencyRule.matcher_columns(matcher)
+            n = 0
+            for slot in (slots or ()):
+                pool = ctx.pools.get(slot)
+                if pool is None or not len(pool):
+                    continue
+                keep = [c for c in cols if c in pool.columns]
+                rows = (pool[keep] if keep else pool).to_dict('records')
+                n += sum(1 for r in rows
+                         if SelectorFrequencyRule._matches(r, matcher))
+            return n
+
+        n_a = _count(self.base_slot_a, self._sel_a)
+        n_b = _count(self.base_slot_b, self._sel_b)
+        if n_a == 0:
+            return []           # no trigger in the pool: the rule is simply idle here
+        if n_b == 0:
+            return [Diagnostic(
+                rule=self.name, rule_type=self.rule_type.value,
+                severity=DiagnosticSeverity.WARNING,
+                phase=DiagnosticPhase.APPLY,
+                message=(f"{self.name}: {n_a} candidate(s) can trigger this "
+                         f"pairing but its target selector matches 0 rows in "
+                         f"{sorted(self.base_slot_b)}; the pairing cannot be honoured."),
+                suggestion=("Check the target selector against the ontology, "
+                            "or widen this client's source_pools."),
+                affected={'trigger_candidates': n_a, 'target_candidates': 0},
+            )]
+        return []
 
     # ----- helpers -----
 
@@ -310,6 +382,33 @@ class SoftPreferenceRule(BaseMenuRule):
                 model.Add(both <= b)
                 both_bools.append(both)
             return [sum(both_bools) * (-abs(w))] if both_bools else []
+
+        if self.mode == 'prefer_with':
+            day_types = context.get('day_types') or []
+            gaps = []
+            for di in range(n):
+                if self.day_types is not None:
+                    dtype = str(day_types[di] if di < len(day_types) else '').lower()
+                    if dtype not in self.day_types:
+                        continue
+                a_lits = self._day_slot_lits(cells, di, self.base_slot_a, self._sel_a)
+                b_lits = self._day_slot_lits(cells, di, self.base_slot_b, self._sel_b)
+                # Either side empty is a constant, not a preference: no trigger
+                # means nothing to pair, no target means the pairing cannot be
+                # honoured however the solver chooses. The second is reported
+                # by diagnose(), never silently dropped.
+                if not a_lits or not b_lits:
+                    continue
+                a = model.NewBoolVar(f'{self.name}_a_{di}')
+                b = model.NewBoolVar(f'{self.name}_b_{di}')
+                link_any(model, a_lits, a)
+                link_any(model, b_lits, b)
+                gap = model.NewBoolVar(f'{self.name}_gap_{di}')
+                model.Add(gap >= a - b)
+                model.Add(gap <= a)
+                model.Add(gap <= 1 - b)
+                gaps.append(gap)
+            return [sum(gaps) * (-abs(w))] if gaps else []
 
         if self.mode == 'prefer_attribute_spread':
             # "the plate should carry at least N different textures, and no one

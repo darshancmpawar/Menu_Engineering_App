@@ -59,6 +59,7 @@ validate_required_env()
 from src.preprocessor.client_pool_filter import (
     get_active_pools, available_pool_tokens, normalize_name,
 )
+from src.preprocessor.pool_builder import _base_slot
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS,
 )
@@ -1537,6 +1538,66 @@ def _validated_region_map(raw, city=None):
     return cleaned
 
 
+def _validated_shared_categories(raw, counters):
+    """Normalise ``shared_categories`` against *counters* or raise ValueError.
+
+    A shared category is sourced from the PRIMARY counter: the planner reads
+    that counter's solution and sends the dishes on to the others. So a slot
+    the primary counter does not serve has nothing to extract, and the sync is
+    a no-op — the toggle is on, the multiselect lists the category, and the
+    counters go on serving whatever they like.
+
+    Measured: Waters names `nonveg_main` while its primary counter is the Roti
+    VEG Combo, which has no such slot. Zero shared items were extracted for a
+    four-counter site, two of which do serve non-veg and could have been
+    synced. Nothing said so.
+
+    Rejected rather than dropped, for the same reason as `region_map` beside
+    it: a stored value that matches nothing is note 9's silent config
+    mismatch, where the plan still comes back and looks fine. Shape
+    normalisation (is this a real slot name at all?) stays in the config
+    layer; this is the half that needs the counters, which that layer does not
+    read.
+
+    An empty list is always valid — that is how sharing is switched off.
+    """
+    if raw in (None, [], ''):
+        return []
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("shared_categories must be a list of base slots")
+    asked, seen = [], set()
+    for c in raw:
+        s = str(c).strip().lower()
+        if s and s not in seen:
+            seen.add(s)
+            asked.append(s)
+    primary = (counters or [{}])[0] or {}
+    served = {_base_slot(str(s)) for s in (primary.get('categories') or [])}
+    known = set(BASE_SLOT_NAMES) | set(CONST_SLOTS)
+    # Two different mistakes, and telling them apart is most of the value: a
+    # name nobody recognises is a typo, while a real slot the primary does not
+    # serve is a counter ordering the operator may well want to change.
+    unknown = [a for a in asked if a not in known]
+    if unknown:
+        raise ValueError(
+            f"Not a menu category: {unknown}. Known categories are "
+            f"{sorted(known)}"
+        )
+    lost = [a for a in asked if a not in served]
+    if lost:
+        raise ValueError(
+            f"Cannot share {lost} across counters: the primary counter "
+            f"({primary.get('name') or 'counter 1'}) does not serve "
+            f"{'them' if len(lost) > 1 else 'it'}, and a shared category is "
+            f"taken from that counter's menu — so nothing would be shared. "
+            f"Serve {'them' if len(lost) > 1 else 'it'} on the primary "
+            f"counter, reorder the counters, or drop "
+            f"{'those' if len(lost) > 1 else 'that'} from the shared list. "
+            f"Primary counter serves: {sorted(served) or 'nothing'}"
+        )
+    return asked
+
+
 @app.route('/api/v1/client-config/<client_name>', methods=['PUT'])
 @rate_limit("write")
 @require_write_token
@@ -1621,8 +1682,17 @@ def update_client_config(client_name):
             )
         if 'shared_categories' in data:
             # Base slots synced across counters (the editor's toggle+multiselect).
-            # Normalisation (keep known slots only) happens in the config layer.
-            fields['shared_categories'] = list(data.get('shared_categories') or [])
+            # Shape normalisation (keep known slot NAMES) happens in the config
+            # layer; this checks the half that needs the counters — that the
+            # PRIMARY one actually serves each slot, since that is where a
+            # shared dish is taken from. Validated against the counters the
+            # client will HAVE after this update, the same reasoning as city
+            # and source_pools above: a counter change and a sharing change can
+            # arrive in one PUT.
+            fields['shared_categories'] = _validated_shared_categories(
+                data.get('shared_categories'),
+                fields.get('counters') or _client_row(client_name)['counters'],
+            )
         if 'region_map' in data:
             # Validated against the city the client will HAVE after this write,
             # same as source_pools above and for the same reason: a city change
@@ -1699,9 +1769,21 @@ def create_client():
         # Launch view: a client created here while launch mode is on is a launch
         # site. The editor sends the flag; it defaults false everywhere else.
         is_launch_site = bool(data.get('is_launch_site', False))
-        # Base slots synced across counters (the editor's toggle+multiselect).
+        # Base slots synced across counters (the editor's toggle+multiselect),
+        # checked against the counters THIS payload creates — the create path
+        # had no validation at all, so a client could be born with a sharing
+        # config that silently shares nothing. Same validator the PUT uses.
+        # The single-counter shape (`active_slots`, no `counters`) carries its
+        # categories there instead, and sharing across one counter is a no-op
+        # anyway, so it is validated against that list.
         shared_categories = (
-            list(data.get('shared_categories') or [])
+            _validated_shared_categories(
+                data.get('shared_categories'),
+                data.get('counters') or [{
+                    'name': 'counter 1',
+                    'categories': data.get('active_slots', list(BASE_SLOT_NAMES)),
+                }],
+            )
             if 'shared_categories' in data else None
         )
         region_map = (
