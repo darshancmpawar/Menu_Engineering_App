@@ -475,3 +475,84 @@ class TestAStampOutsideTheRulesTreeIsCollectedByNobody:
         with RelaxationCapture() as cap:
             plain.info('thin component', extra={RELAXATION: 'x_combination'})
         assert cap.records == []
+
+
+class TestAPinThatCannotBePlaced:
+    """A pin that cannot be placed is a relaxation, and was the one that said
+    nothing at all.
+
+    `forced_items` carries both a client's own `constant_items` and another
+    counter's `shared_items` (note 22). When the pinned dish is not eligible
+    for that cell on that day, `_build_cells` drops the pin and solves the cell
+    normally — right, because failing a whole menu over one cell is worse, and
+    for a shared pin the counter would simply be unsynced, which is what it was
+    before the feature.
+
+    It logged a plain `logger.info` on `src.solver.menu_solver`: outside the
+    captured tree AND unstamped, so `/plan` came back with `relaxations: []`.
+    Measured on the fleet before the fix — World Bank's second counter diverged
+    from the first on one shared veg gravy and ICON Chn's Roti Combo on three,
+    every one of them reported as nothing at all. An operator sees two counters
+    serving different dishes in a category they configured as shared, with
+    nothing anywhere saying why.
+
+    NB the whole-sync fallback in `api/app.py` is a DIFFERENT site and was
+    always reported, through `pool_warnings` — that one abandons every shared
+    pin when the counter cannot be solved with them.
+    """
+
+    def test_the_pin_logger_is_inside_the_captured_tree(self):
+        from src.solver.menu_solver import pin_relax_logger
+        assert pin_relax_logger.name.startswith(RULES_LOGGER + '.')
+
+    def test_an_ineligible_pin_is_reported(self):
+        """A real solve, not a stub: one slot, one day, and a pin naming a dish
+        that is not in the pool."""
+        import datetime as dt
+        import pandas as pd
+        from src.solver.menu_solver import MenuSolver, SolverConfig
+
+        day = dt.date(2026, 9, 7)
+        pools = {'veg_gravy': pd.DataFrame([
+            {'item': 'dish_a', 'course_type': 'veg_gravy',
+             'item_color': 'red', 'cuisine_family': 'north_indian'},
+            {'item': 'dish_b', 'course_type': 'veg_gravy',
+             'item_color': 'green', 'cuisine_family': 'north_indian'},
+        ])}
+        cfg = SolverConfig(
+            days=1, start_date=day, time_limit_sec=30,
+            active_base_slots=['veg_gravy'], slot_counts={'veg_gravy': 1},
+            forced_items={(day, 'veg_gravy'): 'a_dish_this_counter_lacks'},
+        )
+        with RelaxationCapture() as cap:
+            MenuSolver(pools=pools, solver_config=cfg, menu_rules=[]).solve()
+        rules = [r['rule'] for r in cap.records]
+        assert 'veg_gravy_pin' in rules, cap.records
+        sample = next(r for r in cap.records if r['rule'] == 'veg_gravy_pin')
+        assert 'a_dish_this_counter_lacks' in sample['samples'][0]
+        assert day.isoformat() in sample['samples'][0]
+
+    def test_a_pin_that_places_reports_nothing(self):
+        """The negative half: without it this passes however broken the site
+        is, because a relaxation that fires always is no signal."""
+        import datetime as dt
+        import pandas as pd
+        from src.solver.menu_solver import MenuSolver, SolverConfig
+
+        day = dt.date(2026, 9, 7)
+        pools = {'veg_gravy': pd.DataFrame([
+            {'item': 'dish_a', 'course_type': 'veg_gravy',
+             'item_color': 'red', 'cuisine_family': 'north_indian'},
+            {'item': 'dish_b', 'course_type': 'veg_gravy',
+             'item_color': 'green', 'cuisine_family': 'north_indian'},
+        ])}
+        cfg = SolverConfig(
+            days=1, start_date=day, time_limit_sec=30,
+            active_base_slots=['veg_gravy'], slot_counts={'veg_gravy': 1},
+            forced_items={(day, 'veg_gravy'): 'dish_a'},
+        )
+        with RelaxationCapture() as cap:
+            plan, dates = MenuSolver(
+                pools=pools, solver_config=cfg, menu_rules=[]).solve()
+        assert [r for r in cap.records if r['rule'] == 'veg_gravy_pin'] == []
+        assert 'dish_a' in str(plan[dates[0]])
