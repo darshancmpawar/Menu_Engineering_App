@@ -39,6 +39,62 @@
   .btn:focus-visible { outline: 2px solid #0D6EFD; outline-offset: 2px; }
   .btn.primary { background: #FEBF34; border-color: #FEBF34; font-weight: 700; padding: 7px 14px; }
 
+  /* Pick mode. The results panel sits IN THE FLOW under the edited row
+     rather than floating: the component lives in an iframe sized to its
+     content, so an absolutely positioned panel is clipped at the iframe
+     edge and the planner sees half a list. */
+  .seg { display: inline-flex; border: 1px solid #E5E5E5; border-radius: 8px; overflow: hidden; }
+  .seg button { font-family: inherit; font-size: 12.5px; font-weight: 600;
+                padding: 6px 14px; border: 0; background: #FFFFFF;
+                color: #414141; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: #131313; color: #FFFFFF; }
+  .seg button:focus-visible { outline: 2px solid #0D6EFD; outline-offset: -2px; }
+
+  .status { padding: 7px 16px; font-size: 12.5px; color: #414141;
+            background: #F9F9F9; border-top: 1px solid #F0F0F0; }
+  .status.err { background: #FFF1F2; color: #9B1C24; }
+
+  .cell input.q { width: 100%; font-family: inherit; font-size: 12.5px;
+                  padding: 5px 7px; border: 1px solid #0D6EFD; border-radius: 6px;
+                  outline: none; background: #FFFFFF; color: #131313; }
+
+  .res { border-top: 1px solid #E5E5E5; background: #FFFFFF; padding: 8px 12px 10px; }
+  .res .rhead { display: flex; justify-content: space-between; gap: 12px;
+                flex-wrap: wrap; font-size: 12px; color: #777777; padding-bottom: 6px; }
+  .res .rhead b { color: #131313; font-weight: 700; }
+  .res ul { list-style: none; margin: 0; padding: 0; }
+  .res li { display: flex; align-items: center; gap: 8px; min-height: 44px;
+            padding: 4px 8px; border-radius: 8px; cursor: pointer;
+            font-size: 12.5px; color: #131313; }
+  .res li[aria-selected="true"] { background: #EBF3FF; box-shadow: inset 0 0 0 2px #0D6EFD; }
+  .res li[aria-disabled="true"] { cursor: default; color: #777777; }
+  .res li .nm { flex: 1; }
+  .chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+          white-space: nowrap; }
+  .chip.ok   { background: #E5FFF1; color: #137A43; }
+  .chip.warn { background: #FFF5E8; color: #A35800; }
+  .chip.lock { background: #F0F0F0; color: #555555; }
+  .res .none { font-size: 12.5px; color: #777777; padding: 8px; }
+
+  .exc { border-top: 1px solid #E5E5E5; }
+  .exc > button { width: 100%; display: flex; align-items: center; gap: 8px;
+                  padding: 10px 16px; background: #FFFBF2; border: 0;
+                  font-family: inherit; font-size: 13px; font-weight: 700;
+                  color: #131313; cursor: pointer; text-align: left; }
+  .exc .count { background: #F78D00; color: #FFFFFF; border-radius: 99px;
+                font-size: 11px; padding: 1px 8px; }
+  .exc .body { padding: 4px 16px 12px; }
+  .exc .item { border: 1px solid #F0F0F0; border-radius: 10px; padding: 9px 11px;
+               margin-bottom: 8px; }
+  .exc .item h5 { margin: 0 0 3px; font-size: 13px; font-weight: 700; color: #131313; }
+  .exc .item .sub { font-size: 11.5px; color: #777777; margin-bottom: 6px; }
+  .exc .v { font-size: 12px; color: #414141; padding: 2px 0; }
+  .exc .v b { color: #131313; }
+  .exc .cover { font-size: 11.5px; color: #777777; padding-top: 4px; line-height: 1.5; }
+
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
   .grid { display: grid; border-top: 1px solid #131313; }
   .head { background: #000000; color: #FFFFFF; padding: 10px 12px;
           font-size: 12px; font-weight: 700; display: flex; align-items: flex-end; }
@@ -152,6 +208,21 @@
   // per click would make picking six cells cost six round trips.
   var selected = [];
   var openDay = null;
+  // Pick-mode state, all local. Typing must not cost a Streamlit rerun:
+  // the city list is embedded (ui/menu_table.dish_payload) precisely so the
+  // search runs here.
+  var mode = "auto";          // "auto" | "pick"
+  var pickCell = null;        // "<slot>|<iso>" being edited
+  var query = "";
+  var highlight = 0;          // index into the SELECTABLE results
+  var applying = false;       // an Apply is in flight; ignore a second one
+  var status = "";
+  var statusErr = false;
+  // Dishes the SERVER refused as week repeats. The embedded list only knows
+  // the plan on screen, so a dish blocked by saved history comes back as a
+  // 400 — remembering it keeps the planner from picking it again and again.
+  var serverLocked = {};
+  var excOpen = true;
 
   var THEME = {
     mix: ["#E5FFF1", "#137A43"], chinese: ["#FFF5E8", "#A35800"],
@@ -166,6 +237,7 @@
     pin: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6zM12 14v7" stroke="#414141" stroke-width="2.2" stroke-linejoin="round"/></svg>',
     tick: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#0D6EFD"/><path d="M7 12.5l3.2 3L17 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     warn: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.9L2.5 17a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke="#A35800" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pencil: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9a2.8 2.8 0 10-4-4L4 16v4z" stroke="#6F42C1" stroke-width="2.2" stroke-linejoin="round"/></svg>',
     redo: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 11-2.3-5.7M20 4v5h-5" stroke="#0A58CA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     // The explain panel's verdict marks. Circled tick in green, matching the
     // design; the warning reuses the cell's own triangle so one shape means
@@ -179,6 +251,122 @@
     });
   }
   function key(rowId, iso) { return rowId + "|" + iso; }
+
+  // ---- Pick mode helpers -------------------------------------------------
+
+  function pretty(name) {
+    // The display name the server would have sent. Derived rather than
+    // transmitted: sending it doubled the embedded list (342 KiB against
+    // 106 KiB for the fleet's widest counter) and Streamlit resends every
+    // argument on every rerun. Mirrors ui.formatters._prettify_item_name.
+    return String(name || "").replace(/_/g, " ").trim()
+      .replace(/\S+/g, function (w) { return w.charAt(0).toUpperCase() + w.slice(1); });
+  }
+
+  function baseSlot(slotId) { return String(slotId || "").split("__")[0]; }
+
+  function isoWeek(iso) {
+    // ISO-8601 week number (decision D6). Thursday decides the year, which
+    // is the whole reason this is not `Math.floor(dayOfYear / 7)`.
+    var d = new Date(iso + "T00:00:00Z");
+    if (isNaN(d)) return iso;
+    var day = (d.getUTCDay() + 6) % 7;            // Mon = 0
+    d.setUTCDate(d.getUTCDate() - day + 3);       // the week's Thursday
+    var year = d.getUTCFullYear();
+    var jan4 = new Date(Date.UTC(year, 0, 4));
+    var week = 1 + Math.round(
+      ((d - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    return year + "-W" + week;
+  }
+
+  function cellOf(k) {
+    var parts = String(k || "").split("|");
+    var row = (ARGS.rows || []).filter(function (r) { return r.id === parts[0]; })[0];
+    return {slot: parts[0], iso: parts[1], row: row,
+            cell: row ? (row.cells || {})[parts[1]] : null};
+  }
+
+  function weekUsedNames(iso, exceptKey) {
+    // {normalised dish: day label} for the ISO week of `iso`, from the plan on
+    // screen. The client half of decision D5 — a convenience, not the rule:
+    // the server checks saved history too and wins when they disagree.
+    var want = isoWeek(iso), used = {};
+    (ARGS.days || []).forEach(function (d) {
+      if (isoWeek(d.iso) !== want) return;
+      (ARGS.rows || []).forEach(function (r) {
+        if (key(r.id, d.iso) === exceptKey) return;
+        var c = (r.cells || {})[d.iso];
+        if (!c || c.off || !c.title) return;
+        used[norm(c.title)] = d.label;
+      });
+    });
+    return used;
+  }
+
+  function norm(name) {
+    return String(name || "").replace(/\s*\([A-Z]\)\s*$/, "").trim().toLowerCase();
+  }
+
+  function matches(q, display) {
+    // Every whitespace-separated token must be a substring. Deliberately not
+    // a fuzzy match: a planner types the dish they have already decided on,
+    // and a fuzzy list puts something else first.
+    var toks = q.toLowerCase().split(/\s+/).filter(Boolean);
+    var low = display.toLowerCase();
+    for (var i = 0; i < toks.length; i++) {
+      if (low.indexOf(toks[i]) === -1) return false;
+    }
+    return true;
+  }
+
+  function results() {
+    // [{name, display, warnings:[], locked:<day>|null}], selectable first.
+    if (!pickCell) return [];
+    var info = cellOf(pickCell);
+    var slotData = (ARGS.dishes || {})[baseSlot(info.slot)];
+    if (!slotData) return [];
+    var names = slotData.n || [];
+    var out = {}; (slotData.out || []).forEach(function (i) { out[i] = 1; });
+    var ago = slotData.ago || {};
+    var cooldown = +(ARGS.cooldown_days || 0);
+    var used = weekUsedNames(info.iso, pickCell);
+    var here = info.cell ? norm(info.cell.title) : "";
+    var q = query.trim();
+
+    var picked = [];
+    for (var i = 0; i < names.length; i++) {
+      var display = pretty(names[i]);
+      if (q && !matches(q, display)) continue;
+      var n = norm(names[i]);
+      if (n === here) continue;             // the dish already in the cell
+      var warn = [];
+      var days = ago[String(i)];
+      if (days !== undefined && cooldown && days < cooldown) {
+        warn.push("Served " + days + " days ago");
+      }
+      if (out[i]) warn.push("Not in this client's pool");
+      picked.push({name: names[i], display: display, warnings: warn,
+                   locked: serverLocked[n] || used[n] || null});
+      if (picked.length > 400) break;       // the cap below does the rest
+    }
+    var ql = q.toLowerCase();
+    picked.sort(function (a, b) {
+      var ap = a.display.toLowerCase().indexOf(ql) === 0 ? 0 : 1;
+      var bp = b.display.toLowerCase().indexOf(ql) === 0 ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      if (a.warnings.length !== b.warnings.length) {
+        return a.warnings.length - b.warnings.length;
+      }
+      return a.display.localeCompare(b.display);
+    });
+    var free = picked.filter(function (r) { return !r.locked; }).slice(0, 8);
+    var lock = picked.filter(function (r) { return r.locked; }).slice(0, 3);
+    return free.concat(lock);
+  }
+
+  function selectable() {
+    return results().filter(function (r) { return !r.locked; });
+  }
 
   function colourDishes(text, iso) {
     // The overview names the day's dishes; print each in the ink its own cell
@@ -208,6 +396,102 @@
     return out;
   }
 
+  function hasDishes() {
+    return !!(ARGS.dishes && Object.keys(ARGS.dishes).length);
+  }
+
+  function hasException(k) {
+    var parts = String(k).split("|");
+    return (ARGS.exceptions || []).some(function (e) {
+      return e.slot_id === parts[0] && e.date === parts[1];
+    });
+  }
+
+  function resultsHtml() {
+    var info = cellOf(pickCell);
+    var slotData = (ARGS.dishes || {})[baseSlot(info.slot)] || {};
+    var total = (slotData.n || []).length;
+    var day = (ARGS.days || []).filter(function (d) { return d.iso === info.iso; })[0] || {};
+    var rows = results();
+    var sel = selectable();
+    var h = ['<div class="res" id="resbox">'];
+    h.push('<div class="rhead"><span><b>' + esc(info.row ? info.row.label : info.slot) +
+           '</b> \u00b7 ' + esc(day.label || info.iso) + ' \u00b7 replacing ' +
+           esc(info.cell ? info.cell.name : "\u2014") + '</span>');
+    h.push('<span>Searching the ' + esc(ARGS.city || "city") + ' city list \u00b7 ' +
+           total + ' dishes</span></div>');
+    if (!rows.length) {
+      h.push('<div class="none">No ' +
+             esc((info.row ? info.row.label : info.slot).toLowerCase()) +
+             ' dish matches "' + esc(query) + '" in the city list.</div>');
+    } else {
+      h.push('<ul role="listbox" id="reslist">');
+      rows.forEach(function (r) {
+        var si = sel.indexOf(r);
+        var on = si !== -1 && si === highlight;
+        h.push('<li role="option" id="opt_' + esc(r.name) + '"' +
+               (r.locked ? ' aria-disabled="true"' : ' data-pick="' + esc(r.name) + '"') +
+               ' aria-selected="' + (on && !r.locked) + '">');
+        h.push('<span class="nm">' + esc(r.display) + '</span>');
+        if (r.locked) {
+          h.push('<span class="chip lock">Already on ' + esc(r.locked) +
+                 ' \u00b7 one per week</span>');
+        } else if (!r.warnings.length) {
+          h.push('<span class="chip ok">Fits</span>');
+        } else {
+          h.push('<span class="chip warn">' + esc(r.warnings[0]) +
+                 (r.warnings.length > 1 ? " +" + (r.warnings.length - 1) : "") +
+                 '</span>');
+        }
+        h.push('</li>');
+      });
+      h.push('</ul>');
+    }
+    h.push('<div class="none" style="padding:6px 8px 0">Enter applies \u00b7 ' +
+           'Esc cancels \u00b7 a pick may break rules and is listed under ' +
+           'Exceptions</div>');
+    h.push('</div>');
+    return h.join("");
+  }
+
+  function exceptionsHtml() {
+    var ex = ARGS.exceptions || [];
+    if (!ex.length) return "";
+    var h = ['<div class="exc">'];
+    h.push('<button data-act="exc" aria-expanded="' + excOpen + '">' +
+           (excOpen ? "\u25be" : "\u25b8") + ' Exceptions <span class="count">' +
+           ex.length + '</span><span style="margin-left:auto;font-weight:600;' +
+           'font-size:11.5px;color:#777777">Picked by you</span></button>');
+    if (excOpen) {
+      h.push('<div class="body">');
+      ex.forEach(function (e) {
+        var day = (ARGS.days || []).filter(function (d) { return d.iso === e.date; })[0] || {};
+        h.push('<div class="item"><h5>' + esc(pretty(e.item)) + '</h5>');
+        h.push('<div class="sub">' + esc(e.slot_id) + ' \u00b7 ' +
+               esc(day.label || e.date) + ' \u00b7 replaced ' +
+               esc(pretty(e.replaced)) + ' (auto)</div>');
+        (e.violations || []).forEach(function (v) {
+          h.push('<div class="v"><b>' + esc(v.rule || v.code) + '</b> \u2014 ' +
+                 esc(v.message) + '</div>');
+        });
+        h.push('</div>');
+      });
+      // Required, not decorative. Weekly caps, slot composition and colour
+      // constraints live only inside the CP-SAT model, so a pick that breaks
+      // one does not appear above. A list that did not say so would read as
+      // complete.
+      var ck = (ARGS.checked || []).join(", ");
+      var nk = (ARGS.not_checked || []).join(", ");
+      if (ck || nk) {
+        h.push('<div class="cover">Checked: ' + esc(ck || "nothing") +
+               '. Not checked: ' + esc(nk || "nothing") + '.</div>');
+      }
+      h.push('</div>');
+    }
+    h.push('</div>');
+    return h.join("");
+  }
+
   function render() {
     if (!ARGS) return;
     var days = ARGS.days || [], rows = ARGS.rows || [];
@@ -220,15 +504,28 @@
     h.push('<div class="bar"><div><span class="name">' + esc(ARGS.title) + '</span>');
     if (ARGS.meta) h.push('<span class="meta">' + esc(ARGS.meta) + '</span>');
     h.push('</div>');
-    if (selected.length) {
-      h.push('<div style="display:flex;align-items:center;gap:8px;">' +
-             '<span class="sel">' + selected.length + ' selected</span>' +
+    h.push('<div style="display:flex;align-items:center;gap:10px;">');
+    if (mode === "auto" && selected.length) {
+      h.push('<span class="sel">' + selected.length + ' selected</span>' +
              '<button class="btn" data-act="clear">Clear</button>' +
-             '<button class="btn primary" data-act="regen">Regenerate selected</button></div>');
-    } else if (ARGS.hint) {
+             '<button class="btn primary" data-act="regen">Regenerate selected</button>');
+    } else if (ARGS.hint && mode === "auto") {
       h.push('<span style="font-size:12.5px;color:#777777;">' + esc(ARGS.hint) + '</span>');
     }
-    h.push('</div>');
+    // The toggle is TABLE-level and always enabled. An earlier design made
+    // Pick act on "the one selected cell", which had no answer when several
+    // were selected.
+    if (hasDishes()) {
+      h.push('<span class="seg" role="group" aria-label="Cell action mode">' +
+             '<button data-mode="auto" aria-pressed="' + (mode === "auto") + '">Auto</button>' +
+             '<button data-mode="pick" aria-pressed="' + (mode === "pick") + '">Pick</button>' +
+             '</span>');
+    }
+    h.push('</div></div>');
+    if (status) {
+      h.push('<div class="status' + (statusErr ? ' err' : '') +
+             '" role="status" aria-live="polite">' + esc(status) + '</div>');
+    }
 
     // day header row
     h.push('<div class="grid" style="grid-template-columns:' + cols + '">');
@@ -297,9 +594,24 @@
         // only has to make a long row followable.
         var bg = on ? "#EBF3FF"
                : c.warn ? "#FFF5E8"
+               : (c.manual && hasException(k)) ? "#FFF5E8"
+               : c.manual ? "#F3ECFF"
                : c.modified ? "#EBF3FF"
                : (openDay === di ? "#FFFBF2" : (ri % 2 ? "#F9F9F9" : "#FFFFFF"));
         var st = "background:" + bg + (on ? ";box-shadow:inset 0 0 0 2px #0D6EFD" : "");
+        if (pickCell === k) {
+          // The cell IS the search input (decision D1). Rendered as a plain
+          // div so the input is not nested in a button.
+          h.push('<div class="cell" style="background:#FFFFFF">' +
+                 '<label class="sr" for="q_' + esc(k) + '">Search ' +
+                 esc(r.label) + ' dishes</label>' +
+                 '<input class="q" id="q_' + esc(k) + '" data-q="1" ' +
+                 'role="combobox" aria-expanded="true" aria-controls="reslist" ' +
+                 'aria-autocomplete="list" autocomplete="off" ' +
+                 (applying ? 'disabled ' : '') +
+                 'value="' + esc(query) + '"></div>');
+          return;
+        }
         var cls = "cell" + (c.nonveg ? " nonveg" : "") + (c.pinned ? " pinned" : "");
         // A pinned cell carries no `data-cell`, so `wire` never binds it and
         // it cannot join a selection — the rule already decided this dish.
@@ -318,13 +630,21 @@
         }
         // At most ONE marker, and in this order: a tick for what you picked
         // beats a warning you have already responded to by picking it.
+        // At most ONE marker, in this order: a tick for what you picked beats
+        // a warning you have already answered by picking it; the pencil
+        // ("chosen by you") beats the redo, because a manual cell is also a
+        // changed one and the planner needs to know which kind.
         if (on) h.push('<span class="tail">' + ICON.tick + '</span>');
         else if (c.warn) h.push('<span class="tail">' + ICON.warn + '</span>');
+        else if (c.manual) h.push('<span class="tail">' + ICON.pencil + '</span>');
         else if (c.modified) h.push('<span class="tail">' + ICON.redo + '</span>');
         h.push('</button>');
       });
       h.push('</div>');
+      if (pickCell && cellOf(pickCell).slot === r.id) h.push(resultsHtml());
     });
+
+    h.push(exceptionsHtml());
 
     h.push('</div>');
     document.getElementById("root").innerHTML = h.join("");
@@ -332,15 +652,117 @@
     setHeight();
   }
 
+  function renderResults() {
+    // Typing rebuilds ONLY the results container. A full `render()` would
+    // replace the input element and the caret would jump to a fresh node, so
+    // the planner would lose focus after every keystroke.
+    var box = document.getElementById("resbox");
+    if (!box) return render();
+    var tmp = document.createElement("div");
+    tmp.innerHTML = resultsHtml();
+    box.parentNode.replaceChild(tmp.firstChild, box);
+    wireResults();
+    setHeight();
+  }
+
+  function wireResults() {
+    document.querySelectorAll("[data-pick]").forEach(function (el) {
+      el.onclick = function () { apply(el.getAttribute("data-pick")); };
+    });
+  }
+
+  function apply(name) {
+    // One press is one request: `applying` makes the Enter key and a click
+    // on the same result idempotent while the server is answering.
+    if (applying || !pickCell || !name) return;
+    applying = true;
+    status = "Applying\u2026";
+    statusErr = false;
+    setValue({action: "pick", cell: pickCell, item: name, nonce: Date.now()});
+    render();
+  }
+
+  function startPick(k) {
+    pickCell = k;
+    query = "";
+    highlight = 0;
+    render();
+    var input = document.querySelector("[data-q]");
+    if (input) input.focus();
+  }
+
+  function cancelPick() {
+    pickCell = null;
+    query = "";
+    highlight = 0;
+    render();
+  }
+
   function wire() {
     document.querySelectorAll("[data-cell]").forEach(function (el) {
       el.onclick = function () {
         var k = el.getAttribute("data-cell");
+        if (mode === "pick") { startPick(k); return; }
         var i = selected.indexOf(k);
         if (i === -1) selected.push(k); else selected.splice(i, 1);
         render();                       // selection is local; no rerun yet
       };
     });
+    // A pinned cell has no `data-cell`, so it is not bound above and cannot
+    // be picked or selected. It still has to SAY why when clicked, or it
+    // reads as a dead control.
+    document.querySelectorAll(".cell.pinned").forEach(function (el) {
+      el.onclick = function () {
+        status = "Pinned by a client rule. Search and Regenerate can't " +
+                 "change it.";
+        statusErr = false;
+        render();
+      };
+    });
+    document.querySelectorAll("[data-mode]").forEach(function (el) {
+      el.onclick = function () {
+        var want = el.getAttribute("data-mode");
+        if (want === mode) return;
+        // Switching clears the selection and closes any open edit. It never
+        // changes the plan.
+        mode = want;
+        selected = [];
+        pickCell = null;
+        query = "";
+        status = want === "pick"
+          ? "Pick mode: click a dish to search the city list."
+          : "Auto mode: click dishes to select, then regenerate.";
+        statusErr = false;
+        render();
+      };
+    });
+    var exc = document.querySelector('[data-act="exc"]');
+    if (exc) exc.onclick = function () { excOpen = !excOpen; render(); };
+    wireResults();
+    var input = document.querySelector("[data-q]");
+    if (input) {
+      input.oninput = function () {
+        query = input.value;
+        highlight = 0;        // a new query invalidates the old highlight
+        renderResults();
+      };
+      input.onkeydown = function (e) {
+        var sel = selectable();
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          if (!sel.length) return;
+          var step = e.key === "ArrowDown" ? 1 : -1;
+          highlight = (highlight + step + sel.length) % sel.length;
+          renderResults();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (sel[highlight]) apply(sel[highlight].name);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancelPick();
+        }
+      };
+    }
     document.querySelectorAll("[data-why]").forEach(function (el) {
       el.onclick = function () {
         var i = +el.getAttribute("data-why");
@@ -370,7 +792,24 @@
       window.__token = ARGS.reset_token;
       selected = [];
       openDay = null;
+      pickCell = null;
+      query = "";
+      status = "";
+      serverLocked = {};
     }
+    // New arguments mean the server answered: a pick that was in flight is
+    // done, one way or the other. Streamlit re-renders the component after
+    // the rerun that handled it, so this is the only signal there is.
+    if (applying) {
+      applying = false;
+      pickCell = null;
+      query = "";
+    }
+    if (ARGS.status) { status = ARGS.status; statusErr = !!ARGS.status_error; }
+    // A dish the SERVER refused as a week repeat (saved history, which the
+    // embedded list cannot see). Remembered so the planner is not offered it
+    // again for the rest of this edit.
+    if (ARGS.locked_item) serverLocked[norm(ARGS.locked_item)] = ARGS.locked_on || "another day";
     render();
   });
 
