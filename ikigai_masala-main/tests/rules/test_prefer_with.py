@@ -17,7 +17,7 @@ from src.menu_rules.soft_preference_rule import SoftPreferenceRule
 from src.solver.menu_solver import MAX_FRESHNESS_BONUS
 
 from tests.rules.test_soft_preference import (
-    _cell, _ctx, _link_any, _maximize,
+    _cell, _ctx, _maximize,
 )
 
 A = {'flag': 'is_a'}
