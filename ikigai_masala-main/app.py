@@ -84,7 +84,7 @@ from ui.planner_view import (
 )
 from ui.menu_table import (
     dish_payload, explain_days, manual_cells_from, menu_table,
-    merged_exceptions, pick_request, regen_request,
+    merged_exceptions, pick_request, regen_request, same_dish,
 )
 from ui.region_strip import region_day_args, region_strip
 from src.explain.checks import MAIN_COURSES, base_slot
@@ -1153,6 +1153,18 @@ def _apply_pick(api, block_index: int, counter_index: int,
     b = st.session_state.plan_blocks[block_index]
     plan, plan_dates = b["plan"], b["plan_dates"]
     old_raw = plan.get(iso, {}).get(slot_id, "")
+    cell = f"{slot_id}|{iso}"
+    # The dish the SOLVER put here, kept from the first pick on this cell and
+    # never overwritten (`setdefault`). Spec §6.5: picking twice in one cell
+    # must still undo to the original auto dish, not to the previous pick —
+    # otherwise undoing a correction leaves the mistake in place.
+    undo = b.setdefault("pick_undo", {})
+    undo.setdefault(cell, old_raw)
+    # An undo is a pick of that original dish, through this same path. It
+    # re-audits and returns a consistent solution for free, and it cannot
+    # resurrect a stale plan the way writing the dish straight back into
+    # `b["plan"]` would.
+    undoing = bool(old_raw) and same_dish(item, undo.get(cell))
     try:
         result = api.pick(
             client_name=st.session_state.client_name,
@@ -1194,6 +1206,20 @@ def _apply_pick(api, block_index: int, counter_index: int,
     b["not_checked"] = result.get("not_checked") or []
     b["pick_locked_item"] = ""
 
+    order = b.setdefault("pick_order", [])
+    if cell in order:
+        order.remove(cell)
+    if undoing:
+        # Back to the solver's dish: the cell is no longer a manual one, so
+        # it loses the pencil, its Exceptions entry and its place in the undo
+        # stack. `merged_exceptions` has already dropped the entry (the undo
+        # came back clean), but the manual set is accumulated here and would
+        # otherwise keep the marker on a cell nobody picked any more.
+        b["manual_cells"] = [c for c in b["manual_cells"] if c != cell]
+        undo.pop(cell, None)
+    else:
+        order.append(cell)
+
     new_raw = (b["plan"].get(iso, {}) or {}).get(slot_id, "")
     broke = sum(len(e.get("violations") or []) for e in (result.get("exceptions") or [])
                 if e.get("date") == iso and e.get("slot_id") == slot_id)
@@ -1202,6 +1228,9 @@ def _apply_pick(api, block_index: int, counter_index: int,
     except ValueError:
         day_label = iso
     b["pick_status"] = (
+        f"{format_item_for_ui(new_raw)} restored to {day_label} "
+        f"{display_label_for_slot_id(slot_id)}."
+        if undoing else
         f"{format_item_for_ui(new_raw)} applied to {day_label} "
         f"{display_label_for_slot_id(slot_id)}. "
         + (f"It breaks {broke} rule(s) and is listed under Exceptions."
@@ -1701,6 +1730,7 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
         # rerun — see `_pick_dishes`.
         dishes=_pick_dishes(b, counter_index),
         exceptions=b.get("exceptions") or [],
+        undo=b.get("pick_undo") or {}, undo_order=b.get("pick_order") or [],
         city=_pick_cfg.get("city") or "",
         cooldown_days=_pick_cfg.get("cooldown_days") or 0,
         checked=b.get("checked") or [], not_checked=b.get("not_checked") or [],

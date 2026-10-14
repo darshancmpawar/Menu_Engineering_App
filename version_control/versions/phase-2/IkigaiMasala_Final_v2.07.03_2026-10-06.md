@@ -132,4 +132,4 @@ problem and wants a pass of its own.
 |---|---|---|---|
 | 2.07.03 | 6 Oct | Darshan + Claude Code | Cadence rules gain an opt-in FLOOR (`at_least_once_per_window`) — a ceiling alone is satisfied by serving none, the sprouts-gravy defect of 2.07.01 in a second place; khichdi retuned 21 → 15 days. New month axis (`allowed_months`) and a universal mango rule led by `key_ingredient`, which catches the Kannada, Tamil and Hindi names and excludes `mangodi`. Per-client `meal_shared_categories`: Corning Chakan's dinner repeats the lunch dessert, soup and bread while everything else still varies. 89 dangling references to the deleted correction chain removed, including three live instructions to run scripts that no longer exist |
 
-**Previous:** [v2.07.02](IkigaiMasala_Final_v2.07.02_2026-10-06.md)  **Next:** —
+**Previous:** [v2.07.02](IkigaiMasala_Final_v2.07.02_2026-10-06.md)  **Next:** [v2.07.04](IkigaiMasala_Final_v2.07.04_2026-10-14.md)

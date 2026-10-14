@@ -39,6 +39,8 @@ eval(grab('weekUsedNames'));
 eval(grab('matches'));
 eval(grab('results'));
 eval(grab('selectable'));
+eval(grab('undoFor'));
+eval(grab('lastUndoCell'));
 
 const FAIL = [];
 function check(label, got, want) {
@@ -128,6 +130,35 @@ check('an ISO week number', isoWeek('2026-11-04'), '2026-W45');
 check('a Sunday belongs to the week that started on Monday',
   isoWeek('2026-11-08'), '2026-W45');
 check('and the next Monday starts a new one', isoWeek('2026-11-09'), '2026-W46');
+
+// 7. Undo. It is a PICK of the dish the solver originally put there, so the
+//    only thing the component has to get right is which dish and which cell.
+ARGS.undo = {'veg_gravy|2026-11-02': 'dal_makhani(W)',
+             'rice|2026-11-03': 'jeera_rice(Y)'};
+ARGS.undo_order = ['veg_gravy|2026-11-02', 'rice|2026-11-03'];
+check('undo offers the dish the solver had put there',
+  undoFor('veg_gravy|2026-11-02'), 'dal_makhani(W)');
+check('a cell that was never picked has nothing to undo',
+  undoFor('bread|2026-11-02'), '');
+check('"Undo last pick" takes the most recent one',
+  lastUndoCell(), 'rice|2026-11-03');
+
+// Undoing the most recent leaves the earlier one still undoable — the stack
+// is per cell, so one undo must not clear the rest.
+delete ARGS.undo['rice|2026-11-03'];
+ARGS.undo_order = ['veg_gravy|2026-11-02'];
+check('and falls back to the one before it',
+  lastUndoCell(), 'veg_gravy|2026-11-02');
+
+// A stale order entry whose dish is gone must be skipped, not offered: the
+// button would send an empty item and `apply` would silently do nothing.
+ARGS.undo_order = ['veg_gravy|2026-11-02', 'dessert|2026-11-04'];
+check('a stale order entry with no dish is skipped',
+  lastUndoCell(), 'veg_gravy|2026-11-02');
+
+ARGS.undo = {};
+ARGS.undo_order = [];
+check('nothing picked, nothing to undo', lastUndoCell(), '');
 
 if (FAIL.length) {
   console.error('\n' + FAIL.length + ' FAILED\n' + FAIL.join('\n'));

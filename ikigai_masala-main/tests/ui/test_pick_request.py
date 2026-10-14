@@ -16,7 +16,7 @@ import pytest
 
 from ui.menu_table import (
     day_cells, dish_payload, manual_cells_from, merged_exceptions,
-    pick_request,
+    pick_request, same_dish,
 )
 
 
@@ -138,6 +138,37 @@ class TestMergedExceptions:
 
     def test_nothing_in_nothing_out(self):
         assert merged_exceptions(None, None) == []
+
+
+class TestSameDish:
+    """Telling an undo from an ordinary pick.
+
+    The plan stores `jeera_rice(Y)` and a pick sends `jeera_rice`, so a raw
+    `==` says they differ and every undo would be filed as a new pick —
+    leaving the pencil marker, the Exceptions entry and the undo stack on a
+    cell the solver owns again.
+    """
+
+    @pytest.mark.parametrize('a,b', [
+        ('jeera_rice(Y)', 'jeera_rice'),
+        ('jeera_rice', 'jeera_rice(Y)'),
+        (' Jeera_Rice (Y)', 'jeera_rice'),
+        ('jeera_rice', 'jeera_rice'),
+    ])
+    def test_the_colour_suffix_and_case_do_not_make_two_dishes(self, a, b):
+        assert same_dish(a, b)
+
+    @pytest.mark.parametrize('a,b', [
+        ('jeera_rice', 'lemon_rice'),
+        ('jeera_rice', ''),
+        ('', 'jeera_rice'),
+        ('', ''),
+        (None, None),
+    ])
+    def test_different_or_missing_is_not_the_same_dish(self, a, b):
+        # An empty cell must never read as "the same dish": that would file a
+        # pick into a blank cell as an undo and silently drop its marker.
+        assert not same_dish(a, b)
 
 
 class TestDishPayload:
