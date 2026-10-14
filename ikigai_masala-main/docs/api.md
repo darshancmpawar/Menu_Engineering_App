@@ -16,7 +16,8 @@ accept or supply it to correlate traces across logs.
 | GET    | `/metrics` | In-process counter snapshot |
 | GET    | `/clients` | List clients (`clients` = names; `clients_detail` = `[{name, city}]` for the city filter) |
 | POST   | `/plan` | Generate a plan (optional `counter_index` picks the counter; response carries `counter_mode` / `counter_count` / `counter_index` / `counter_name`) |
-| POST   | `/regenerate` | Regenerate selected cells (optional `counter_index`) |
+| POST   | `/regenerate` | Regenerate selected cells (optional `counter_index`). **Rejects a pinned cell with 400 `pinned_cell`** — a staple, a `forced_items` pin or a client constant is a cell the solver did not choose, and until v2.08 only the table markup stopped one being selected |
+| POST   | `/pick` | Put a NAMED dish in a cell — the planner has already decided. Runs no CP-SAT, so it takes no solver slot and no `time_limit_seconds`. See [pick](#pick-a-dish) |
 | POST   | `/save` | Persist plan to history (overwrites the prior day rows for the same `(client, dates)`; multi-cuisine sends `counters: [{name, week_plan}]`) |
 | GET    | `/saved-plan` | Return the saved plan for `(client_name, start_date, num_days)` if one exists — used by Streamlit's Generate flow to replay saved menus deterministically |
 | POST   | `/diagnose` | Run the pre-flight rule diagnostics without invoking the solver (replaces the old `/validate-pools` surface) |
@@ -283,9 +284,86 @@ Failures return HTTP 4xx/5xx with:
 - 400: validation failure (missing field, unknown client, malformed JSON)
 - 409: optimistic concurrency conflict (on `PUT /client-config`)
 - 500: unexpected server error — a generic message, never exception details
-- 429: per-IP rate limit tripped (`/plan`: 10/min burst 10; `/regenerate`: 20/min burst 20). Response includes `Retry-After` and `retry_after_seconds`. `MenuApiClient` retries once with jitter automatically.
+- 429: per-IP rate limit tripped (`/plan`: 10/min burst 10; `/regenerate`: 20/min burst 20; `/pick`: 20/min burst 20). Response includes `Retry-After` and `retry_after_seconds`. `MenuApiClient` retries once with jitter automatically.
 - 503: server at capacity (solver queue full) or supabase unreachable (on `/health`)
 - 504: request timed out waiting in the solver queue
+
+---
+
+## Pick a dish
+
+`POST /pick` puts a dish the planner NAMED into one cell. It is the inverse of
+everything else here: not a search for a plan that satisfies the rules, but a
+statement that this dish goes in this cell, with the rules it breaks reported
+rather than enforced.
+
+**It cannot be done by solving.** Pinning the dish and calling `/regenerate` is
+the obvious route and it fails silently — a pin the pre-filters removed is
+logged at INFO and the cell is "solved normally", so the caller gets a 200, a
+plausible menu, and a different dish than the one requested. `/pick` stamps
+directly and never reuses that path.
+
+Request:
+
+```json
+{ "client_name": "Zscaler", "counter_index": 0, "meal": "lunch",
+  "start_date": "2026-11-02", "num_days": 5,
+  "base_plan": { "2026-11-03": { "veg_gravy": "kadai_paneer(R)" } },
+  "picks":     { "2026-11-03": { "veg_gravy": "paneer_lababdar" } } }
+```
+
+`picks` values are the **ontology** spelling (lower-case, underscores), never a
+display name. Several picks apply atomically: all or none.
+
+### What it refuses (400, nothing applied)
+
+| `code` | When |
+|---|---|
+| `bad_request` | no `base_plan`, or `picks` is empty |
+| `bad_date` | a date that does not parse, or lies outside the planned horizon |
+| `unknown_cell` | the `slot_id` is not in `base_plan` for that date |
+| `pinned_cell` | a staple, a `forced_items` pin or a client constant |
+| `not_a_slot_dish` | the dish is not a dish of that cell's base slot **in the city list** |
+| `week_repeat` | the dish is already used elsewhere in the same ISO week |
+
+Errors carry `{success:false, code, error, details}`. `error` is a sentence a
+planner can read; branch on `code`, never on the text.
+
+**`week_repeat` is the one rule a pick cannot override.** It is checked against
+the plan on screen, the other picks in the same request, and **saved history**
+for the same ISO week (same client, all counters, all services — the same
+history the cooldown reads, which drops the `meal` column on purpose). It runs
+BEFORE the cooldown audit: a dish served earlier this week is also inside the
+21-day window, so the other order would report a blocking condition as a mild
+"served 3 days ago" warning and let it through. `details.source` is `plan`,
+`pick` or `history`.
+
+History deliberately covers only the week's days **outside** the current
+horizon. `/save` writes per (client, date), so counting the plan's own saved
+rows would make every dish block itself.
+
+### What it reports (200)
+
+`exceptions` carries one entry per pick that broke something, each with
+`violations` of `severity: "warning"` — the planner decides. Codes: `cooldown`,
+`client_pool`, `ricebread_gap`, `rule:<name>` (a rule whose own
+`pre_filter_pool` would have removed the dish) and `plate:<check>` (a plate
+check that passed before the pick and fails after). A clean pick has no entry.
+
+`solution` is `/regenerate`'s shape plus `is_manual` per item. Every cell not
+named in `picks` comes back byte-identical.
+
+### checked / not_checked
+
+Both are returned on **every** response, in full, even when empty.
+
+Weekly frequency caps, `slot_composition` and colour constraints exist only as
+CP-SAT constraints inside a model that a pick never builds, so a pick that
+breaks one does **not** appear in `exceptions`. The only honest version of that
+is one where the response says so every time, and the planner's Exceptions
+panel prints it. A rule whose probe raised is added to `not_checked` by name as
+`rule:<name> (errored)` rather than dropped — an audit that quietly loses a
+rule looks exactly like one that found nothing.
 
 ---
 

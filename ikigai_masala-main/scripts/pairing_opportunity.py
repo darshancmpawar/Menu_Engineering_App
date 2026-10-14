@@ -38,7 +38,6 @@ os.environ.setdefault('SUPABASE_URL', 'http://pairing-opportunity.invalid')
 os.environ.setdefault('SUPABASE_KEY', 'not-used-this-script-reads-files')
 
 from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule  # noqa: E402
-from src.ontology.paths import city_slug  # noqa: E402
 from src.ontology.repository import repository  # noqa: E402
 
 CITIES = ['Bangalore', 'Hyderabad', 'Chennai', 'Pune', 'NCR']

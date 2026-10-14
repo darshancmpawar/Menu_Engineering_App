@@ -214,6 +214,7 @@
   var mode = "auto";          // "auto" | "pick"
   var pickCell = null;        // "<slot>|<iso>" being edited
   var query = "";
+  var caret = 0;              // where the cursor was, to put it back
   var highlight = 0;          // index into the SELECTABLE results
   var applying = false;       // an Apply is in flight; ignore a second one
   var status = "";
@@ -474,6 +475,11 @@
           h.push('<div class="v"><b>' + esc(v.rule || v.code) + '</b> \u2014 ' +
                  esc(v.message) + '</div>');
         });
+        var cell = e.slot_id + "|" + e.date;
+        if (undoFor(cell)) {
+          h.push('<button class="btn" style="margin-top:7px" data-undo="' +
+                 esc(cell) + '">Undo this pick</button>');
+        }
         h.push('</div>');
       });
       // Required, not decorative. Weekly caps, slot composition and colour
@@ -515,6 +521,11 @@
     // The toggle is TABLE-level and always enabled. An earlier design made
     // Pick act on "the one selected cell", which had no answer when several
     // were selected.
+    var undoCell = lastUndoCell();
+    if (undoCell) {
+      h.push('<button class="btn" data-undo="' + esc(undoCell) + '">' +
+             'Undo last pick</button>');
+    }
     if (hasDishes()) {
       h.push('<span class="seg" role="group" aria-label="Cell action mode">' +
              '<button data-mode="auto" aria-pressed="' + (mode === "auto") + '">Auto</button>' +
@@ -649,7 +660,27 @@
     h.push('</div>');
     document.getElementById("root").innerHTML = h.join("");
     wire();
+    restoreFocus();
     setHeight();
+  }
+
+  function restoreFocus() {
+    // A full render replaces every node, the search input included, so the
+    // caret lands nowhere and the planner has to click back into the box
+    // after EVERY keystroke. `renderResults` avoids the rebuild for typing,
+    // but it is not the only thing that rebuilds: each keystroke changes the
+    // number of results, which changes the height, which makes us post
+    // `setFrameHeight`, and Streamlit answers a resize with a fresh
+    // `streamlit:render` — straight back into `render()`.
+    //
+    // So rather than hunting every path that can rebuild the table, put the
+    // caret back after all of them. Cheap, and it cannot be defeated by a
+    // path nobody thought of.
+    if (!pickCell || applying) return;
+    var input = document.querySelector("[data-q]");
+    if (!input || document.activeElement === input) return;
+    input.focus();
+    try { input.setSelectionRange(caret, caret); } catch (e) { /* not a text input */ }
   }
 
   function renderResults() {
@@ -671,15 +702,31 @@
     });
   }
 
-  function apply(name) {
+  function apply(name, cell) {
     // One press is one request: `applying` makes the Enter key and a click
     // on the same result idempotent while the server is answering.
-    if (applying || !pickCell || !name) return;
+    var target = cell || pickCell;
+    if (applying || !target || !name) return;
     applying = true;
     status = "Applying\u2026";
     statusErr = false;
-    setValue({action: "pick", cell: pickCell, item: name, nonce: Date.now()});
+    setValue({action: "pick", cell: target, item: name, nonce: Date.now()});
     render();
+  }
+
+  function undoFor(cell) {
+    // An undo IS a pick of the dish the solver originally put there, so it
+    // needs no second request shape, no second handler and no second replay
+    // guard. `ARGS.undo` carries that dish per cell.
+    return (ARGS.undo || {})[cell] || "";
+  }
+
+  function lastUndoCell() {
+    var order = ARGS.undo_order || [];
+    for (var i = order.length - 1; i >= 0; i--) {
+      if (undoFor(order[i])) return order[i];
+    }
+    return "";
   }
 
   function startPick(k) {
@@ -736,6 +783,12 @@
         render();
       };
     });
+    document.querySelectorAll("[data-undo]").forEach(function (el) {
+      el.onclick = function () {
+        var cell = el.getAttribute("data-undo");
+        apply(undoFor(cell), cell);
+      };
+    });
     var exc = document.querySelector('[data-act="exc"]');
     if (exc) exc.onclick = function () { excOpen = !excOpen; render(); };
     wireResults();
@@ -743,8 +796,12 @@
     if (input) {
       input.oninput = function () {
         query = input.value;
+        caret = input.selectionStart;
         highlight = 0;        // a new query invalidates the old highlight
         renderResults();
+      };
+      input.onclick = input.onkeyup = function () {
+        caret = input.selectionStart;
       };
       input.onkeydown = function (e) {
         var sel = selectable();

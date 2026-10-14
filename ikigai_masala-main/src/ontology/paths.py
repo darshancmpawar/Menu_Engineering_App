@@ -105,10 +105,13 @@ def _city_ontology_categories() -> dict:
 #: Pool tokens per workbook, committed so `/editor-metadata` does not parse
 #: every city's workbook to answer a question about eight short strings. The
 #: script that built it was part of the deleted correction chain, so this file
-#: is now a committed artefact with no generator: a city whose workbook gains
-#: or loses a pool token needs the map edited, or it silently answers stale.
-#: `pool_tokens_for_city` returning None is the safe direction — slow, never
-#: wrong — but it cannot catch a token that merely CHANGED.
+#: is a committed artefact with no generator: a city whose workbook gains or
+#: loses a pool token needs the map edited by hand. `pool_tokens_for_city`
+#: returning None is the safe direction — slow, never wrong — but it cannot
+#: catch a token that merely CHANGED, so
+#: `tests/cities/test_pool_token_map_is_current.py` compares the map against
+#: the workbooks instead. That check used to be the CI step calling the
+#: deleted chain, and failed on every run for a week once it went.
 POOL_TOKEN_MAP_PATH = CITY_ITEMS_DIR / 'pool_tokens.json'
 
 

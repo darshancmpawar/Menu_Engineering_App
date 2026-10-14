@@ -84,7 +84,7 @@ from ui.planner_view import (
 )
 from ui.menu_table import (
     dish_payload, explain_days, manual_cells_from, menu_table,
-    pick_request, regen_request,
+    merged_exceptions, pick_request, regen_request, same_dish,
 )
 from ui.region_strip import region_day_args, region_strip
 from src.explain.checks import MAIN_COURSES, base_slot
@@ -638,30 +638,53 @@ def _render_diagnostics_expander(diagnostics, summary):
                 )
 
 
+def _subtitle_html(busy: str = "") -> str:
+    """The page subtitle, describing the state the page is ACTUALLY in.
+
+    It used to read "Generated plan for X" from the moment a client was
+    picked. Streamlit renders top-down and the Generate handler runs far
+    below this line, so during a solve the header announced a generated plan
+    while the body under it still said "Ready to plan" and a spinner was
+    turning. The claim was wrong before the first solve, wrong during it, and
+    right only afterwards.
+
+    `busy` is set through the placeholder below once the work is under way —
+    the header has already been drawn by then, so a live status needs a slot
+    that can be rewritten rather than a value that can be recomputed.
+    """
+    name = st.session_state.get("client_name")
+    if not name:
+        return ('<p class="page-subtitle">Select a client and generate a plan '
+                'to get started</p>')
+    safe = html.escape(name)
+    if busy:
+        return (f'<p class="page-subtitle">{html.escape(busy)} for {safe}'
+                f'<span class="dots">\u2026</span></p>')
+    if not (st.session_state.get("plan_blocks") or []):
+        return f'<p class="page-subtitle">Ready to plan for {safe}</p>'
+    src = st.session_state.get("plan_source")
+    badge_html = ""
+    if src in _SOURCE_BADGES:
+        bg, fg, label, title_attr = _SOURCE_BADGES[src]
+        badge_html = (
+            f'<span class="plan-source-badge" '
+            f'title="{html.escape(title_attr)}" '
+            f'style="display:inline-block;margin-left:0.6rem;'
+            f'padding:2px 10px;border-radius:99px;font-size:0.7rem;'
+            f'font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
+            f'background:{bg};color:{fg};vertical-align:middle;">'
+            f'{html.escape(label)}</span>'
+        )
+    return (f'<p class="page-subtitle">Generated plan for {safe}'
+            f'{badge_html}</p>')
+
+
 with _hdr_col1:
     st.markdown('<p class="page-title">Menu Plan</p>', unsafe_allow_html=True)
-    if st.session_state.client_name:
-        src = st.session_state.get("plan_source")
-        badge_html = ""
-        if src in _SOURCE_BADGES:
-            bg, fg, label, title_attr = _SOURCE_BADGES[src]
-            badge_html = (
-                f'<span class="plan-source-badge" '
-                f'title="{html.escape(title_attr)}" '
-                f'style="display:inline-block;margin-left:0.6rem;'
-                f'padding:2px 10px;border-radius:99px;font-size:0.7rem;'
-                f'font-weight:700;letter-spacing:0.04em;text-transform:uppercase;'
-                f'background:{bg};color:{fg};vertical-align:middle;">'
-                f'{html.escape(label)}</span>'
-            )
-        st.markdown(
-            f'<p class="page-subtitle">Generated plan for '
-            f'{html.escape(st.session_state.client_name)}{badge_html}</p>',
-            unsafe_allow_html=True)
-    else:
-        st.markdown(
-            '<p class="page-subtitle">Select a client and generate a plan to get started</p>',
-            unsafe_allow_html=True)
+    # A slot, not a line: the work that changes this state happens hundreds of
+    # lines below, after Streamlit has already painted here.
+    _subtitle_slot = st.empty()
+    _subtitle_slot.markdown(_subtitle_html(), unsafe_allow_html=True)
 with _hdr_col2:
     if st.button("Edit Logic", key="open_editor_btn", use_container_width=True):
         st.session_state.view = "editor"
@@ -1130,6 +1153,18 @@ def _apply_pick(api, block_index: int, counter_index: int,
     b = st.session_state.plan_blocks[block_index]
     plan, plan_dates = b["plan"], b["plan_dates"]
     old_raw = plan.get(iso, {}).get(slot_id, "")
+    cell = f"{slot_id}|{iso}"
+    # The dish the SOLVER put here, kept from the first pick on this cell and
+    # never overwritten (`setdefault`). Spec §6.5: picking twice in one cell
+    # must still undo to the original auto dish, not to the previous pick —
+    # otherwise undoing a correction leaves the mistake in place.
+    undo = b.setdefault("pick_undo", {})
+    undo.setdefault(cell, old_raw)
+    # An undo is a pick of that original dish, through this same path. It
+    # re-audits and returns a consistent solution for free, and it cannot
+    # resurrect a stale plan the way writing the dish straight back into
+    # `b["plan"]` would.
+    undoing = bool(old_raw) and same_dish(item, undo.get(cell))
     try:
         result = api.pick(
             client_name=st.session_state.client_name,
@@ -1166,10 +1201,24 @@ def _apply_pick(api, block_index: int, counter_index: int,
     b["manual_cells"] = sorted(
         set(b.get("manual_cells") or ())
         | manual_cells_from(result.get("exceptions"), result.get("manual_cells")))
-    b["exceptions"] = _merged_exceptions(b.get("exceptions"), result)
+    b["exceptions"] = merged_exceptions(b.get("exceptions"), result)
     b["checked"] = result.get("checked") or []
     b["not_checked"] = result.get("not_checked") or []
     b["pick_locked_item"] = ""
+
+    order = b.setdefault("pick_order", [])
+    if cell in order:
+        order.remove(cell)
+    if undoing:
+        # Back to the solver's dish: the cell is no longer a manual one, so
+        # it loses the pencil, its Exceptions entry and its place in the undo
+        # stack. `merged_exceptions` has already dropped the entry (the undo
+        # came back clean), but the manual set is accumulated here and would
+        # otherwise keep the marker on a cell nobody picked any more.
+        b["manual_cells"] = [c for c in b["manual_cells"] if c != cell]
+        undo.pop(cell, None)
+    else:
+        order.append(cell)
 
     new_raw = (b["plan"].get(iso, {}) or {}).get(slot_id, "")
     broke = sum(len(e.get("violations") or []) for e in (result.get("exceptions") or [])
@@ -1179,6 +1228,9 @@ def _apply_pick(api, block_index: int, counter_index: int,
     except ValueError:
         day_label = iso
     b["pick_status"] = (
+        f"{format_item_for_ui(new_raw)} restored to {day_label} "
+        f"{display_label_for_slot_id(slot_id)}."
+        if undoing else
         f"{format_item_for_ui(new_raw)} applied to {day_label} "
         f"{display_label_for_slot_id(slot_id)}. "
         + (f"It breaks {broke} rule(s) and is listed under Exceptions."
@@ -1201,22 +1253,6 @@ def _apply_pick(api, block_index: int, counter_index: int,
         b["source"] = "modified"
         st.session_state.plan_source = "modified"
     st.rerun()
-
-
-def _merged_exceptions(existing, result) -> list:
-    """Session-wide exceptions, keyed by cell.
-
-    A later pick on the SAME cell replaces that cell's entry rather than
-    stacking a second one, and a pick that came back clean clears the cell's
-    old entry — otherwise a planner who fixes their own mistake keeps reading
-    the warning for a dish that is no longer on the plate.
-    """
-    picked = {(d, s) for d, slots in (result.get("manual_cells") or {}).items()
-              for s in (slots or ())}
-    out = [e for e in (existing or [])
-           if (e.get("date"), e.get("slot_id")) not in picked]
-    out.extend(result.get("exceptions") or [])
-    return sorted(out, key=lambda e: (e.get("date", ""), e.get("slot_id", "")))
 
 
 def _render_changes_log() -> None:
@@ -1694,6 +1730,7 @@ def _render_one_block(api, b, block_index: int, counter_index: int,
         # rerun — see `_pick_dishes`.
         dishes=_pick_dishes(b, counter_index),
         exceptions=b.get("exceptions") or [],
+        undo=b.get("pick_undo") or {}, undo_order=b.get("pick_order") or [],
         city=_pick_cfg.get("city") or "",
         cooldown_days=_pick_cfg.get("cooldown_days") or 0,
         checked=b.get("checked") or [], not_checked=b.get("not_checked") or [],
@@ -1837,6 +1874,8 @@ if generate_clicked:
                 saved = {"exists": False}
 
             if saved.get("exists"):
+                _subtitle_slot.markdown(
+                    _subtitle_html("Loading saved plan"), unsafe_allow_html=True)
                 with st.spinner(f"Loading saved plan for {selected_client}..."):
                     blk = flatten_result(saved)
                     blk["name"] = counter_names[0]
@@ -1857,6 +1896,8 @@ if generate_clicked:
             # one, or dinner would happily reprint breakfast.
             served_so_far: dict = {}
             carried_over: dict = {}
+            _subtitle_slot.markdown(_subtitle_html(label),
+                                    unsafe_allow_html=True)
             with st.spinner(f"{label} for {selected_client}..."):
                 for _i, _meal in enumerate(plan_meals):
                     blocks, d, s = _solve_counters(

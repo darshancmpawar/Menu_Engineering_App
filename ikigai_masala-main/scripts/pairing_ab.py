@@ -128,7 +128,6 @@ def main():
     CLIENTS = _install_fake_db()
     import api.app as app
     from src.menu_rules.menu_rule_loader import MenuRuleLoader
-    from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
     from src.ontology.repository import repository
 
     loader = app._get_client_loader()

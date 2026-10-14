@@ -15,7 +15,8 @@ import pandas as pd
 import pytest
 
 from ui.menu_table import (
-    day_cells, dish_payload, manual_cells_from, pick_request,
+    day_cells, dish_payload, manual_cells_from, merged_exceptions,
+    pick_request, same_dish,
 )
 
 
@@ -91,6 +92,83 @@ def test_day_cells_marks_manual_separately_from_pinned():
     assert cells['veg_gravy']['pinned'] is False
     assert cells['white_rice']['pinned'] is True
     assert cells['white_rice']['manual'] is False
+
+
+class TestMergedExceptions:
+    """The panel accumulates across requests; the server does not.
+
+    `/pick` is stateless and answers only about the request in hand, so a
+    plain `existing + new` is wrong in two opposite directions and both leave
+    the planner reading about a plate nobody is serving.
+    """
+
+    def _result(self, date, slot, violations):
+        entry = {"date": date, "slot_id": slot, "item": "x",
+                 "violations": violations}
+        return {"manual_cells": {date: [slot]},
+                "exceptions": [entry] if violations else []}
+
+    def test_a_second_pick_on_one_cell_replaces_its_entry(self):
+        first = merged_exceptions(
+            [], self._result("2026-11-02", "veg_gravy", [{"code": "cooldown"}]))
+        assert len(first) == 1
+        again = merged_exceptions(
+            first,
+            self._result("2026-11-02", "veg_gravy", [{"code": "client_pool"}]))
+        assert len(again) == 1, "the panel stacked a second entry for one cell"
+        assert again[0]["violations"][0]["code"] == "client_pool"
+
+    def test_a_clean_pick_clears_the_cells_old_entry(self):
+        """The half `existing + new` misses: fixing your own mistake must
+        remove the warning, not leave it beside the corrected dish."""
+        dirty = merged_exceptions(
+            [], self._result("2026-11-02", "veg_gravy", [{"code": "cooldown"}]))
+        clean = merged_exceptions(
+            dirty, self._result("2026-11-02", "veg_gravy", []))
+        assert clean == []
+
+    def test_other_cells_are_kept(self):
+        """The negative half: clearing must be scoped to the picked cell."""
+        a = merged_exceptions(
+            [], self._result("2026-11-02", "veg_gravy", [{"code": "cooldown"}]))
+        b = merged_exceptions(
+            a, self._result("2026-11-03", "rice", [{"code": "client_pool"}]))
+        assert [(e["date"], e["slot_id"]) for e in b] == [
+            ("2026-11-02", "veg_gravy"), ("2026-11-03", "rice")]
+
+    def test_nothing_in_nothing_out(self):
+        assert merged_exceptions(None, None) == []
+
+
+class TestSameDish:
+    """Telling an undo from an ordinary pick.
+
+    The plan stores `jeera_rice(Y)` and a pick sends `jeera_rice`, so a raw
+    `==` says they differ and every undo would be filed as a new pick —
+    leaving the pencil marker, the Exceptions entry and the undo stack on a
+    cell the solver owns again.
+    """
+
+    @pytest.mark.parametrize('a,b', [
+        ('jeera_rice(Y)', 'jeera_rice'),
+        ('jeera_rice', 'jeera_rice(Y)'),
+        (' Jeera_Rice (Y)', 'jeera_rice'),
+        ('jeera_rice', 'jeera_rice'),
+    ])
+    def test_the_colour_suffix_and_case_do_not_make_two_dishes(self, a, b):
+        assert same_dish(a, b)
+
+    @pytest.mark.parametrize('a,b', [
+        ('jeera_rice', 'lemon_rice'),
+        ('jeera_rice', ''),
+        ('', 'jeera_rice'),
+        ('', ''),
+        (None, None),
+    ])
+    def test_different_or_missing_is_not_the_same_dish(self, a, b):
+        # An empty cell must never read as "the same dish": that would file a
+        # pick into a blank cell as an undo and silently drop its marker.
+        assert not same_dish(a, b)
 
 
 class TestDishPayload:

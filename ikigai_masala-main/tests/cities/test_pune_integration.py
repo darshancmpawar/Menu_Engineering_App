@@ -422,7 +422,8 @@ class TestNoCrossCityWorkbookReads:
             'expected no workbook reads — is pool_tokens.json missing? The '
             'endpoint falls back to parsing every workbook when it is, which is '
             'slow but not wrong. The script that built the map went with the '
-            'correction chain, so the file is now maintained by hand.')
+            'correction chain, so the file is maintained by hand and kept '
+            'honest by test_pool_token_map_is_current.py.')
 
     def test_it_still_reports_pool_tokens_for_both_cities(self, fleet_api):
         """The speed change must not have cost the information. Bangalore has real
