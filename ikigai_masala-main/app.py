@@ -1972,6 +1972,13 @@ _meal_offsets = {}
 if _meal_order:
     _all, _meal_offsets = _concat_meal_blocks(_meal_order, _meal_blocks)
     st.session_state.plan_blocks = _all
+    # A region the solve could not honour is reported by /plan and was being
+    # dropped on this path: the planner saw a menu with no regional dishes and
+    # nothing saying the day's theme had refused the pick. Handed to the same
+    # session key the Apply path uses, so the picker renders it unchanged.
+    _gen_probs = [pr for blk in _all for pr in (blk.get("region_problems") or [])]
+    if _gen_probs:
+        st.session_state["region_problems"] = _gen_probs
 _blocks = st.session_state.get("plan_blocks") or []
 
 _render_diagnostics_expander(

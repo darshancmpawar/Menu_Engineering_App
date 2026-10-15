@@ -59,6 +59,13 @@ def flatten_result(result: dict) -> dict:
         # the day header and an R on those cells.
         "regions": result.get("region_days") or {},
         "regional_dishes": result.get("regional_dishes") or {},
+        # A regional pick the solve could NOT honour, and why. Carried for the
+        # same reason as the two above — only the server knows — but it was
+        # the one of the three that was dropped here, so a region picked
+        # BEFORE Generate produced a plan with no regional dishes and nothing
+        # on screen saying the day's theme had refused it. The Apply-to-an-
+        # existing-plan path captured it; this one did not.
+        "region_problems": result.get("region_problems") or [],
         "source": "solver",
         "error": None,
     }
