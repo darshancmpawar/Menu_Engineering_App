@@ -123,19 +123,10 @@ def resolve_region_days(
                     f"needs {MIN_REGION_SLOTS}."),
             })
             continue
-        theme = (str(day_themes[by_iso[iso]]).lower()
-                 if by_iso[iso] < len(day_themes) else '')
-        if not region.compatible_with(theme):
-            problems.append({
-                'date': iso, 'region': region.name, 'reason': 'theme_conflict',
-                'theme': theme,
-                'message': (
-                    f"{region.name} is {'/'.join(sorted(region.cuisine_families)) or 'regional'} "
-                    f"and this day is themed {theme}. The theme filter removes "
-                    f"every {region.name} dish from the main slots before the "
-                    f"regional floor is read, so the day cannot carry it."),
-            })
-            continue
+        # No theme gate: a region may be asked for on any day (THEMES). A day
+        # whose theme narrows the main slots past what the region can fill
+        # reports itself through the floor's own relaxation rather than being
+        # refused here — see `src/ontology/regions.THEMES`.
         chosen[iso] = region
     return chosen, problems
 

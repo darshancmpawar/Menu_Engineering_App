@@ -262,45 +262,58 @@ class TestTheFloorIsDerivedFromDepth:
         assert region_rule_configs({'2026-09-25': pb}, ['rice', 'bread']) == []
 
 
-class TestThemeCompatibilityIsDerived:
-    """Every southern state is 100% `south_indian` and every northern one 100%
-    `north_indian`, so the matrix comes from the workbook and cannot drift."""
+class TestARegionIsAskableOnEveryTheme:
+    """The owner's rule, 16 Oct 2026: a region may be asked for on any day.
 
-    def test_a_south_region_fits_south_and_mix(self, regions):
-        tn = region_by_name(regions, 'Tamil Nadu')
-        assert tn.compatible_with('south')
-        assert tn.compatible_with('mix')
-        assert not tn.compatible_with('north')
+    This replaced a per-theme cuisine gate that refused the pick outright on
+    chinese, continental, biryani and the alternating meta-theme. The gate was
+    right about the mechanism — those themes narrow the main slots BY FLAG, so
+    a region can end up with little or nothing to place — and wrong about the
+    remedy. Measured on Clario with Karnataka, which the gate refused on two of
+    its four working days:
 
-    @pytest.mark.parametrize('theme', ['chinese', 'continental', 'biryani'])
-    def test_a_flag_narrowed_theme_takes_no_region(self, regions, theme):
-        """Those themes narrow by flag, not by cuisine, so a region's dishes are
-        removed before any floor could be read."""
+        Mon (mix)      8 regional dishes
+        Tue (chinese)  3
+        Wed (biryani)  8
+        Thu (south)    7
+
+    The biryani day was never a problem at all, and the chinese day carries
+    three dishes rather than none. A refusal was costing the planner both.
+    """
+
+    def test_every_theme_appears_on_every_themeable_region(self, regions):
+        from src.ontology.regions import THEMES
         for r in regions:
-            assert not r.compatible_with(theme)
+            if not r.is_themeable:
+                continue
+            assert set(r.as_dict()['themes']) == set(THEMES), r.name
 
-    def test_the_alternating_meta_theme_takes_no_region_either(self, regions):
-        """`chinese_continental` resolves per ISO-week parity to chinese or
-        continental, and NEITHER takes a region. It has to be listed
-        explicitly: an unlisted theme reads as "narrows nothing", so leaving it
-        out offered every region on a day whose main slots are flag-narrowed to
-        Chinese food."""
-        for r in regions:
-            assert not r.compatible_with('chinese_continental')
-
-    def test_every_shipped_theme_has_a_verdict(self, regions):
-        """The guard on the above: a theme added to AVAILABLE_THEMES without a
-        THEME_CUISINES entry silently becomes region-friendly."""
+    def test_every_shipped_theme_is_listed(self):
+        """The guard that survives the change: a theme added to
+        AVAILABLE_THEMES without a `THEMES` entry would be missing from the
+        picker's per-theme listing, which is how a day silently stops offering
+        regions at all."""
         from src.client.client_config import AVAILABLE_THEMES
-        from src.ontology.regions import THEME_CUISINES
-        assert set(AVAILABLE_THEMES) <= set(THEME_CUISINES)
+        from src.ontology.regions import THEMES
+        assert set(AVAILABLE_THEMES) <= set(THEMES)
 
-    def test_an_unknown_theme_narrows_nothing(self, regions):
-        """A theme the filter does not narrow by cuisine leaves every dish in
-        the pool, so a region genuinely can be served — allowing it is correct.
-        The UI is stricter (it offers nothing it has no verdict for), which is
-        the safe asymmetry."""
-        assert region_by_name(regions, 'Punjab').compatible_with('holiday')
+    def test_a_flag_narrowed_theme_is_no_longer_refused(self, regions):
+        """The behaviour that changed, asserted where it used to be inverted.
+
+        A day that cannot fill the floor is not pre-empted: the floor caps
+        itself to the matching dishes the day can place and stamps the
+        relaxation when it falls short, so the day reports itself by name.
+        """
+        from src.application.regions import resolve_region_days
+        tn = region_by_name(regions, 'Tamil Nadu')
+        for theme in ('chinese', 'continental', 'biryani', 'chinese_continental'):
+            chosen, problems = resolve_region_days(
+                [dt.date(2026, 9, 24)], [theme], regions,
+                region_map={}, region_days={'2026-09-24': tn.name})
+            assert chosen, f'{theme} refused the pick'
+            assert not [p for p in problems
+                        if p.get('reason') == 'theme_conflict']
+
 
 
 class TestResolvingTheTwoInputs:
@@ -336,16 +349,23 @@ class TestResolvingTheTwoInputs:
             regions, region_map={'thu': 'Tamil Nadu'}, region_days={'2026-09-24': ''})
         assert chosen == {}
 
-    def test_a_theme_conflict_is_reported_not_silently_dropped(self, regions):
+    def test_a_theme_no_longer_refuses_a_region(self, regions):
+        """Was `test_a_theme_conflict_is_reported_not_silently_dropped`, which
+        asserted a south region refused on a north-themed Friday. The owner's
+        rule (16 Oct 2026) is that a region is askable on any day, so the pick
+        is honoured and the day places what it can — the inversion of what this
+        test used to pin, kept at the same site so the change is visible to
+        whoever reads the file next."""
         chosen, problems = self._resolve(
             regions, region_days={'2026-09-25': 'Tamil Nadu'})   # Friday is north
-        assert chosen == {}
-        assert problems[0]['reason'] == 'theme_conflict'
-        assert 'Tamil Nadu' in problems[0]['message']
+        assert chosen['2026-09-25'].name == 'Tamil Nadu'
+        assert not [p for p in problems if p.get('reason') == 'theme_conflict']
 
-    def test_a_chinese_day_is_reported_too(self, regions):
-        _, problems = self._resolve(regions, region_days={'2026-09-22': 'Punjab'})
-        assert problems[0]['reason'] == 'theme_conflict'
+    def test_a_chinese_day_takes_one_too(self, regions):
+        chosen, problems = self._resolve(
+            regions, region_days={'2026-09-22': 'Punjab'})
+        assert chosen['2026-09-22'].name == 'Punjab'
+        assert not [p for p in problems if p.get('reason') == 'theme_conflict']
 
     def test_a_thin_region_is_refused_with_its_count(self, regions):
         _, problems = self._resolve(regions, region_days={'2026-09-21': 'Goa'})
