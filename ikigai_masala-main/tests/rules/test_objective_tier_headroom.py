@@ -491,10 +491,19 @@ class TestTheTiersStayLexicographic:
         rung was being reported as inverted by its own penalties. Measured:
         15,458 such terms totalling 15,457,992,248,790, a deficit of 7,751,210
         from 15458 x 1e9, so every one of them is within 0.8% of the tier it
-        belongs to. `_tier_of` undoes the merge, and the correction moves this
-        rung alone — `high` and `theme` sit under 1e12 and 1e15, which those
-        terms are below either way, and both came back at the ratios above.
-        That it touches exactly one rung is the evidence it is right.
+        belongs to. `_tier_of` undoes the merge. Re-measured with it, on the
+        same idle machine, all three rungs deciding:
+
+            medium     474,286 of 1e9   0.0005x  holds
+            high     8.0625e13 of 1e12  80.6x    INVERTED
+            theme    1.9246e15 of 1e15   1.92x   INVERTED
+
+        The correction moved medium alone, by 582,000x, and left high and
+        theme identical to five significant figures — they sit under 1e12 and
+        1e15, which those terms are below either way. Medium came back within
+        1.2% of the 4.80e5 recorded before `seasonal_ban` began landing on
+        candidate variables. Touching exactly one rung, and returning it to
+        the figure it held before, is the evidence the correction is right.
 
         The lesson is note 33's, one layer further in: the measurement itself
         had an assumption in it (a term's tier is its magnitude), and a rule
