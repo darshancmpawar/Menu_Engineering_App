@@ -47,6 +47,7 @@ import pytest
 # the ceiling a caller can actually reach, not at the 5-day default.
 from api.config import MAX_NUM_DAYS
 from src.constants import OBJECTIVE_TIER_WEIGHTS
+from src.solver.menu_solver import MAX_FRESHNESS_BONUS
 from tests.client_fixtures import APP_SETTINGS, CLIENTS
 from tests.fake_supabase import FakeSupabase
 
@@ -65,6 +66,48 @@ MONDAY = '2026-08-03'
 # rule unit by design (note 24); named here so the bound below reads as
 # arithmetic rather than a magic number.
 MAX_TIE_BREAK = 1000
+
+#: Everything `_build_objective` can add to a single CANDIDATE variable before
+#: any rule's term reaches it: one freshness bonus plus one tie-break. Used by
+#: `_tier_of` to undo the merge, so it must stay the sum of exactly those two.
+_PER_CANDIDATE_MAX = MAX_FRESHNESS_BONUS + MAX_TIE_BREAK
+
+
+def _tier_of(coeff):
+    """The tier a captured objective coefficient BELONGS to.
+
+    Not `max(w for w in weights if coeff >= w)`, and the difference is the
+    whole reason this function exists.
+
+    `_build_objective` adds `var * rng.randint(0, MAX_TIE_BREAK)` and
+    `var * freshness` to every candidate variable. A rule that penalises those
+    same variables — `seasonal_ban` returns `sum(hits) * -weight` over
+    candidate vars — lands on them too, and CP-SAT MERGES the duplicate
+    entries into one coefficient. So a MEDIUM-tier seasonal penalty of 1e9
+    reaches the proto as 999,999,xxx: one tie-break short of its own tier.
+
+    Read by magnitude alone, those terms count as mass BELOW medium, and the
+    medium rung then reads as inverted by its own penalties. Measured on
+    Booking.com counter 0 at MAX_NUM_DAYS: 15,458 such terms summing to
+    15,457,992,248,790 — a total deficit of 7,751,210 from 15458 x 1e9, so no
+    single term is more than that below the tier it belongs to. The rung
+    reported 276x inverted; corrected, it holds, while `high` and `theme` are
+    unmoved (they sit under 1e12 and 1e15, which these terms are below either
+    way) and stay at the ratios note 32 records. That the correction touches
+    exactly one rung and leaves the other two at their recorded values is the
+    evidence it is the right one.
+
+    So a coefficient is credited with the per-candidate mass that may have
+    been subtracted from it before bucketing. The tiers are 1000x apart and
+    the perturbation is at most 91,000, so this can never promote a term
+    across a tier boundary it did not start above.
+    """
+    adjusted = abs(int(coeff)) + _PER_CANDIDATE_MAX
+    best = 0
+    for w in OBJECTIVE_TIER_WEIGHTS.values():
+        if adjusted >= w and w > best:
+            best = w
+    return best
 
 
 
@@ -192,7 +235,11 @@ def _reachable_below(capture, weight, seconds=PROBE_SECONDS):
     model = cp_model.CpModel()
     model.Proto().copy_from(proto)
     for idx, coeff in zip(proto.objective.vars, proto.objective.coeffs):
-        if abs(int(coeff)) < weight:
+        # `_tier_of`, not a bare magnitude test: a rule term that landed on a
+        # candidate variable arrives one tie-break short of its own tier, and
+        # counting those as mass BELOW that tier makes the rung read as
+        # inverted by its own penalties. See `_tier_of`.
+        if _tier_of(coeff) < weight:
             terms.append(model.GetIntVarFromProtoIndex(idx)
                          * abs(int(coeff)))
     model.Proto().clear_objective()
@@ -242,16 +289,10 @@ def _band_totals(capture):
     is what the band reaches once a client has history, which every real one
     does within a week.
     """
-    from src.solver.menu_solver import MAX_FRESHNESS_BONUS
-
     coeffs, n_cells = capture['coeffs'], capture['cells']
-    weights = sorted(OBJECTIVE_TIER_WEIGHTS.values())        # low .. theme
-    per_cell = MAX_FRESHNESS_BONUS + MAX_TIE_BREAK
-    bands = {'sub_rule': n_cells * per_cell}
+    bands = {'sub_rule': n_cells * _PER_CANDIDATE_MAX}
     for name, w in OBJECTIVE_TIER_WEIGHTS.items():
-        upper = min((x for x in weights if x > w), default=None)
-        bands[name] = sum(c for c in coeffs
-                          if c >= w and (upper is None or c < upper))
+        bands[name] = sum(c for c in coeffs if _tier_of(c) == w)
     return bands
 
 
@@ -363,6 +404,31 @@ class TestWhatWouldActuallyInvertTheThemeTier:
             reach.append(abs(int(coeff)) * max(1, max(abs(v) for v in dom)))
         assert sorted(reach) == [w, 7 * w]
 
+    def test_a_rule_term_merged_with_a_tie_break_keeps_its_own_tier(self):
+        """`_tier_of`'s correction, on a model built by hand.
+
+        The shape that produced a phantom 276x inversion: one candidate
+        variable carrying both a medium-tier rule penalty and the per-candidate
+        tie-break `_build_objective` adds to every candidate. CP-SAT merges
+        them, so the coefficient that reaches the proto is below the tier the
+        rule asked for.
+        """
+        from ortools.sat.python import cp_model
+
+        medium = OBJECTIVE_TIER_WEIGHTS['medium']
+        m = cp_model.CpModel()
+        v = m.NewBoolVar('cand')
+        m.Maximize(v * MAX_TIE_BREAK - v * medium)
+        (merged,) = m.Proto().objective.coeffs
+        assert abs(merged) < medium, merged      # the artefact itself
+        assert _tier_of(merged) == medium        # and the correction
+
+        # An honest sub-tier term is not promoted by it: freshness is the
+        # largest thing that may sit alone on a candidate variable.
+        assert _tier_of(MAX_FRESHNESS_BONUS) == 0
+        assert _tier_of(OBJECTIVE_TIER_WEIGHTS['low']) \
+            == OBJECTIVE_TIER_WEIGHTS['low']
+
 
 @pytest.mark.slow
 class TestTheTiersStayLexicographic:
@@ -413,6 +479,28 @@ class TestTheTiersStayLexicographic:
             medium   4.80e5  of 1e9    0.00x   holds
             high     7.86e13 of 1e12  78.59x   INVERTED
             theme    1.89e15 of 1e15   1.89x   INVERTED
+
+        **A third wrong reading, and it was this guard producing it.** On the
+        owner's workbooks the medium rung came back 2.76e11 — 276x, a rung
+        that had always held suddenly the worst but one. It was an artefact of
+        how this file ATTRIBUTES a coefficient to a tier. `seasonal_ban` is a
+        medium-priority rule that penalises candidate variables, the same
+        variables `_build_objective` has already given a freshness bonus and a
+        0-1000 tie-break, and CP-SAT merges the two entries — so a 1e9 penalty
+        reaches the proto as 999,999,xxx and read as mass BELOW medium. The
+        rung was being reported as inverted by its own penalties. Measured:
+        15,458 such terms totalling 15,457,992,248,790, a deficit of 7,751,210
+        from 15458 x 1e9, so every one of them is within 0.8% of the tier it
+        belongs to. `_tier_of` undoes the merge, and the correction moves this
+        rung alone — `high` and `theme` sit under 1e12 and 1e15, which those
+        terms are below either way, and both came back at the ratios above.
+        That it touches exactly one rung is the evidence it is right.
+
+        The lesson is note 33's, one layer further in: the measurement itself
+        had an assumption in it (a term's tier is its magnitude), and a rule
+        that had not previously landed on candidate variables broke it
+        silently. A rung that changes by five orders of magnitude when no
+        weight changed is a reason to audit the instrument first.
 
         HIGH is the worst rung by forty times, not theme. Nobody knew because
         the guard returned "undecided" and a reader supplied the optimistic
@@ -471,14 +559,27 @@ class TestTheTiersStayLexicographic:
             'drop to 1e4. Do not change the freshness constants in the same '
             'commit (note 32).')
 
-        # Where the other two rungs DID decide, they must still be clean —
-        # theme being broken is not a licence to stop watching them.
-        for name in ('medium', 'high'):
-            if measured[name] is not None:
-                assert measured[name] < OBJECTIVE_TIER_WEIGHTS[name], (
-                    f'{name} is inverted too: a real assignment reaches '
-                    f'{measured[name]:,} below a {OBJECTIVE_TIER_WEIGHTS[name]:,} '
-                    'tier. That is a WIDER failure than note 32 records.')
+        # MEDIUM is the one rung that holds, and it must keep holding — the
+        # other two being broken is not a licence to stop watching it.
+        #
+        # `high` used to be in this loop as well, which made the test
+        # self-contradictory: it asserts `measured['high'] >= high` twelve
+        # lines up, so the loop's `< high` could never hold at the same time.
+        # It was invisible because `medium` is checked first and failed first,
+        # on the mis-attribution `_tier_of` now corrects. The loop was written
+        # when theme was the only rung known to be inverted and was not
+        # revisited when high joined it.
+        if measured['medium'] is not None:
+            assert measured['medium'] < OBJECTIVE_TIER_WEIGHTS['medium'], (
+                'medium is inverted too: a real assignment reaches '
+                f'{measured["medium"]:,} below a '
+                f'{OBJECTIVE_TIER_WEIGHTS["medium"]:,} tier. That is a WIDER '
+                'failure than note 32 records. Before widening the tiers, '
+                'check this is not an attribution artefact: a rule term that '
+                'lands on a candidate variable is merged with that cell\'s '
+                'freshness and tie-break and arrives below its own tier — '
+                '`_tier_of` exists for exactly that and a new per-candidate '
+                'term in `_build_objective` would need adding to it.')
 
     def test_freshness_is_a_plan_level_preference_not_a_per_cell_one(
             self, objective_coeffs):
