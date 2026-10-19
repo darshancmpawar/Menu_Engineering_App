@@ -89,6 +89,26 @@
         }
       },
       {
+        "_comment": "The other half of 'Only on biryani day we will have chicken dry also' — the half nothing enforced. The composition above puts two dries on Wednesday; the word ONLY says the other four days carry none, and no rule said so, because `nonveg_main_daily_pair` is disabled here and the single remaining cell was unconstrained. It passed on pool luck until the owner's workbook changed what the freshness objective reached for first (`military_hotel_chicken_sukka` landed on a Tuesday). `forbidden_weekdays` rather than a `max`, because this is a ban on four named days, not a frequency cap — and it DEGRADES rather than fails if a day's whole non-veg pool is dry, which is the behaviour a thin pool needs (CLAUDE.md point 3).",
+        "name": "bakertilly_chicken_dry_on_the_biryani_day_only",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "any_flag": [
+            "is_nonveg_dry",
+            "is_tandoor_nonveg_dry"
+          ]
+        },
+        "forbidden_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ]
+      },
+      {
         "_comment": "'Need a veg gravy (paneer, baby corn, gobi, mushroom, rajma, chole, channa) all day, first priority.' The counter serves ONE veg gravy, so a one-slot component with count 1 IS 'this slot must be a matching dish' (note 20) — and a composition component RELAXES rather than failing when a day cannot supply one, which is what makes it a first priority rather than an ultimatum. 388 of Bangalore's 1,184 veg gravies match, so a daily slot has depth to spare against the 20-day cooldown. Paneer is selected on `primary_protein` and the NAME, never `key_ingredient`: that column is the de-facto default for a Chinese dish here, which is why a Thai green curry used to read as a paneer gravy (the deleted definitional_flags step). Compatible with the city's `premium_veg_gravy_exactly_one` — only 19 of the 388 carry `is_premium_gravy`, leaving 369 non-premium options for the other four days — and with `bakertilly_paneer_1x`, which caps the paneer share of it at one day.",
         "name": "bakertilly_veg_gravy_from_the_named_families_daily",
         "type": "slot_composition",

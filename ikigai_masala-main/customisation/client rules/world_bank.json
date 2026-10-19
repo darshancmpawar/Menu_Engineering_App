@@ -69,7 +69,7 @@
         ],
         "rules": [
           {
-            "_comment": "One of the non-veg cells is the day's chicken gravy. Gated at `min_slot_count: 1`, NOT at the four the client's lineup needs: with the live two-slot row the biryani pin takes one cell and the other was unconstrained, so it came back `chicken_lolipop`, `egg_dosa`, `fish_tawa_fry` — none of them on the client's list. At 1 the free cell is a chicken gravy whichever slot count the row carries, so the degraded pre-DB-change menu is a subset of the intended one rather than a different menu. `bone_salna` deliberately carries `is_nonveg_gravy` but NO regional chicken-gravy flag (see the deleted chennai_client_pools step), so it cannot satisfy this component itself and steal the cell.",
+            "_comment": "One of the non-veg cells is the day's chicken gravy. Gated at `min_slot_count: 1`, NOT at the four the client's lineup needs: with the live two-slot row the biryani pin takes one cell and the other was unconstrained, so it came back `chicken_lolipop`, `egg_dosa`, `fish_tawa_fry` — none of them on the client's list. At 1 the free cell is a chicken gravy whichever slot count the row carries, so the degraded pre-DB-change menu is a subset of the intended one rather than a different menu. `bone_salna` must not satisfy this component itself and steal the cell — the client lists it SEPARATELY from the chicken gravys, so it is a pin, not the rotation. The deleted chennai_client_pools step used to guarantee that by clearing its regional flags; the owner's workbook carries `is_south_chicken_gravy: 1` on it, which is correct (it sits in `chicken_gravy`) and is not ours to change. The intent now lives where it belongs, in the `exclude` below — without it the pin satisfied the component and the free cell came back unconstrained.",
             "name": "world_bank_nonveg_gravy_alongside_the_three_pins",
             "type": "slot_composition",
             "base_slot": "nonveg_main",
@@ -81,6 +81,9 @@
                     "is_north_chicken_gravy",
                     "is_south_chicken_gravy"
                   ]
+                },
+                "exclude": {
+                  "item": "bone_salna"
                 },
                 "count": 1
               }
