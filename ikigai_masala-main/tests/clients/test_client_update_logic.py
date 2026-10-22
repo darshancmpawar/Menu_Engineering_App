@@ -315,6 +315,22 @@ class TestBakertilly:
             for b in items:
                 assert not _flag(blr_df, b, 'is_egg_dish'), (day, b)
 
+    def test_the_nonveg_main_is_chicken_only(self, api, blr_df):
+        """'We will serve only chicken dish in non veg.'
+
+        Read off `primary_protein`, which is the one column that can say this:
+        it is populated on all 538 of Bangalore's non-veg rows with no blanks,
+        where the CATEGORY cannot be trusted for it — `tawa_fish_fry` and
+        `fish_finger` sit in `chicken_dry`, `fish_curry` and
+        `dhaba_style_mutton_curry` in `chicken_gravy`. A fish fry was duly
+        being served as one of the biryani day's two 'chicken dry'.
+        """
+        sol = _plan(api, 'Bakertilly')
+        for day, items in _by_day(sol, 'nonveg_main').items():
+            for b in items:
+                assert _attr(blr_df, b, 'primary_protein') == 'chicken', \
+                    (day, b, _attr(blr_df, b, 'primary_protein'))
+
     def test_paneer_exactly_one_day(self, api, blr_df):
         sol = _plan(api, 'Bakertilly')
         days = _days_matching(

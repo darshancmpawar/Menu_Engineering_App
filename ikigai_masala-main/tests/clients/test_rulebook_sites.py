@@ -300,3 +300,40 @@ def test_tessolve_chapati_is_the_staple_on_four_days(api):
     chapati = _matches('Bangalore', 'bread', list(bread.values()),
                        {'flag': 'is_plain_phulka_chapathi'})
     assert len(chapati) == 4, (chapati, bread)
+
+
+def test_tessolve_no_dosa_or_paratha_on_the_biryani_day(api):
+    """'Chapati is there on biryani day, but will not give dosa/parata on
+    biryani day.'
+
+    Asserted over the WHOLE week, not just Wednesday: the chapati count leaves
+    one free day and the solver is free to put it anywhere, so a run that
+    happens to serve a chapati on Wednesday would pass a Wednesday-only check
+    while the rule did nothing at all. Checking every day means the Wednesday
+    clause is the only thing that can produce this result.
+    """
+    bread = _by_weekday(_plan(api, 'Tessolve'), 'bread')
+    other = {'any_flag': ['is_dosa_family', 'is_dosa', 'is_paratha']}
+    for day, item in bread.items():
+        hit = _matches('Bangalore', 'bread', [item], other)
+        assert (day != 'wed') or not hit, (day, item)
+
+
+def test_continental_south_alternates_flavoured_and_white_rice(api):
+    """'Flavoured rice on mon wed fri. Which flavour rice no white rice, and
+    vice versa.' Counter 0, the South Indian one.
+
+    Both halves and their UNION. The two weekday lists are written out
+    separately — a constant slot is stamped after the solve and cannot be
+    derived from the other rule — so the thing that can actually go wrong is
+    them drifting apart and leaving a working day with no rice at all. That is
+    what the last assertion is for; checking the two lists alone would not
+    catch it.
+    """
+    solution = _plan(api, 'Continental')
+    flavoured = set(_by_weekday(solution, 'rice'))
+    white = set(_by_weekday(solution, 'white_rice'))
+    assert flavoured == {'mon', 'wed', 'fri'}, flavoured
+    assert white == {'tue', 'thu'}, white
+    assert flavoured | white == {'mon', 'tue', 'wed', 'thu', 'fri'}
+    assert not (flavoured & white)

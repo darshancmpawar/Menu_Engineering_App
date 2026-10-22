@@ -99,6 +99,20 @@
         "max": 0
       },
       {
+        "_comment": "'We will serve only chicken dish in non veg.' `primary_protein` carries this exactly and is trustworthy here, unlike most of the ontology: it is populated on ALL 538 of Bangalore's non-veg rows with no blanks — chicken 423, egg 108, fish 4 (counting `fish_finger`), mutton 4 — so `none_of chicken` names the 115 to exclude without a name match. It is what caught `tawa_fish_fry` and `fish_finger`, which sit in the `chicken_dry` CATEGORY, and `fish_curry` and `dhaba_style_mutton_curry` in `chicken_gravy`: category says chicken, protein says otherwise, and the Wednesday composition was serving a fish fry as one of the two 'chicken dry'. `chicken_keema_mutter` is chicken despite the keema in its name and stays. This SUBSUMES `bakertilly_no_egg_in_nonveg_main` above, which is kept anyway and deliberately: if this rule is ever relaxed to admit mutton or fish, the client's separate 'no egg' instruction must not quietly go with it.",
+        "name": "bakertilly_nonveg_main_is_chicken_only",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "none_of": [
+            {
+              "primary_protein": "chicken"
+            }
+          ]
+        },
+        "max": 0
+      },
+      {
         "_comment": "The other half of 'Only on biryani day we will have chicken dry also' — the half nothing enforced. The composition above puts two dries on Wednesday; the word ONLY says the other four days carry none, and no rule said so, because `nonveg_main_daily_pair` is disabled here and the single remaining cell was unconstrained. It passed on pool luck until the owner's workbook changed what the freshness objective reached for first (`military_hotel_chicken_sukka` landed on a Tuesday). `forbidden_weekdays` rather than a `max`, because this is a ban on four named days, not a frequency cap — and it DEGRADES rather than fails if a day's whole non-veg pool is dry, which is the behaviour a thin pool needs (CLAUDE.md point 3).",
         "name": "bakertilly_chicken_dry_on_the_biryani_day_only",
         "type": "selector_frequency",

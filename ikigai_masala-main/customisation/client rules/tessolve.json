@@ -25,6 +25,22 @@
         "max_per_week": 4
       },
       {
+        "_comment": "'Chapati is there on biryani day, but will not give dosa/parata on biryani day.' So the chapati count above is NOT day-specific — Wednesday may carry one — and this bans only the other two forms there. Wednesday is this counter's biryani day in its `theme_map`, which is also why `constant_items` swaps the curd for a raita there; a weekday list rather than `allowed_day_types` because that is how the fleet writes biryani-day rules (see bakertilly), and it has to move if the theme map does. `is_dosa_family` plus `is_dosa`, not the family flag alone: it covers 68 of Bangalore's bread rows against the 57 `is_dosa` ones but misses `moong_dal_dosa`, which carries only `is_dosa`. `is_paratha` needs no companion — all 27 `is_stuffed_paratha` rows carry it too. `forbidden_weekdays` degrades rather than failing if a Wednesday's whole bread pool were dosa or paratha.",
+        "name": "tessolve_no_dosa_or_paratha_on_the_biryani_day",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "any_flag": [
+            "is_dosa_family",
+            "is_dosa",
+            "is_paratha"
+          ]
+        },
+        "forbidden_weekdays": [
+          "wed"
+        ]
+      },
+      {
         "name": "tessolve_green_salad_2x",
         "type": "selector_frequency",
         "base_slot": "salad",
