@@ -300,6 +300,21 @@ class TestBakertilly:
         for day in ('mon', 'tue', 'thu', 'fri'):
             assert not any(dry(b) for b in nv[day]), (day, nv[day])
 
+    def test_no_egg_dish_in_the_nonveg_main(self, api, blr_df):
+        """'There is no egg items in non veg main.'
+
+        Worth a guard rather than trusting the pool, because egg is what this
+        slot reached for on its own: before `bakertilly_no_egg_in_nonveg_main`
+        the week came back four-fifths egg, and `anda_curry_dry` was also
+        satisfying the Wednesday chicken-dry component — it carries
+        `is_nonveg_dry`, so the flag alone could not tell a chicken dry from an
+        egg one. Nothing raised; the menu simply was not the client's.
+        """
+        sol = _plan(api, 'Bakertilly')
+        for day, items in _by_day(sol, 'nonveg_main').items():
+            for b in items:
+                assert not _flag(blr_df, b, 'is_egg_dish'), (day, b)
+
     def test_paneer_exactly_one_day(self, api, blr_df):
         sol = _plan(api, 'Bakertilly')
         days = _days_matching(
