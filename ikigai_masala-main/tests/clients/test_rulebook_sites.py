@@ -280,3 +280,23 @@ def test_carelon_serves_the_tawa_roti_and_a_flavoured_bread(api):
         'leafy_/_herb_chapatti', 'tandoor', 'stuffed_veg_paratha',
         'spice_chapatti', 'veg_/_fruit_chapatti', 'thepla')]}
     assert len(_matches('NCR', 'bread', second, flavoured)) == len(second), second
+
+
+def test_tessolve_chapati_is_the_staple_on_four_days(api):
+    """'Tessolve: just chapati staple 4 days a week.'
+
+    Both ends pinned. `min_per_week` alone would allow five, and a rule that
+    loads as ZERO rules — the failure note 9 is about — looks exactly like a
+    satisfied one from outside. The floor is doing real work: before
+    `tessolve_chapati_4_days_a_week` the week ran two chapatis, a naan, a luchi
+    and a dosa.
+
+    Matched through the rule's OWN selector rather than a flag read here, so
+    this asserts what the config selects and not a second opinion about what a
+    chapati is — the mistake this file was written for.
+    """
+    bread = _by_weekday(_plan(api, 'Tessolve'), 'bread')
+    assert len(bread) == 5, bread
+    chapati = _matches('Bangalore', 'bread', list(bread.values()),
+                       {'flag': 'is_plain_phulka_chapathi'})
+    assert len(chapati) == 4, (chapati, bread)
