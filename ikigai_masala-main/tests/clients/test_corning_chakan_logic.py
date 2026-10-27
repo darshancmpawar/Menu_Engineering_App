@@ -64,17 +64,21 @@ def _weekday(iso):
     return dt.date.fromisoformat(iso).strftime('%a').lower()
 
 
-def test_sprouts_gravy_at_least_twice(week):
-    """A FLOOR. Pune carries seven sprouts gravies, so two a week fits."""
-    n = sum(1 for g in _slot(week, 'veg_gravy').values()
-            if 'sprout' in g or 'matki' in g)
-    assert n >= 2, f'sprouts gravy served {n} times, the client asked for two'
-
-
 def test_sprouts_gravy_no_more_than_twice(week):
+    """Rulebook Lunch/Dinner 3: 'Sprouts not to be served (gravy) for more than
+    02 days in a week.' A CEILING and nothing else.
+
+    There was a `test_sprouts_gravy_at_least_twice` here, pinning a `min: 2`
+    that forced two every week. It came from an earlier instruction worded
+    'sprouts gravy at least twice a week'; the client has since confirmed the
+    rulebook wording governs, so the floor is gone and a week with one or none
+    is compliant. The file docstring's first bullet still stands as history —
+    a cap WAS once written where a floor was asked for — but the requirement
+    it describes is no longer the live one.
+    """
     n = sum(1 for g in _slot(week, 'veg_gravy').values()
             if 'sprout' in g or 'matki' in g)
-    assert n <= 2
+    assert n <= 2, f'sprouts gravy served {n} times, the cap is two'
 
 
 def test_at_most_two_leafy_veg_dry(week, pune):

@@ -56,7 +56,7 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Sprouts gravy should be served AT LEAST twice a week.' A floor, not a cap — this was written as `max_per_week: 2` against an earlier reading ('maximum twice a week'), which is the opposite instruction. Both bounds are stated because the client named a number, not a range. Matched on the NAME rather than a column: Pune has no sprouts flag and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule. Pune carries SEVEN sprouts gravies and a floor of two a week needs about six distinct across the 20-day cooldown: it fits with one spare, `min` caps itself to what the pool can supply, and `diagnose()` reports a shortfall rather than failing the menu.",
+        "_comment": "Rulebook Lunch/Dinner 3: 'Sprouts not to be served (gravy) for more than 02 days in a week.' A CEILING and nothing else. It carried `min: 2` as well, from an earlier instruction worded 'sprouts gravy at least twice a week', which FORCED two every week — the client has since confirmed the rulebook wording governs, so the floor is gone and a week with one or none is now compliant. Selected by name because Pune has no sprouts flag; the same selector is used by `corning_chakan_sprouts_not_with_potato`, deliberately, so two rules about sprouts cannot disagree about what a sprout is.",
         "name": "corning_chakan_sprouts_gravy_twice_weekly",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
@@ -66,7 +66,6 @@
             "matki"
           ]
         },
-        "min": 2,
         "max_per_week": 2
       },
       {
