@@ -761,3 +761,73 @@ class TestTheCoolingSlotReport:
         reads it — but a pool without the column must not crash or guess."""
         assert self._run({'veg_gravy': pd.DataFrame([{'item': 'x'}])},
                          ['veg_gravy']) == []
+
+
+class TestAMultiSlotCapCountsPinsInItsOwnSlotsOnly:
+    """A pin outside a list-scoped rule's slots must not force a day.
+
+    `base_slot` accepts a name OR a list, and when a list is given
+    `self.base_slot` is None while `self.base_slots` holds the set. `apply()`
+    reads `base_slots`; `_pinned_dates` read `base_slot`, so for every
+    multi-slot rule the None fell through to "no slot scope" and counted a pin
+    ANYWHERE on the plate — against a cap the solver only ever applied to the
+    rule's own slots.
+
+    Measured on the fleet: Pune's `chinese_cuisine_weekly` is scoped to rice /
+    veg_gravy / veg_dry / starter and caps chinese at one day a week. Corning
+    Chakan's dinner repeats lunch's SOUP as a pin, and its soups are miso,
+    thukpa, hot-and-sour and burnt-garlic — four chinese pins in a slot the
+    rule does not police. Pre-flight read four forced days against a cap of
+    one and returned 422 `rule_diagnostics_blocked`, refusing to solve a
+    dinner the solver would have produced. The service was unplannable and
+    the message named a contradiction that did not exist.
+    """
+
+    @staticmethod
+    def _pool(items, cuisine):
+        return pd.DataFrame([{'item': i, 'cuisine_family': cuisine} for i in items])
+
+    def _rule(self, slots):
+        r = SelectorFrequencyRule({
+            'name': 'chinese_weekly', 'type': 'selector_frequency',
+            'base_slot': slots, 'selector': {'cuisine_family': 'chinese'},
+            'max_per_week': 1,
+        })
+        r._peer_rules = []
+        return r
+
+    def _ctx_with_soup_pins(self):
+        dates = [dt.date(2026, 11, 3), dt.date(2026, 11, 5)]
+        df = pd.DataFrame([
+            {'item': 'miso_soup', 'cuisine_family': 'chinese'},
+            {'item': 'veg_thukpa', 'cuisine_family': 'chinese'},
+            {'item': 'jeera_rice', 'cuisine_family': 'north_indian'},
+        ])
+        return _ctx(
+            pools={'rice': self._pool(['jeera_rice'], 'north_indian'),
+                   'soup': self._pool(['miso_soup', 'veg_thukpa'], 'chinese')},
+            dates=dates, df=df,
+            active_base_slots=['rice', 'soup'],
+            forced_items={(dates[0], 'soup'): 'miso_soup',
+                          (dates[1], 'soup'): 'veg_thukpa'},
+        )
+
+    def test_a_pin_outside_the_rules_slots_forces_nothing(self):
+        rule = self._rule(['rice', 'veg_gravy'])
+        assert rule._forced_days(self._ctx_with_soup_pins()) == 0
+
+    def test_and_so_the_rule_does_not_report_a_contradiction(self):
+        rule = self._rule(['rice', 'veg_gravy'])
+        diags = rule.diagnose(self._ctx_with_soup_pins())
+        assert not [d for d in diags
+                    if d.severity == DiagnosticSeverity.ERROR], diags
+
+    def test_a_pin_INSIDE_the_rules_slots_still_forces_its_day(self):
+        """The half that must keep working — the guard is not just 'return 0'."""
+        rule = self._rule(['soup', 'rice'])
+        assert rule._forced_days(self._ctx_with_soup_pins()) == 2
+
+    def test_the_one_slot_case_is_unchanged(self):
+        """`base_slot` as a bare string: `base_slots` is `{name}`, same answer."""
+        assert self._rule('soup')._forced_days(self._ctx_with_soup_pins()) == 2
+        assert self._rule('rice')._forced_days(self._ctx_with_soup_pins()) == 0

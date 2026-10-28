@@ -729,9 +729,22 @@ class SelectorFrequencyRule(BaseMenuRule):
             if d not in wanted:
                 continue
             base = str(slot_id).split('__')[0]
-            if self.base_slot and base != self.base_slot:
+            # `base_slots`, not `base_slot`: the latter is None whenever the
+            # rule was written with a LIST of slots, and reading it here made
+            # every multi-slot rule count a pin ANYWHERE on the plate while
+            # apply() counted only its own slots. Pune's
+            # `chinese_cuisine_weekly` is scoped to rice / veg_gravy / veg_dry
+            # / starter and caps chinese at one day a week; Corning Chakan's
+            # dinner carries lunch's SOUP as a pin, and its soups are
+            # miso / thukpa / hot-and-sour / burnt-garlic — four chinese pins
+            # in a slot the rule does not police. Pre-flight read four forced
+            # days against a cap of one and blocked the service with 422
+            # `rule_diagnostics_blocked`, for a plan the solver would have
+            # satisfied. Identical for the one-slot case, where `base_slots`
+            # is just `{base_slot}`.
+            if self.base_slots is not None and base not in self.base_slots:
                 continue
-            if self.base_slot is None and ctx.active_base_slots is not None \
+            if self.base_slots is None and ctx.active_base_slots is not None \
                     and base not in ctx.active_base_slots:
                 continue
             key_name = _norm_str(str(name))
