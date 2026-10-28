@@ -1421,13 +1421,14 @@ def regions_for_city():
             'city': city,
             'regions': [r.as_dict() for r in regions],
             'themeable': [r.name for r in regions if r.is_themeable],
-            # False for every committed workbook today: the regional columns
-            # arrived with the client's corrected city lists, which are not
-            # installed. The planner hides the whole control on this.
+            # True once a city's workbook carries the regional columns; the
+            # planner hides the whole control when it is False.
             'available': any(r.is_themeable for r in regions),
+            # Kept for the picker's shape, but no longer a filter: a region is
+            # askable on every theme, so every themeable region appears under
+            # each one. See `src/ontology/regions.THEMES`.
             'theme_compatibility': {
-                t: sorted(r.name for r in regions
-                          if r.is_themeable and r.compatible_with(t))
+                t: sorted(r.name for r in regions if r.is_themeable)
                 for t in AVAILABLE_THEMES
             },
         })

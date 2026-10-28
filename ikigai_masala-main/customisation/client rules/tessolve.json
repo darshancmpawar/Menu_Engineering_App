@@ -14,6 +14,33 @@
         ]
       },
       {
+        "_comment": "'Just chapati staple 4 days a week.' Selects on `is_plain_phulka_chapathi`, the house definition of a chapati that `bread_chapati_only` uses — the flag is definitional in both directions (a competing bread form in the name clears it), which is why it is trusted over the dish name. This is the bread FAMILY on four days, not the same dish four times: `fixed_daily_item` is the rule that makes a dish consistent, and the client asked for a staple bread rather than a repeated one. Per WEEK, not `min`/`max`, which count across the whole horizon — the sibling `tessolve_green_salad_2x` uses the horizon form and so means 2 per fortnight on a 10-day plan. The counter serves one bread, so four days of chapati leave exactly one day free and nothing says what it carries; before this the week ran 2 chapatis, a naan, a luchi and a dosa.",
+        "name": "tessolve_chapati_4_days_a_week",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "flag": "is_plain_phulka_chapathi"
+        },
+        "min_per_week": 4,
+        "max_per_week": 4
+      },
+      {
+        "_comment": "'Chapati is there on biryani day, but will not give dosa/parata on biryani day.' So the chapati count above is NOT day-specific — Wednesday may carry one — and this bans only the other two forms there. Wednesday is this counter's biryani day in its `theme_map`, which is also why `constant_items` swaps the curd for a raita there; a weekday list rather than `allowed_day_types` because that is how the fleet writes biryani-day rules (see bakertilly), and it has to move if the theme map does. `is_dosa_family` plus `is_dosa`, not the family flag alone: it covers 68 of Bangalore's bread rows against the 57 `is_dosa` ones but misses `moong_dal_dosa`, which carries only `is_dosa`. `is_paratha` needs no companion — all 27 `is_stuffed_paratha` rows carry it too. `forbidden_weekdays` degrades rather than failing if a Wednesday's whole bread pool were dosa or paratha.",
+        "name": "tessolve_no_dosa_or_paratha_on_the_biryani_day",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "any_flag": [
+            "is_dosa_family",
+            "is_dosa",
+            "is_paratha"
+          ]
+        },
+        "forbidden_weekdays": [
+          "wed"
+        ]
+      },
+      {
         "name": "tessolve_green_salad_2x",
         "type": "selector_frequency",
         "base_slot": "salad",

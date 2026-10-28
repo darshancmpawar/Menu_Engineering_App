@@ -91,19 +91,23 @@ DEFAULT_REGION_FLOOR = 3
 #: nothing, so any region is fine; an EMPTY set means the theme narrows by flag
 #: rather than by cuisine (chinese / continental / biryani), and a region has no
 #: way in — its dishes are removed before any floor could be read.
-THEME_CUISINES: Mapping[str, Optional[FrozenSet[str]]] = {
-    'mix': None,
-    'south': frozenset({'south_indian'}),
-    'north': frozenset({'north_indian'}),
-    'chinese': frozenset(),
-    'continental': frozenset(),
-    'biryani': frozenset(),
-    # The meta-theme resolves per ISO-week parity to chinese or continental,
-    # and NEITHER takes a region. Listing it matters: an unknown theme reads as
-    # "narrows nothing" below, so leaving it out would have offered every
-    # region on a day whose main slots are flag-narrowed to Chinese food.
-    'chinese_continental': frozenset(),
-}
+#: Every theme a day can carry. A region may be asked for on ANY of them —
+#: this is the owner's rule, decided 16 Oct 2026, and it replaces a per-theme
+#: cuisine gate.
+#:
+#: The gate it replaces was not wrong about the mechanism: on a chinese,
+#: continental or biryani day the theme narrows the main slots BY FLAG, so a
+#: south Indian region really can end up with nothing to place. It was wrong
+#: about what to do with that — it refused the pick outright, and a planner who
+#: asked for a Karnataka Tuesday was told no rather than shown a Tuesday with
+#: what Karnataka could manage. The floor already degrades to what the day can
+#: place (`selector_frequency.daily_min` caps itself to the matching literals
+#: available) and STAMPS the relaxation when it does, so an impossible day
+#: reports itself by name instead of being pre-empted.
+THEMES: Tuple[str, ...] = (
+    'mix', 'south', 'north', 'chinese', 'continental', 'biryani',
+    'chinese_continental',
+)
 
 
 @dataclass(frozen=True)
@@ -176,14 +180,6 @@ class Region:
         served = {str(s) for s in served_slots}
         return tuple(s for s in deep if s in served)
 
-    def compatible_with(self, day_theme: str) -> bool:
-        admitted = THEME_CUISINES.get(str(day_theme or '').lower(), None)
-        if admitted is None:                  # theme narrows nothing
-            return True
-        if not admitted:                      # narrows by flag — no way in
-            return False
-        return bool(self.cuisine_families & admitted)
-
     def as_dict(self) -> Dict[str, Any]:
         """JSON shape for `/editor-metadata` and the planner."""
         return {
@@ -192,7 +188,8 @@ class Region:
             'deep_slots': list(self.deep_slots),
             'slot_counts': {k: int(v) for k, v in sorted(self.slot_counts.items())},
             'themeable': self.is_themeable,
-            'themes': sorted(t for t in THEME_CUISINES if self.compatible_with(t)),
+            # Every theme: a region is askable on any day (see THEMES).
+            'themes': list(THEMES),
         }
 
 

@@ -89,6 +89,50 @@
         }
       },
       {
+        "_comment": "'There is no egg items in non veg main.' A ban, so `max: 0`. Bangalore files egg dishes under `egg_items` and flags 26 of its 108 with `is_nonveg_dry`, so without this the station read as a non-veg main and the week came back four-fifths egg (afghani_anda_curry, kerala_egg_curry, kerala_egg_roast) — and `anda_curry_dry` satisfied the Wednesday chicken-dry component below, which the client's own words ('and it will be chicken dry') exclude. Scoped to `nonveg_main` because that is the slot the client named. Depth is not a concern: 430 of the city's 538 non-veg rows are non-egg (274 chicken gravies, 93 chicken dries, 63 biryanis), against one cell a day and two on Wednesday.",
+        "name": "bakertilly_no_egg_in_nonveg_main",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_egg_dish"
+        },
+        "max": 0
+      },
+      {
+        "_comment": "'We will serve only chicken dish in non veg.' `primary_protein` carries this exactly and is trustworthy here, unlike most of the ontology: it is populated on ALL 538 of Bangalore's non-veg rows with no blanks — chicken 423, egg 108, fish 4 (counting `fish_finger`), mutton 4 — so `none_of chicken` names the 115 to exclude without a name match. It is what caught `tawa_fish_fry` and `fish_finger`, which sit in the `chicken_dry` CATEGORY, and `fish_curry` and `dhaba_style_mutton_curry` in `chicken_gravy`: category says chicken, protein says otherwise, and the Wednesday composition was serving a fish fry as one of the two 'chicken dry'. `chicken_keema_mutter` is chicken despite the keema in its name and stays. This SUBSUMES `bakertilly_no_egg_in_nonveg_main` above, which is kept anyway and deliberately: if this rule is ever relaxed to admit mutton or fish, the client's separate 'no egg' instruction must not quietly go with it.",
+        "name": "bakertilly_nonveg_main_is_chicken_only",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "none_of": [
+            {
+              "primary_protein": "chicken"
+            }
+          ]
+        },
+        "max": 0
+      },
+      {
+        "_comment": "The other half of 'Only on biryani day we will have chicken dry also' — the half nothing enforced. The composition above puts two dries on Wednesday; the word ONLY says the other four days carry none, and no rule said so, because `nonveg_main_daily_pair` is disabled here and the single remaining cell was unconstrained. It passed on pool luck until the owner's workbook changed what the freshness objective reached for first (`military_hotel_chicken_sukka` landed on a Tuesday). `forbidden_weekdays` rather than a `max`, because this is a ban on four named days, not a frequency cap — and it DEGRADES rather than fails if a day's whole non-veg pool is dry, which is the behaviour a thin pool needs (CLAUDE.md point 3).",
+        "name": "bakertilly_chicken_dry_on_the_biryani_day_only",
+        "type": "selector_frequency",
+        "base_slot": "nonveg_main",
+        "selector": {
+          "any_flag": [
+            "is_nonveg_dry",
+            "is_tandoor_nonveg_dry"
+          ]
+        },
+        "forbidden_weekdays": [
+          "mon",
+          "tue",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ]
+      },
+      {
         "_comment": "'Need a veg gravy (paneer, baby corn, gobi, mushroom, rajma, chole, channa) all day, first priority.' The counter serves ONE veg gravy, so a one-slot component with count 1 IS 'this slot must be a matching dish' (note 20) — and a composition component RELAXES rather than failing when a day cannot supply one, which is what makes it a first priority rather than an ultimatum. 388 of Bangalore's 1,184 veg gravies match, so a daily slot has depth to spare against the 20-day cooldown. Paneer is selected on `primary_protein` and the NAME, never `key_ingredient`: that column is the de-facto default for a Chinese dish here, which is why a Thai green curry used to read as a paneer gravy (the deleted definitional_flags step). Compatible with the city's `premium_veg_gravy_exactly_one` — only 19 of the 388 carry `is_premium_gravy`, leaving 369 non-premium options for the other four days — and with `bakertilly_paneer_1x`, which caps the paneer share of it at one day.",
         "name": "bakertilly_veg_gravy_from_the_named_families_daily",
         "type": "slot_composition",

@@ -230,6 +230,18 @@ class TestAttAndT:
     def test_raita_on_the_biryani_day_and_curd_on_the_rest(self, api, blr_df):
         """Not a per-client rule — `curd_raita_logic` in the city ruleset does
         this. Asserted because it is the client's requirement, however it is met.
+
+        The non-biryani days read `sub_category` as well as the two flags, and
+        that is a DATASET gap being worked around, not a loosened requirement:
+        7 of Bangalore's 40 `curd/raita` rows (`pumpkin_more_curry`,
+        `beetroot_yogurt`, `creamy_corn_and_yogurt`, `fried_curd_mirchi`,
+        `garlic_yogurt`, `honey_chilli_yogurt`, `mint_yogurt`) are filed
+        `sub_category: raita` while carrying neither `is_raita` nor
+        `is_plain_curd`. They are cooling yogurt dishes and the menu serving one
+        is correct; the flags just do not say so. Reported to the owner — the
+        workbook is the source and is not ours to edit. The BIRYANI day still
+        demands the flag, because that is the day the requirement is specific
+        about and 28 flagged raitas are available to meet it.
         """
         sol = _plan(api, 'AT&T')
         side = _by_day(sol, 'curd_side')
@@ -239,6 +251,7 @@ class TestAttAndT:
         for day in ('mon', 'tue', 'thu', 'fri'):
             assert any(_flag(blr_df, b, 'is_plain_curd')
                        or _flag(blr_df, b, 'is_raita')
+                       or _attr(blr_df, b, 'sub_category') in ('curd', 'raita')
                        for b in side[day]), (day, side[day])
 
 
@@ -286,6 +299,37 @@ class TestBakertilly:
         assert any(dry(b) for b in nv['wed']), nv['wed']
         for day in ('mon', 'tue', 'thu', 'fri'):
             assert not any(dry(b) for b in nv[day]), (day, nv[day])
+
+    def test_no_egg_dish_in_the_nonveg_main(self, api, blr_df):
+        """'There is no egg items in non veg main.'
+
+        Worth a guard rather than trusting the pool, because egg is what this
+        slot reached for on its own: before `bakertilly_no_egg_in_nonveg_main`
+        the week came back four-fifths egg, and `anda_curry_dry` was also
+        satisfying the Wednesday chicken-dry component — it carries
+        `is_nonveg_dry`, so the flag alone could not tell a chicken dry from an
+        egg one. Nothing raised; the menu simply was not the client's.
+        """
+        sol = _plan(api, 'Bakertilly')
+        for day, items in _by_day(sol, 'nonveg_main').items():
+            for b in items:
+                assert not _flag(blr_df, b, 'is_egg_dish'), (day, b)
+
+    def test_the_nonveg_main_is_chicken_only(self, api, blr_df):
+        """'We will serve only chicken dish in non veg.'
+
+        Read off `primary_protein`, which is the one column that can say this:
+        it is populated on all 538 of Bangalore's non-veg rows with no blanks,
+        where the CATEGORY cannot be trusted for it — `tawa_fish_fry` and
+        `fish_finger` sit in `chicken_dry`, `fish_curry` and
+        `dhaba_style_mutton_curry` in `chicken_gravy`. A fish fry was duly
+        being served as one of the biryani day's two 'chicken dry'.
+        """
+        sol = _plan(api, 'Bakertilly')
+        for day, items in _by_day(sol, 'nonveg_main').items():
+            for b in items:
+                assert _attr(blr_df, b, 'primary_protein') == 'chicken', \
+                    (day, b, _attr(blr_df, b, 'primary_protein'))
 
     def test_paneer_exactly_one_day(self, api, blr_df):
         sol = _plan(api, 'Bakertilly')
@@ -636,15 +680,22 @@ class TestCorningChakan:
                              'is_veg_kofta_gravy')))
         assert days <= 2, f'mixedveg/kurma/kofta on {days} days: {gravy}'
 
-    def test_leafy_veg_dry_twice_a_week(self, sol, pune_df):
+    def test_leafy_veg_dry_at_most_twice_a_week(self, sol, pune_df):
         """The one rule that overrides Pune's rulebook: R31 caps leafy dry at
         one day and the 15-day cadence allows one per three weeks, both of which
-        this client's config lifts."""
+        this client's config lifts to two.
+
+        A CAP, not a floor. This asserted `== 2` while the config says
+        `max_per_week: 2` and nothing else — the `min: 2` that would have forced
+        two was removed deliberately ('only two leafy-based dishes should be
+        planned per week' is a ceiling), and this assertion was missed in that
+        change. Zero leafy days is a legal week; three is not.
+        """
         dry = _by_day(sol, 'veg_dry', FULL_WEEK)
         days = sum(1 for items in dry.values()
                    if any(_flag(pune_df, b, 'is_leafy_based_dish')
                           for b in items))
-        assert days == 2, f'leafy veg dry on {days} days: {dry}'
+        assert days <= 2, f'leafy veg dry on {days} days: {dry}'
 
     def test_a_chaat_starter_on_thursday_and_no_other_day(self, sol):
         starter = _by_day(sol, 'starter', FULL_WEEK)

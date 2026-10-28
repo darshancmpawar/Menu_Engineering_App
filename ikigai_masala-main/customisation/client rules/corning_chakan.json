@@ -56,7 +56,7 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Sprouts gravy should be served AT LEAST twice a week.' A floor, not a cap — this was written as `max_per_week: 2` against an earlier reading ('maximum twice a week'), which is the opposite instruction. Both bounds are stated because the client named a number, not a range. Matched on the NAME rather than a column: Pune has no sprouts flag and `key_ingredient` files these dishes under the bean (`moth`, `green_moong`) rather than the sprouting, so a column selector would miss them. Scoped to veg_gravy so the sprouts chaat and the sprouts salad — different dishes in different slots — are not counted against a gravy rule. Pune carries SEVEN sprouts gravies and a floor of two a week needs about six distinct across the 20-day cooldown: it fits with one spare, `min` caps itself to what the pool can supply, and `diagnose()` reports a shortfall rather than failing the menu.",
+        "_comment": "Rulebook Lunch/Dinner 3: 'Sprouts not to be served (gravy) for more than 02 days in a week.' A CEILING and nothing else. It carried `min: 2` as well, from an earlier instruction worded 'sprouts gravy at least twice a week', which FORCED two every week — the client has since confirmed the rulebook wording governs, so the floor is gone and a week with one or none is now compliant. Selected by name because Pune has no sprouts flag; the same selector is used by `corning_chakan_sprouts_not_with_potato`, deliberately, so two rules about sprouts cannot disagree about what a sprout is.",
         "name": "corning_chakan_sprouts_gravy_twice_weekly",
         "type": "selector_frequency",
         "base_slot": "veg_gravy",
@@ -66,7 +66,6 @@
             "matki"
           ]
         },
-        "min": 2,
         "max_per_week": 2
       },
       {
@@ -110,14 +109,15 @@
         "max_per_week": 2
       },
       {
-        "_comment": "'Only two leafy-based dishes should be planned per week.' A CAP. This previously also carried `min: 2`, which forced two — a different instruction, and the one the earlier requirement wording ('should be served twice a week') asked for. Overriding Pune's R31 `leafy_veg_dry_weekly` by name rather than adding a second rule, so the two cannot disagree, and R14's `leafy_veg_dry_15d_window` stays disabled above because once per 15 days cannot reach two in a week. NB the old comment here said Pune carries five leafy veg dries; the corrected workbook carries 25, so the pool was never the constraint it warned about. SCOPE: this counts the veg_dry slot only, which is where Pune's rule put it. The client says 'leafy-based dishes', which may mean any slot — `leafy_daily_max_1` already caps one a day across all slots, and widening this needs the client to confirm.",
+        "_comment": "'Green leafy vegetable to be served once in a week' AND 'only two leafy-based dishes per week' — a floor and a ceiling, and until now only the ceiling was configured. Pune's own rule is `max_per_week: 1`; this overrides it by NAME so the two cannot disagree, raising the cap to 2 and adding the floor. The floor is the half that was missing and the half that was being broken: a real 7-day solve served ZERO leafy days and reported nothing, because every rule in play (this cap, Pune's cap, `leafy_daily_max_1`) is a ceiling and a week of none satisfies all three. R14's `leafy_veg_dry_15d_window` stays disabled above — once per 15 days cannot reach one a week, let alone two. SCOPE: veg_dry only, where Pune's rule put it; the client says 'leafy-based dishes', which may mean any slot, and widening it needs them to confirm.",
         "name": "leafy_veg_dry_weekly",
         "type": "selector_frequency",
         "base_slot": "veg_dry",
         "selector": {
           "flag": "is_leafy_based_dish"
         },
-        "max_per_week": 2
+        "max_per_week": 2,
+        "min_per_week": 1
       },
       {
         "_comment": "'On Thursday only we will give a starter.' NEEDS A DB CHANGE FIRST: this counter has no `starter` category today, so until one is added the rule is inert and `diagnose()` says so. The restriction stands the station down on the other six days.",
@@ -230,6 +230,143 @@
           "sub_category": "north_khichdi"
         },
         "max_per_week": 1
+      },
+      {
+        "_comment": "'At least one of the dry/gravy vegetables should be a preparation of vegetables other than leafy vegetables & sprouts' — cauliflower, lady's finger, beans, cabbage, tondli, dodka, dudhi. A FLOOR across the two veg slots together, so `daily_min` on a two-slot `base_slot` list rather than a composition, which works on one slot. The excluded set also carries the non-vegetable preparations of the rule below: a besan or soya dish is neither leafy nor sprouts and would otherwise satisfy this floor while being exactly what the client does not count as a vegetable. `key_ingredient` is right for soy and besan but WRONG on three dishes that matter — `zunka` is filed `mixed_vegetables`, `sev_tamatar_bhaji` `tomato`, `simla_mirch_besan_ki_sabji` `chili` — which is the documented case for falling back to the name. `daily_min` relaxes per day and stamps the relaxation channel when a day's cells cannot place one.",
+        "name": "corning_chakan_a_real_vegetable_every_day",
+        "type": "selector_frequency",
+        "base_slot": [
+          "veg_dry",
+          "veg_gravy"
+        ],
+        "selector": {
+          "none_of": [
+            {
+              "flag": "is_leafy_based_dish"
+            },
+            {
+              "name_contains": [
+                "sprout",
+                "matki"
+              ]
+            },
+            {
+              "any_of": [
+                {
+                  "key_ingredient": "soy"
+                },
+                {
+                  "key_ingredient": "besan"
+                },
+                {
+                  "name_contains": [
+                    "zunka",
+                    "pithla",
+                    "pitla",
+                    "sandga",
+                    "sev_",
+                    "besan",
+                    "soya"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "daily_min": 1
+      },
+      {
+        "_comment": "'Do not serve 2 non-vegetable preparation in one meal' — pithla, sev bhaji, sandga curry, soya masala. A per-day CAP of one across the two veg slots. Pune carries almost none of the named examples (no pithla, no sandga) so the class is carried by `key_ingredient` soy (16 rows) and besan, plus the names for the three the column mis-files (see the rule above). `pithla`/`pitla`/`sandga` are listed although Pune has none today, so the rule covers them if the owner adds them. On this counter — exactly one veg_dry and one veg_gravy — this is implied by the floor above; both are kept because the client stated both and the implication breaks the moment a second veg slot is added.",
+        "name": "corning_chakan_one_non_vegetable_prep_per_meal",
+        "type": "selector_frequency",
+        "base_slot": [
+          "veg_dry",
+          "veg_gravy"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "key_ingredient": "soy"
+            },
+            {
+              "key_ingredient": "besan"
+            },
+            {
+              "name_contains": [
+                "zunka",
+                "pithla",
+                "pitla",
+                "sandga",
+                "sev_",
+                "besan",
+                "soya"
+              ]
+            }
+          ]
+        },
+        "daily_max": 1
+      },
+      {
+        "_comment": "'Eggplant (Brinjal/Wangi), sprouts (dry or gravy) and potato not to be served on one day.' Three families, read as no TWO of them sharing a day — the stricter reading, and the one the sentence supports. Two rules cover the three pairs: this one is brinjal against the other two, the next is sprouts against potato. `same_day_exclusion` is bidirectional and counts across every slot, which is the point — the client is talking about the day's plate, not one station. Brinjal must be matched by NAME: `key_ingredient == 'brinjal'` is set on ZERO Pune rows while three dishes are named for it (`bharali_wangi`, `bagare_baingan`, `aloo_baingan_masala`). NB `aloo_baingan_masala` is brinjal AND potato in one dish, so it matches both sides and the solver simply never places it — which is the client's intent, not a bug. Sprouts use the same selector as `corning_chakan_sprouts_gravy_twice_weekly` deliberately: two rules about sprouts must not disagree about what a sprout is.",
+        "name": "corning_chakan_brinjal_not_with_sprouts_or_potato",
+        "type": "same_day_exclusion",
+        "selector": {
+          "name_contains": [
+            "brinjal",
+            "wangi",
+            "baingan",
+            "vangi"
+          ]
+        },
+        "exclude": {
+          "any_of": [
+            {
+              "name_contains": [
+                "sprout",
+                "matki"
+              ]
+            },
+            {
+              "any_of": [
+                {
+                  "key_ingredient": "potato"
+                },
+                {
+                  "name_contains": [
+                    "aloo",
+                    "batata",
+                    "potato"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "The third pair of 'eggplant, sprouts and potato not on one day': sprouts against potato. Separate from the rule above because `same_day_exclusion` bans one set against another and a single rule listing all three on both sides would ban each family against ITSELF. NOTE this is the pair that actually bites: `corning_chakan_sprouts_gravy_twice_weekly` FORCES two sprouts gravies a week, and potato is 75 of Pune's veg-slot rows, so two days a week are now closed to every aloo dish in every slot. A measured week served aloo_bhendi_amritsari beside sprouted_green_moong on the Monday, which is the violation this rule exists to stop.",
+        "name": "corning_chakan_sprouts_not_with_potato",
+        "type": "same_day_exclusion",
+        "selector": {
+          "name_contains": [
+            "sprout",
+            "matki"
+          ]
+        },
+        "exclude": {
+          "any_of": [
+            {
+              "key_ingredient": "potato"
+            },
+            {
+              "name_contains": [
+                "aloo",
+                "batata",
+                "potato"
+              ]
+            }
+          ]
+        }
       }
     ],
     "constant_items": {

@@ -544,46 +544,126 @@ class TestTheMultiCounterLoop:
         for cname in names:
             assert out[cname][0] == 200, (cname, out[cname][1].get('error'))
 
-    def test_the_shared_slots_are_actually_synced(self, loop):
-        """Economy Lunch takes the primary's dish for every shared slot they
-        both run — the feature doing its job."""
-        out, cats, _excl, names = loop
-        primary = self._dishes(out[names[0]][1])
-        econ = self._dishes(out['Economy Lunch'][1])
-        checked = 0
+    @staticmethod
+    def _skipped(body):
+        return any('Cross-counter sync skipped' in str(w)
+                   for w in (body.get('pool_warnings') or []))
+
+    def _synced_categories(self, out, cats, primary_name, cname):
+        """(categories both counters run, how many match the primary)."""
+        primary = self._dishes(out[primary_name][1])
+        other = self._dishes(out[cname][1])
+        both = matched = 0
         for base in cats:
             days = [i for i in primary
-                    if base in primary[i] and base in econ.get(i, {})]
+                    if base in primary[i] and base in other.get(i, {})]
             if not days:
                 continue
-            checked += 1
-            assert all(primary[i][base] == econ[i][base] for i in days), base
-        assert checked >= 5, checked
+            both += 1
+            matched += all(primary[i][base] == other[i][base] for i in days)
+        return both, matched
+
+    def _synced_cells(self, out, cats, primary_name, cname):
+        """(shared cells both counters run, how many carry the same dish).
+
+        Cells rather than whole categories, and CONST_SLOTS left out: a
+        `white_rice` is stamped rather than solved, so it agrees across every
+        counter whether the sync ran or not and would make this count read high
+        on a counter that synced nothing.
+        """
+        from src.constants import CONST_SLOTS
+
+        primary = self._dishes(out[primary_name][1])
+        other = self._dishes(out[cname][1])
+        cells = [(i, base) for base in cats if base not in CONST_SLOTS
+                 for i in primary
+                 if base in primary[i] and base in other.get(i, {})]
+        return (len(cells),
+                sum(1 for i, base in cells if primary[i][base] == other[i][base]))
+
+    def test_every_sent_counter_either_takes_the_pins_or_says_it_did_not(
+            self, loop):
+        """The whole contract, stated so it does not depend on WHICH counter is
+        the tight one.
+
+        This used to name Economy Lunch as the counter that syncs and Roti
+        Combo as the one that cannot. That was true of the pools at the time
+        and is now exactly backwards — Roti Combo takes the pins and Economy
+        Lunch is the counter that falls back — which made the guard a record of
+        one solve rather than of the contract. Nothing broke in the feature:
+        Economy Lunch runs eight of the nine shared categories plus one free
+        cell, so a day's pins can leave the city's colour-variety rule
+        unreachable, exactly the shape the Roti Combo docstring described.
+
+        So the contract, in the three states it actually has. A counter that
+        was SENT pins must
+
+        * serve all of them, or
+        * report the whole-counter fallback in `pool_warnings` (note 22: the
+          sync must never make a counter INFEASIBLE), or
+        * diverge on individual cells and STAMP each one — `menu_solver` emits
+          a `<base>_pin` relaxation when a pinned dish is not eligible for that
+          cell (filtered out by the counter's own theme map, banned, or absent
+          from its pool), which is the normal outcome for a counter whose
+          themes differ from the primary's.
+
+        and never a non-200, and never diverge silently. The silent case is the
+        one that matters (CLAUDE.md point 3): a shared category that quietly
+        stops syncing is indistinguishable from one that is working.
+        """
+        out, cats, excl, names = loop
+        sent = [c for c in names[1:] if c not in excl]
+        assert sent, names
+        for cname in sent:
+            status, body = out[cname]
+            assert status == 200, (cname, body.get('error'))
+            both, matched = self._synced_categories(out, cats, names[0], cname)
+            if matched == both or self._skipped(body):
+                continue
+            stamped = {str(r.get('rule')) for r in (body.get('relaxations') or [])
+                       if str(r.get('rule')).endswith('_pin')}
+            assert stamped, (
+                f'{cname} diverged from the primary on {both - matched} of '
+                f'{both} shared categories with no fallback warning and no '
+                f'`_pin` relaxation — a silent half-sync. '
+                f'{body.get("relaxations")}')
+
+    def test_the_sync_actually_syncs_something(self, loop):
+        """The non-vacuity half.
+
+        The test above is satisfied by a run in which every counter fell back
+        or stamped a relaxation on every cell — i.e. by the feature doing
+        nothing at all. So at least one counter has to come out mostly synced.
+        Measured on the current pools: Roti Combo carries the primary's dish on
+        12 of its 15 non-const shared cells (all five desserts and all five
+        breads, two of five veg gravies — the three misses are days its own
+        north theme filters the primary's south gravy out, each stamped). Half
+        is the floor, well under the 0.80 measured, because the exact figure
+        moves with the pools and this guard is about the feature running at
+        all.
+        """
+        out, cats, excl, names = loop
+        scores = {c: self._synced_cells(out, cats, names[0], c)
+                  for c in names[1:] if c not in excl}
+        assert any(cells and matched >= cells / 2
+                   for cells, matched in scores.values()), scores
 
     def test_the_excluded_counter_is_left_alone(self, loop):
-        """'rice combo counter is not linked to the shared items list'."""
+        """'rice combo counter is not linked to the shared items list'.
+
+        Measured as "not synced", not as "zero coincidences". The old form
+        asserted the excluded counter never picks a dish the primary also
+        picked, which is not a property of the exclusion at all — both solve
+        the same city pool under the same rules, so an occasional agreement is
+        expected, and one duly appeared (`veg_gravy`, one day out of three).
+        What the exclusion guarantees is that it was never sent the pins, so it
+        cannot have been synced across the board and cannot have reported a
+        skip.
+        """
         out, cats, excl, names = loop
         assert 'Rice Combo' in excl
-        primary = self._dishes(out[names[0]][1])
-        rice = self._dishes(out['Rice Combo'][1])
-        shared_hits = sum(
-            primary[i][base] == rice[i][base]
-            for base in cats for i in primary
-            if base in primary[i] and base in rice.get(i, {}))
-        assert shared_hits == 0, shared_hits
-
-    def test_a_counter_that_cannot_take_the_pins_falls_back(self, loop):
-        """The documented contract is that the sync NEVER makes a counter
-        INFEASIBLE (note 22), and it did: Roti Combo runs four colour cells and
-        the primary pins three of them, so a day whose pinned bread, gravy and
-        dessert carry two colours between them cannot reach the three distinct
-        the city asks for. Each pin is individually eligible, so nothing catches
-        it in advance — the counter is re-solved without the sync instead, and
-        says so.
-        """
-        out, _cats, _excl, _names = loop
-        status, body = out['Roti Combo']
-        assert status == 200
-        assert any('Cross-counter sync skipped' in str(w)
-                   for w in (body.get('pool_warnings') or [])), \
-            body.get('pool_warnings')
+        assert not self._skipped(out['Rice Combo'][1])
+        both, matched = self._synced_categories(out, cats, names[0],
+                                                'Rice Combo')
+        assert both, 'Rice Combo shares no category with the primary'
+        assert matched < both, (matched, both)

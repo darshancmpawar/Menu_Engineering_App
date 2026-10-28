@@ -64,17 +64,21 @@ def _weekday(iso):
     return dt.date.fromisoformat(iso).strftime('%a').lower()
 
 
-def test_sprouts_gravy_at_least_twice(week):
-    """A FLOOR. Pune carries seven sprouts gravies, so two a week fits."""
-    n = sum(1 for g in _slot(week, 'veg_gravy').values()
-            if 'sprout' in g or 'matki' in g)
-    assert n >= 2, f'sprouts gravy served {n} times, the client asked for two'
-
-
 def test_sprouts_gravy_no_more_than_twice(week):
+    """Rulebook Lunch/Dinner 3: 'Sprouts not to be served (gravy) for more than
+    02 days in a week.' A CEILING and nothing else.
+
+    There was a `test_sprouts_gravy_at_least_twice` here, pinning a `min: 2`
+    that forced two every week. It came from an earlier instruction worded
+    'sprouts gravy at least twice a week'; the client has since confirmed the
+    rulebook wording governs, so the floor is gone and a week with one or none
+    is compliant. The file docstring's first bullet still stands as history —
+    a cap WAS once written where a floor was asked for — but the requirement
+    it describes is no longer the live one.
+    """
     n = sum(1 for g in _slot(week, 'veg_gravy').values()
             if 'sprout' in g or 'matki' in g)
-    assert n <= 2
+    assert n <= 2, f'sprouts gravy served {n} times, the cap is two'
 
 
 def test_at_most_two_leafy_veg_dry(week, pune):
@@ -262,3 +266,123 @@ def _solve_with_history(monkeypatch, days_ago, item):
     assert resp.status_code == 200, body.get('error') or body.get('message')
     return served, {iso: str(d['items'].get('rice', {}).get('item_base') or '').lower()
                     for iso, d in body['solution'].items()}
+
+
+# --- the rulebook lines that were not configured at all --------------------
+#
+# Each of these was in the client's written rulebook and enforced by nothing.
+# They are asserted here, against a real week, by predicates written
+# INDEPENDENTLY of the rules' own selectors — which is the point of this file:
+# a test that matched through the rule's selector could not tell a rule that
+# selects the wrong dishes from one that selects the right ones.
+
+
+def _ki(pune, base):
+    hit = pune[pune['item'].astype(str).str.strip() == base]
+    return '' if hit.empty else str(hit.iloc[0].get('key_ingredient') or '').strip().lower()
+
+
+def _is_sprout(base):
+    return 'sprout' in base or 'matki' in base
+
+
+def _is_brinjal(base):
+    return any(k in base for k in ('brinjal', 'wangi', 'baingan', 'vangi'))
+
+
+def _is_potato(pune, base):
+    return _ki(pune, base) == 'potato' or any(
+        k in base for k in ('aloo', 'batata', 'potato'))
+
+
+def _is_non_vegetable_prep(pune, base):
+    """pithla, sev bhaji, sandga curry, soya masala — the client's examples."""
+    return _ki(pune, base) in ('soy', 'besan') or any(
+        k in base for k in ('zunka', 'pithla', 'pitla', 'sandga', 'sev_',
+                            'besan', 'soya'))
+
+
+def _veg_pair(week, iso):
+    row = week[iso]
+    return [str(row.get(s) or '').lower() for s in ('veg_dry', 'veg_gravy')
+            if row.get(s)]
+
+
+def test_at_least_one_leafy_veg_dry_in_the_week(week, pune):
+    """General 3: 'Green leafy vegetable to be served once in a week.'
+
+    A FLOOR, and until it was configured every rule in play was a ceiling —
+    this client's cap of two, Pune's cap of one, and `leafy_daily_max_1`. A
+    week of none satisfied all three, and a real seven-day solve served
+    exactly none while reporting nothing.
+
+    NOT a return of the `min: 2` this file's docstring records as a bug. That
+    one forced TWO leafy days, which the client never asked for; this is the
+    one a week the rulebook does ask for, and the cap of two still stands
+    above it (`test_at_most_two_leafy_veg_dry`).
+    """
+    leafy = {str(i).lower() for i, v in zip(pune['item'], pune['is_leafy_based_dish'])
+             if pd.to_numeric(v, errors='coerce') == 1}
+    n = sum(1 for d in _slot(week, 'veg_dry').values() if d in leafy)
+    assert n >= 1, f'no leafy veg dry in the week: {_slot(week, "veg_dry")}'
+
+
+def test_every_day_carries_a_real_vegetable(week, pune):
+    """Lunch/Dinner 4: 'At least one of the dry/gravy vegetables should be a
+    preparation of vegetables other than leafy vegetables & sprouts.'
+
+    The excluded set also drops the non-vegetable preparations of the next
+    test: a besan or soya dish is neither leafy nor sprouts, so a floor that
+    only excluded those two would be satisfied by a plate of soya and sprouts.
+    """
+    leafy = {str(i).lower() for i, v in zip(pune['item'], pune['is_leafy_based_dish'])
+             if pd.to_numeric(v, errors='coerce') == 1}
+    for iso in week:
+        pair = _veg_pair(week, iso)
+        assert any(d not in leafy and not _is_sprout(d)
+                   and not _is_non_vegetable_prep(pune, d) for d in pair), (iso, pair)
+
+
+def test_at_most_one_non_vegetable_preparation_a_day(week, pune):
+    """Lunch/Dinner 5: 'Do not serve 2 non-vegetable preparation in one meal.'
+    For example pithla, sev bhaji, sandga curry, soya masala."""
+    for iso in week:
+        pair = _veg_pair(week, iso)
+        bad = [d for d in pair if _is_non_vegetable_prep(pune, d)]
+        assert len(bad) <= 1, (iso, bad)
+
+
+def test_brinjal_sprouts_and_potato_never_share_a_day(week, pune):
+    """General 2: 'Eggplant (Brinjal/Wangi), sprouts (dry or gravy) and potato
+    not to be served on one day.'
+
+    Read as no TWO of the three sharing a day, and checked across EVERY slot
+    rather than the veg pair — the client is describing the day's plate, and a
+    potato could arrive in the rice, the soup or the starter. A measured week
+    served aloo_bhendi_amritsari beside sprouted_green_moong before this was
+    configured.
+    """
+    for iso, row in week.items():
+        served = [str(v).lower() for v in row.values() if v]
+        fams = [n for n, hit in (
+            ('brinjal', any(_is_brinjal(d) for d in served)),
+            ('sprouts', any(_is_sprout(d) for d in served)),
+            ('potato', any(_is_potato(pune, d) for d in served)))
+            if hit]
+        assert len(fams) <= 1, (iso, fams, served)
+
+
+def test_the_two_vegetables_are_one_dry_and_one_gravy(week):
+    """Lunch/Dinner 6: 'Out of the 2 vegetables, one should be dry & other
+    should be gravy.'
+
+    True because the counter runs exactly one `veg_dry` and one `veg_gravy`,
+    not because a rule says so — which is precisely why it is pinned here. It
+    is the one line in the rulebook that a counter edit, rather than a rule
+    change, would silently break.
+    """
+    for iso, row in week.items():
+        assert row.get('veg_dry'), (iso, 'no veg_dry')
+        assert row.get('veg_gravy'), (iso, 'no veg_gravy')
+        assert not [s for s in row if s.startswith('veg_dry__')
+                    or s.startswith('veg_gravy__')], (iso, sorted(row))
