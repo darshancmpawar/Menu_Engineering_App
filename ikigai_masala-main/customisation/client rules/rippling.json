@@ -1,0 +1,54 @@
+{
+  "Rippling": {
+    "_comment": "Bangalore dinner client. Needs these DB slot_counts on Counter 1: veg_dry 2 (already), bread 2, nonveg_main 2, and categories + curd (curd_side stays as the raita slot). See the SQL note delivered with this file.",
+    "disable": [
+      "curd_raita_logic",
+      "nonveg_main_daily_pair"
+    ],
+    "_disable_comment": "curd_raita_logic picks curd-or-raita for the single curd_side slot; Rippling has two slots now (curd = curd only, curd_side = raita only). nonveg_main_daily_pair wants a dry + a chicken gravy whenever 2+ non-veg slots exist; Rippling's second dish is Wednesday-only and is chicken + egg, which rippling_wed_chicken_and_egg below states instead.",
+    "rules": [
+      {
+        "_comment": "The second non-veg dish exists on Wednesday only; every other day serves one non-veg main and __2 stays blank.",
+        "name": "rippling_second_nonveg_wed_only",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_main",
+        "slot_indices": [2],
+        "allowed_weekdays": ["wed"]
+      },
+      {
+        "_comment": "Wednesday: one chicken and one egg dish (components are >=, and two cells make that exactly one each).",
+        "name": "rippling_wed_chicken_and_egg",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "min_slot_count": 2,
+        "components_by_weekday": {
+          "wed": [
+            {"selector": {"primary_protein": "chicken"}, "count": 1},
+            {"selector": {"flag": "is_egg_dish"}, "count": 1}
+          ]
+        }
+      },
+      {
+        "_comment": "curd_side is the RAITA slot: a one-slot composition IS 'this slot must be a raita' (repo_map note 20). The plain-curd station is the separate `curd` slot, whose pool is already plain curd only.",
+        "name": "rippling_raita_only",
+        "type": "slot_composition",
+        "base_slot": "curd_side",
+        "min_slot_count": 1,
+        "components": [
+          {"selector": {"flag": "is_raita"}, "count": 1}
+        ]
+      },
+      {
+        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the 20-day cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC).",
+        "name": "rippling_plain_chapati_repeatable",
+        "type": "repeatable_items",
+        "base_slot": "bread",
+        "selector": {"sub_category": "plain_chapatti/phulka"}
+      }
+    ],
+    "constant_items": {
+      "_comment": "bread__1 = plain chapati daily; bread__2 is solved from the pool. Pinning one expansion leaves the other free, the same shape as Plan View's nonveg_main__2.",
+      "bread__1": "plain chapati"
+    }
+  }
+}
