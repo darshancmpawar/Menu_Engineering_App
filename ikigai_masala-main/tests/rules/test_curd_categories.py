@@ -127,9 +127,8 @@ class TestCurdMutualExclusion:
             [{'name': 'C1', 'categories': cats}]
         )
 
-    def test_curd_and_curd_raita_together_rejected(self):
-        with pytest.raises(ValueError, match="mutually exclusive"):
-            self._validate(['rice', 'curd', 'curd_side'])
+    def test_curd_and_curd_raita_together_allowed(self):
+        self._validate(['rice', 'curd', 'curd_side'])  # must not raise
 
     def test_curd_plus_curd_rice_allowed(self):
         self._validate(['rice', 'curd', 'curd_rice'])  # must not raise

@@ -39,8 +39,6 @@ from src.constants import (
     DEFAULT_ITEM_COOLDOWN_DAYS,  # noqa: F401
     DEFAULT_OFF_SLOTS,
     DEFAULT_WEEKDAY_THEMES,
-    MUTUALLY_EXCLUSIVE_SLOT_GROUPS,
-    DISPLAY_SLOT_NAME,
 )
 from src.db import get_supabase
 from src.history import DEFAULT_MEALS, MEALS, normalize_meals
@@ -939,20 +937,6 @@ class ClientConfigLoader:
                     f"Counter {i + 1} ('{c.get('name', '')}') needs at least "
                     "one food category."
                 )
-            # Mutually exclusive slot groups (e.g. plain curd vs curd/raita —
-            # both are the yogurt side, a counter serves only one).
-            cats_set = set(cats)
-            for group in MUTUALLY_EXCLUSIVE_SLOT_GROUPS:
-                clash = group & cats_set
-                if len(clash) > 1:
-                    labels = ' and '.join(
-                        DISPLAY_SLOT_NAME.get(s, s) for s in sorted(clash)
-                    )
-                    raise ValueError(
-                        f"Counter {i + 1} ('{c.get('name', '')}') selects "
-                        f"{labels}, but these are mutually exclusive — pick "
-                        "only one."
-                    )
 
     def _counters_from_inputs(
         self,
