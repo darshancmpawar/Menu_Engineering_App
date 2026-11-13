@@ -1,0 +1,34 @@
+{
+  "_comment": "Feeds the item_style helper column (scripts/build_item_style.py). One column for flavoured rice AND soup: a week should not repeat a style. Default style comes from sub_category; `exceptions` override one dish by its item name when sub_category gets it wrong.",
+  "by_sub_category": {
+    "rice": {
+      "north_simple_veg_pulao": "pulao", "north_rich_pulao": "pulao", "south_veg_pulao": "pulao",
+      "north_veg_biryani": "biryani", "south_veg_biryani": "biryani",
+      "north_veg_tehri": "tehri_khichdi", "north_khichdi": "tehri_khichdi",
+      "chinese_rice": "fried_rice", "chinese_noodles": "noodles",
+      "continental_rice": "continental_rice",
+      "pasta_in_tomato_and_cream_sauce": "pasta", "pasta_in_tomato_base_sauce": "pasta",
+      "pasta_with_mix_veg_in_cream_sauce": "pasta", "pasta_with_spinach_and_ricotta": "pasta",
+      "pasta_with_variety_of_cheese": "pasta", "macaroni_pasta_with_cream_sauce": "pasta",
+      "macroni_pasta_with_cream_sauce": "pasta",
+      "south_curd_rice": "curd_rice",
+      "south_rice_bath": "south_rice", "south_one_pot_rice": "south_rice",
+      "white_rice": "plain_rice"
+    },
+    "soup": {
+      "clear_/_broth_soup": "clear_soup",
+      "cream_soup": "cream_soup",
+      "chunky_veg_soup": "veg_soup",
+      "lentil_/_pulse_soup": "lentil_soup",
+      "shorba_/_regional": "shorba",
+      "asian_soup": "asian_soup"
+    }
+  },
+  "exceptions": {
+    "_comment": "Plain 'Veg Soup' reads as a clear soup to guests even though the ontology files it as chunky; it and sweet_basil_clear_soup are different dishes that share the clear style, so only one of them (or clear_soup / clear_veg_soup) may appear in a week. clear_soup and clear_veg_soup are the same dish under two names; both stay in the ontology because client history refers to them.",
+    "mixed_veg_soup": "clear_soup",
+    "sweet_basil_clear_soup": "clear_soup",
+    "clear_soup": "clear_soup",
+    "clear_veg_soup": "clear_soup"
+  }
+}
