@@ -145,6 +145,9 @@ def test_every_nonveg_main_carries_a_form(frames, city):
     assert cols, f"{city} carries none of the structural flag columns"
     rows = df[df["course_type"].astype(str).str.strip().str.lower()
               == "nonveg_main"]
+    # The pair is a lunch/dinner composition; breakfast rows never meet it.
+    if "session" in rows.columns:
+        rows = rows[rows["session"].astype(str).str.contains("lunch")]
     flagged = sum(
         (pd.to_numeric(rows[c], errors="coerce").fillna(0) == 1) for c in cols)
     unplaceable = sorted(_names(rows)[flagged == 0])

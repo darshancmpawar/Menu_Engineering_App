@@ -158,7 +158,7 @@ DISPLAY_SLOT_ORDER: List[str] = [
     'dal_rasam', 'sambar_rasam', 'dal_sambar', 'papad', 'pickle', 'chutney',
     'condiment',
     # non-veg last
-    'nonveg_main', 'nonveg_sandwich',
+    'nonveg_sandwich', 'nonveg_main',
 ]
 
 # Combination categories: ONE visible slot that alternates between two
