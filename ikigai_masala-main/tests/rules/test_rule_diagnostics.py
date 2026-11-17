@@ -357,6 +357,20 @@ class TestPoolSizeDiagnostics:
         diags = pool_size_diagnostics([], ctx)
         assert all(d.severity == DiagnosticSeverity.INFO for d in diags)
 
+    def test_a_staple_row_of_one_dish_is_not_reported(self):
+        """The Curd row serves plain curd alone (2.08.01): one dish, every
+        day, by design, so no "no variety" note."""
+        d = dt.date(2026, 5, 11)
+        ctx = _ctx(
+            pools={'curd': pd.DataFrame({'item': ['curd']}),
+                   'starter': pd.DataFrame({'item': ['x']})},
+            dates=[d], day_types={d: 'mix'},
+            slot_counts={'curd': 1, 'starter': 1},
+            active_base_slots=['curd', 'starter'],
+        )
+        slots = {x.affected.get('slot') for x in pool_size_diagnostics([], ctx)}
+        assert slots == {'starter'}
+
     def test_skip_cells_suppresses_diagnostics(self):
         d = dt.date(2026, 5, 11)
         pool = pd.DataFrame({'item': []})  # empty pool would trigger warn
