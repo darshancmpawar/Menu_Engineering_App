@@ -170,6 +170,27 @@
         },
         "window_days": 8,
         "except_regional_days": true
+      },
+      {
+        "_comment": "Breakfast: the non-veg sandwich is Thursday only (owner, 2026-11-17). Lunch and dinner have no such row, so this is breakfast-only by construction.",
+        "name": "rippling_breakfast_nonveg_sandwich_thursday",
+        "type": "slot_day_restriction",
+        "base_slot": "nonveg_sandwich",
+        "allowed_weekdays": [
+          "thu"
+        ]
+      },
+      {
+        "_comment": "Breakfast: the veg sandwich steps aside on the non-veg sandwich day.",
+        "name": "rippling_breakfast_veg_sandwich_not_thursday",
+        "type": "slot_day_restriction",
+        "base_slot": "sandwich",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "wed",
+          "fri"
+        ]
       }
     ],
     "slot_pool_moves": [
@@ -186,13 +207,21 @@
       }
     },
     "_combo_by_theme_comment": "Sambar / Rasam is one row (the sambar_rasam combination: rasam three days, sambar two). The biryani day is always rasam, wherever it falls in the plan.",
-    "constant_items": {
-      "_comment": "bread__1 = plain chapati daily; bread__2 is solved from the pool.",
-      "bread__1": "plain chapati"
-    },
     "constant_items_by_meal": {
-      "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week.",
+      "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week. bread__1 = plain chapati at lunch and dinner (per session, not client-wide: a client-wide pin is printed at breakfast too, which has no bread row).",
+      "breakfast": {
+        "_comment": "Breakfast sheet (owner, 2026-11-17): the Eggs row (on the 'side' category) and Accompaniments 2 (the 'condiment' category) are fixed text.",
+        "side": {
+          "monday": "Boiled Egg, Omelette",
+          "tuesday": "Boiled Egg, Omelette",
+          "wednesday": "Boiled Eggs",
+          "thursday": "Boiled Egg, Omelette",
+          "friday": "Boiled Eggs"
+        },
+        "condiment": "Chat masala, salt pepper, butter (Amul sachets), kissan jam, ketchup packets"
+      },
       "lunch": {
+        "bread__1": "plain chapati",
         "salad": {
           "monday": "Lettuce, cherry tomato, pink carrot, carrot, sauteed babycorn, roasted beetroot, boiled peanuts, millets, pesto chicken",
           "tuesday": "Shredded cabbage, cherry tomato, cucumber, boiled green peas, roasted pumpkin, boiled chickpeas, broken wheat, tandoori soya, onions",
@@ -209,6 +238,7 @@
         }
       },
       "dinner": {
+        "bread__1": "plain chapati",
         "salad": {
           "monday": "Lettuce, cherry tomato, carrot, onions, sauteed babycorn, roasted beetroot, grilled zucchini, boiled peanuts, millet, pesto chicken",
           "tuesday": "Shredded cabbage, cherry tomato, cucumber, onions, boiled green peas, boiled chickpeas, broken wheat, tandoori soya",
@@ -229,7 +259,14 @@
       "_comment": "T2: the row order and names from the requirement sheet; T4: a veg / non-veg marker on every dish; T5: when each dish was last served (not white rice or pinned items). Shown on screen and in the Excel export, for Rippling only.",
       "order": [
         "welcome_drink",
+        "fruit",
+        "side",
         "salad",
+        "breakfast_main",
+        "breakfast_chutney",
+        "condiment",
+        "sandwich",
+        "nonveg_sandwich",
         "chutney",
         "soup",
         "bread",
@@ -263,7 +300,15 @@
         "curd_side": "Raitha",
         "nonveg_main__1": "NonVeg Main (Chicken)",
         "nonveg_main__2": "NonVeg Main (Egg)",
-        "dessert": "Dessert"
+        "dessert": "Dessert",
+        "_breakfast": "Breakfast rows (only the breakfast session has them). The breakfast 'salad' row still reads 'Make Your Own Salad' until labels can differ by session.",
+        "fruit": "Fresh Fruits",
+        "side": "Eggs",
+        "breakfast_main": "Mains",
+        "breakfast_chutney": "Accompaniments",
+        "condiment": "Accompaniments 2",
+        "sandwich": "Sandwich",
+        "nonveg_sandwich": "Non-veg Sandwich"
       }
     }
   }
