@@ -149,6 +149,35 @@
           "sub_category": "fresh_fruit"
         },
         "max": 0
+      },
+      {
+        "_comment": "Kootu is a South Veg Dry here, never a Lentil (slot_pool_moves below), and at most once in 8 days: this is the within-week half. A regional day is exempt (owner, 2026-11-17).",
+        "name": "rippling_kootu_once_a_week",
+        "type": "selector_frequency",
+        "base_slot": "veg_dry",
+        "selector": {
+          "sub_category": "kootu"
+        },
+        "max": 1,
+        "except_regional_days": true
+      },
+      {
+        "_comment": "The cross-week half: no kootu within 8 days of a saved one. No base_slot on purpose: a base_slot scopes the family by course_type, and kootu's course_type is dal.",
+        "name": "rippling_kootu_8_days",
+        "type": "selector_history_window",
+        "selector": {
+          "sub_category": "kootu"
+        },
+        "window_days": 8,
+        "except_regional_days": true
+      }
+    ],
+    "slot_pool_moves": [
+      {
+        "_comment": "Kootu out of Lentils, into Veg Dry. It is south Indian, so it lands on the South Veg Dry row.",
+        "from": "dal",
+        "to": "veg_dry",
+        "sub_category": "kootu"
       }
     ],
     "combo_by_theme": {
@@ -235,9 +264,7 @@
         "nonveg_main__1": "NonVeg Main (Chicken)",
         "nonveg_main__2": "NonVeg Main (Egg)",
         "dessert": "Dessert"
-      },
-      "veg_markers": true,
-      "last_served": true
+      }
     }
   }
 }

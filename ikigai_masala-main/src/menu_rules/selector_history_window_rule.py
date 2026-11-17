@@ -97,6 +97,8 @@ class SelectorHistoryWindowRule(BaseMenuRule):
         self.window_days: Optional[int] = int(wd) if wd is not None else None
         self.at_least_once_per_window: bool = bool(
             rule_config.get('at_least_once_per_window', False))
+        # No ban on the plan's regional days (see SelectorFrequencyRule).
+        self.except_regional_days = rule_config.get('except_regional_days') is True
 
     def validation_errors(self) -> List[str]:
         errs: List[str] = []

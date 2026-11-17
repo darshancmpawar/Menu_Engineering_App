@@ -108,9 +108,64 @@ def test_chicken_every_day_and_egg_on_wednesday_only(plan, df):
             assert 'nonveg_main__2' not in day, (wd, day)
 
 
+def test_kootu_is_a_veg_dry_never_a_lentil_and_at_most_once(plan, df):
+    def kootu(i):
+        return str(_row(df, i).get('sub_category')) == 'kootu'
+    assert not any(kootu(i) for day in _cells(plan[1], 'dal') for i in day.values())
+    in_veg_dry = [i for day in _cells(plan[1], 'veg_dry') for i in day.values() if kootu(i)]
+    assert len(in_veg_dry) <= 1, in_veg_dry
+
+
+def test_kootu_pool_moves_from_lentils_to_veg_dry():
+    from src.application.solve_inputs import _apply_slot_pool_moves
+    from src.menu_rules.menu_rule_loader import MenuRuleLoader
+    from src.ontology import repository
+    moves = MenuRuleLoader().get_client_slot_pool_moves('Rippling')
+    assert moves == [{'from': 'dal', 'to': 'veg_dry', 'sub_category': 'kootu'}]
+    _df, city = repository.menu_data('Bangalore')
+    moved = _apply_slot_pool_moves(city, moves)
+    kootus = set(city['dal'].loc[city['dal']['sub_category'] == 'kootu', 'item'])
+    assert len(kootus) > 40
+    assert not kootus & set(moved['dal']['item'])
+    assert kootus <= set(moved['veg_dry']['item'])
+    # The shared city pools are untouched: other clients keep kootu as a dal.
+    assert kootus <= set(city['dal']['item'])
+    assert not kootus & set(city['veg_dry']['item'])
+
+
+def test_kootu_caps_lift_on_regional_days(df):
+    """`except_regional_days`: the plan's regional dates do not count toward
+    the weekly cap, and the 8-day window bans nothing on them."""
+    import datetime as dt
+    from src.application.history import _build_history_context
+    from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
+    from src.menu_rules.selector_history_window_rule import SelectorHistoryWindowRule
+    block = json.loads(_RULES.read_text(encoding='utf-8'))['Rippling']
+    by_name = {r['name']: r for r in block['rules']}
+    assert SelectorFrequencyRule(by_name['rippling_kootu_once_a_week']).except_regional_days
+    assert SelectorHistoryWindowRule(by_name['rippling_kootu_8_days']).except_regional_days
+
+    import src.db as db_mod
+    mp = pytest.MonkeyPatch()
+    mp.setattr(db_mod, '_sb_client', FakeSupabase(seed={
+        'clients': [], 'app_settings': [], 'week_signatures': [],
+        'menu_history': [{'client_name': 'Rippling', 'service_date': '2026-08-03',
+                          'menu': {'veg_dry__2': 'pumpkin_kootu'}}]}), raising=False)
+    try:
+        days = [dt.date(2026, 8, 10), dt.date(2026, 8, 11), dt.date(2026, 8, 12)]
+        banned, *_ = _build_history_context(
+            df, 'Rippling', days[0], days, window_days=45, selector_windows=[
+                ({'pumpkin_kootu', 'mysore_kootu'}, 8, {'2026-08-10'})])
+    finally:
+        mp.undo()
+    assert 'mysore_kootu' not in banned.get(days[0], set())   # regional day
+    assert 'mysore_kootu' in banned[days[1]]                  # 8 days after 3 Aug
+    assert 'mysore_kootu' not in banned.get(days[2], set())   # window over
+
+
 def test_curd_is_plain_and_curd_side_is_raita(plan, df):
     for day in _cells(plan[1], 'curd'):
-        assert all(_is(df, i, 'is_plain_curd') for i in day.values()), day
+        assert all(i == 'curd' for i in day.values()), day
     for day in _cells(plan[1], 'curd_side'):
         assert day and all(_is(df, i, 'is_raita') for i in day.values()), day
 

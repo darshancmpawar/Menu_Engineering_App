@@ -152,4 +152,4 @@ At the owner's request:
 |---|---|---|---|
 | 2.08.00 | 13–16 Nov | Darshan + Claude Code | Rippling configured from the client's requirement sheet; per-client menu layout with veg / non-veg markers and last-served dates; combination half pinned by theme; free-text non-veg reading; fixed items per session on one counter; `item_style` column; Bangalore list cleaned (5,721 → 5,323). |
 
-**Previous:** [v2.07.04](IkigaiMasala_Final_v2.07.04_2026-10-14.md)  **Next:** —
+**Previous:** [v2.07.04](IkigaiMasala_Final_v2.07.04_2026-10-14.md)  **Next:** [v2.08.01](IkigaiMasala_Draft_v2.08.01_2026-11-17.md)

@@ -39,6 +39,7 @@ from src.constants import (
     DEFAULT_ITEM_COOLDOWN_DAYS,  # noqa: F401
     DEFAULT_OFF_SLOTS,
     DEFAULT_WEEKDAY_THEMES,
+    FEATURE_DEFAULTS,
 )
 from src.db import get_supabase
 from src.history import DEFAULT_MEALS, MEALS, normalize_meals
@@ -105,6 +106,13 @@ AVAILABLE_THEMES: List[str] = [
 AVAILABLE_CITIES: List[str] = ['Bangalore', 'Pune', 'Chennai', 'Hyderabad', 'NCR']
 
 _MAX_ITEM_COOLDOWN_DAYS: int = 60
+
+
+def normalize_features(value) -> Dict[str, bool]:
+    """A client's add-on switches with every key present: FEATURE_DEFAULTS
+    overlaid with what is stored. Unknown keys are dropped."""
+    stored = value if isinstance(value, dict) else {}
+    return {k: bool(stored.get(k, d)) for k, d in FEATURE_DEFAULTS.items()}
 
 
 def normalize_item_cooldown_days(value) -> Optional[int]:
@@ -757,6 +765,35 @@ class ClientConfigLoader:
             raise ValueError(f"Unknown client: {name}")
         return normalize_meals(row.data.get('meals'))
 
+    def get_client_features(self, name: str) -> Dict[str, bool]:
+        """The client's add-on switches; FEATURE_DEFAULTS when the
+        ``clients.features`` column is missing (pre-migration)."""
+        try:
+            row = (self._sb.table('clients').select('features')
+                   .eq('name', name).maybe_single().execute())
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                return normalize_features(None)
+            raise
+        if not row.data:
+            raise ValueError(f"Unknown client: {name}")
+        return normalize_features(row.data.get('features'))
+
+    def set_client_features(self, name: str, value) -> None:
+        """Update the client's add-on switches."""
+        self._require_client_exists(name)
+        try:
+            self._sb.table('clients').update({
+                'features': normalize_features(value),
+            }).eq('name', name).execute()
+        except Exception as exc:
+            if _is_missing_relation(exc):
+                raise ValueError(
+                    "Cannot save the add-on features: the clients.features "
+                    "column is missing. " + _MIGRATION_HINT_COUNTERS
+                ) from exc
+            raise
+
     def set_client_meals(self, name: str, value) -> None:
         """Update which services a client runs."""
         self._require_client_exists(name)
@@ -1309,7 +1346,7 @@ class ClientConfigLoader:
     _CONFIG_COLUMNS = (
         'counters', 'city', 'serve_weekends', 'meals', 'working_days',
         'item_cooldown_days', 'source_pools', 'is_launch_site',
-        'shared_categories', 'region_map', 'version',
+        'shared_categories', 'region_map', 'features', 'version',
     )
 
     def get_client_row(self, name: str) -> Dict[str, Any]:
@@ -1349,6 +1386,7 @@ class ClientConfigLoader:
                     'is_launch_site': self.get_client_is_launch_site(name),
                     'shared_categories': self.get_client_shared_categories(name),
                     'region_map': self.get_client_region_map(name),
+                    'features': self.get_client_features(name),
                     'version': self.get_client_version(name),
                 }
             raise
@@ -1371,6 +1409,7 @@ class ClientConfigLoader:
                 data.get('shared_categories')),
             'region_map': self._normalize_region_map_value(
                 data.get('region_map')),
+            'features': normalize_features(data.get('features')),
             'version': int(data.get('version') or 1),
         }
 
@@ -1508,6 +1547,7 @@ class ClientConfigLoader:
             ('is_launch_site', self.set_client_is_launch_site),
             ('shared_categories', self.set_client_shared_categories),
             ('region_map', self.set_client_region_map),
+            ('features', self.set_client_features),
         ):
             if column in fields:
                 try:

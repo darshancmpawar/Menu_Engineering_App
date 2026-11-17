@@ -49,6 +49,16 @@ _SIMPLE_MAPPING: Dict[str, Set[str]] = {
     'nonveg_main': {'nonveg_main'},
     'curd_side': {'curd_side'},
     'dessert': {'dessert'},
+    # Breakfast rows (the breakfast session of the city list).
+    'beverage': {'beverage'},
+    'breakfast_main': {'breakfast_main'},
+    'side': {'side'},
+    'breakfast_chutney': {'chutney'},
+    'sandwich': {'sandwich'},
+    'nonveg_sandwich': {'sandwich'},
+    'snack': {'snack'},
+    'fruit': {'fruit'},
+    'condiment': {'condiment'},
 }
 
 
@@ -139,10 +149,13 @@ class PoolBuilder:
 
         # Plain-curd station: driven by the is_plain_curd flag (plain-curd
         # dishes live under the curd_side course_type but are a distinct,
-        # curd-only category selectable per client).
+        # curd-only category selectable per client). The row serves plain
+        # `curd` and nothing else, in every city (owner, 2026-11-17): mixed,
+        # mint and beetroot curd keep the flag but not this row.
         if 'is_plain_curd' in df.columns:
             pools['curd'] = df[
-                pd.to_numeric(df['is_plain_curd'], errors='coerce').fillna(0) == 1
+                (pd.to_numeric(df['is_plain_curd'], errors='coerce').fillna(0) == 1)
+                & (df['item'] == 'curd')
             ].copy()
         else:
             pools['curd'] = df.iloc[0:0].copy()
@@ -194,6 +207,10 @@ class PoolBuilder:
             if slot in NONVEG_SLOTS or len(pool) == 0:
                 continue
             pools[slot] = pool[~_nonveg_mask(pool)].copy()
+        # ...and the non-veg sandwich row is the sandwich course's non-veg half.
+        nv = pools['nonveg_sandwich']
+        if len(nv):
+            pools['nonveg_sandwich'] = nv[_nonveg_mask(nv)].copy()
 
         # Validate the required base slots have items. Optional (default-off)
         # stations like curd_rice may legitimately be empty in a minimal

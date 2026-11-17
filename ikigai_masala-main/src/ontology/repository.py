@@ -50,10 +50,12 @@ class OntologyRepository:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        #: resolved workbook path -> (df, pools)
-        self._menu_data_by_path: Dict[str, Tuple[Any, Any]] = {}
-        #: (resolved path, frozenset(active pool tokens)) -> (df, pools)
-        self._filtered_by_path_and_pools: Dict[Tuple[str, FrozenSet[str]],
+        #: resolved workbook path -> every row, all sessions
+        self._full_by_path: Dict[str, Any] = {}
+        #: (resolved path, meal) -> (that session's df, pools)
+        self._menu_data_by_path: Dict[Tuple[str, str], Tuple[Any, Any]] = {}
+        #: (resolved path, frozenset(active pool tokens), meal) -> (df, pools)
+        self._filtered_by_path_and_pools: Dict[Tuple[str, FrozenSet[str], str],
                                                Tuple[Any, Any]] = {}
         #: resolved workbook path -> set of lowercased non-veg item names
         self._nonveg_by_path: Dict[str, Set[str]] = {}
@@ -64,37 +66,56 @@ class OntologyRepository:
 
     # -- loading -----------------------------------------------------------
 
-    def menu_data(self, city=None) -> Tuple[Any, Any]:
-        """Return ``(df, pools)`` for *city*'s ontology.
+    def menu_data(self, city=None, meal=None) -> Tuple[Any, Any]:
+        """Return ``(df, pools)`` for *city*'s ontology, *meal*'s rows only.
 
         A city without its own workbook falls back to the default (Bangalore)
         list, so `city=None` — every caller with no city in hand — behaves
-        exactly as it always did.
+        exactly as it always did. *meal* keeps the rows whose ``session``
+        column names it; no meal means lunch, which is every row the list had
+        before breakfast joined it.
         """
+        from src.history import BREAKFAST, normalize_meal
         from src.ontology.paths import city_excel_path, city_required_slots
-        from src.preprocessor.data_cleanser import DataCleanser
-        from src.preprocessor.excel_reader import ExcelReader
         from src.preprocessor.pool_builder import PoolBuilder
 
-        path = city_excel_path(city)
-        cached = self._menu_data_by_path.get(path)
+        path, meal = city_excel_path(city), normalize_meal(meal)
+        cached = self._menu_data_by_path.get((path, meal))
         if cached is None:
             with self._lock:
-                cached = self._menu_data_by_path.get(path)
+                cached = self._menu_data_by_path.get((path, meal))
                 if cached is None:
-                    df = DataCleanser(ExcelReader(path).read()).clean()
+                    df = _session_rows(self._full_df(path), meal)
                     # A city ontology covers only the categories that city
                     # serves, so the mandatory-slot check is held to that city's
                     # declared set (data/raw/city_items/ontology_categories.json).
+                    # Breakfast has none of the lunch rows that set names.
                     pools = PoolBuilder.build_pools(
-                        df, required_slots=city_required_slots(city))
+                        df, required_slots=(set() if meal == BREAKFAST
+                                            else city_required_slots(city)))
                     cached = (df, pools)
-                    self._menu_data_by_path[path] = cached
-                    logger.info("Loaded ontology for city=%r from %s (%d items)",
-                                city, path, len(df))
+                    self._menu_data_by_path[(path, meal)] = cached
+                    logger.info("Loaded ontology for city=%r meal=%s from %s (%d items)",
+                                city, meal, path, len(df))
         return cached
 
-    def filtered_menu_data(self, city, source_pools) -> Tuple[Any, Any]:
+    def all_rows(self, city=None):
+        """Every row of *city*'s list, all sessions. For name lookups: a dish
+        named at breakfast is the same dish (and as non-veg) at lunch."""
+        from src.ontology.paths import city_excel_path
+        with self._lock:
+            return self._full_df(city_excel_path(city))
+
+    def _full_df(self, path):
+        """Every row of the workbook, all sessions. Called under `_lock`."""
+        from src.preprocessor.data_cleanser import DataCleanser
+        from src.preprocessor.excel_reader import ExcelReader
+
+        if path not in self._full_by_path:
+            self._full_by_path[path] = DataCleanser(ExcelReader(path).read()).clean()
+        return self._full_by_path[path]
+
+    def filtered_menu_data(self, city, source_pools, meal=None) -> Tuple[Any, Any]:
         """``(df, pools)`` narrowed to a client's eligible item pools (F5).
 
         * ``source_pools is None`` (column missing / pre-migration) → the full
@@ -126,7 +147,9 @@ class OntologyRepository:
             filter_eligible, get_active_pools)
         from src.preprocessor.pool_builder import PoolBuilder
 
-        df, pools = self.menu_data(city)
+        from src.history import normalize_meal
+        meal = normalize_meal(meal)
+        df, pools = self.menu_data(city, meal)
         if source_pools is None:
             return df, pools
         # A city listed in FULL_POOL_CITIES ignores per-client pool narrowing
@@ -150,7 +173,7 @@ class OntologyRepository:
         if Path(path).stem.strip().lower() in FULL_POOL_CITIES:
             return df, pools
         active = get_active_pools(source_pools)
-        key = (path, frozenset(active))
+        key = (path, frozenset(active), meal)
         cached = self._filtered_by_path_and_pools.get(key)
         if cached is None:
             with self._lock:
@@ -182,7 +205,7 @@ class OntologyRepository:
         path = city_excel_path(city)
         cached = self._nonveg_by_path.get(path)
         if cached is None:
-            df, _ = self.menu_data(city)
+            df = self.all_rows(city)
             if 'item' not in getattr(df, 'columns', []):
                 cached = set()
             else:
@@ -193,14 +216,16 @@ class OntologyRepository:
             self._nonveg_by_path[path] = cached
         return cached
 
-    def item_names(self, city=None) -> FrozenSet[str]:
+    def item_names(self, city=None, meal=None) -> FrozenSet[str]:
         """Lowercased item names, for resolving a client constant pin to a dish.
 
         City-scoped: a pin is resolved against the list the client's city really
         serves, so a dish existing only in another city's ontology stays a
         stamped constant instead of becoming a solver candidate with no pool row.
+        Session-scoped for the same reason when *meal* is given (a lunch pin
+        must not match a breakfast-only dish); without it, every session.
         """
-        df = self.menu_data(city)[0]
+        df = self.all_rows(city) if meal is None else self.menu_data(city, meal)[0]
         if df is None or 'item' not in getattr(df, 'columns', []):
             return frozenset()
         try:
@@ -262,6 +287,7 @@ class OntologyRepository:
         files used to repeat; also the hook for picking up an edited workbook or
         ruleset without a restart."""
         with self._lock:
+            self._full_by_path.clear()
             self._menu_data_by_path.clear()
             self._filtered_by_path_and_pools.clear()
             self._nonveg_by_path.clear()
@@ -278,6 +304,15 @@ class OntologyRepository:
             'rules': len(self._rules_by_city),
             'regions': len(self._regions_by_path),
         }
+
+
+def _session_rows(df, meal):
+    """The rows whose ``session`` (comma-separated, e.g. "lunch,dinner") names
+    *meal*. A list without the column has no sessions: every row serves."""
+    if 'session' not in getattr(df, 'columns', []):
+        return df
+    names = df['session'].fillna('').astype(str).str.lower().str.split(',')
+    return df[names.apply(lambda parts: meal in {p.strip() for p in parts})]
 
 
 #: Process-wide instance. `api/app.py` and the Streamlit editor share it so one

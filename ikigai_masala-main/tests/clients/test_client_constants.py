@@ -277,7 +277,7 @@ class TestSkipCellsSuppressSibling:
     def _skips(self, monkeypatch, constants, active_slots, dates):
         monkeypatch.setattr(
             'src.menu_rules.MenuRuleLoader.get_client_constant_items',
-            lambda self, name, counter_name=None: constants,
+            lambda self, name, counter_name=None, meal=None: constants,
         )
         _rules, skips, resolved, whole, forced = rules_and_skip_for_client(
             'Booking.com', dates, city='bangalore',

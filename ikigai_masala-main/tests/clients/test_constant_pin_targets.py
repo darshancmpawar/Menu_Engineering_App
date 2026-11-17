@@ -102,6 +102,10 @@ def item_names():
         if city not in cache:
             df = pd.read_excel(city_excel_path(city))
             df.columns = [c.strip() for c in df.columns]
+            # A pin resolves against its own session's dishes; these pins
+            # are lunch/dinner ones, so breakfast's names are not theirs.
+            if 'session' in df.columns:
+                df = df[df['session'].astype(str).str.contains('lunch')]
             cache[city] = {str(x).strip().lower() for x in df["item"].astype(str)}
         return cache[city]
 
