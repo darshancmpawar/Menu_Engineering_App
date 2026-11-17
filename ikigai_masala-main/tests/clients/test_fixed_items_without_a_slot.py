@@ -137,7 +137,7 @@ class TestTheStampWinsWhenThereIsNoCell:
         real = MenuRuleLoader.get_client_constant_items
         try:
             MenuRuleLoader.get_client_constant_items = (
-                lambda self, name, counter=None: dict(pins))
+                lambda self, name, counter=None, meal=None: dict(pins))
             _rules, _skip, constants, _whole, forced = (
                 rules_and_skip_for_client(
                     'Solo', dates, city='Bangalore', client_cfg=cfg,

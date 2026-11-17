@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Iterable, List
 
-from src.constants import BASE_SLOT_NAMES
+from src.constants import BASE_SLOT_NAMES, REPEATABLE_SLOTS
 from src.menu_rules.base_menu_rule import (
     BaseMenuRule,
     Diagnostic,
@@ -331,7 +331,9 @@ def pool_size_diagnostics(
                         'count_needed': count_needed,
                     },
                 ))
-            elif pool_size == count_needed:
+            # A staple (plain curd, curd rice) is the same dish every day by
+            # design, so "no variety" there is noise, not a finding.
+            elif pool_size == count_needed and base not in REPEATABLE_SLOTS:
                 out.append(Diagnostic(
                     rule='pool_size',
                     rule_type=rule_type_value,
