@@ -212,9 +212,14 @@ def test_excel_uses_the_clients_layout_markers_and_last_served():
                       'NonVeg Main (Chicken)', 'Dal']
     assert ws.cell(row=4, column=2).value == 'Jeera Rice\nLast served 27 Jul (7 days ago)'
     assert len(ws._images) == 4                  # one marker per dish
+    # To the RIGHT of the name: every icon sits in column C, beside the
+    # dishes in B, and the date heading spans both.
+    assert {img.anchor._from.col for img in ws._images} == {2}
+    assert {str(r) for r in ws.merged_cells.ranges} == {'B2:C2'}
     plain = load_workbook(io.BytesIO(plan_xlsx(
         [dict(block, display={}, last_served={})], 'X'))).active
     assert len(plain._images) == 0
+    assert not plain.merged_cells.ranges         # no marker column, no merge
 
 
 # --- pins per session (one counter, lunch and dinner) ---------------------------

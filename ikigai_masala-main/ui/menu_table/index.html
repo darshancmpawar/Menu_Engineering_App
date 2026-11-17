@@ -150,10 +150,10 @@
   .cell.nonveg .nm { color: #C40D1B; font-weight: 700; }
   /* A client's veg / non-veg marker (display.veg_markers) and the line under
      the dish saying when it was last served (display.last_served). The name
-     and that line stack in `.nmw` so the swatch and marker stay on the first
-     line. A long pinned line — a make-your-own salad — wraps instead of being
-     cut, since the components ARE the dish. */
-  .cell .vmk { flex-shrink: 0; display: inline-flex; }
+     and that line stack in `.nmw`; the marker follows the name. A long pinned
+     line or any list (a make-your-own salad, a dressing) wraps instead of
+     being cut, since the components ARE the dish. */
+  .cell .vmk { flex-shrink: 0; display: inline-flex; margin-left: 2px; }
   .cell .nmw { display: flex; flex-direction: column; min-width: 0; }
   .cell .ls { font-size: 10.5px; line-height: 1.25; color: #6B6B6B;
               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -640,7 +640,8 @@
           return;
         }
         var cls = "cell" + (c.nonveg ? " nonveg" : "") + (c.pinned ? " pinned" : "") +
-                  ((c.name || "").length > 40 ? " long" : "");
+                  ((c.name || "").length > 40 || (c.name || "").indexOf(",") !== -1
+                   ? " long" : "");
         // A pinned cell carries no `data-cell`, so `wire` never binds it and
         // it cannot join a selection — the rule already decided this dish.
         h.push('<button class="' + cls + '"' +
@@ -649,7 +650,6 @@
                ' title="' + esc(c.title || c.name) + '">');
         h.push('<span class="dot" style="background:' + esc(c.color_dot || "#FFFFFF") +
                (c.color === "W" ? ';border:1px solid #AEAEAE' : '') + '"></span>');
-        if (c.marker) h.push('<span class="vmk">' + ICON[c.marker] + '</span>');
         if (c.pinned) h.push(ICON.pin);
         if (c.last) {
           h.push('<span class="nmw"><span class="nm">' + esc(c.name) + '</span>' +
@@ -657,6 +657,8 @@
         } else {
           h.push('<span class="nm">' + esc(c.name) + '</span>');
         }
+        // The veg / non-veg marker reads AFTER the dish (client's ask).
+        if (c.marker) h.push('<span class="vmk">' + ICON[c.marker] + '</span>');
         if (c.regional) {
           h.push('<span class="rgn" title="' +
                  esc((d.region || "Regional") + " dish \u2014 this is why today is a " +

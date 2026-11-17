@@ -3,19 +3,24 @@
 `test_all_clients_generate.py` plans one week against an empty history. The
 failure it cannot see is the one that grows with history: every saved week
 tightens the item cooldown, the cross-week cadences and the week signature, so
-a counter can solve week 1 and go INFEASIBLE in week 3 (2.07.04 recorded six
-sites that could not plan a third consecutive saved week). This drives the
-planner the way the screen does — lunch for every counter, save, then dinner
-with lunch's dishes excluded, save — for four weeks running, and fails if any
-week of any counter and meal does not come back as a menu.
+a counter can solve week 1 and go INFEASIBLE in week 3 (2.07.03 recorded six
+sites that could not plan a third consecutive saved week).
 
-Simplifications, all of which make it no easier to pass: the fixture rows carry
-no `meals`, so every client plans lunch AND dinner (two live sites serve lunch
-only); cross-counter shared items and meal-shared categories are not passed, so
-each counter solves on its own. `time_limit` is 30 s — the question is whether a
-menu exists, not how good it is. Run it on an otherwise idle machine: a solve
-starved of CPU answers "no plan within the time limit" for a counter that is
-perfectly plannable, which reads exactly like the failure this test hunts.
+This drives the planner the way Generate in `app.py` does, because a harsher
+test reports failures the planner never meets:
+
+- the services in the client's `meals` (lunch and dinner when unset), each
+  counter told to avoid what THE SAME COUNTER served at the earlier sittings —
+  per counter, not pooled across the site (`_exclusions_from`), and minus the
+  `meal_shared_categories` slots, which are pinned instead;
+- the primary counter's `shared_categories` dishes pinned into the others;
+- the same time budget: 180 s split across counters x meals, at least 45 s.
+
+It fails if any week of any counter and meal does not come back as a menu.
+Run it on an otherwise idle machine: a solve starved of CPU answers "no plan
+within the time limit" for a counter that is perfectly plannable, which reads
+like the failure this test hunts. The error text tells them apart: "cannot all
+be satisfied" is a proof, "within the time limit" is not.
 
 Marked ``slow``: about 700 real solves. Run with ``pytest -m slow``.
 """
@@ -24,6 +29,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+from urllib.parse import quote
 
 import pytest
 
@@ -33,7 +39,7 @@ from tests.fake_supabase import FakeSupabase
 
 FIRST_MONDAY = dt.date(2026, 8, 3)
 WEEKS = 4
-TIME_LIMIT = 30
+PLANNING_TIME_LIMIT = 180   # app.py _PLANNING_TIME_LIMIT_SECONDS
 
 
 def _api(monkeypatch, client):
@@ -68,57 +74,80 @@ def _empty_served_days(solution):
             if day.get('is_working_day') is not False and not day.get('items')]
 
 
-@pytest.mark.slow
-@pytest.mark.parametrize('client', CLIENTS, ids=[c['name'] for c in CLIENTS])
-def test_four_saved_weeks_in_a_row(monkeypatch, client):
-    from ui.formatters import dishes_from_solution
+def plan_four_weeks(api_app, name, stop_at_first=False):
+    """Plan and save WEEKS weeks as app.py's Generate does; returns failure lines."""
+    from ui.formatters import dishes_from_solution, shared_items_from_solution
 
-    api_app = _api(monkeypatch, client)
-    loader = api_app._get_client_loader()
-    name = client['name']
-    meals = list(client.get('meals') or DEFAULT_MEALS)
+    cfg = api_app.app.test_client().get(
+        f'/api/v1/client-config/{quote(name)}').get_json() or {}
+    assert cfg.get('success'), f'{name}: client-config read failed — {cfg}'
+    counters = [c.get('name') or f'Counter {i + 1}'
+                for i, c in enumerate(cfg.get('counters') or [])] or ['Counter 1']
+    meals = list(cfg.get('meals') or DEFAULT_MEALS)
+    shared = cfg.get('shared_categories') or []
+    shared_off = set(cfg.get('shared_categories_excluded_counters') or [])
+    meal_shared = cfg.get('meal_shared_categories') or []
+    time_limit = max(45, PLANNING_TIME_LIMIT // (len(counters) * len(meals)))
     failures = []
 
     for week in range(WEEKS):
         start = (FIRST_MONDAY + dt.timedelta(weeks=week)).isoformat()
-        earlier_meal_dishes: dict = {}
-        for meal in meals:
-            counters = loader.get_client_configs(name, meal)
-            solved = []
-            for idx, (counter, _cfg) in enumerate(counters):
+        served_so_far: dict = {}   # {counter_index: {iso: [dish, ...]}}
+        carried_over: dict = {}    # {counter_index: [[iso, slot_id, dish], ...]}
+        for m, meal in enumerate(meals):
+            solved, shared_items = [], []
+            for idx, counter in enumerate(counters):
+                pins = list(carried_over.get(idx) or [])
+                if idx > 0 and counter not in shared_off:
+                    pins += shared_items
                 body = {'client_name': name, 'counter_index': idx,
                         'start_date': start, 'num_days': 5,
-                        'time_limit_seconds': TIME_LIMIT, 'meal': meal}
-                if earlier_meal_dishes:
-                    body['exclude_items'] = earlier_meal_dishes
+                        'time_limit_seconds': time_limit, 'meal': meal}
+                if pins:
+                    body['shared_items'] = pins
+                if served_so_far.get(idx):
+                    body['exclude_items'] = served_so_far[idx]
                 resp, out = _post(api_app, '/api/v1/plan', body)
                 where = f"week {week + 1} {meal} {counter!r}"
+                sol = out.get('solution') or {}
                 if resp.status_code != 200:
                     failures.append(f"{where}: HTTP {resp.status_code} — "
                                     f"{out.get('error') or out.get('message')}")
-                    continue
-                sol = out.get('solution') or {}
-                empty = _empty_served_days(sol)
-                if not sol or empty:
-                    failures.append(f"{where}: no dishes on {empty or 'any day'}")
-                    continue
-                solved.append((counter, sol))
+                elif not sol or _empty_served_days(sol):
+                    failures.append(f"{where}: no dishes on "
+                                    f"{_empty_served_days(sol) or 'any day'}")
+                else:
+                    solved.append((idx, counter, sol))
+                    if idx == 0 and shared:
+                        shared_items = shared_items_from_solution(sol, shared)
+                if failures and stop_at_first:
+                    return failures
             if not solved:
                 continue
-            # Save the way the planner does: one nested row per date for a
+            # Saved the way the planner does: one nested row per date for a
             # multi-counter client, the flat week for a single counter.
             save = {'client_name': name, 'week_start': start, 'meal': meal}
             if len(counters) > 1:
                 save['counters'] = [{'name': c, 'week_plan': _week_plan(s)}
-                                    for c, s in solved]
+                                    for _i, c, s in solved]
             else:
-                save['week_plan'] = _week_plan(solved[0][1])
+                save['week_plan'] = _week_plan(solved[0][2])
             resp, out = _post(api_app, '/api/v1/save', save)
             if resp.status_code != 200:
                 failures.append(f"week {week + 1} {meal}: save failed — "
                                 f"{out.get('error')}")
-            for _c, sol in solved:
-                for iso, dishes in dishes_from_solution(sol).items():
-                    earlier_meal_dishes.setdefault(iso, []).extend(dishes)
+            for idx, _c, sol in solved:
+                if m == 0 and meal_shared:
+                    carried_over[idx] = shared_items_from_solution(sol, meal_shared)
+                for iso, dishes in dishes_from_solution(sol, keep_slots=meal_shared).items():
+                    day = served_so_far.setdefault(idx, {}).setdefault(iso, [])
+                    day[:] = sorted(set(day) | set(dishes))
+    return failures
 
-    assert not failures, f"{name}:\n  " + "\n  ".join(failures)
+
+@pytest.mark.slow
+@pytest.mark.parametrize('client', CLIENTS, ids=[c['name'] for c in CLIENTS])
+def test_four_saved_weeks_in_a_row(monkeypatch, client):
+    api_app = _api(monkeypatch, client)
+    failures = plan_four_weeks(api_app, client['name'])
+    assert not failures, f"{client['name']}:\n  " + "\n  ".join(failures)

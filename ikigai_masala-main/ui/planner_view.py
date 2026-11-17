@@ -193,6 +193,7 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
     from openpyxl import Workbook
     from openpyxl.drawing.image import Image as XLImage
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     thin = Side(style="thin", color="131313")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -213,17 +214,27 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
         display = b.get("display") or {}
         last_served = b.get("last_served") or {}
         markers = bool(display.get("veg_markers"))
+        # With markers, each day is TWO columns: the dish, then a narrow one
+        # holding the veg / non-veg icon to the RIGHT of the name. A picture
+        # cannot follow the text inside one cell, and pinning it to the cell's
+        # right edge lets a long name run underneath it.
+        step = 2 if markers else 1
+        day_col = lambda i: 2 + i * step
         ws = wb.create_sheet(sanitize_sheet_title(b["name"], used_titles))
 
         # Title row (counter name).
         ws.cell(row=1, column=1, value=b["name"]).font = title_font
 
         # Header row.
-        headers = ["Category"] + [date_label(d) for d in dates]
-        for col, text in enumerate(headers, start=1):
+        for col, text in [(1, "Category")] + [
+                (day_col(i), date_label(d)) for i, d in enumerate(dates)]:
             c = ws.cell(row=2, column=col, value=text)
             c.font, c.fill, c.border = header_font, header_fill, border
             c.alignment = wrap
+            if markers and col > 1:
+                ws.cell(row=2, column=col + 1).border = border
+                ws.merge_cells(start_row=2, start_column=col,
+                               end_row=2, end_column=col + 1)
 
         # Body rows.
         slots = sorted(
@@ -234,7 +245,8 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
             cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(
                 slot_id, display.get("labels")))
             cat.font, cat.border, cat.alignment = header_font, border, wrap
-            for col, d in enumerate(dates, start=2):
+            for i, d in enumerate(dates):
+                col = day_col(i)
                 item = format_item_for_ui(b["plan"].get(d, {}).get(slot_id, ""))
                 last = (last_served.get(d) or {}).get(slot_id)
                 cell = ws.cell(row=r, column=col,
@@ -243,18 +255,23 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
                 is_nv = slot_id in nonveg.get(d, ())
                 if is_nv:
                     cell.font = nonveg_font
-                if markers and item:
-                    # The marker sits in the cell's top-left corner; the indent
-                    # keeps the dish name clear of it.
-                    cell.alignment = Alignment(vertical="top", wrap_text=True, indent=2)
-                    icon = XLImage(io.BytesIO(_marker_png(is_nv)))
-                    icon.width = icon.height = 14
-                    ws.add_image(icon, cell.coordinate)
+                if markers:
+                    # Dish and icon read as one cell: no line between them.
+                    cell.border = Border(left=thin, top=thin, bottom=thin)
+                    mark = ws.cell(row=r, column=col + 1)
+                    mark.border = Border(right=thin, top=thin, bottom=thin)
+                    if item:
+                        icon = XLImage(io.BytesIO(_marker_png(is_nv)))
+                        icon.width = icon.height = 14
+                        ws.add_image(icon, mark.coordinate)
 
-        # Column widths: Category a bit wider, dates comfortable.
+        # Column widths: Category a bit wider, dates comfortable, the marker
+        # column just wide enough for its 14 px icon.
         ws.column_dimensions["A"].width = 18
-        for col in range(2, len(dates) + 2):
-            ws.column_dimensions[ws.cell(row=2, column=col).column_letter].width = 22
+        for i in range(len(dates)):
+            ws.column_dimensions[get_column_letter(day_col(i))].width = 22
+            if markers:
+                ws.column_dimensions[get_column_letter(day_col(i) + 1)].width = 3
 
     if not real:  # nothing generated yet — hand back an empty but valid file
         wb.create_sheet("Menu")
