@@ -20,10 +20,24 @@ import streamlit as st
 from ui.api_client import MenuApiClient
 from ui.branding import logo_img_tag
 from ui.formatters import display_label_for_slot_id
-from src.constants import DEFAULT_ITEM_COOLDOWN_DAYS, DISPLAY_SLOT_ORDER
+from src.constants import (
+    BREAKFAST_ONLY_SLOTS, BREAKFAST_SLOTS, DEFAULT_ITEM_COOLDOWN_DAYS,
+    DISPLAY_SLOT_ORDER,
+)
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
-from src.history import LUNCH, MEALS, normalize_meals
+from src.history import BREAKFAST, LUNCH, MEALS, normalize_meals
+from src.client.client_config import normalize_features
+
+#: The editor's add-on switches, in the order shown (keys of FEATURE_DEFAULTS).
+FEATURE_LABELS = {
+    'regional_days': "Regional days",
+    'explain_menu': "Menu explainer: Explain the menu",
+    'ask_chef': "Menu explainer: Ask the chef",
+    'banned_vegetables': "Banned vegetables section",
+    'veg_markers': "Veg / non-veg marker",
+    'last_served': "Last served",
+}
 
 
 def pools_for_city(metadata: Dict, city) -> List[str]:
@@ -86,6 +100,15 @@ def _default_counter(idx: int, all_base_slots: List[str], const_slots: List[str]
         'slot_counts': {s: 1 for s in cats},
         'theme_map': dict(default_theme_map),
     }
+
+
+def categories_for_meal(meal: str, base_slots: List[str],
+                        const_slots: List[str]) -> tuple:
+    """``(base, const)`` categories one service's editor offers: a breakfast
+    service its breakfast rows only, every other service all the rest."""
+    if meal == BREAKFAST:
+        return [s for s in base_slots if s in BREAKFAST_SLOTS], []
+    return [s for s in base_slots if s not in BREAKFAST_ONLY_SLOTS], list(const_slots)
 
 
 def _step_header(num: int, title: str, desc: str) -> None:
@@ -508,6 +531,10 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         """
         scope = f"{client_key}__{meal}"
         seed_mode = 'multi' if len(seed) >= 2 else 'single'
+        base, const = categories_for_meal(meal, all_base_slots, const_slots)
+        meta = dict(metadata, base_slot_names=base, const_slots=const)
+        # A new breakfast counter starts with every breakfast row; untick.
+        off = () if meal == BREAKFAST else default_off_slots
         with st.container(border=True):
             _step_header(
                 2, "Cuisine Counter Setup",
@@ -544,13 +571,12 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         def _seed_at(i: int) -> Dict:
             if i < len(seed):
                 return seed[i]
-            return _default_counter(i, all_base_slots, const_slots,
-                                    default_theme_map, default_off_slots)
+            return _default_counter(i, base, const, default_theme_map, off)
 
         out: List[Dict] = []
         if not multi:
             out.append(render_counter_editor(
-                _seed_at(0), 0, metadata,
+                _seed_at(0), 0, meta,
                 key_prefix=f"{scope}__c0", show_name=False))
         else:
             # Tab labels reflect the (possibly edited) counter name from the
@@ -562,7 +588,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
             for i, tab in enumerate(st.tabs(labels)):
                 with tab:
                     out.append(render_counter_editor(
-                        _seed_at(i), i, metadata,
+                        _seed_at(i), i, meta,
                         key_prefix=f"{scope}__c{i}", show_name=True))
         return multi, out
 
@@ -652,12 +678,32 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                                "yet — add a common category to share it.")
 
     # ============================================================
+    # Add-on features (stored in clients.features)
+    # ============================================================
+    loaded_features = normalize_features((config or {}).get('features'))
+    selected_features = dict(loaded_features)
+    if not is_create_mode:
+        with st.container(border=True):
+            st.markdown(
+                '<p class="pulse-step-title">Add-on features</p>'
+                '<p class="pulse-step-desc">Which extra sections the planner '
+                'shows for this client. Turning one off only hides it: the '
+                'banned-vegetable rule still applies to every menu.</p>',
+                unsafe_allow_html=True,
+            )
+            for key, label in FEATURE_LABELS.items():
+                selected_features[key] = st.toggle(
+                    label, value=loaded_features[key],
+                    key=f"feature_{key}_{client_key}")
+
+    # ============================================================
     # Action bar
     # ============================================================
     st.markdown("")
 
     if not is_create_mode:
         dirty = (
+            selected_features != loaded_features or
             counter_mode != loaded_mode
             or selected_city != loaded_city
             or serve_weekends != loaded_serve_weekends
@@ -763,6 +809,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
                     'item_cooldown_days': item_cooldown_days,
                     'source_pools': selected_source_pools,
                     'shared_categories': selected_shared_categories,
+                    'features': selected_features,
                 }
                 try:
                     api.update_client_config(selected_client, payload)

@@ -79,9 +79,12 @@ def _build_history_context(
     # Cross-week selector cadences ("fish once per 15 days"): ban the whole
     # selector on dates within its window of a saved occurrence, folded into
     # the same per-date ban map the item-cooldown pre-filter already applies.
-    for matching_items, sel_window in (selector_windows or []):
+    # An optional third element names ISO dates the window does not ban on.
+    for matching_items, sel_window, *skip in (selector_windows or []):
+        skip = set(skip[0]) if skip else set()
         sel_bans = hm.selector_banned_by_date(
-            weekday_dates, matching_items, sel_window)
+            [d for d in weekday_dates if d.isoformat() not in skip],
+            matching_items, sel_window)
         for d, items in sel_bans.items():
             if items:
                 banned.setdefault(d, set()).update(items)

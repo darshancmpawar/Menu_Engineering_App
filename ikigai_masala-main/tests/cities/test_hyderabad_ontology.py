@@ -92,7 +92,10 @@ class TestTheCityHasItsOwnList:
         """What the line above buys: this is the check that would fail."""
         from src.ontology.repository import OntologyRepository
         _df, pools = OntologyRepository().menu_data("Hyderabad")
-        empty = [slot for slot, items in pools.items() if len(items) == 0]
+        # Breakfast-only rows exist where a list carries breakfast (Bangalore).
+        from src.constants import BREAKFAST_ONLY_SLOTS
+        empty = [slot for slot, items in pools.items()
+                 if len(items) == 0 and slot not in BREAKFAST_ONLY_SLOTS]
         assert not empty, empty
 
     def test_ids_and_names_are_unique(self, hyd):
@@ -187,7 +190,10 @@ class TestWhatQuestAdded:
         395 same-dish copies into one name each; Hyderabad was not re-cut.
         """
         assert _names(hyd) - _names(blr), 'Hyderabad lost its own additions'
-        drift = sorted(_names(blr) - _names(hyd))
+        # Bangalore's breakfast session (2.08.01) is not drift: Hyderabad has
+        # no breakfast list yet.
+        blr_ld = blr[blr['session'].astype(str).str.contains('lunch')]
+        drift = sorted(_names(blr_ld) - _names(hyd))
         assert len(drift) == 182, (len(drift), drift[:10])
 
     def test_the_count_is_the_import_s_own(self, quest_rows):

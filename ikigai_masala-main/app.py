@@ -76,8 +76,10 @@ from ui.formatters import (
 from src.menu_rules.menu_rule_loader import MenuRuleLoader
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
+from src.history import (DEFAULT_MEALS, LUNCH, MEALS, SNACKS,
                          normalize_meals)
+from src.constants import SNACKS_NOT_READY
+from src.client.client_config import normalize_features
 from ui.planner_view import (
     date_label,
     flatten_result,
@@ -255,6 +257,16 @@ def _cached_meals(_api: MenuApiClient, client_name: str) -> list:
             _api.get_client_config(client_name).get("meals"))
     except Exception:
         return list(DEFAULT_MEALS)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_features(_api: MenuApiClient, client_name: str) -> dict:
+    """The client's add-on switches; all off on a failed read."""
+    try:
+        return normalize_features(
+            _api.get_client_config(client_name).get("features"))
+    except Exception:
+        return normalize_features(None)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -521,15 +533,30 @@ with st.sidebar:
              "the dishes of the services before it that day. Solve time "
              "scales with how many you pick.")
     plan_meals = normalize_meals(plan_meals)
+    if SNACKS in plan_meals:
+        st.info(SNACKS_NOT_READY)
+        plan_meals = [m for m in plan_meals if m != SNACKS]
+
+    # The client's add-on switches (editor → clients.features) decide which
+    # of the sections below exist at all for this client.
+    features = (_cached_features(client, selected_client)
+                if clients_list and selected_client != _empty_msg
+                else normalize_features(None))
+    st.session_state["client_features"] = features
 
     # Regional days. OFF by default and the only thing that reveals the whole
     # section — nothing about the planner changes, and no workbook is read for
     # regions, until somebody switches it on.
-    regional_on = st.toggle(
-        "Regional days", value=False, key="planner_regional_on",
-        help="Give a day a regional focus (a Tamil Nadu Thursday) on top of "
-             "its cuisine theme. Pick before generating, or after — applying "
-             "re-solves only that day.")
+    if features["regional_days"]:
+        regional_on = st.toggle(
+            "Regional days", value=False, key="planner_regional_on",
+            help="Give a day a regional focus (a Tamil Nadu Thursday) on top of "
+                 "its cuisine theme. Pick before generating, or after — applying "
+                 "re-solves only that day.")
+    else:
+        # Not rendered, so clear a value left over from another client: the
+        # explainer reads this key too.
+        st.session_state["planner_regional_on"] = regional_on = False
 
     st.divider()
     generate_clicked = st.button("Generate Menu Plan", type="primary",
@@ -750,6 +777,9 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
     b = st.session_state.plan_blocks[block_index]
     if not b.get("plan_dates") or not b.get("solution"):
         return
+    feats = st.session_state.get("client_features") or normalize_features(None)
+    if not (feats["explain_menu"] or feats["ask_chef"]):
+        return
     store = st.session_state.setdefault("explanations", {})
     cache_key = _explain_cache_key(b, key_ns)
     with st.expander("Why this menu"):
@@ -761,14 +791,17 @@ def _render_explain_expander(api, block_index: int, counter_index: int,
         # on demand because it costs up to three model calls per day, and a
         # plain explanation should never pay for it.
         explain_col, chef_col = st.columns(2)
-        with explain_col:
-            explain_clicked = st.button("Explain this menu", key=f"explain_btn_{key_ns}",
-                                        use_container_width=True)
-        with chef_col:
-            chef_clicked = st.button(
-                "Ask the chef", key=f"chef_btn_{key_ns}", use_container_width=True,
-                help="Adds the chef's read: how to eat today, the star of the day, "
-                     "and notes for the kitchen. Takes up to a minute per day.")
+        explain_clicked = chef_clicked = False
+        if feats["explain_menu"]:
+            with explain_col:
+                explain_clicked = st.button("Explain this menu", key=f"explain_btn_{key_ns}",
+                                            use_container_width=True)
+        if feats["ask_chef"]:
+            with chef_col:
+                chef_clicked = st.button(
+                    "Ask the chef", key=f"chef_btn_{key_ns}", use_container_width=True,
+                    help="Adds the chef's read: how to eat today, the star of the day, "
+                         "and notes for the kitchen. Takes up to a minute per day.")
         if explain_clicked or chef_clicked:
             # The read should know a Tamil Nadu day is one, so the APPLIED
             # regional picks go along when the regional toggle is on — the same
@@ -1063,7 +1096,7 @@ def _apply_regenerate(api, block_index: int, counter_index: int,
 
 @st.cache_data(show_spinner=False, max_entries=8)
 def _city_dish_payload(city: str, source_pools_key: str, base_slots: tuple,
-                       recency_key: tuple) -> dict:
+                       recency_key: tuple, meal: str = "") -> dict:
     """The searchable city list, cached across reruns.
 
     Cached because Streamlit resends every component argument on EVERY rerun
@@ -1079,12 +1112,12 @@ def _city_dish_payload(city: str, source_pools_key: str, base_slots: tuple,
     from src.ontology import repository
     from src.preprocessor.pool_builder import _base_slot
 
-    _df, city_pools = repository.menu_data(city or None)
+    _df, city_pools = repository.menu_data(city or None, meal or None)
     client_pools = city_pools
     if source_pools_key:
         try:
             _cdf, client_pools = repository.filtered_menu_data(
-                city or None, list(json.loads(source_pools_key)))
+                city or None, list(json.loads(source_pools_key)), meal or None)
         except Exception:                                   # noqa: BLE001
             client_pools = city_pools
     return dish_payload(
@@ -1121,8 +1154,13 @@ def _cached_served_dates(client_name: str) -> dict:
 
 def _apply_client_display(blocks: list, client_name: str) -> None:
     """Put the client's layout, and last-served text if it asked for it, on
-    each block, so the table and the Excel export read the same values."""
-    display = _cached_client_display(client_name) if client_name else {}
+    each block, so the table and the Excel export read the same values.
+    Row order and names come from the rules file; the marker and last-served
+    switches from the client's add-on features."""
+    feats = st.session_state.get("client_features") or normalize_features(None)
+    display = {**(_cached_client_display(client_name) if client_name else {}),
+               "veg_markers": feats["veg_markers"],
+               "last_served": feats["last_served"]}
     served = None
     for b in blocks:
         b["display"] = display
@@ -1179,7 +1217,7 @@ def _pick_dishes(b: dict, counter_index: int) -> dict:
         return _city_dish_payload(
             cfg.get("city") or "",
             json.dumps(cfg.get("source_pools") or [], sort_keys=True),
-            slots, ())
+            slots, (), b.get("meal") or "")
     except Exception as exc:                                # noqa: BLE001
         # A list that cannot be built costs the planner Pick mode, never the
         # table. Reported, because a toggle that silently stops appearing is
@@ -1570,8 +1608,12 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
     touched, problems = 0, []
     for b in blocks:
         plan, plan_dates = b.get("plan") or {}, b.get("plan_dates") or []
-        mask = {d: sorted(plan.get(d, {}).keys())
+        # Pinned cells keep their dish, and /regenerate refuses a mask that
+        # names one: asking for the whole day failed every client with a pin.
+        pinned = b.get("pinned") or {}
+        mask = {d: sorted(set(plan[d]) - set(pinned.get(d, ())))
                 for d in changed_dates if plan.get(d)}
+        mask = {d: slots for d, slots in mask.items() if slots}
         if not mask:
             continue
         try:
@@ -2043,8 +2085,10 @@ _render_diagnostics_expander(
 
 # --- Seasonal vegetable list -------------------------------------------------
 # At the top of the planner, closed by default; nothing is fetched until it is
-# opened (see _render_seasonal_panel).
-if clients_list and selected_client != _empty_msg:
+# opened (see _render_seasonal_panel). Hidden by the client's switch; the ban
+# itself applies to every menu either way.
+if (clients_list and selected_client != _empty_msg
+        and features["banned_vegetables"]):
     _render_seasonal_panel(client, selected_client, start_date, num_days, _blocks)
 
 # --- Regional days -------------------------------------------------------

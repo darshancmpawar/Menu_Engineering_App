@@ -930,7 +930,8 @@ Wed biryani, Thu chinese, Fri north.
 |---|---|---|
 | Two veg dry: north, then south, irrespective of the theme | DONE | `slot_composition` on `slot_indices` [1] north_indian, [2] south_indian; `theme_cuisine_filter` override adds `veg_dry` to `exempt_slots` |
 | Non-veg: chicken every day; egg as a second dish on Wednesday only | DONE | `slot_day_restriction` (__2 Wed only) + `slot_composition` per row (chicken / `is_egg_dish`) |
-| Curd row plain curd, Raitha row raita only | DONE | `curd` category + `slot_composition` `is_raita` on `curd_side`; the curd/raita save check removed |
+| Curd row plain curd, Raitha row raita only | DONE | `curd` category + `slot_composition` `is_raita` on `curd_side`; the curd/raita save check removed. Since 2.08.01 the Curd row is `curd` alone for every client (pool builder) |
+| Kootu never as a Lentil; a South Veg Dry at most once in 8 days, again on a regional day | DONE | `slot_pool_moves` (sub_category `kootu`, `dal` → `veg_dry`); `selector_frequency` max 1 + `selector_history_window` 8 days, both `except_regional_days` |
 | Two Indian breads: one plain chapati, the other from the pool | DONE | `constant_items.bread__1` + `repeatable_items` |
 | T1 make-your-own salad and dressings, fixed per weekday, lunch and dinner apart | DONE | `constant_items_by_meal` (one counter, two sessions) weekday maps on `salad` and `chutney`; free text, stamped verbatim |
 | T2 row order and names (Welcome Drink … Dessert) | DONE | `display.order` / `display.labels`; `chutney` is labelled "Dressing" |

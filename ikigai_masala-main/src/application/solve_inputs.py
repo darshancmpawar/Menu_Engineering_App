@@ -27,14 +27,15 @@ name changed silently and anything filtering on it stopped matching.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from src.constants import CONST_SLOTS
-from src.history import normalize_meal
+from src.constants import CONST_SLOTS, SNACKS_NOT_READY
+from src.history import SNACKS, normalize_meal
 from src.log_names import APP_LOGGER_NAME
 from src.menu_rules.diagnostics import (
     DiagnoseContext, run_diagnostics, summarize as _summarize_diags,
@@ -187,7 +188,7 @@ def rules_and_skip_for_client(
     for slot_id, spec in constant_items.items():
         base = _base_slot(slot_id)
         slot_items = _slot_item_names(pools, base) if pools is not None \
-            else repository.item_names(city)
+            else repository.item_names(city, normalize_meal(meal))
         siblings = _exclusive_siblings(base)
         for d in dates:
             value = _resolve_client_constant(
@@ -341,6 +342,28 @@ def _apply_seasonal_bans(rules, dates, city):
         logger.warning("seasonal_vegetables rule did not build for %s", city)
         return rules
     return list(rules) + [rule]
+
+
+def _apply_slot_pool_moves(pools, moves):
+    """*pools* with each move's sub_category taken from one slot to another.
+
+    A new dict with new frames: the city pools are cached and shared by every
+    client. A move naming a slot the pools lack is logged and skipped.
+    """
+    if not moves:
+        return pools
+    import pandas as pd
+    pools = dict(pools)
+    for m in moves:
+        src, dst = pools.get(m['from']), pools.get(m['to'])
+        if src is None or dst is None or 'sub_category' not in src.columns:
+            logger.warning("slot_pool_moves: cannot move %s from %r to %r",
+                           m['sub_category'], m['from'], m['to'])
+            continue
+        hit = src['sub_category'] == m['sub_category']
+        pools[m['to']] = pd.concat([dst, src[hit]]).drop_duplicates(subset='item')
+        pools[m['from']] = src[~hit].copy()
+    return pools
 
 
 def _apply_region_days(rules, data, dates, client_cfg, city, row):
@@ -604,7 +627,13 @@ def prepare_solver_inputs(
     the solver has no business reaching up for.
     """
     city = row['city']
-    df, pools = repository.filtered_menu_data(city, row['source_pools'])
+    meal = normalize_meal(data.get('meal'))
+    if meal == SNACKS:
+        raise ValueError(SNACKS_NOT_READY)
+    # The session's own rows: breakfast plans from breakfast dishes.
+    df, pools = repository.filtered_menu_data(city, row['source_pools'], meal)
+    pools = _apply_slot_pool_moves(
+        pools, MenuRuleLoader().get_client_slot_pool_moves(client_name))
     # The horizon SPANS `num_days` weekdays (or calendar days for a weekend
     # site); the client then serves some subset of them.
     span_dates = _weekdays_from(
@@ -622,7 +651,7 @@ def prepare_solver_inputs(
         # carry `meal`, and a session-scoped pin (`constant_items_by_meal`)
         # has to stamp the SAME text on all three or a regenerate swaps
         # dinner's salad for lunch's.
-        meal=normalize_meal(data.get('meal')),
+        meal=meal,
     )
     # Regional days: the counter's standing weekday pattern plus whatever the
     # planner picked for this horizon. Appended as ordinary rules, so nothing
@@ -631,6 +660,14 @@ def prepare_solver_inputs(
     rules, region_days, region_problems = _apply_region_days(
         rules, data, weekday_dates, client_cfg, city, row,
     )
+    # A cap written `except_regional_days` lifts on those days. Copied, not
+    # set in place: the dates belong to this plan alone.
+    rules = list(rules)
+    for i, r in enumerate(rules):
+        if region_days and getattr(r, 'except_regional_days', False) \
+                and hasattr(r, 'skip_dates'):
+            rules[i] = copy.copy(r)
+            rules[i].skip_dates = set(region_days)
     # Seasonal high-risk vegetables: red list removed, yellow list avoided,
     # pins kept. Same "ordinary rule" approach as regional days.
     rules = _apply_seasonal_bans(rules, weekday_dates, city)
@@ -660,7 +697,9 @@ def prepare_solver_inputs(
     for r in rules:
         if isinstance(r, SelectorHistoryWindowRule) and r.window_days:
             r.resolved_items = r.matching_items(df)
-            selector_windows.append((r.resolved_items, r.window_days))
+            selector_windows.append((
+                r.resolved_items, r.window_days,
+                set(region_days) if r.except_regional_days else set()))
     banned, rb_ban, recent_sigs, recency_by_item = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,

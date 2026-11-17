@@ -51,8 +51,10 @@ def test_every_display_block_names_real_slots():
             k for k in (display.get('labels') or {}) if not k.startswith('_')]
         bad = [k for k in keys if not _real_slot(k)]
         assert not bad, f"{path}: {name} display names unknown slots {bad}"
+        # Those two are database switches now (clients.features); in a file
+        # they would be read by nothing.
         for flag in ('veg_markers', 'last_served'):
-            assert display.get(flag) in (None, True, False), (path, flag)
+            assert flag not in display, (path, flag)
 
 
 def test_every_combo_by_theme_names_a_real_slot_component_and_theme():
@@ -71,8 +73,7 @@ def test_every_combo_by_theme_names_a_real_slot_component_and_theme():
 
 def test_loader_reads_display_and_combo_by_theme(monkeypatch, tmp_path):
     (tmp_path / 'acme.json').write_text(json.dumps({
-        'Acme': {'display': {'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils', '_x': 'y'},
-                             'veg_markers': True, 'last_served': 'yes'},
+        'Acme': {'display': {'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils', '_x': 'y'}},
                  'combo_by_theme': {'sambar_rasam': {'biryani': 'rasam'}},
                  'counters': {'Dinner': {'combo_by_theme': {'sambar_rasam': {'north': 'sambar'}}}}},
         'Broken': {'display': {'order': 'dal', 'labels': ['x']}},
@@ -80,10 +81,8 @@ def test_loader_reads_display_and_combo_by_theme(monkeypatch, tmp_path):
     monkeypatch.setattr('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path))
     loader = MenuRuleLoader()
     assert loader.get_client_display('Acme') == {
-        'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils'},
-        'veg_markers': True, 'last_served': False}       # only a real True turns it on
-    assert loader.get_client_display('Broken') == {
-        'order': [], 'labels': {}, 'veg_markers': False, 'last_served': False}
+        'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils'}}
+    assert loader.get_client_display('Broken') == {'order': [], 'labels': {}}
     assert loader.get_client_display('Nobody') == {}
     assert loader.get_client_combo_by_theme('Acme') == {'sambar_rasam': {'biryani': 'rasam'}}
     # A counter's entry replaces the client-level one for that combination.

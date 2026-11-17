@@ -28,19 +28,50 @@ from ui.region_strip import region_day_args
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _weekday_helper():
-    src = (ROOT / 'app.py').read_text()
+def _app_function(name, ns):
+    src = (ROOT / 'app.py').read_text(encoding='utf-8')
     tree = _ast.parse(src)
     found = [n for n in tree.body
-             if isinstance(n, _ast.FunctionDef) and n.name == '_weekday_map_from_dates']
-    assert found, ('app.py no longer defines _weekday_map_from_dates at module '
+             if isinstance(n, _ast.FunctionDef) and n.name == name]
+    assert found, (f'app.py no longer defines {name} at module '
                    'level; this test cannot reach it and is measuring nothing')
-    ns = {'dt': dt}
     exec(compile(_ast.Module(body=found, type_ignores=[]), 'app.py', 'exec'), ns)
-    return ns['_weekday_map_from_dates']
+    return ns[name]
+
+
+def _weekday_helper():
+    return _app_function('_weekday_map_from_dates', {'dt': dt})
 
 
 _weekday_map_from_dates = _weekday_helper()
+
+
+def test_applying_a_region_never_asks_to_regenerate_a_pinned_cell():
+    """Rippling pins salad, dressing and bread 1 every day. Applying a regional
+    day asked /regenerate for the WHOLE day, the server refuses any request
+    naming a pinned cell, so the apply failed for every client with a pin."""
+    from types import SimpleNamespace
+    sent = []
+
+    class Api:
+        def regenerate(self, **kw):
+            sent.append(kw['replace_slots'])
+            return {'solution': {}}
+
+    fn = _app_function('_apply_region_days_to_blocks', {
+        'st': SimpleNamespace(session_state=SimpleNamespace(client_name='Rippling')),
+        '_PLANNING_TIME_LIMIT_SECONDS': 180,
+        'flatten_api_solution': lambda s: ({}, {})})
+    day = '2026-08-03'
+    block = {'plan': {day: {'salad': 'x', 'bread__1': 'plain chapati', 'dal': 'y',
+                            'veg_dry__2': 'z'},
+                      '2026-08-04': {'dal': 'w'}},
+             'plan_dates': [day, '2026-08-04'],
+             'pinned': {day: {'salad', 'bread__1'}}}
+    allpinned = {'plan': {day: {'salad': 'x'}}, 'plan_dates': [day],
+                 'pinned': {day: {'salad'}}}
+    fn(Api(), [block, allpinned], {day: 'Tamil Nadu'}, [day])
+    assert sent == [{day: ['dal', 'veg_dry__2']}]   # nothing sent for an all-pinned day
 
 META = {
     'theme_compatibility': {

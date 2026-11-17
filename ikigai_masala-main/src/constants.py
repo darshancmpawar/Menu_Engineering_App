@@ -97,11 +97,41 @@ BASE_SLOT_NAMES: List[str] = [
     # other veg categories (shown after the mains)
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
+    # breakfast only (BREAKFAST_ONLY_SLOTS)
+    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
+    'snack', 'fruit', 'condiment',
     # non-veg last
-    'nonveg_main',
+    'nonveg_main', 'nonveg_sandwich',
 ]
 
 CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+
+# Breakfast is its own session of the city list (the `session` column). These
+# rows exist only at breakfast; the config editor offers a breakfast service
+# BREAKFAST_SLOTS and nothing else, and every other service everything else.
+# `breakfast_chutney` is a chosen dish, unlike the fixed-text `chutney`.
+BREAKFAST_ONLY_SLOTS: List[str] = [
+    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
+    'nonveg_sandwich', 'snack', 'fruit', 'condiment',
+]
+BREAKFAST_SLOTS: Set[str] = set(BREAKFAST_ONLY_SLOTS) | {
+    'salad', 'veg_gravy', 'sambar', 'curd_side', 'nonveg_main'}
+# No row carries the snacks session yet, so a snacks service is not planned.
+SNACKS_NOT_READY = "Snacks menu bank and solver in development."
+
+# Add-on features, switched per client in the editor (`clients.features`).
+# Every one is OFF until switched on for a client (owner, 2026-11-17); a
+# missing key, or a database without the column, reads as off. They only show
+# or hide a section: `banned_vegetables` off hides the panel, the ban itself
+# still runs.
+FEATURE_DEFAULTS: Dict[str, bool] = {
+    'regional_days': False,
+    'explain_menu': False,
+    'ask_chef': False,
+    'banned_vegetables': False,
+    'veg_markers': False,
+    'last_served': False,
+}
 
 # Default item-cooldown window (days): a dish served within this many days
 # before a date is banned from that date. THREE WEEKS, and it spans services —
@@ -119,14 +149,16 @@ DEFAULT_ITEM_COOLDOWN_DAYS: int = 21
 # other veg categories → non-veg last. `slot_sort_key` and the slot editor both
 # rank by this list, so config order and display order always match.
 DISPLAY_SLOT_ORDER: List[str] = [
-    'welcome_drink', 'infused_water', 'soup', 'nonveg_soup', 'salad',
+    'welcome_drink', 'beverage', 'breakfast_main', 'side', 'breakfast_chutney',
+    'infused_water', 'soup', 'nonveg_soup', 'salad', 'sandwich', 'snack', 'fruit',
     'bread', 'rice', 'white_rice',
     'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
     # other veg categories
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
     'dal_rasam', 'sambar_rasam', 'dal_sambar', 'papad', 'pickle', 'chutney',
+    'condiment',
     # non-veg last
-    'nonveg_main',
+    'nonveg_main', 'nonveg_sandwich',
 ]
 
 # Combination categories: ONE visible slot that alternates between two
@@ -147,7 +179,7 @@ COMBO_CATEGORIES: Dict[str, tuple] = {
 # Bangalore counters would change every one of their plans.
 DEFAULT_OFF_SLOTS: Set[str] = (
     {'curd', 'curd_rice', 'infused_water', 'nonveg_soup'}
-    | set(COMBO_CATEGORIES)
+    | set(COMBO_CATEGORIES) | set(BREAKFAST_ONLY_SLOTS)
 )
 
 # Slots whose items may repeat freely across the horizon (exempt from the
@@ -181,6 +213,8 @@ COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     # empties the slot before the cycle of distinct dishes is used up. They keep
     # unique_items, so they still vary within the week.
     'infused_water', 'nonveg_soup',
+    # Breakfast's small rows (6-15 dishes each), same argument.
+    'condiment', 'side', 'fruit', 'snack', 'breakfast_chutney',
 }
 
 # The two yogurt-side categories are mutually exclusive on a single counter:
@@ -292,7 +326,7 @@ NONVEG_PROTEINS: Set[str] = {
 # what every guard should test, because a non-veg soup is also legitimately
 # non-veg and would otherwise be dropped from its own slot by `_nonveg_mask`.
 NONVEG_SLOT: str = 'nonveg_main'
-NONVEG_SLOTS: Set[str] = {'nonveg_main', 'nonveg_soup'}
+NONVEG_SLOTS: Set[str] = {'nonveg_main', 'nonveg_soup', 'nonveg_sandwich'}
 
 PULAO_SUBCATS: Set[str] = {
     'south_veg_pulao', 'north_simple_veg_pulao', 'north_rich_pulao',
@@ -406,4 +440,13 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'Chutney',
+    'beverage': 'Beverage',
+    'breakfast_main': 'Breakfast Main',
+    'side': 'Side',
+    'breakfast_chutney': 'Chutney',
+    'sandwich': 'Sandwich',
+    'nonveg_sandwich': 'Non-veg Sandwich',
+    'snack': 'Snack',
+    'fruit': 'Fruit',
+    'condiment': 'Condiment',
 }

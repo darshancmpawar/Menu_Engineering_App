@@ -111,6 +111,12 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS meals              JSONB DEFAULT '[
 -- opting out of dinner — the column defaulted false and nobody ever set it —
 -- so every row becomes lunch+dinner rather than carrying that false forward.
 UPDATE clients SET meals = '["lunch","dinner"]'::jsonb WHERE meals IS NULL;
+-- Add-on features (2.08.01): which optional planner sections a client sees.
+-- Keys: regional_days, explain_menu, ask_chef, banned_vegetables (hides the
+-- panel only; the ban always applies), veg_markers, last_served. NULL or a
+-- missing key reads as OFF (`normalize_features`, src/client/client_config.py):
+-- every switch is turned on per client in the editor.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS features           JSONB;
 -- `serve_dinner` is left in place rather than dropped: nothing reads it any
 -- more, and dropping a column is the one migration step that cannot be undone
 -- by re-running this file.

@@ -117,7 +117,7 @@ from ui.formatters import dishes_from_solution as _dishes_from_solution
 
 
 def _planner_helpers():
-    src = (_pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text()
+    src = (_pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text(encoding='utf-8')
     tree = _ast.parse(src)
     wanted = {'_exclusions_from', '_saveable_meals', '_concat_meal_blocks',
               '_merge_exclusions'}

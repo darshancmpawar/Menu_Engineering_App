@@ -568,10 +568,11 @@ class MenuRuleLoader:
         """The client's ``display`` block: how ITS menu is laid out on screen
         and in the Excel export. Empty dict (the shared layout) if unset.
 
-        Keys, all optional: ``order`` (slot ids or base slots, first to last),
-        ``labels`` (``{slot id or base: row label}``), ``veg_markers`` and
-        ``last_served`` (booleans). Malformed values are dropped rather than
-        raised on, so a typo costs the layout, never the menu;
+        Keys, both optional: ``order`` (slot ids or base slots, first to last)
+        and ``labels`` (``{slot id or base: row label}``). The veg / non-veg
+        marker and "last served" are the client's add-on switches in the
+        database (`clients.features`), not here. Malformed values are dropped
+        rather than raised on, so a typo costs the layout, never the menu;
         `tests/clients/test_client_display.py` is what makes a typo visible.
         """
         block = self._read_client_blob().get(client_name)
@@ -584,9 +585,23 @@ class MenuRuleLoader:
             'labels': ({str(k): str(v) for k, v in labels.items()
                         if not str(k).startswith('_')}
                        if isinstance(labels, dict) else {}),
-            'veg_markers': raw.get('veg_markers') is True,
-            'last_served': raw.get('last_served') is True,
         }
+
+    def get_client_slot_pool_moves(self, client_name: str) -> List[Dict[str, str]]:
+        """The client's ``slot_pool_moves``: ``[{from, to, sub_category}, …]``.
+
+        Each moves the dishes of one sub_category out of one slot's pool into
+        another's, for this client only (Rippling serves kootu as a veg dry,
+        not a lentil). Entries missing a key are dropped, like `display`;
+        `tests/clients/test_rippling_client_logic.py` makes a typo visible.
+        """
+        block = self._read_client_blob().get(client_name)
+        raw = block.get('slot_pool_moves') if isinstance(block, dict) else None
+        return [
+            {k: str(m[k]) for k in ('from', 'to', 'sub_category')}
+            for m in (raw if isinstance(raw, list) else [])
+            if isinstance(m, dict) and all(m.get(k) for k in ('from', 'to', 'sub_category'))
+        ]
 
     def get_counter_scoped_constant_keys(
         self, client_name: str, counter_name: Optional[str] = None,

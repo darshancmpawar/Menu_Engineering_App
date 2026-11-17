@@ -239,6 +239,6 @@ class TestPerCityCaches:
         assert len(pune_df)
         keys = list(api_app.ontology_repository._filtered_by_path_and_pools)
         assert len(keys) == 1
-        path, tokens = keys[0]
+        path, tokens, _meal = keys[0]
         assert path == city_excel_path('Pune')
         assert 'common' in tokens

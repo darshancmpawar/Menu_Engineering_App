@@ -250,6 +250,12 @@ class SelectorFrequencyRule(BaseMenuRule):
         if ood:
             iso = {_iso_day(d) for d in ood}
             self.only_on_dates = {d for d in iso if d} or None
+        # The inverse, for a cap that lifts on the plan's regional days
+        # (Rippling: kootu at most once a week, but again on a regional day).
+        # `prepare_solver_inputs` fills `skip_dates` per plan; skipped days do
+        # not count toward `max` either.
+        self.except_regional_days = rule_config.get('except_regional_days') is True
+        self.skip_dates: Set[str] = set()
 
     @staticmethod
     def _int_or_none(cfg, key):
@@ -454,6 +460,8 @@ class SelectorFrequencyRule(BaseMenuRule):
             # about Monday.
             if (self.only_on_dates is not None
                     and _iso_day(dates[di]) not in self.only_on_dates):
+                continue
+            if _iso_day(dates[di]) in self.skip_dates:
                 continue
             day_cells = [
                 c for c in cells

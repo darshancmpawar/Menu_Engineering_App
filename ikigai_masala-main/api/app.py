@@ -64,7 +64,7 @@ from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS,
 )
 from src.client import ClientConfigLoader
-from src.client.client_config import normalize_city
+from src.client.client_config import normalize_city, normalize_features
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
     DEFAULT_THEME_MAP,
     AVAILABLE_THEMES,
@@ -925,7 +925,8 @@ def pick_dish():
         # holds — narrows to the client's `source_pools` (F5). Searching the
         # narrowed one would make "not in this client's pool" unreachable
         # instead of a warning the planner may overrule.
-        _city_df, city_pools = ontology_repository.menu_data(inputs.city)
+        _city_df, city_pools = ontology_repository.menu_data(
+            inputs.city, data.get('meal'))
 
         try:
             applied = apply_picks(inputs, base_plan, picks, city_pools=city_pools)
@@ -1523,6 +1524,9 @@ def get_client_config(client_name):
             # The planner solves one menu per entry and hands each the
             # earlier ones' dishes to avoid.
             'meals': row.get('meals') or list(DEFAULT_MEALS),
+            # Add-on switches (regional days, explain, chef, banned-veg panel,
+            # markers, last served): which planner sections this client sees.
+            'features': normalize_features(row.get('features')),
             'working_days': row['working_days'],
             'item_cooldown_days': row['item_cooldown_days'],
             'source_pools': row['source_pools'],
@@ -1811,6 +1815,8 @@ def update_client_config(client_name):
             fields['serve_weekends'] = bool(data.get('serve_weekends'))
         if 'meals' in data:
             fields['meals'] = normalize_meals(data.get('meals'))
+        if 'features' in data:
+            fields['features'] = normalize_features(data.get('features'))
         if 'working_days' in data:
             fields['working_days'] = _validated_working_days(
                 data.get('working_days'))

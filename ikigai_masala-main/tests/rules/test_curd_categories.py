@@ -105,13 +105,22 @@ class TestCurdSideCurdRiceCooldownExempt:
 
 
 class TestCurdPool:
-    def test_curd_pool_from_is_plain_curd_flag(self):
-        df = _ontology()
-        df['is_plain_curd'] = 0
-        df.loc[df['course_type'] == 'curd_side', 'is_plain_curd'] = 1
+    def test_curd_pool_is_plain_curd_only(self):
+        # Owner, 2026-11-17: the Curd row serves `curd` alone. Another flagged
+        # plain curd (mixed curd) stays off it.
+        df = pd.concat([_ontology(), pd.DataFrame([
+            {'item': 'curd', 'course_type': 'curd_side'},
+            {'item': 'mixed_curd', 'course_type': 'curd_side'}])],
+            ignore_index=True)
+        df['is_plain_curd'] = df['item'].isin(['curd', 'mixed_curd']).astype(int)
         pools = PoolBuilder.build_pools(df)
-        expected = set(df.loc[df['is_plain_curd'] == 1, 'item'])
-        assert expected and set(pools['curd']['item']) == expected
+        assert set(pools['curd']['item']) == {'curd'}
+
+    @pytest.mark.parametrize('city', ['Bangalore', 'Chennai', 'Hyderabad', 'NCR', 'Pune'])
+    def test_every_city_curd_row_is_curd(self, city):
+        from src.ontology.repository import OntologyRepository
+        _df, pools = OntologyRepository().menu_data(city)
+        assert set(pools['curd']['item']) == {'curd'}
 
     def test_curd_pool_empty_without_flag(self):
         # curd is default-off, so an ontology with no is_plain_curd column
