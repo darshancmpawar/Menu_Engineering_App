@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
+from functools import lru_cache
 from typing import Dict, List, Optional
 
 from ui.formatters import (
@@ -149,10 +150,48 @@ def download_filename(blocks: list, client_name: str) -> str:
     return f"menu_{safe_client}_{span}.xlsx"
 
 
+@lru_cache(maxsize=2)
+def _marker_png(nonveg: bool) -> bytes:
+    """The veg / non-veg marker as a small PNG, for the Excel export.
+
+    The same drawing as `ICON.veg` / `ICON.nonveg` in the table component: a
+    rounded square in green with a leaf, or in red with a drumstick. Drawn at
+    4x and scaled down so the edges are smooth at 16 px.
+    """
+    from PIL import Image, ImageDraw
+
+    s = 4                                   # supersampling factor
+    colour = (211, 47, 47, 255) if nonveg else (26, 164, 91, 255)
+    img = Image.new("RGBA", (24 * s, 24 * s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((1.5 * s, 1.5 * s, 22.5 * s, 22.5 * s), radius=5 * s,
+                        fill=(255, 255, 255, 255), outline=colour, width=int(2.4 * s))
+    if nonveg:
+        meat = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ImageDraw.Draw(meat).ellipse((8.6 * s, 5.4 * s, 19.8 * s, 14.2 * s), fill=colour)
+        img.alpha_composite(meat.rotate(45, center=(14.2 * s, 9.8 * s)))
+        d = ImageDraw.Draw(img)
+        d.line((11 * s, 13 * s, 7.6 * s, 16.4 * s), fill=colour, width=int(2.4 * s))
+        for cx, cy in ((6.4, 16), (8, 17.6)):
+            d.ellipse(((cx - 1.6) * s, (cy - 1.6) * s, (cx + 1.6) * s, (cy + 1.6) * s), fill=colour)
+    else:
+        d.polygon([(6.5 * s, 17.5 * s), (8 * s, 11 * s), (12 * s, 7.5 * s),
+                   (17.5 * s, 6.5 * s), (16.5 * s, 12.5 * s), (13 * s, 16 * s)], fill=colour)
+        d.line((7.5 * s, 16.5 * s, 15 * s, 9 * s), fill=(255, 255, 255, 255), width=int(1.3 * s))
+    buf = io.BytesIO()
+    img.resize((16, 16), Image.LANCZOS).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
     """Formatted workbook — one sheet per counter, with bold bordered headers
-    and non-veg dishes in red. Works for single (one sheet) and multi."""
+    and non-veg dishes in red. Works for single (one sheet) and multi.
+
+    A block may carry the client's own layout (`display`: row order and
+    labels, veg / non-veg markers) and `last_served` text per cell; both are
+    absent for every client that has not asked for them."""
     from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XLImage
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     thin = Side(style="thin", color="131313")
@@ -171,6 +210,9 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
     for b in real:
         dates = b["plan_dates"]
         nonveg = b.get("nonveg") or {}
+        display = b.get("display") or {}
+        last_served = b.get("last_served") or {}
+        markers = bool(display.get("veg_markers"))
         ws = wb.create_sheet(sanitize_sheet_title(b["name"], used_titles))
 
         # Title row (counter name).
@@ -186,17 +228,28 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
         # Body rows.
         slots = sorted(
             {s for d in dates for s in b["plan"].get(d, {})},
-            key=slot_sort_key,
+            key=lambda s: slot_sort_key(s, display.get("order")),
         )
         for r, slot_id in enumerate(slots, start=3):
-            cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(slot_id))
+            cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(
+                slot_id, display.get("labels")))
             cat.font, cat.border, cat.alignment = header_font, border, wrap
             for col, d in enumerate(dates, start=2):
                 item = format_item_for_ui(b["plan"].get(d, {}).get(slot_id, ""))
-                cell = ws.cell(row=r, column=col, value=item)
+                last = (last_served.get(d) or {}).get(slot_id)
+                cell = ws.cell(row=r, column=col,
+                               value=f"{item}\n{last}" if item and last else item)
                 cell.border, cell.alignment = border, wrap
-                if slot_id in nonveg.get(d, ()):
+                is_nv = slot_id in nonveg.get(d, ())
+                if is_nv:
                     cell.font = nonveg_font
+                if markers and item:
+                    # The marker sits in the cell's top-left corner; the indent
+                    # keeps the dish name clear of it.
+                    cell.alignment = Alignment(vertical="top", wrap_text=True, indent=2)
+                    icon = XLImage(io.BytesIO(_marker_png(is_nv)))
+                    icon.width = icon.height = 14
+                    ws.add_image(icon, cell.coordinate)
 
         # Column widths: Category a bit wider, dates comfortable.
         ws.column_dimensions["A"].width = 18

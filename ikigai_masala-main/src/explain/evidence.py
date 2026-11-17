@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 import datetime as dt
 import logging
+import re
 
 from .checks import Check, base_slot, plate_profile, run_checks
 from .pairings import build_pairings
@@ -68,8 +69,20 @@ def _clean(value: Any) -> Any:
     return None if s.lower() in ('', 'nan', 'none', 'nat') else s
 
 
+#: The solver's colour tag on a plan string, `paneer_tikka_masala(R)`. Same
+#: pattern as `src.solver._helpers.strip_color_suffix`, kept here because this
+#: package must not import the solver (test_architecture).
+_COLOR_SUFFIX = re.compile(r'\([A-Z]\)\s*$')
+
+
 def _norm(name: Any) -> str:
-    return str(name or '').strip().lower().replace(' ', '_')
+    """The ontology spelling. The colour tag comes off first: a plan string
+    carries it, and `paneer_tikka_masala(R)` looked up as-is matched no row, so
+    the dish entered the plate checks with no colour, texture or protein.
+    `/pick` audits the plate before and after with every tagged dish blank, and
+    a swap of two RED dishes reported "3 colours (target 4+)"."""
+    s = _COLOR_SUFFIX.sub('', str(name or '').strip()).strip()
+    return s.lower().replace(' ', '_')
 
 
 def build_dishes(day_items: Dict[str, Any],
@@ -94,7 +107,7 @@ def build_dishes(day_items: Dict[str, Any],
         if not name:
             continue
         row = attrs.get(str(name).strip()) or attrs.get(_norm(name)) or {}
-        entry: Dict[str, Any] = {'name': str(name).strip(),
+        entry: Dict[str, Any] = {'name': _COLOR_SUFFIX.sub('', str(name).strip()).strip(),
                                  'slot': slot,
                                  'base_slot': base_slot(slot)}
         for col in DISH_COLUMNS:

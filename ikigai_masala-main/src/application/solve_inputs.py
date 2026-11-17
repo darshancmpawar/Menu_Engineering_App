@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from src.constants import CONST_SLOTS
+from src.history import normalize_meal
 from src.log_names import APP_LOGGER_NAME
 from src.menu_rules.diagnostics import (
     DiagnoseContext, run_diagnostics, summarize as _summarize_diags,
@@ -116,13 +117,14 @@ class SolverInputs:
 
 
 def rules_and_skip_for_client(
-    client_name, dates, city=None, client_cfg=None, pools=None,
+    client_name, dates, city=None, client_cfg=None, pools=None, meal=None,
 ):
     """Return ``(rules, skip_cells, constant_items, whole_slot_bases, forced_items)``.
 
     Merges the city ruleset with per-client overrides (by name + disable) and
     resolves ``constant_items`` against *client_cfg* — the counter being
-    planned. A pinned cell is skipped so it is not solved and then thrown
+    planned — and *meal*, the session (``constant_items_by_meal``). A pinned
+    cell is skipped so it is not solved and then thrown
     away, and so is every cell of any mutually-exclusive sibling slot on that
     day: without that, a counter serving ``curd_side`` still solves a raita on
     the days a ``curd`` constant is stamped and the menu shows two yogurt rows.
@@ -136,7 +138,7 @@ def rules_and_skip_for_client(
     rules = loader.load_for_client(client_name, generic, counter_name)
     constant_items, whole_slot_bases = _resolve_constant_items(
         client_name,
-        loader.get_client_constant_items(client_name, counter_name),
+        loader.get_client_constant_items(client_name, counter_name, meal),
         client_cfg,
         # Pins written inside THIS counter's block are unambiguous even on a
         # multi-counter client, so they print as fixed items without the slot
@@ -435,7 +437,7 @@ def _apply_region_days(rules, data, dates, client_cfg, city, row):
 def build_solver_config(
     df, client_cfg, start_date, num_days, time_limit, weekday_dates,
     constant_items=None, whole_slot_bases=None, forced_items=None,
-    rules=None, worker_count=None, combo_majority=None,
+    rules=None, worker_count=None, combo_majority=None, combo_by_theme=None,
 ):
     """Shared helper to build SolverConfig.
 
@@ -446,7 +448,8 @@ def build_solver_config(
     then discard the result. *rules* is the resolved ruleset, read only for the
     colour parameters a city may override (see ``_rule_solver_overrides``).
     *combo_majority* names which half of a combination category leads on this
-    counter, defaulting to the global `COMBO_CATEGORIES` order.
+    counter, defaulting to the global `COMBO_CATEGORIES` order;
+    *combo_by_theme* names the half a day of a given theme must use.
     """
     active_base = _client_base_slots(client_cfg)
     if whole_slot_bases:
@@ -468,6 +471,7 @@ def build_solver_config(
         const_slots=const_selected,
         client_constant_items=dict(constant_items or {}),
         combo_majority=dict(combo_majority or {}),
+        combo_by_theme=dict(combo_by_theme or {}),
         forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
@@ -614,6 +618,11 @@ def prepare_solver_inputs(
     )
     rules, skip_cells, constant_items, whole_slot_bases, forced_items = rules_and_skip_for_client(
         client_name, weekday_dates, city=city, client_cfg=client_cfg, pools=pools,
+        # The session the request is for: /plan, /regenerate and /pick all
+        # carry `meal`, and a session-scoped pin (`constant_items_by_meal`)
+        # has to stamp the SAME text on all three or a regenerate swaps
+        # dinner's salad for lunch's.
+        meal=normalize_meal(data.get('meal')),
     )
     # Regional days: the counter's standing weekday pattern plus whatever the
     # planner picked for this horizon. Appended as ordinary rules, so nothing
@@ -665,6 +674,8 @@ def prepare_solver_inputs(
         constant_items=constant_items, whole_slot_bases=whole_slot_bases,
         forced_items=forced_items, rules=rules, worker_count=worker_count,
         combo_majority=MenuRuleLoader().get_client_combo_majority(
+            client_name, getattr(client_cfg, 'counter_name', None)),
+        combo_by_theme=MenuRuleLoader().get_client_combo_by_theme(
             client_name, getattr(client_cfg, 'counter_name', None)),
     )
 

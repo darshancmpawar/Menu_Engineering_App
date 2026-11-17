@@ -38,6 +38,15 @@ class TestBuildDishes:
         assert d['bread']['name'] == 'jowar_roti'
         assert d['bread']['texture'] == 'bready'
 
+    def test_a_colour_tagged_plan_string_still_finds_its_dish(self):
+        """`/pick` builds the after-plate from plan strings like
+        `veg_kurma(G)`; looked up as written, the dish had no attributes and
+        the colour check counted one colour fewer than the plate had."""
+        d = build_dishes({'veg_gravy': 'veg_kurma(G)', 'bread': 'jowar_roti (B)'}, ATTRS)
+        assert d['veg_gravy']['name'] == 'veg_kurma'
+        assert d['veg_gravy']['item_color'] == 'green'
+        assert d['bread']['texture'] == 'bready'
+
     def test_accepts_the_plan_response_shape(self):
         """`/plan` returns {'item_base': ..., 'is_nonveg': ...} per slot."""
         shaped = {'bread': {'item_base': 'jowar_roti', 'is_nonveg': False}}

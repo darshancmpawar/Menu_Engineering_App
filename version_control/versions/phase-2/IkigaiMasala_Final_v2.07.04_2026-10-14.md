@@ -167,4 +167,4 @@ found in this round were found by using it.
 |---|---|---|---|
 | 2.07.04 | 6–14 Oct | Darshan + Claude Code | Pick a dish: a planner names the dish, the server refuses only a pinned cell and a repeat inside the ISO week, and reports everything else as a warning while naming what it could not check. A pairing layer built and mostly held back — one pairing dropped on measurement, and the A/B harness now measures a 40% noise floor it did not know it had. A five-day plan 42.1 s → 25.4 s by reading each dish list once. Seasonal bans matched to the kitchen's spelling; corrected Pune and Bangalore lists; Corning Chakan's rice alternation |
 
-**Previous:** [v2.07.03](IkigaiMasala_Final_v2.07.03_2026-10-06.md)  **Next:** —
+**Previous:** [v2.07.03](IkigaiMasala_Final_v2.07.03_2026-10-06.md)  **Next:** [v2.08.00](IkigaiMasala_Final_v2.08.00_2026-11-16.md)

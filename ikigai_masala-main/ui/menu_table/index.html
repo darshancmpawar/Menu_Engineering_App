@@ -148,6 +148,16 @@
   /* Non-veg is the one thing in a cell worth reading before the dish name.
      Red here is unambiguous because the colour itself lives in the dot. */
   .cell.nonveg .nm { color: #C40D1B; font-weight: 700; }
+  /* A client's veg / non-veg marker (display.veg_markers) and the line under
+     the dish saying when it was last served (display.last_served). The name
+     and that line stack in `.nmw` so the swatch and marker stay on the first
+     line. A long pinned line — a make-your-own salad — wraps instead of being
+     cut, since the components ARE the dish. */
+  .cell .vmk { flex-shrink: 0; display: inline-flex; }
+  .cell .nmw { display: flex; flex-direction: column; min-width: 0; }
+  .cell .ls { font-size: 10.5px; line-height: 1.25; color: #6B6B6B;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell.long .nm { white-space: normal; }
   /* The regional marker: a filled disc with a white R, at the cell's right
      edge. A regional day is a floor rather than a filter, so the rest of the
      day's dishes are ordinary and nothing but this says which ones the region
@@ -243,7 +253,13 @@
     // The explain panel's verdict marks. Circled tick in green, matching the
     // design; the warning reuses the cell's own triangle so one shape means
     // "look at this" wherever it appears.
-    tickOk: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><circle cx="12" cy="12" r="11" fill="#1AA45B"/><path d="M7 12.5l3.2 3L17 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    tickOk: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><circle cx="12" cy="12" r="11" fill="#1AA45B"/><path d="M7 12.5l3.2 3L17 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // Veg / non-veg markers, drawn after the client's reference image (a
+    // green rounded square with a leaf, a red one with a drumstick). Drawn
+    // here rather than embedded: the image supplied is a watermarked stock
+    // preview. `ui.planner_view._marker_png` draws the same two for Excel.
+    veg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" role="img" aria-label="Veg"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#fff" stroke="#1AA45B" stroke-width="2.4"/><path d="M6.5 17.5C6.5 10.5 11 6.5 17.5 6.5C17.5 13 13.5 17.5 6.5 17.5Z" fill="#1AA45B"/><path d="M7.5 16.5L15 9" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    nonveg: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" role="img" aria-label="Non-veg"><rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#fff" stroke="#D32F2F" stroke-width="2.4"/><ellipse cx="14.2" cy="9.8" rx="5.6" ry="4.4" transform="rotate(-45 14.2 9.8)" fill="#D32F2F"/><path d="M11 13L7.6 16.4" stroke="#D32F2F" stroke-width="2.4" stroke-linecap="round"/><circle cx="6.4" cy="16" r="1.6" fill="#D32F2F"/><circle cx="8" cy="17.6" r="1.6" fill="#D32F2F"/></svg>'
   };
 
   function esc(s) {
@@ -623,7 +639,8 @@
                  'value="' + esc(query) + '"></div>');
           return;
         }
-        var cls = "cell" + (c.nonveg ? " nonveg" : "") + (c.pinned ? " pinned" : "");
+        var cls = "cell" + (c.nonveg ? " nonveg" : "") + (c.pinned ? " pinned" : "") +
+                  ((c.name || "").length > 40 ? " long" : "");
         // A pinned cell carries no `data-cell`, so `wire` never binds it and
         // it cannot join a selection — the rule already decided this dish.
         h.push('<button class="' + cls + '"' +
@@ -632,8 +649,14 @@
                ' title="' + esc(c.title || c.name) + '">');
         h.push('<span class="dot" style="background:' + esc(c.color_dot || "#FFFFFF") +
                (c.color === "W" ? ';border:1px solid #AEAEAE' : '') + '"></span>');
+        if (c.marker) h.push('<span class="vmk">' + ICON[c.marker] + '</span>');
         if (c.pinned) h.push(ICON.pin);
-        h.push('<span class="nm">' + esc(c.name) + '</span>');
+        if (c.last) {
+          h.push('<span class="nmw"><span class="nm">' + esc(c.name) + '</span>' +
+                 '<span class="ls">' + esc(c.last) + '</span></span>');
+        } else {
+          h.push('<span class="nm">' + esc(c.name) + '</span>');
+        }
         if (c.regional) {
           h.push('<span class="rgn" title="' +
                  esc((d.region || "Regional") + " dish \u2014 this is why today is a " +

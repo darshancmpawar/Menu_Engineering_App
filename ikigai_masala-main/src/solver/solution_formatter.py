@@ -5,6 +5,7 @@ Handles slot-based output format with color suffixes and constant items.
 """
 
 import datetime as dt
+import re
 from typing import Dict, Any, List, Optional, Set
 
 from ._helpers import (
@@ -12,8 +13,13 @@ from ._helpers import (
     theme_label as _theme_label,
     strip_color_suffix as _strip_color_suffix,
 )
-from src.constants import DISPLAY_SLOT_NAME, NONVEG_SLOTS
+from src.constants import DISPLAY_SLOT_NAME, NONVEG_PROTEINS, NONVEG_SLOTS
 from ..preprocessor.pool_builder import _base_slot, _slot_num
+
+#: Words that make FREE TEXT non-veg ("..., Pesto chicken", "Boiled egg").
+#: Never applied to an ontology dish: 43 veg rows across the five city lists
+#: carry one of these words (`soya_keema_pulao`, `red_velvet_pastry_egg_less`).
+_NONVEG_WORDS = frozenset(NONVEG_PROTEINS) | {'eggs'}
 
 
 def _display_slot(slot_id: str) -> str:
@@ -35,7 +41,8 @@ class SolutionFormatter:
                  nonveg_items: Optional[Set[str]] = None,
                  served_dates: Optional[Set[dt.date]] = None,
                  pinned_cells: Optional[Set[Any]] = None,
-                 manual_cells: Optional[Set[Any]] = None):
+                 manual_cells: Optional[Set[Any]] = None,
+                 known_items: Optional[Set[str]] = None):
         self.week_plan = week_plan
         self.dates = dates
         self._theme_map = theme_map
@@ -68,11 +75,16 @@ class SolutionFormatter:
         # Empty means "not reported", never "nothing was picked" — the server
         # is stateless and only ever reports the picks of the request in hand.
         self._manual_cells = manual_cells or set()
+        # Lower-cased names of every dish in the city list. A cell whose name
+        # is NOT one of them is free text from a `constant_items` pin, and the
+        # only way to tell what it contains is to read its words (step 4).
+        # ``None`` means "not supplied": step 4 is skipped.
+        self._known_items = known_items
 
     def _is_nonveg(self, item_base: str, slot_id: str = '') -> bool:
         """Is this dish non-vegetarian?
 
-        Three-step, in order of confidence:
+        Four-step, in order of confidence:
 
         1. Exact ontology match (the normal solved-item path).
         2. Whitespace-normalised match, so a hand-written client constant like
@@ -83,6 +95,10 @@ class SolutionFormatter:
            ontology row, so without this a constant such as ``"boiled egg"``
            rendered black in the table and the Excel export — a dietary error,
            not a cosmetic one.
+        4. Free text in any other slot: non-veg if it names a non-veg protein.
+           Rippling's make-your-own salad is one pinned line per day, and
+           "..., Boiled peanuts, Millets, Pesto chicken" sits in the VEG salad
+           slot, where step 3 cannot see it.
         """
         if not item_base:
             return False
@@ -91,7 +107,12 @@ class SolutionFormatter:
             return True
         if name.replace(' ', '_') in self._nonveg_items:
             return True
-        return _base_slot(slot_id) in NONVEG_SLOTS if slot_id else False
+        if slot_id and _base_slot(slot_id) in NONVEG_SLOTS:
+            return True
+        known = self._known_items
+        if known is None or name in known or name.replace(' ', '_') in known:
+            return False
+        return bool(set(re.findall(r'[a-z]+', name)) & _NONVEG_WORDS)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""

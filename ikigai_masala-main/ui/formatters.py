@@ -30,7 +30,13 @@ THEME_ICONS = {
 }
 
 
-def display_label_for_slot_id(slot_id: str) -> str:
+def display_label_for_slot_id(slot_id: str, labels: Optional[Dict[str, str]] = None) -> str:
+    """Row label. *labels* is a client's own (`display.labels`): the exact slot
+    id first (`veg_dry__1` -> "North Veg Dry"), then its base slot."""
+    if labels:
+        hit = labels.get(slot_id) or labels.get(slot_id.split("__")[0])
+        if hit:
+            return hit
     return DISPLAY_SLOT_NAME.get(slot_id, slot_id.replace("_", " ").title())
 
 
@@ -283,17 +289,90 @@ def flatten_api_solution(
     return flat, day_types
 
 
-def slot_sort_key(slot_id: str) -> int:
+def slot_sort_key(slot_id: str, order: Optional[List[str]] = None) -> int:
     """Return sort index for display ordering (menu table + Excel export).
 
     Ranks by the canonical DISPLAY_SLOT_ORDER so constant slots (e.g. white
-    rice) interleave with base slots and non-veg sorts last.
+    rice) interleave with base slots and non-veg sorts last. *order* is a
+    client's own (`display.order`): the exact slot id first, then its base;
+    a slot it does not list goes after the listed ones, in canonical order.
     """
     base = slot_id.split("__")[0] if "__" in slot_id else slot_id
+    if order:
+        for key in (slot_id, base):
+            if key in order:
+                return order.index(key)
+        return len(order) + slot_sort_key(slot_id)
     try:
         return DISPLAY_SLOT_ORDER.index(base)
     except ValueError:
         return 999
+
+
+#: Slots whose "last served" is never shown: a staple served every day.
+#: Pinned cells are skipped as well, by the caller's pin set.
+LAST_SERVED_SKIP = frozenset({"white_rice"})
+
+
+def served_dates_by_item(history_rows: Optional[List[Dict[str, Any]]]) -> Dict[str, List[Any]]:
+    """``{dish: [dates served]}`` from raw ``menu_history`` rows, any meal.
+
+    The rows are exploded by `HistoryManager.explode_history_rows` and the
+    names normalised with the same `_norm_str` the cooldown reads them with,
+    so "last served" and the cooldown can never disagree about a spelling.
+    """
+    import datetime as _dt
+    from src.history import HistoryManager
+    from src.preprocessor.column_mapper import _norm_str
+    long_df = HistoryManager.explode_history_rows(history_rows)
+    out: Dict[str, List[Any]] = {}
+    if long_df is None:
+        return out
+    for sd, item in zip(long_df["service_date"], long_df["item_base"]):
+        name = _norm_str(item)
+        try:
+            day = _dt.date.fromisoformat(str(sd)[:10])
+        except ValueError:
+            continue
+        if name:
+            out.setdefault(name, []).append(day)
+    return out
+
+
+def last_served_cells(plan: Dict[str, Dict[str, str]],
+                      served: Dict[str, List[Any]],
+                      pinned: Optional[Dict[str, Set[str]]] = None) -> Dict[str, Dict[str, str]]:
+    """``{iso: {slot_id: text}}`` — when each dish was last served before ITS day.
+
+    "Last served 18 Nov (21 days ago)", or "New" when the history holds no
+    earlier service. Counted back from the cell's own date, so a dish twice in
+    one saved fortnight reads against its previous serving, not against
+    today. Skipped: `LAST_SERVED_SKIP` slots, pinned cells, and free text (a
+    pin's text, which a plan read back from history no longer marks as
+    pinned) — a name with a space or comma is never an ontology dish.
+    """
+    import datetime as _dt
+    pinned = pinned or {}
+    out: Dict[str, Dict[str, str]] = {}
+    for iso, slots in (plan or {}).items():
+        try:
+            day = _dt.date.fromisoformat(iso)
+        except ValueError:
+            continue
+        for slot_id, raw in (slots or {}).items():
+            name = re.sub(r'\s*\([A-Z]\)\s*$', '', str(raw or "")).strip().lower()
+            if (not name or slot_id.split("__")[0] in LAST_SERVED_SKIP
+                    or slot_id in (pinned.get(iso) or ()) or re.search(r'[\s,]', name)):
+                continue
+            before = [d for d in served.get(name, ()) if d < day]
+            if not before:
+                text = "New"
+            else:
+                last = max(before)
+                n = (day - last).days
+                text = f"Last served {last.day} {last:%b} ({n} day{'s' if n != 1 else ''} ago)"
+            out.setdefault(iso, {})[slot_id] = text
+    return out
 
 
 def chef_read_sections(chef: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:

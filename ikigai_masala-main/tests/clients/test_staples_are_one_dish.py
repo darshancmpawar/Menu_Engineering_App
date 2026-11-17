@@ -57,6 +57,9 @@ FAMILY_NOT_STAPLE = {
     'carelon_second_bread_is_flavoured',
     # "in the first rice slot a veg biryani every weekday" — a category.
     'tcl_rice_is_a_biryani_and_a_south_rice',
+    # Rippling's sheet names the row "NonVeg Main(chicken)": a chicken dish
+    # every day, any chicken — the row is the category, not one dish.
+    'rippling_chicken_first_row',
 }
 
 

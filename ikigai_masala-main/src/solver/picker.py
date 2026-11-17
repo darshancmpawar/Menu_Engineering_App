@@ -83,6 +83,13 @@ def _iso_week(d: dt.date) -> str:
     return f'{year}-W{week:02d}'
 
 
+def _day_label(d: dt.date) -> str:
+    """'Mon 3 Aug'. Not `strftime('%-d')`: that is glibc-only, and on Windows
+    it raised 'Invalid format string', which `/pick` reported as an unknown
+    client."""
+    return f'{d:%a} {d.day} {d:%b}'
+
+
 def _city_slot_items(city_pools: Dict[str, Any], base: str) -> Dict[str, Any]:
     """``{normalised item: row}`` for one base slot of the CITY list.
 
@@ -295,7 +302,7 @@ def _week_days(week: str) -> Set[dt.date]:
 def _repeat_message(item: str, where: dt.date, source: str) -> str:
     """Spec 04 §3.5, verbatim: what happened, then why it is refused."""
     pretty = item.replace('_', ' ').capitalize()
-    day = where.strftime('%a %-d %b')
+    day = _day_label(where)
     if source == 'history':
         return (f'{pretty} was served on {day} in a saved plan. '
                 f"A dish can't repeat in a week.")
@@ -358,7 +365,7 @@ def _cooldown_violation(inputs, d: dt.date, item: str) -> Optional[Dict[str, Any
     else:
         last = d - dt.timedelta(days=int(days_ago))
         message = (f'Served {int(days_ago)} days ago '
-                   f'({last.strftime("%a %-d %b")}). '
+                   f'({_day_label(last)}). '
                    f"This client's window is {window} days.")
         details = {'last_served': last.isoformat(), 'days_ago': int(days_ago),
                    'window_days': window}
@@ -383,7 +390,7 @@ def _ricebread_violation(inputs, d: dt.date, base: str) -> Optional[Dict[str, An
         return None
     return _violation(
         'ricebread_gap', 'ricebread_gap',
-        f"Bread isn't allowed on {d.strftime('%a %-d %b')}: the rice-bread "
+        f"Bread isn't allowed on {_day_label(d)}: the rice-bread "
         f'gap rule.')
 
 

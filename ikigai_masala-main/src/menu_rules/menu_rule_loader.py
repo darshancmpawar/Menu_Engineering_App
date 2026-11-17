@@ -334,7 +334,8 @@ class MenuRuleLoader:
         overrides stay declared once.
         """
         empty = {'disable': [], 'rules': [], 'constant_items': {},
-                 'combo_majority': {}}
+                 'constant_items_by_meal': {},
+                 'combo_majority': {}, 'combo_by_theme': {}}
         if isinstance(client_block, list):
             return {**empty, 'rules': list(client_block)}
         if not isinstance(client_block, dict):
@@ -350,7 +351,12 @@ class MenuRuleLoader:
                 'disable': list(block.get('disable') or []),
                 'rules': shelf + list(rules or []),
                 'constant_items': dict(block.get('constant_items') or {}),
+                'constant_items_by_meal': {
+                    str(m).strip().lower(): dict(p)
+                    for m, p in (block.get('constant_items_by_meal') or {}).items()
+                    if isinstance(p, dict) and not str(m).startswith('_')},
                 'combo_majority': dict(block.get('combo_majority') or {}),
+                'combo_by_theme': dict(block.get('combo_by_theme') or {}),
             }
 
         merged = _layer(client_block)
@@ -364,8 +370,14 @@ class MenuRuleLoader:
                 merged['constant_items'] = {
                     **merged['constant_items'], **layer['constant_items'],
                 }
+                for meal, pins in layer['constant_items_by_meal'].items():
+                    merged['constant_items_by_meal'][meal] = {
+                        **merged['constant_items_by_meal'].get(meal, {}), **pins}
                 merged['combo_majority'] = {
                     **merged['combo_majority'], **layer['combo_majority'],
+                }
+                merged['combo_by_theme'] = {
+                    **merged['combo_by_theme'], **layer['combo_by_theme'],
                 }
         return merged
 
@@ -495,16 +507,24 @@ class MenuRuleLoader:
 
     def get_client_constant_items(
         self, client_name: str, counter_name: Optional[str] = None,
+        meal: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Return ``constant_items`` for *client_name* (empty dict if unset).
 
         *counter_name* layers that counter's ``counters`` entry over the
-        client-level one.
+        client-level one. *meal* then layers ``constant_items_by_meal[meal]``
+        on top: one counter, two sessions, two different pins — Rippling's
+        make-your-own salad differs between lunch and dinner on the same
+        counter, and a counter split per meal would be a second station the
+        site does not run.
         """
         block = self._read_client_blob().get(client_name)
         if not block:
             return {}
-        return self._parse_client_block(block, counter_name)['constant_items']
+        parsed = self._parse_client_block(block, counter_name)
+        by_meal = parsed['constant_items_by_meal'].get(
+            str(meal or '').strip().lower(), {})
+        return {**parsed['constant_items'], **by_meal}
 
     def get_client_combo_majority(
         self, client_name: str, counter_name: Optional[str] = None,
@@ -526,6 +546,47 @@ class MenuRuleLoader:
         if not block:
             return {}
         return self._parse_client_block(block, counter_name)['combo_majority']
+
+    def get_client_combo_by_theme(
+        self, client_name: str, counter_name: Optional[str] = None,
+    ) -> Dict[str, Dict[str, str]]:
+        """``{combo slot: {theme: component}}`` for *client_name* (empty if unset).
+
+        Which half of a combination category a day of a given THEME must use,
+        whatever its position in the plan. The index split alone gives
+        Rippling's biryani Monday rasam on a Monday-start week but sambar on
+        the second Monday of a fortnight. Validated where it is used, the same
+        way `combo_majority` is: a component that is not one of the slot's two
+        falls back to the index split.
+        """
+        block = self._read_client_blob().get(client_name)
+        if not block:
+            return {}
+        return self._parse_client_block(block, counter_name)['combo_by_theme']
+
+    def get_client_display(self, client_name: str) -> Dict[str, Any]:
+        """The client's ``display`` block: how ITS menu is laid out on screen
+        and in the Excel export. Empty dict (the shared layout) if unset.
+
+        Keys, all optional: ``order`` (slot ids or base slots, first to last),
+        ``labels`` (``{slot id or base: row label}``), ``veg_markers`` and
+        ``last_served`` (booleans). Malformed values are dropped rather than
+        raised on, so a typo costs the layout, never the menu;
+        `tests/clients/test_client_display.py` is what makes a typo visible.
+        """
+        block = self._read_client_blob().get(client_name)
+        raw = block.get('display') if isinstance(block, dict) else None
+        if not isinstance(raw, dict):
+            return {}
+        order, labels = raw.get('order'), raw.get('labels')
+        return {
+            'order': [str(s) for s in order] if isinstance(order, list) else [],
+            'labels': ({str(k): str(v) for k, v in labels.items()
+                        if not str(k).startswith('_')}
+                       if isinstance(labels, dict) else {}),
+            'veg_markers': raw.get('veg_markers') is True,
+            'last_served': raw.get('last_served') is True,
+        }
 
     def get_counter_scoped_constant_keys(
         self, client_name: str, counter_name: Optional[str] = None,

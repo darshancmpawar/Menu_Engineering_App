@@ -336,8 +336,15 @@ def test_a_real_bangalore_week(fake_supabase):
 
     off = [b for b in _south_breads(week, blr) if b[1] != 'south']
     assert not off, f'south bread off a south day: {off}'
+    # The south day's bread is south by its CUISINE, not only the dosa family
+    # the ban names: Mangalore buns (cuisine_family_region karnataka) is a
+    # south bread too (owner, Nov 2026). Asking for a dosa specifically was
+    # asking for the solver's pick, which the Bangalore cleanup moved.
     south = next(d for d in week.values() if d.get('day_type') == 'south')
-    assert _south_breads({'x': south}, blr), (
+    south_cuisine = [i for i in _slot_items(south, 'bread')
+                     if str(blr[i.lower()]['cuisine_family']).strip().lower()
+                     == 'south_indian']
+    assert south_cuisine, (
         'the south day got no south bread either — a ban that empties both '
         'sides passes the check above and is useless')
 

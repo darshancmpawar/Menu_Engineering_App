@@ -10,8 +10,10 @@ from typing import Dict, List
 
 from ui.formatters import THEME_ICONS
 from customisation.pulse import PULSE_THEME_COLORS
+from src.constants import WEEKDAY_NAMES
 
-_WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+#: Monday to Friday, from the one shared weekday table (test_architecture).
+_WEEKDAYS = WEEKDAY_NAMES[:5]
 
 _THEME_DISPLAY = {
     'mix': 'Mix (South + North)',
