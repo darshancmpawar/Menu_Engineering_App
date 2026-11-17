@@ -95,6 +95,42 @@ def _unused_dish(week, base='veg_gravy', city='Bangalore'):
     raise AssertionError(f'every {base} dish in {city} is already on the plan')
 
 
+#: What the plate checks read (src/explain/checks.py). A swap that keeps all of
+#: them, and brings no key ingredient the plate already has, cannot change a
+#: plate verdict.
+_PLATE_ATTRS = ('item_color', 'texture', 'spice_level', 'primary_protein',
+                'richness_score')
+
+
+def _clean_swap(week, date, slot_id, city='Bangalore'):
+    """An unused dish that is a clean pick FOR THAT PLATE.
+
+    `_unused_dish` is not: it always returns the first unused veg gravy
+    (gujarati_kadhi), and a yellow kadhi in place of a red paneer tikka masala
+    takes Booking.com's Monday to 3 colours — or does not, depending on a rest
+    of the plate the solver re-draws every run. That made "a clean pick has no
+    exceptions" pass or fail by chance (2 of 3 runs warned, Nov 2026). Even an
+    exact twin warned until `evidence._norm` stripped the `(R)` colour tag: the
+    picked dish entered the after-plate unrecognised, with no colour at all.
+    """
+    from src.ontology import repository
+    df, pools = repository.menu_data(city)
+    rows = {str(r['item']).strip().lower(): r for _i, r in df.iterrows()}
+    key = lambda r: tuple(str(r.get(a)) for a in _PLATE_ATTRS)
+    old = rows[week[date][slot_id].strip().lower()]
+    on_plate = {str(rows[v.strip().lower()].get('key_ingredient'))
+                for s, v in week[date].items()
+                if s != slot_id and v.strip().lower() in rows}
+    used = {v.strip().lower() for day in week.values() for v in day.values()}
+    for name in pools[slot_id.split('__')[0]]['item'].astype(str).tolist():
+        r = rows.get(name.strip().lower())
+        if (r is not None and name.strip().lower() not in used
+                and key(r) == key(old)
+                and str(r.get('key_ingredient')) not in on_plate):
+            return name
+    raise AssertionError(f'no clean swap for {old["item"]} on {date}')
+
+
 def _pick(api, week, date, slot_id, item):
     with api.test_client() as c:
         return c.post('/api/v1/pick', json={
@@ -301,10 +337,19 @@ def test_a_clean_pick_has_no_exceptions(api):
     """The negative half. Without it every audit test above passes on an
     audit that reports everything it is shown."""
     week, sol = _plan(api)
-    date, slot_id = _free_cell(sol)
-    r = _pick(api, week, date, slot_id, _unused_dish(week))
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()['exceptions'] == []
+    for date, day in sol.items():
+        for slot_id, v in (day.get('items') or {}).items():
+            if slot_id.split('__')[0] != 'veg_gravy' or v.get('is_pinned'):
+                continue
+            try:
+                item = _clean_swap(week, date, slot_id)
+            except AssertionError:
+                continue                 # no exact twin for this one; next cell
+            r = _pick(api, week, date, slot_id, item)
+            assert r.status_code == 200, r.get_json()
+            assert r.get_json()['exceptions'] == [], (week[date][slot_id], item)
+            return
+    raise AssertionError('no veg gravy in the week has a clean swap')
 
 
 def test_coverage_is_always_declared(api):

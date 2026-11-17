@@ -378,6 +378,10 @@ RICE_EXCLUDE_ITEMS: Set[str] = {
     'white_rice', 'white rice',
     'steam rice',
     'plain_rice', 'plain rice',
+    # Plain rice filed under other sub-categories of the Bangalore (and
+    # Hyderabad) list: "Flavoured Rice is every rice except white rice; the
+    # other rice is steamed rice" (owner, Nov 2026).
+    'boiled_rice', 'white_boiled_rice', 'plain_basmati_rice', 'jasmine_rice',
 }
 
 DISPLAY_SLOT_NAME: Dict[str, str] = {

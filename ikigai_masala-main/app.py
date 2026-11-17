@@ -64,13 +64,16 @@ from ui.formatters import (
     display_label_for_slot_id,
     flatten_api_solution,
     format_item_for_ui,
+    last_served_cells,
     meal_difference,
     MIN_MEAL_DIFFERENCE,
     nonveg_slots_from_solution,
     pinned_slots_from_solution,
+    served_dates_by_item,
     shared_items_from_solution,
     slot_sort_key,
 )
+from src.menu_rules.menu_rule_loader import MenuRuleLoader
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
 from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
@@ -1091,6 +1094,57 @@ def _city_dish_payload(city: str, source_pools_key: str, base_slots: tuple,
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def _cached_client_display(client_name: str) -> dict:
+    """The client's own menu layout from its rules file; `{}` for most."""
+    try:
+        return MenuRuleLoader().get_client_display(client_name)
+    except Exception as exc:                                # noqa: BLE001
+        logger.warning("client display config unavailable: %s", exc)
+        return {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_served_dates(client_name: str) -> dict:
+    """`{dish: [dates served]}` from the client's saved menus, last 365 days.
+
+    Its own read rather than the solve's history context: that one only looks
+    back as far as the cooldown window, and "last served 3 months ago" is
+    exactly what a planner asking this question wants to see.
+    """
+    from src.db import get_supabase
+    since = (dt.date.today() - dt.timedelta(days=365)).isoformat()
+    rows = (get_supabase().table("menu_history").select("service_date,menu")
+            .eq("client_name", client_name).gte("service_date", since)
+            .execute().data)
+    return served_dates_by_item(rows)
+
+
+def _apply_client_display(blocks: list, client_name: str) -> None:
+    """Put the client's layout, and last-served text if it asked for it, on
+    each block, so the table and the Excel export read the same values."""
+    display = _cached_client_display(client_name) if client_name else {}
+    served = None
+    for b in blocks:
+        b["display"] = display
+        if not (display.get("last_served") and b.get("plan")):
+            b.pop("last_served", None)
+            continue
+        if served is None:
+            try:
+                served = _cached_served_dates(client_name)
+            except Exception as exc:                        # noqa: BLE001
+                # Said, not swallowed: "New" on every dish would read as a
+                # menu of first-timers rather than a history that failed to load.
+                logger.warning("last-served history unavailable: %s", exc)
+                st.warning("Could not read the menu history, so 'last served' "
+                           "is not shown.")
+                served = False
+        # An EMPTY history is real ("New" on every dish); a failed read is not.
+        b["last_served"] = ({} if served is False else
+                            last_served_cells(b["plan"], served, b.get("pinned")))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def _cached_pick_config(_api: MenuApiClient, client_name: str) -> dict:
     """`{city, source_pools, cooldown_days}` for Pick mode.
 
@@ -1980,6 +2034,7 @@ if _meal_order:
     if _gen_probs:
         st.session_state["region_problems"] = _gen_probs
 _blocks = st.session_state.get("plan_blocks") or []
+_apply_client_display(_blocks, st.session_state.get("client_name"))
 
 _render_diagnostics_expander(
     st.session_state.get("rule_diagnostics") or [],

@@ -286,6 +286,10 @@ class SolverConfig:
     # (the default) keeps the global choice, so this changes nothing until a
     # client asks.
     combo_majority: Optional[Dict[str, str]] = None
+    # ``{combo slot: {theme: component}}``: the half a day of that THEME must
+    # use wherever it falls in the plan (Rippling: rasam on the biryani day).
+    # Wins over the index split; see `_combo_variant_for`.
+    combo_by_theme: Optional[Dict[str, Dict[str, str]]] = None
     # Client-level weekday filter (lowercase full names). None = unrestricted.
     working_days: Optional[List[str]] = None
     explicit_dates: Optional[List[dt.date]] = None
@@ -427,19 +431,42 @@ def _combo_day_variant(base_slot: str, di: int, n_days: int,
     return minority if di in _combo_minority_days(n_days) else majority
 
 
+def _combo_variant_for(base_slot: str, di: int, dates: List[dt.date],
+                       theme_map: Optional[Dict[str, str]] = None,
+                       majority_by_slot: Optional[Dict[str, str]] = None,
+                       by_theme: Optional[Dict[str, Dict[str, str]]] = None) -> str:
+    """`_combo_day_variant`, unless the client pins this day's THEME to a half.
+
+    The index split is deterministic by POSITION, so a weekday theme does not
+    keep its half across horizons: Rippling's biryani Monday is rasam as day 0
+    of a week and sambar as day 5 of a fortnight. ``by_theme`` (the client's
+    ``combo_by_theme``) answers by theme instead. Anything that is not one of
+    the slot's own two components falls back to the index split, the same
+    contract as ``combo_majority``.
+    """
+    wanted = ((by_theme or {}).get(base_slot) or {}).get(
+        _weekday_type_cfg(dates[di], theme_map))
+    if wanted in COMBO_CATEGORIES[base_slot]:
+        return wanted
+    return _combo_day_variant(base_slot, di, len(dates), majority_by_slot)
+
+
 def _combo_variant_cells(base_slot: str, variant: str, n_days: int,
                          slot_count: int = 1,
-                         majority_by_slot: Optional[Dict[str, str]] = None) -> int:
+                         majority_by_slot: Optional[Dict[str, str]] = None,
+                         variants: Optional[List[str]] = None) -> int:
     """How many cells of *base_slot* across the horizon take *variant*.
 
     What the narrowing below has to be able to cover. No repetition is hard
     here, so a component with fewer distinct dishes than it has cells cannot
-    fill them, whatever else the solver does.
+    fill them, whatever else the solver does. *variants* is the per-day split
+    already worked out (with any theme pins applied); without it, the index
+    split.
     """
-    days = sum(1 for di in range(n_days)
-               if _combo_day_variant(base_slot, di, n_days,
-                                     majority_by_slot) == variant)
-    return days * max(1, int(slot_count or 1))
+    if variants is None:
+        variants = [_combo_day_variant(base_slot, di, n_days, majority_by_slot)
+                    for di in range(n_days)]
+    return variants.count(variant) * max(1, int(slot_count or 1))
 
 
 def _find_cells(cells: List[_Cell], di: int, base_slot: str) -> List[_Cell]:
@@ -886,8 +913,12 @@ class MenuSolver:
                 # slot splits across the week (e.g. dal 3 days, rasam 2 days).
                 if base in COMBO_CATEGORIES and len(pool2) > 0:
                     majority_by = getattr(self.cfg, 'combo_majority', None)
-                    variant = _combo_day_variant(
-                        base, di, len(dates), majority_by)
+                    variants = [
+                        _combo_variant_for(
+                            base, i, dates, self.cfg.theme_map, majority_by,
+                            getattr(self.cfg, 'combo_by_theme', None))
+                        for i in range(len(dates))]
+                    variant = variants[di]
                     v = pool2[pool2['course_type'] == variant]
                     # Narrow only if the component can COVER the cells it is
                     # given. `> 0` was the wrong threshold and made one dish
@@ -914,7 +945,8 @@ class MenuSolver:
                         for _i, r in v.iterrows())
                     needed = 0 if has_staple else _combo_variant_cells(
                         base, variant, len(dates),
-                        (self.cfg.slot_counts or {}).get(base, 1), majority_by)
+                        (self.cfg.slot_counts or {}).get(base, 1), majority_by,
+                        variants=variants)
                     if len(v) >= needed:
                         pool2 = v
                     elif len(v) > 0:

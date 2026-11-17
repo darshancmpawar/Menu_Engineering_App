@@ -39,9 +39,9 @@ Of the 44 Bangalore clients in the current export:
 
 | | Clients | Notes |
 |---|---|---|
-| Have configured rules | 26 | |
+| Have configured rules | 27 | Rippling added in 2.08.00 |
 | Entry exists, but only `constant_items` / `disable` | 8 | Amadeus, Astrazeneca, H&M, Piramel Finance, Plan View, Quince, Siemens Technology, Stryker |
-| No entry at all | 10 | Cargil, Continental, Eli Lilly, Icon Blr, Nike, Odessia, Rippling, Siemens Healthineers, Take 2, Waters |
+| No entry at all | 9 | Cargil, Continental, Eli Lilly, Icon Blr, Nike, Odessia, Siemens Healthineers, Take 2, Waters |
 
 A client in the middle row is not unconfigured — a daily curd or a chapati pin is
 often the whole of what that client asked for.
@@ -919,6 +919,25 @@ Entry exists but is empty.
 |---|---|---|
 | 3 working days (Wed, Thu, Fri), others blank | DONE | `clients.working_days` |
 | Curd daily, raita on biryani day | DONE | `constant_items` curd/curd_side split |
+
+### Rippling
+One counter, lunch and dinner sessions. Source: the client's requirement sheet
+(T1–T5, November 2026) and the earlier chat asks. File:
+`customisation/client rules/rippling.json`. Live row (16 Nov): themes Mon/Tue mix,
+Wed biryani, Thu chinese, Fri north.
+
+| Requirement | Status | Mechanism |
+|---|---|---|
+| Two veg dry: north, then south, irrespective of the theme | DONE | `slot_composition` on `slot_indices` [1] north_indian, [2] south_indian; `theme_cuisine_filter` override adds `veg_dry` to `exempt_slots` |
+| Non-veg: chicken every day; egg as a second dish on Wednesday only | DONE | `slot_day_restriction` (__2 Wed only) + `slot_composition` per row (chicken / `is_egg_dish`) |
+| Curd row plain curd, Raitha row raita only | DONE | `curd` category + `slot_composition` `is_raita` on `curd_side`; the curd/raita save check removed |
+| Two Indian breads: one plain chapati, the other from the pool | DONE | `constant_items.bread__1` + `repeatable_items` |
+| T1 make-your-own salad and dressings, fixed per weekday, lunch and dinner apart | DONE | `constant_items_by_meal` (one counter, two sessions) weekday maps on `salad` and `chutney`; free text, stamped verbatim |
+| T2 row order and names (Welcome Drink … Dessert) | DONE | `display.order` / `display.labels`; `chutney` is labelled "Dressing" |
+| Sambar / Rasam one row, rasam on the biryani day | DONE | `sambar_rasam` category + `combo_by_theme` {biryani: rasam} |
+| T3 no cut fruit or fruit alone | DONE | `selector_frequency` `sub_category: fresh_fruit`, `max: 0` |
+| T4 veg / non-veg marker on every dish | DONE | `display.veg_markers`; a salad line naming chicken or egg is marked non-veg. The dressings' mayo is eggless (owner, 16 Nov), so those lines are rightly veg |
+| T5 when each dish was last served (not white rice or pinned items) | DONE | `display.last_served`; read from the last 365 days of `menu_history`, any meal |
 
 ### Siemens Healthineers
 No client rules file.

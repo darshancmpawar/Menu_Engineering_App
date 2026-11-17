@@ -182,13 +182,16 @@ class TestWhatQuestAdded:
 
         The half that was always the point still holds outright — seeding never
         cost Hyderabad a row of its own.
+
+        113 -> 182: the Bangalore cleanup renamed 72 misspelt dishes and merged
+        395 same-dish copies into one name each; Hyderabad was not re-cut.
         """
         assert _names(hyd) - _names(blr), 'Hyderabad lost its own additions'
         drift = sorted(_names(blr) - _names(hyd))
-        assert len(drift) == 113, (len(drift), drift[:10])
+        assert len(drift) == 182, (len(drift), drift[:10])
 
     def test_the_count_is_the_import_s_own(self, quest_rows):
-        """Was 101, then 95, now 89.
+        """Was 101, then 95, then 89, now 93.
 
         101 -> 95: six of Quest's dishes turned out to be dishes Bangalore's
         seed already carried under another word order, and
@@ -202,10 +205,16 @@ class TestWhatQuestAdded:
         owner's ruling on the corrected data is that a dish not in it is not
         there.
 
+        89 -> 93: not a change to the import. The Bangalore cleanup merged
+        `chapati`, `mixed_veg_korma`, `peas_pulao` and `sabudana_kheer` into
+        `plain_chapati`, `mix_veg_kurma`, `green_peas_pulao` and
+        `sabudana_payasam`, so Hyderabad's Quest-stamped copies of those four no
+        longer match a Bangalore name and count here.
+
         The count is what it is; the assertion exists to catch the import
         silently gaining or losing rows, so it is pinned rather than loosened.
         """
-        assert len(quest_rows) == 89
+        assert len(quest_rows) == 93
 
     def test_nothing_but_the_seed_lacks_the_quest_pool_token(self, added, blr):
         """Every row this import created carries Quest's token.

@@ -1,32 +1,120 @@
 {
   "Rippling": {
-    "_comment": "Bangalore dinner client. Needs these DB slot_counts on Counter 1: veg_dry 2 (already), bread 2, nonveg_main 2, and categories + curd (curd_side stays as the raita slot). See the SQL note delivered with this file.",
+    "_comment": "Bangalore, lunch and dinner sessions on ONE counter ('Counter 1'). Source: the client's requirement sheet (T1-T5) plus the earlier asks (north + south veg dry, chicken + egg on Wednesday, curd and raita apart, bread 1 plain chapati). Live row as of 16 Nov 2026: categories welcome_drink, soup, salad, bread, rice, white_rice, veg_dry, veg_gravy, dal, sambar_rasam, curd, curd_side, nonveg_main, dessert; slot_counts bread 2, veg_dry 2, nonveg_main 2; themes Mon/Tue mix, Wed biryani, Thu chinese, Fri north.",
     "disable": [
       "curd_raita_logic",
       "nonveg_main_daily_pair"
     ],
-    "_disable_comment": "curd_raita_logic picks curd-or-raita for the single curd_side slot; Rippling has two slots now (curd = curd only, curd_side = raita only). nonveg_main_daily_pair wants a dry + a chicken gravy whenever 2+ non-veg slots exist; Rippling's second dish is Wednesday-only and is chicken + egg, which rippling_wed_chicken_and_egg below states instead.",
+    "_disable_comment": "curd_raita_logic picks curd-or-raita for the single curd_side slot; Rippling has two slots (curd = curd only, curd_side = raita only). nonveg_main_daily_pair wants a dry + a chicken gravy whenever 2+ non-veg slots exist; Rippling's rows are chicken daily and egg on Wednesday, which the rules below state instead.",
     "rules": [
       {
-        "_comment": "The second non-veg dish exists on Wednesday only; every other day serves one non-veg main and __2 stays blank.",
+        "_comment": "'North veg dry and south veg dry irrespective of the theme' (owner, 16 Nov). Bangalore's theme_cuisine_filter verbatim, plus veg_dry in exempt_slots: on Friday (north) the south row otherwise had only north dishes to choose from and quietly took one. The two row rules below keep row 1 north and row 2 south on every day.",
+        "name": "theme_cuisine_filter",
+        "type": "theme_slot_filter",
+        "exempt_slots": [
+          "welcome_drink",
+          "dal",
+          "sambar",
+          "rasam",
+          "starter",
+          "soup",
+          "salad",
+          "healthy_rice",
+          "veg_dry"
+        ],
+        "slot_pool_by_theme": {
+          "chinese": {
+            "soup": {
+              "cuisine_family": "chinese"
+            },
+            "salad": {
+              "cuisine_family": "chinese"
+            },
+            "bread": {
+              "flag": "is_plain_phulka_chapathi"
+            }
+          }
+        }
+      },
+      {
+        "_comment": "The second non-veg row exists on Wednesday only; every other day it stays blank.",
         "name": "rippling_second_nonveg_wed_only",
         "type": "slot_day_restriction",
         "base_slot": "nonveg_main",
-        "slot_indices": [2],
-        "allowed_weekdays": ["wed"]
+        "slot_indices": [
+          2
+        ],
+        "allowed_weekdays": [
+          "wed"
+        ]
       },
       {
-        "_comment": "Wednesday: one chicken and one egg dish (components are >=, and two cells make that exactly one each).",
-        "name": "rippling_wed_chicken_and_egg",
+        "_comment": "Row 'NonVeg Main (Chicken)': the first non-veg cell is a chicken dish every day.",
+        "name": "rippling_chicken_first_row",
         "type": "slot_composition",
         "base_slot": "nonveg_main",
-        "min_slot_count": 2,
-        "components_by_weekday": {
-          "wed": [
-            {"selector": {"primary_protein": "chicken"}, "count": 1},
-            {"selector": {"flag": "is_egg_dish"}, "count": 1}
-          ]
-        }
+        "slot_indices": [
+          1
+        ],
+        "components": [
+          {
+            "selector": {
+              "primary_protein": "chicken"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Row 'NonVeg Main (Egg)': the second non-veg cell, which only Wednesday has, is an egg dish.",
+        "name": "rippling_egg_second_row",
+        "type": "slot_composition",
+        "base_slot": "nonveg_main",
+        "slot_indices": [
+          2
+        ],
+        "components": [
+          {
+            "selector": {
+              "flag": "is_egg_dish"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Row 'North Veg Dry' is the first veg dry cell. The city rule veg_dry_north_south_pair only asks for one of each per DAY, in either cell; the rows are labelled, so each cell is bound.",
+        "name": "rippling_north_veg_dry_first_row",
+        "type": "slot_composition",
+        "base_slot": "veg_dry",
+        "slot_indices": [
+          1
+        ],
+        "components": [
+          {
+            "selector": {
+              "cuisine_family": "north_indian"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Row 'South Veg Dry' is the second veg dry cell.",
+        "name": "rippling_south_veg_dry_second_row",
+        "type": "slot_composition",
+        "base_slot": "veg_dry",
+        "slot_indices": [
+          2
+        ],
+        "components": [
+          {
+            "selector": {
+              "cuisine_family": "south_indian"
+            },
+            "count": 1
+          }
+        ]
       },
       {
         "_comment": "curd_side is the RAITA slot: a one-slot composition IS 'this slot must be a raita' (repo_map note 20). The plain-curd station is the separate `curd` slot, whose pool is already plain curd only.",
@@ -35,20 +123,121 @@
         "base_slot": "curd_side",
         "min_slot_count": 1,
         "components": [
-          {"selector": {"flag": "is_raita"}, "count": 1}
+          {
+            "selector": {
+              "flag": "is_raita"
+            },
+            "count": 1
+          }
         ]
       },
       {
-        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the 20-day cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC).",
+        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC).",
         "name": "rippling_plain_chapati_repeatable",
         "type": "repeatable_items",
         "base_slot": "bread",
-        "selector": {"sub_category": "plain_chapatti/phulka"}
+        "selector": {
+          "sub_category": "plain_chapatti/phulka"
+        }
+      },
+      {
+        "_comment": "T3: 'Cut fruits or any fruit alone can not come in menu.' fresh_fruit is exactly the 11 fruit-alone desserts (cut fruit, papaya/watermelon cuts, whole banana, orange, seasonal fruit); fruit custard, fruit kesari and banana halwa sit in other sub-categories and stay.",
+        "name": "rippling_no_fruit_alone_dessert",
+        "type": "selector_frequency",
+        "base_slot": "dessert",
+        "selector": {
+          "sub_category": "fresh_fruit"
+        },
+        "max": 0
       }
     ],
+    "combo_by_theme": {
+      "sambar_rasam": {
+        "biryani": "rasam"
+      }
+    },
+    "_combo_by_theme_comment": "Sambar / Rasam is one row (the sambar_rasam combination: rasam three days, sambar two). The biryani day is always rasam, wherever it falls in the plan.",
     "constant_items": {
-      "_comment": "bread__1 = plain chapati daily; bread__2 is solved from the pool. Pinning one expansion leaves the other free, the same shape as Plan View's nonveg_main__2.",
+      "_comment": "bread__1 = plain chapati daily; bread__2 is solved from the pool.",
       "bread__1": "plain chapati"
+    },
+    "constant_items_by_meal": {
+      "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week.",
+      "lunch": {
+        "salad": {
+          "monday": "Lettuce, cherry tomato, pink carrot, carrot, sauteed babycorn, roasted beetroot, boiled peanuts, millets, pesto chicken",
+          "tuesday": "Shredded cabbage, cherry tomato, cucumber, boiled green peas, roasted pumpkin, boiled chickpeas, broken wheat, tandoori soya, onions",
+          "wednesday": "Cut cucumber, carrot, red cabbage, babycorn, boiled sweet corn, roasted parsnip, boiled black-eyed peas, barley, paneer",
+          "thursday": "Lettuce, cherry tomato, sliced radish, onions, sauteed beetroot, grilled zucchini, kidney beans, broken wheat, boiled eggs",
+          "friday": "Shredded cabbage, bell pepper juliennes, green spring onion, cucumber, blanched carrot juliennes, boiled mushrooms, grilled cottage cheese, moong sprouts, sweet potato"
+        },
+        "chutney": {
+          "monday": "Jalapeno, ranch dressing, honey mustard",
+          "tuesday": "Green olives, garlic yogurt dressing, mint chutney mayo",
+          "wednesday": "Gherkins, apple vinegar, basil mayo",
+          "thursday": "Flax seeds, pesto vinegar, ranch",
+          "friday": "Sunflower seeds, peanut and sesame sauce, sweet chilli sauce"
+        }
+      },
+      "dinner": {
+        "salad": {
+          "monday": "Lettuce, cherry tomato, carrot, onions, sauteed babycorn, roasted beetroot, grilled zucchini, boiled peanuts, millet, pesto chicken",
+          "tuesday": "Shredded cabbage, cherry tomato, cucumber, onions, boiled green peas, boiled chickpeas, broken wheat, tandoori soya",
+          "wednesday": "Cut cucumber, carrot, sliced radish, onions, boiled sweet corn, roasted pumpkin, peri peri roasted bell peppers, boiled black-eyed peas, barley, boiled egg",
+          "thursday": "Lettuce, cherry tomato, carrot, onions, roasted beetroot, sauteed babycorn, grilled zucchini, kidney beans, broken wheat, paneer",
+          "friday": "Shredded cabbage, bell pepper juliennes, green spring onion, cucumber, blanched carrot juliennes, boiled mushrooms, grilled cottage cheese, moong sprouts, boiled egg"
+        },
+        "chutney": {
+          "monday": "Jalapeno, ranch dressing, honey mustard",
+          "tuesday": "Green olives, garlic yogurt dressing, mint chutney mayo",
+          "wednesday": "Gherkins, apple vinegar, basil mayo",
+          "thursday": "Flax seeds, pesto vinegar, ranch",
+          "friday": "Roasted peanuts, peanut and sesame sauce, sweet chilli sauce"
+        }
+      }
+    },
+    "display": {
+      "_comment": "T2: the row order and names from the requirement sheet; T4: a veg / non-veg marker on every dish; T5: when each dish was last served (not white rice or pinned items). Shown on screen and in the Excel export, for Rippling only.",
+      "order": [
+        "welcome_drink",
+        "salad",
+        "chutney",
+        "soup",
+        "bread",
+        "rice",
+        "white_rice",
+        "veg_dry__1",
+        "veg_dry__2",
+        "veg_gravy",
+        "dal",
+        "sambar_rasam",
+        "curd",
+        "curd_side",
+        "nonveg_main__1",
+        "nonveg_main__2",
+        "dessert"
+      ],
+      "labels": {
+        "welcome_drink": "Welcome Drink",
+        "salad": "Make Your Own Salad",
+        "chutney": "Dressing",
+        "soup": "Soup",
+        "bread": "Indian Bread",
+        "rice": "Flavoured Rice",
+        "white_rice": "Steamed Rice",
+        "veg_dry__1": "North Veg Dry",
+        "veg_dry__2": "South Veg Dry",
+        "veg_gravy": "Vegetable Gravy",
+        "dal": "Lentils",
+        "sambar_rasam": "Sambar / Rasam",
+        "curd": "Curd",
+        "curd_side": "Raitha",
+        "nonveg_main__1": "NonVeg Main (Chicken)",
+        "nonveg_main__2": "NonVeg Main (Egg)",
+        "dessert": "Dessert"
+      },
+      "veg_markers": true,
+      "last_served": true
     }
   }
 }

@@ -26,7 +26,9 @@ from typing import List, Optional
 
 import streamlit.components.v1 as components
 
-from ui.formatters import display_label_for_slot_id, format_item_for_ui
+from ui.formatters import (
+    display_label_for_slot_id, format_item_for_ui, slot_sort_key,
+)
 from ui.theme_tokens import ITEM_COLOR_MAP, ITEM_DOT_COLOR
 
 _DIR = Path(__file__).parent / "menu_table"
@@ -242,14 +244,22 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
               regions: Optional[dict] = None,
               regional_dishes: Optional[dict] = None,
               issues: Optional[set] = None,
-              shared: Optional[set] = None) -> dict:
+              shared: Optional[set] = None,
+              display: Optional[dict] = None,
+              last_served: Optional[dict] = None) -> dict:
     """Shape a plan block into the component's arguments.
 
     Pure: takes plain data, returns plain data, touches no Streamlit. The
     membership sets are keyed `"<slot_id>|<iso date>"`, the same key the
     component sends back, so a caller never has to build two spellings of the
     same cell.
+
+    *display* is the client's own layout (`MenuRuleLoader.get_client_display`):
+    row order and labels, and whether each dish carries a veg / non-veg
+    marker. *last_served* is `last_served_cells` output, shown under the dish.
+    Both empty for every client that has not asked for them.
     """
+    display, last_served = display or {}, last_served or {}
     nonveg, off_days = nonveg or {}, off_days or set()
     pinned, warned = pinned or set(), warned or set()
     modified, issues = modified or set(), issues or set()
@@ -286,6 +296,9 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
         for slot_id in (plan.get(iso) or {}):
             if slot_id not in slot_ids:
                 slot_ids.append(slot_id)
+    if display.get("order"):
+        slot_ids.sort(key=lambda s: slot_sort_key(s, display["order"]))
+    markers = bool(display.get("veg_markers"))
 
     rows = []
     for slot_id in slot_ids:
@@ -330,9 +343,15 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
                 "regional": _plain_name(raw) in regional_by_day.get(iso, ()),
                 "title": str(raw),
             }
+            if markers:
+                cells[iso]["marker"] = ("nonveg" if cells[iso]["nonveg"]
+                                        else "veg")
+            last = (last_served.get(iso) or {}).get(slot_id)
+            if last:
+                cells[iso]["last"] = last
         rows.append({
             "id": slot_id,
-            "label": display_label_for_slot_id(slot_id),
+            "label": display_label_for_slot_id(slot_id, display.get("labels")),
             "shared": slot_id.split("__")[0] in shared,
             "cells": cells,
         })
@@ -426,6 +445,8 @@ def menu_table(block: dict, *, title: str, meta: str = "", hint: str = "",
         regional_dishes=block.get("regional_dishes"),
         issues=block.get("issues"),
         shared=block.get("shared_categories"),
+        display=block.get("display"),
+        last_served=block.get("last_served"),
     )
     height = _CHROME_PX + _ROW_PX * (len(args["rows"]) + 1)
     return _component(

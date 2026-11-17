@@ -73,7 +73,7 @@ from src.client.client_config import (  # noqa: F401 — surfaced in editor-meta
     MAX_COUNTERS,
 )
 from src.history import (HistoryManager, normalize_meal, normalize_meals,
-                         DEFAULT_MEAL, DEFAULT_MEALS)
+                         DEFAULT_MEAL, DEFAULT_MEALS, MEALS)
 from src.menu_rules import MenuRuleLoader
 from src.menu_rules import (
     has_blocking_errors,
@@ -620,6 +620,7 @@ def plan_menu():
                 plan, span_dates(plan_dates, inputs),
                 theme_map=inputs.client_cfg.theme_map or None,
                 nonveg_items=nonveg_items,
+                known_items=ontology_repository.item_names(inputs.city),
                 served_dates=set(inputs.weekday_dates),
                 # Read at CALL time, not definition time — the closure runs
                 # after solve(), which is what fills it.
@@ -836,6 +837,7 @@ def regenerate_cells():
             week_plan, span_dates(plan_dates, inputs),
             theme_map=inputs.client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(inputs.city),
+            known_items=ontology_repository.item_names(inputs.city),
             served_dates=set(inputs.weekday_dates),
             pinned_cells=regen.pinned_cells,
         )
@@ -944,6 +946,7 @@ def pick_dish():
             applied['week_plan'], span_dates(inputs.weekday_dates, inputs),
             theme_map=inputs.client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(inputs.city),
+            known_items=ontology_repository.item_names(inputs.city),
             served_dates=set(inputs.weekday_dates),
             pinned_cells=pinned_cells_for_config(inputs.cfg, inputs.skip_cells),
             manual_cells=manual_pairs,
@@ -1037,15 +1040,18 @@ def _declared_constant_values(client_name):
 
     out = set()
     loader = MenuRuleLoader()
+    # Every session too: a `constant_items_by_meal` pin is just as legitimate
+    # an off-ontology value as a client-wide one.
     for counter in (None, *_counter_names(client_name)):
-        try:
-            pins = loader.get_client_constant_items(client_name, counter)
-        except Exception:  # noqa: BLE001 — a missing block is not an error here
-            continue
-        for slot, spec in (pins or {}).items():
-            if str(slot).startswith('_'):
+        for meal in (None, *MEALS):
+            try:
+                pins = loader.get_client_constant_items(client_name, counter, meal)
+            except Exception:  # noqa: BLE001 — a missing block is not an error here
                 continue
-            out.update(v.strip().lower() for v in literals(spec) if v)
+            for slot, spec in (pins or {}).items():
+                if str(slot).startswith('_'):
+                    continue
+                out.update(v.strip().lower() for v in literals(spec) if v)
     return out
 
 
@@ -1292,6 +1298,7 @@ def saved_plan():
             enriched, all_dates,
             theme_map=client_cfg.theme_map or None,
             nonveg_items=_get_nonveg_items(city),
+            known_items=ontology_repository.item_names(city),
             served_dates=set(weekday_dates),
             # No `pinned_cells`: a replayed plan is read back from history and
             # nothing solved it, so which cells were pinned AT THE TIME is not
