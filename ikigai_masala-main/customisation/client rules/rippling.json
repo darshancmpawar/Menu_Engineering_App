@@ -632,14 +632,7 @@
       "_comment": "T2: the row order and names from the requirement sheet; T4: a veg / non-veg marker on every dish; T5: when each dish was last served (not white rice or pinned items). Shown on screen and in the Excel export, for Rippling only.",
       "order": [
         "welcome_drink",
-        "fruit",
-        "side",
         "salad",
-        "breakfast_main",
-        "breakfast_chutney",
-        "condiment",
-        "sandwich",
-        "nonveg_sandwich",
         "chutney",
         "soup",
         "bread",
@@ -673,15 +666,34 @@
         "curd_side": "Raitha",
         "nonveg_main__1": "NonVeg Main (Chicken)",
         "nonveg_main__2": "NonVeg Main (Egg)",
-        "dessert": "Dessert",
-        "_breakfast": "Breakfast rows (only the breakfast session has them). The breakfast 'salad' row still reads 'Make Your Own Salad' until labels can differ by session.",
-        "fruit": "Fresh Fruits",
-        "side": "Eggs",
-        "breakfast_main": "Mains",
-        "breakfast_chutney": "Accompaniments",
-        "condiment": "Accompaniments 2",
-        "sandwich": "Sandwich",
-        "nonveg_sandwich": "Non-veg Sandwich"
+        "dessert": "Dessert"
+      },
+      "by_meal": {
+        "_comment": "Breakfast rows in the owner's breakfast sheet order and names (18 Nov). Labels here are laid over the client's, so the breakfast Salad row reads Veg Healthy while lunch keeps Make Your Own Salad.",
+        "breakfast": {
+          "order": [
+            "fruit",
+            "side",
+            "salad",
+            "nonveg_main",
+            "breakfast_main",
+            "accompaniment",
+            "condiment",
+            "sandwich",
+            "nonveg_sandwich"
+          ],
+          "labels": {
+            "fruit": "Fresh Fruits",
+            "side": "Eggs",
+            "salad": "Veg Healthy",
+            "nonveg_main": "Non Veg Main",
+            "breakfast_main": "Mains",
+            "accompaniment": "Accompaniments",
+            "condiment": "Condiment",
+            "sandwich": "Sandwich",
+            "nonveg_sandwich": "Non-veg Sandwich"
+          }
+        }
       }
     }
   }

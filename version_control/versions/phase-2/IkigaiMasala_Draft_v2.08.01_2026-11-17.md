@@ -302,6 +302,13 @@ not served. Four raitas join the breakfast list (boondi, onion, mixed veg,
 cucumber). Grill veggies and hummus veggies sandwiches were filed with protein
 "egg" and so counted as non-veg; they are veg now.
 
+**Breakfast rows in the sheet's order and names** (owner, 18 Nov): Fresh
+Fruits, Eggs, Veg Healthy, Non Veg Main, Mains, Accompaniments, Condiment,
+Sandwich, Non-veg Sandwich. The condiments row reads Condiment (was
+"Accompaniments 2") and the breakfast Salad row reads Veg Healthy while lunch
+keeps Make Your Own Salad: a client's display may now give one service its own
+order and names (`display.by_meal`).
+
 ## What this does not do
 
 - **The switches need one database change.** Until `features` is added to the
