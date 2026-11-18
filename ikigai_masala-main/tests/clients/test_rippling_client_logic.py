@@ -2,7 +2,7 @@
 
 Row by row, as the requirement sheet names them: north veg dry then south veg
 dry; non-veg chicken every day and an egg dish on Wednesday only; `curd`
-plain curd and `curd_side` raita; bread 1 plain chapati; Sambar / Rasam one
+plain curd and `curd_side` raita; bread 1 a chapati, bread 2 any other bread; Sambar / Rasam one
 row, rasam on the biryani day; no fruit-alone dessert; and the
 make-your-own salad and dressings pinned per weekday, different for lunch and
 dinner, with the salad marked non-veg on the days it carries chicken or egg.
@@ -101,7 +101,7 @@ def _solve(meal):
 def test_breakfast_rows_as_the_sheet_sets_them(breakfast, df, pins):
     """Breakfast sheet (17 Nov): Eggs fixed per weekday, Accompaniments 2 fixed
     daily, non-veg sandwich Thursday only and the veg sandwich every other day,
-    no lunch pin (plain chapati) leaking in, every other dish a breakfast one."""
+    no bread row from lunch leaking in, every other dish a breakfast one."""
     fixed = pins['breakfast']
     bf = set(df.loc[df['session'] == 'breakfast', 'item'])
     for wd, day in enumerate(d.get('items') or {} for d in breakfast.values()):
@@ -235,11 +235,20 @@ def test_veg_dry_stays_indian_on_the_chinese_day(df):
     assert (thursday['cuisine_family'] == 'south_indian').sum() > 100
 
 
-def test_bread_one_is_plain_chapati(plan, df):
+def test_bread_one_is_a_chapati_bread_two_is_not(plan, df):
+    """Owner, 18 Nov: bread 1 plain or flavoured chapati (no longer pinned),
+    bread 2 any other bread."""
     for day in _cells(plan[1], 'bread'):
         assert len(day) == 2
         assert _is(df, day['bread__1'], 'is_plain_phulka_chapathi'), day
-        assert day['bread__2'] != 'plain_chapati', day    # owner, 17 Nov
+        assert not _is(df, day['bread__2'], 'is_plain_phulka_chapathi'), day
+
+
+def test_a_dosa_when_none_was_served_in_ten_days(plan, df):
+    """No history, so the dosa is overdue: exactly one in the week (the
+    10-day cadence floor, and at most one a week)."""
+    dosas = [d['bread__2'] for d in _cells(plan[1], 'bread') if _is(df, d['bread__2'], 'is_dosa')]
+    assert len(dosas) == 1, dosas
 
 
 def test_no_fruit_alone_dessert(plan, df):

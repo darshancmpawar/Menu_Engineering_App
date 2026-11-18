@@ -185,8 +185,7 @@ class TestRegenerateWiring:
             'client_name': 'Rippling',
             'start_date': '2026-03-23',
             'num_days': 1,
-            # Not `bread`: Rippling pins its first bread to plain chapati
-            # (2.08.00), and a pinned cell is refused before any metric.
+            # A plain solved slot: a pinned cell is refused before any metric.
             'base_plan': {'2026-03-23': {'rice': 'jeera_rice(Y)'}},
             'replace_slots': {'2026-03-23': ['rice']},
         }, headers=auth_headers)
