@@ -34,7 +34,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from src.constants import CONST_SLOTS, SNACKS_NOT_READY
+from src.constants import CONST_SLOTS, REGIONAL_MEALS, SNACKS_NOT_READY
 from src.history import SNACKS, normalize_meal
 from src.log_names import APP_LOGGER_NAME
 from src.menu_rules.diagnostics import (
@@ -385,6 +385,10 @@ def _apply_region_days(rules, data, dates, client_cfg, city, row):
         normalize_region_map, region_rule_configs, resolve_region_days,
     )
 
+    # Regional days are a lunch and dinner idea for now (owner, 18 Nov): a
+    # breakfast or snacks plan ignores both the picks and the standing pattern.
+    if normalize_meal((data or {}).get('meal')) not in REGIONAL_MEALS:
+        return rules, {}, []
     requested = data.get('region_days') if isinstance(data, dict) else None
     stored = (row or {}).get('region_map') if hasattr(row, 'get') else None
     if not requested and not stored:

@@ -78,7 +78,7 @@ from src.menu_rules.menu_rule_loader import MenuRuleLoader
 # the API payloads and the history key cannot drift apart.
 from src.history import (DEFAULT_MEALS, LUNCH, MEALS, SNACKS,
                          normalize_meals)
-from src.constants import SNACKS_NOT_READY
+from src.constants import REGIONAL_MEALS, SNACKS_NOT_READY
 from src.client.client_config import counter_serves, normalize_features
 from ui.planner_view import (
     date_label,
@@ -1622,7 +1622,9 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
         mask = {d: sorted(set(plan[d]) - set(pinned.get(d, ())))
                 for d in changed_dates if plan.get(d)}
         mask = {d: slots for d, slots in mask.items() if slots}
-        if not mask:
+        # Breakfast and snacks take no regional day (owner, 18 Nov): re-solving
+        # them here would only reshuffle the day for nothing.
+        if not mask or (b.get("meal") or LUNCH) not in REGIONAL_MEALS:
             continue
         try:
             result = api.regenerate(
