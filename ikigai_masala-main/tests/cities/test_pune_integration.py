@@ -273,7 +273,9 @@ class TestStreamlitLayerRendersAPuneMenu:
         sunday = solution['2026-08-09']['items']
         raita = sunday['curd_side']['item']
         assert strip_color_suffix(raita) != raita, raita
-        assert sunday['papad']['item'] == 'Papad'   # a constant, no suffix
+        # Papad is solved too since 2.08.01 (owner, 18 Nov), not stamped.
+        assert sunday['papad']['item_base'] != 'Papad'
+        assert not sunday['papad']['is_pinned']
 
     def test_excel_export_builds(self, solution):
         import sys

@@ -59,7 +59,7 @@ def _enrich_history_plan(
     ``{date: {slot: item_with_color}}`` (UI shape) by looking up each
     item's color in the loaded Excel *df* and appending ``(C)``.
 
-    Constant slots (white_rice, papad, pickle, chutney) round-trip as-is
+    Constant slots (white_rice, pickle, chutney) round-trip as-is
     since they never carried a color suffix in the first place. Items
     that no longer exist in the ontology fall through without a suffix
     — the UI handles missing-color gracefully (no color pill).

@@ -42,6 +42,11 @@ CITIES = ['Bangalore', 'Hyderabad', 'Chennai', 'Pune', 'NCR']
 #: dishes before uniqueness forces a repeat.
 DAYS = 5
 
+#: Short pools the owner accepts (18 Nov): Chennai has four papads, so a
+#: Chennai week serves one papad twice. The planner relaxes uniqueness for it
+#: and reports that, rather than failing.
+ACCEPTED_SHORT = {('Chennai', 'papad')}
+
 
 def _counters():
     for row in CLIENTS:
@@ -105,7 +110,7 @@ def test_no_counter_is_configured_for_a_slot_its_pool_cannot_fill():
                 continue
             have = len(pools.get(base, ()))
             need = DAYS * int(counts.get(base, 1) or 1)
-            if have < need:
+            if have < need and (city, base) not in ACCEPTED_SHORT:
                 bad.append(
                     f'{row["name"]} / {counter.get("name")} ({city}): '
                     f'{base} has {have} dishes, needs {need}')

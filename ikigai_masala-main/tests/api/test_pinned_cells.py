@@ -165,13 +165,13 @@ def test_it_needs_no_solver_and_no_database():
     friday = dates[4]
     out = pinned_cells_for_horizon(
         dates, ['rice', 'veg_gravy', 'bread'],
-        const_slots=['papad'],
+        const_slots=['pickle'],
         skip_cells={(dates[1], 'bread')},
         forced_items={(dates[0], 'rice'): 'jeera_rice',
                       (dates[1], 'bread'): 'plain_chapati'},
         client_constant_items={'curd_side': {'friday': 'raita'}},
     )
-    assert (dates[0], 'papad') in out, 'a global staple is pinned'
+    assert (dates[0], 'pickle') in out, 'a global staple is pinned'
     assert (dates[0], 'rice') in out, 'a forced pin on a solved slot is pinned'
     assert (dates[1], 'bread') not in out, (
         'a forced pin on a SKIPPED cell is not pinned: there is no cell to '

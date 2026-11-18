@@ -267,7 +267,7 @@ class SolverConfig:
     time_limit_sec: int = 240
     slot_counts: Optional[Dict[str, int]] = None
     active_base_slots: Optional[List[str]] = None
-    # Constant items (white_rice / papad / pickle / chutney) to append to every
+    # Constant items (white_rice / pickle / chutney) to append to every
     # day. ``None`` means "all of them" (legacy behaviour); an explicit list
     # (possibly empty) is the per-client selection.
     const_slots: Optional[List[str]] = None
@@ -1581,7 +1581,7 @@ class MenuSolver:
             #
             # Constant slots are stamped, not solved, so they have no cell for
             # ``skip_cells`` to suppress — a ``slot_day_restriction`` on
-            # white_rice/papad/pickle/chutney used to be a silent no-op and the
+            # white_rice/pickle/chutney used to be a silent no-op and the
             # staple appeared every day anyway. Honour skip_cells here so a day
             # restriction (or a whole-slot client constant) can genuinely remove
             # a constant slot from a given day.

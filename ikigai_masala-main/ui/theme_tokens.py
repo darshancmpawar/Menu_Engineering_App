@@ -89,6 +89,7 @@ ITEM_COLOR_MAP = {
     "W": ("White",  "#F0F0F0",   "#555555"),
     "O": ("Orange", TINT_ORANGE, "#C56A00"),
     "K": ("Black",  "#E8E8E8",   "#333333"),
+    "P": ("Pink",   "#FCE4EC",   "#C2185B"),   # guava and rose drinks (18 Nov)
 }
 
 # The dot in a menu cell is a SWATCH, not text, so it wants the colour itself
