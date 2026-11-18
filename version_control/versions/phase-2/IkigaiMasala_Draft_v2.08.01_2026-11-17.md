@@ -295,7 +295,8 @@ of Breakfast Chutney. A new rule type, `pairing`, fills it to suit the main,
 one dish or two: idli, dosa, upma and pongal take a chutney and a sambar (dosa
 may take saagu); poori takes chole or saagu alone, bature and kulcha chole
 alone; idiyappam a curry and coconut milk; paratha and thepla curd, raita or
-kadhi and a pickle. When the main takes one, the second cell stays blank. A
+kadhi and a pickle. When the main takes one, the second cell stays blank; a blank
+cell is allowed only here, in breakfast's Accompaniments row (owner). A
 main the table has no pair for (poha, pancakes, a vada alone, kesari bath) is
 not served. Four raitas join the breakfast list (boondi, onion, mixed veg,
 cucumber). Grill veggies and hummus veggies sandwiches were filed with protein

@@ -27,6 +27,7 @@ from ._helpers import (
 )
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
+    BLANK_ALLOWED_SLOTS,
     canonical_weekday,
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
@@ -1195,7 +1196,8 @@ class MenuSolver:
             fn = getattr(rule, 'optional_slot_ids', None)
             if callable(fn):
                 out |= set(fn() or ())
-        return out
+        # Only the breakfast Accompaniments row may be blank (owner, 18 Nov).
+        return {s for s in out if _base_slot(s) in BLANK_ALLOWED_SLOTS}
 
     def _build_context(
         self, cells, dates, day_types,

@@ -11,7 +11,8 @@ from ortools.sat.python import cp_model
 from src.menu_rules.pairing_rule import PairingRule
 
 RULE = PairingRule({
-    'name': 'p', 'type': 'pairing', 'when_slot': 'breakfast_main', 'then_slot': 'accompaniment',
+    'name': 'p', 'type': 'pairing', 'meals': ['breakfast'],
+    'when_slot': 'breakfast_main', 'then_slot': 'accompaniment',
     'pairs': [
         {'when': {'name_contains': 'poori'}, 'then': [{'name_contains': 'chole'}, None]},
         {'when': {'sub_category': 'idly'}, 'then': [{'sub_category': 'chutney'}, {'sub_category': 'sambar'}]},
@@ -61,3 +62,21 @@ def test_a_selector_that_does_not_parse_is_refused_not_read_as_blank():
     bad = PairingRule({'name': 'b', 'type': 'pairing', 'when_slot': 'a', 'then_slot': 'b',
                        'pairs': [{'when': {'sub_category': 'idly'}, 'then': [{'nonsense': 1}]}]})
     assert not bad.validate_config()
+
+
+def _rule(then_slot, meals, then2):
+    return PairingRule({'name': 'r', 'type': 'pairing', 'meals': meals, 'when_slot': 'breakfast_main',
+                        'then_slot': then_slot,
+                        'pairs': [{'when': {'sub_category': 'idly'}, 'then': [{'sub_category': 'chutney'}, then2]}]})
+
+
+@pytest.mark.parametrize('then_slot, meals', [('bread', ['breakfast']), ('accompaniment', None),
+                                              ('accompaniment', ['breakfast', 'lunch']), ('accompaniment', ['lunch'])])
+def test_blank_only_in_breakfast_accompaniments(then_slot, meals):
+    """Owner, 18 Nov: a cell may be blank only in breakfast's Accompaniments row."""
+    r = _rule(then_slot, meals, None)
+    assert not r.validate_config() and r.optional_slot_ids() == set()
+
+
+def test_a_pairing_with_no_blank_works_on_any_row():
+    assert _rule('bread', None, {'sub_category': 'sambar'}).validate_config()

@@ -125,6 +125,10 @@ BREAKFAST_SLOTS: Set[str] = set(BREAKFAST_ONLY_SLOTS) | {
 SNACKS_NOT_READY = "Snacks menu bank and solver in development."
 # The services a regional day applies to (owner, 18 Nov): not breakfast or snacks.
 REGIONAL_MEALS = frozenset({'lunch', 'dinner'})
+# The only row a rule may leave blank on some days, and only at breakfast
+# (owner, 18 Nov): Accompaniments holds one dish or two, as the main asks.
+BLANK_ALLOWED_SLOTS = frozenset({'accompaniment'})
+BLANK_ALLOWED_MEAL = 'breakfast'
 
 # Add-on features, switched per client in the editor (`clients.features`).
 # Every one is OFF until switched on for a client (owner, 2026-11-17); a
