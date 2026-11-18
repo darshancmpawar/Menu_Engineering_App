@@ -152,6 +152,17 @@ def test_kootu_is_a_veg_dry_never_a_lentil_and_at_most_once(plan, df):
     assert len(in_veg_dry) <= 1, in_veg_dry
 
 
+def test_a_drink_base_once_a_week_buttermilk_aside(plan, df):
+    """Owner, 18 Nov: Orange Cooler then Orange Punch (both orange_citrus) on
+    back-to-back days. Bangalore's `welcome_drink_base_once_a_week`."""
+    drinks = [i for day in _cells(plan[1], 'welcome_drink') for i in day.values()]
+    styles = [str(_row(df, i).get('item_style')) for i in drinks]
+    others = [s for s in styles if s != 'buttermilk']
+    assert len(others) == len(set(others)), styles
+    # The buttermilk rule counts the flag (ragi ambli carries it too).
+    assert sum(bool(_is(df, i, 'is_buttermilk')) for i in drinks) == 2, drinks
+
+
 def test_kootu_pool_moves_from_lentils_to_veg_dry():
     from src.application.solve_inputs import _apply_slot_pool_moves
     from src.menu_rules.menu_rule_loader import MenuRuleLoader
