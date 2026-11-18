@@ -31,12 +31,13 @@ RIPPLING = {
         'name': 'Counter 1', 'meals': ['breakfast'],
         'theme_map': {d: 'mix' for d in
                       ('monday', 'tuesday', 'wednesday', 'thursday', 'friday')},
-        # Owner's settings, 18 Nov: Veg Healthy on Salad, a Non Veg main row, 3 fruits.
+        # Owner's settings, 18 Nov: Veg Healthy on Salad, a Non Veg main row, 3
+        # fruits, and one Accompaniments row of two in place of Breakfast Chutney.
         'categories': ['breakfast_main', 'fruit', 'nonveg_sandwich', 'sandwich',
-                       'side', 'salad', 'breakfast_chutney', 'condiment', 'nonveg_main'],
+                       'side', 'salad', 'accompaniment', 'condiment', 'nonveg_main'],
         'slot_counts': {'side': 1, 'fruit': 3, 'salad': 1, 'sandwich': 1,
                         'condiment': 1, 'breakfast_main': 1, 'nonveg_main': 1,
-                        'nonveg_sandwich': 1, 'breakfast_chutney': 1},
+                        'nonveg_sandwich': 1, 'accompaniment': 2},
     }, {
         'name': 'Counter 1', 'meals': ['lunch', 'dinner'],
         'theme_map': {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'biryani',
@@ -131,6 +132,32 @@ def test_breakfast_rows_as_the_sheet_sets_them(breakfast, df, pins):
         solved = {v for s, v in dishes.items() if s not in ('side', 'condiment')}
         assert solved <= set(bfd.index), solved - set(bfd.index)
     assert len(set(kinds)) == 5 and 'vada' not in kinds, kinds
+
+
+def test_breakfast_accompaniments_follow_the_main(breakfast, df):
+    """Owner, 18 Nov: one Accompaniments row of two, filled to suit the main.
+    Idli, dosa, upma, pongal: a chutney and a sambar (dosa may take saagu);
+    poori: chole or saagu alone; bature and kulcha: chole alone; idiyappam: a
+    curry and coconut milk; paratha: curd, raita or kadhi and a pickle."""
+    bfd = df[df['session'] == 'breakfast'].set_index('item')
+    for d in breakfast.values():
+        dishes = {s: c['item_base'] for s, c in (d.get('items') or {}).items()}
+        main, a1, a2 = dishes['breakfast_main'], dishes['accompaniment__1'], dishes.get('accompaniment__2')
+        kind, sub1 = bfd.loc[main, 'sub_category'], bfd.loc[a1, 'sub_category']
+        sub2 = bfd.loc[a2, 'sub_category'] if a2 else None
+        if any(w in main for w in ('bature', 'bhatura', 'kulcha')):
+            assert 'chole' in a1 and a2 is None, dishes
+        elif 'poori' in main or 'luchi' in main:
+            assert ('chole' in a1 or 'saagu' in a1) and a2 is None, dishes
+        elif kind in ('idly', 'upma', 'pongal'):
+            assert (sub1, sub2) == ('chutney', 'sambar'), dishes
+        elif kind == 'dosa':
+            assert sub1 == 'chutney' and (sub2 == 'sambar' or 'saagu' in a2), dishes
+        elif kind == 'idiyappam':
+            assert any(w in a1 for w in ('kadala', 'kurma', 'korma')) and a2 == 'coconut_milk', dishes
+        else:
+            assert kind == 'paratha', dishes
+            assert any(w in a1 for w in ('curd', 'raita', 'kadhi')) and 'pickle' in a2, dishes
 
 
 def test_rules_naming_a_service_bind_only_that_service():

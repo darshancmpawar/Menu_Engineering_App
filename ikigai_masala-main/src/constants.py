@@ -101,7 +101,7 @@ BASE_SLOT_NAMES: List[str] = [
     # the fixed text "Papad".
     'papad',
     # breakfast only (BREAKFAST_ONLY_SLOTS)
-    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
+    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'accompaniment', 'sandwich',
     'snack', 'fruit', 'condiment',
     # non-veg last
     'nonveg_main', 'nonveg_sandwich',
@@ -113,8 +113,10 @@ CONST_SLOTS: List[str] = ['white_rice', 'pickle', 'chutney']
 # rows exist only at breakfast; the config editor offers a breakfast service
 # BREAKFAST_SLOTS and nothing else, and every other service everything else.
 # `breakfast_chutney` is a chosen dish, unlike the fixed-text `chutney`.
+# `accompaniment` is the whole accompaniment list in one row (chutney, sambar,
+# curry, curd, pickle); a `pairing` rule picks one or two to suit the main.
 BREAKFAST_ONLY_SLOTS: List[str] = [
-    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
+    'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'accompaniment', 'sandwich',
     'nonveg_sandwich', 'snack', 'fruit', 'condiment',
 ]
 BREAKFAST_SLOTS: Set[str] = set(BREAKFAST_ONLY_SLOTS) | {
@@ -154,7 +156,7 @@ DEFAULT_ITEM_COOLDOWN_DAYS: int = 21
 # other veg categories → non-veg last. `slot_sort_key` and the slot editor both
 # rank by this list, so config order and display order always match.
 DISPLAY_SLOT_ORDER: List[str] = [
-    'welcome_drink', 'beverage', 'breakfast_main', 'side', 'breakfast_chutney',
+    'welcome_drink', 'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'accompaniment',
     'infused_water', 'soup', 'nonveg_soup', 'salad', 'sandwich', 'snack', 'fruit',
     'bread', 'rice', 'white_rice',
     'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
@@ -222,7 +224,7 @@ COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     # unique_items, so they still vary within the week.
     'infused_water', 'nonveg_soup',
     # Breakfast's small rows (6-15 dishes each), same argument.
-    'condiment', 'side', 'fruit', 'snack', 'breakfast_chutney',
+    'condiment', 'side', 'fruit', 'snack', 'breakfast_chutney', 'accompaniment',
     # 4-14 papads a city: no repeat within the week, least recent first after.
     'papad',
 }
@@ -458,6 +460,7 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'breakfast_main': 'Breakfast Main',
     'side': 'Side',
     'breakfast_chutney': 'Chutney',
+    'accompaniment': 'Accompaniments',
     'sandwich': 'Sandwich',
     'nonveg_sandwich': 'Non-veg Sandwich',
     'snack': 'Snack',

@@ -414,17 +414,141 @@
         "max_per_group": 1
       },
       {
-        "_comment": "Breakfast: a vada or pakoda only ever comes beside an idli or pongal, never as the main.",
-        "name": "rippling_breakfast_no_vada_main",
-        "type": "selector_frequency",
+        "_comment": "Breakfast: the Accompaniments row (two cells) follows the main, one or two dishes (owner, 18 Nov). First matching pair wins; a main with no pair (poha, pancakes, vada alone, kesari bath ...) is not served. Bature and kulcha: chole only; poori: chole or saagu (owner). Idli, dosa, upma/savige, pongal: chutney + sambar (dosa may take saagu, as on 3 Nov). Idiyappam: kadala curry or korma + coconut milk. Paratha/thepla: curd, raita or kadhi + pickle.",
+        "name": "rippling_breakfast_accompaniments_follow_the_main",
+        "type": "pairing",
         "meals": [
           "breakfast"
         ],
-        "base_slot": "breakfast_main",
-        "selector": {
-          "sub_category": "vada"
-        },
-        "max": 0
+        "when_slot": "breakfast_main",
+        "then_slot": "accompaniment",
+        "pairs": [
+          {
+            "when": {
+              "name_contains": [
+                "bature",
+                "bhatura",
+                "kulcha"
+              ]
+            },
+            "then": [
+              {
+                "name_contains": "chole"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "name_contains": [
+                "poori",
+                "luchi"
+              ]
+            },
+            "then": [
+              {
+                "name_contains": [
+                  "chole",
+                  "saagu"
+                ]
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "idly"
+            },
+            "then": [
+              {
+                "sub_category": "chutney"
+              },
+              {
+                "sub_category": "sambar"
+              }
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "dosa"
+            },
+            "then": [
+              {
+                "sub_category": "chutney"
+              },
+              {
+                "any_of": [
+                  {
+                    "sub_category": "sambar"
+                  },
+                  {
+                    "name_contains": "saagu"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "upma"
+            },
+            "then": [
+              {
+                "sub_category": "chutney"
+              },
+              {
+                "sub_category": "sambar"
+              }
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "pongal"
+            },
+            "then": [
+              {
+                "sub_category": "chutney"
+              },
+              {
+                "sub_category": "sambar"
+              }
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "idiyappam"
+            },
+            "then": [
+              {
+                "name_contains": [
+                  "kadala",
+                  "kurma",
+                  "korma"
+                ]
+              },
+              {
+                "item": "coconut_milk"
+              }
+            ]
+          },
+          {
+            "when": {
+              "sub_category": "paratha"
+            },
+            "then": [
+              {
+                "name_contains": [
+                  "curd",
+                  "raita",
+                  "kadhi"
+                ]
+              },
+              {
+                "name_contains": "pickle"
+              }
+            ]
+          }
+        ]
       },
       {
         "_comment": "Breakfast: each Fruit cell is one fruit; 'seasonal mix fruit bowl (3 varieties)' is the three cells together, not one of them.",

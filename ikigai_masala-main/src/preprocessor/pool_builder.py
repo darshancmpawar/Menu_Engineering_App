@@ -136,6 +136,10 @@ class PoolBuilder:
         # Simple 1:1 course_type -> slot mappings
         for slot, course_types in _SIMPLE_MAPPING.items():
             pools[slot] = df[df['course_type'].isin(course_types)].copy()
+        # Breakfast Accompaniments: the whole accompaniment category in one row
+        # (chutney, sambar, curry, curd, pickle); a pairing rule picks which.
+        pools['accompaniment'] = (df[df['category'] == 'accompaniment'].copy()
+                                  if 'category' in df.columns else df.iloc[0:0].copy())
 
         # Special handling: sambar/rasam split
         is_rasam_text = df['item'].str.contains('rasam', na=False)

@@ -86,6 +86,7 @@ from .slot_day_restriction_rule import SlotDayRestrictionRule
 from .fixed_daily_item_rule import FixedDailyItemRule
 from .repeatable_items_rule import RepeatableItemsRule
 from .same_day_exclusion_rule import SameDayExclusionRule
+from .pairing_rule import PairingRule
 from .welcome_drink_buttermilk_rule import WelcomeDrinkButtermilkRule
 
 
@@ -147,6 +148,7 @@ class MenuRuleLoader:
         'fixed_daily_item': FixedDailyItemRule,
         'repeatable_items': RepeatableItemsRule,
         'same_day_exclusion': SameDayExclusionRule,
+        'pairing': PairingRule,
     }
 
     def __init__(self, config_path: Optional[str] = None):
