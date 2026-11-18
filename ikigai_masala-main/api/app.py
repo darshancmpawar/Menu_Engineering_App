@@ -64,7 +64,7 @@ from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, DEFAULT_OFF_SLOTS,
 )
 from src.client import ClientConfigLoader
-from src.client.client_config import normalize_city, normalize_features
+from src.client.client_config import counter_serves, normalize_city, normalize_features
 from src.client.client_config import (  # noqa: F401 — surfaced in editor-metadata response
     DEFAULT_THEME_MAP,
     AVAILABLE_THEMES,
@@ -1512,7 +1512,14 @@ def get_client_config(client_name):
         # (active_base_slots / slot_counts / theme_map).
         row = _client_row(client_name)
         counters = row['counters']
-        counter_mode = 'multi' if len(counters) > 1 else 'single'
+        # Multi means more than one counter IN A SERVICE. One counter saved
+        # once per service (Rippling: breakfast, lunch, dinner) is single; read
+        # as multi it saved history in the per-counter shape under three
+        # copies of the same counter name.
+        per_service = max(
+            (sum(counter_serves(c, m) for c in counters)
+             for m in (row.get('meals') or DEFAULT_MEALS)), default=len(counters))
+        counter_mode = 'multi' if per_service > 1 else 'single'
         version = row['version']
         primary = counters[0]
         response = jsonify({

@@ -79,7 +79,7 @@ from src.menu_rules.menu_rule_loader import MenuRuleLoader
 from src.history import (DEFAULT_MEALS, LUNCH, MEALS, SNACKS,
                          normalize_meals)
 from src.constants import SNACKS_NOT_READY
-from src.client.client_config import normalize_features
+from src.client.client_config import counter_serves, normalize_features
 from ui.planner_view import (
     date_label,
     flatten_result,
@@ -1399,14 +1399,22 @@ def _client_counter_names(api, name: str):
     try:
         cfg = api.get_client_config(name)
         counters = cfg.get("counters") or []
-        names = [(c.get("name") or f"Counter {i + 1}")
-                 for i, c in enumerate(counters)] or ["Counter 1"]
-        return (cfg.get("counter_mode", "single"), names, cfg.get("city"),
+
+        # Per SERVICE: a counter tagged for breakfast is not a lunch counter.
+        # Counting every tagged copy made Rippling (one counter, three
+        # services) three counters per service. Same filter, and same
+        # fall-back, as the API's `_counters_list`, so indexes agree.
+        def names(meal):
+            serving = [c for c in counters if counter_serves(c, meal)] or counters
+            return [(c.get("name") or f"Counter {i + 1}")
+                    for i, c in enumerate(serving)] or ["Counter 1"]
+        return (cfg.get("counter_mode", "single"), {m: names(m) for m in MEALS},
+                cfg.get("city"),
                 cfg.get("shared_categories") or [],
                 set(cfg.get("shared_categories_excluded_counters") or []),
                 cfg.get("meal_shared_categories") or [])
     except Exception:
-        return "single", ["Counter 1"], None, [], set(), []
+        return "single", {m: ["Counter 1"] for m in MEALS}, None, [], set(), []
 
 
 def _weekday_map_from_dates(region_days: dict) -> dict:
@@ -1923,7 +1931,7 @@ if generate_clicked:
     if not selected_client or selected_client == "(no clients)":
         st.warning("Select a valid client first.")
     else:
-        (mode, counter_names, city, shared_categories,
+        (mode, counter_names_by_meal, city, shared_categories,
          shared_excluded, meal_shared) = _client_counter_names(
             client, selected_client)
         st.session_state.client_name = selected_client
@@ -1950,7 +1958,7 @@ if generate_clicked:
         per_limit = max(
             45,
             _PLANNING_TIME_LIMIT_SECONDS
-            // max(1, len(counter_names) * max(1, len(plan_meals))))
+            // max(1, sum(len(counter_names_by_meal[m]) for m in plan_meals)))
         if mode != "multi" and len(plan_meals) == 1:
             per_limit = _PLANNING_TIME_LIMIT_SECONDS
 
@@ -1974,7 +1982,7 @@ if generate_clicked:
                     _subtitle_html("Loading saved plan"), unsafe_allow_html=True)
                 with st.spinner(f"Loading saved plan for {selected_client}..."):
                     blk = flatten_result(saved)
-                    blk["name"] = counter_names[0]
+                    blk["name"] = counter_names_by_meal[LUNCH][0]
                     blk["source"] = "history"
                     blk["meal"] = LUNCH
                     st.session_state.plan_blocks = [blk]
@@ -1997,7 +2005,7 @@ if generate_clicked:
             with st.spinner(f"{label} for {selected_client}..."):
                 for _i, _meal in enumerate(plan_meals):
                     blocks, d, s = _solve_counters(
-                        client, selected_client, counter_names,
+                        client, selected_client, counter_names_by_meal[_meal],
                         start_date.isoformat(), num_days,
                         shared_categories=shared_categories,
                         shared_excluded=shared_excluded,

@@ -61,9 +61,12 @@ def _write_week_signature(supabase_client, client_name, week_start,
         if not _missing_meal_column(exc):
             raise
         if normalize_meal(meal) != DEFAULT_MEAL:
+            # Its own table named: the menus are already written by now, and
+            # MEAL_MIGRATION_HINT points at menu_history, which is fine.
             raise RuntimeError(
-                f"Cannot save the {meal} week signature: "
-                f"{MEAL_MIGRATION_HINT}.") from exc
+                f"Cannot save the {meal} week signature: the "
+                "week_signatures.meal column is missing — run "
+                "scripts/setup_all.sql (it is idempotent).") from exc
         _delete(False)
         supabase_client.table('week_signatures').insert(
             {k: v for k, v in row.items() if k != 'meal'}).execute()

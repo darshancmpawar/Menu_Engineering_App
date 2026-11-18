@@ -19,15 +19,25 @@ import pytest
 from tests.fake_supabase import FakeSupabase
 
 MONDAY = '2026-08-03'
-# The live row as of 16 Nov 2026 (clients export): ONE counter, lunch and
-# dinner as sessions of it.
+# The live row (clients export): ONE counter, with breakfast, lunch and dinner
+# as sessions of it. Since 17 Nov breakfast has its own categories, so the
+# editor saves the counter once per service (tagged `meals`).
 RIPPLING = {
-    'name': 'Rippling', 'version': 13, 'city': 'Bangalore',
+    'name': 'Rippling', 'version': 18, 'city': 'Bangalore',
     'serve_weekends': False, 'item_cooldown_days': 21, 'source_pools': [],
     'working_days': None, 'is_launch_site': False, 'shared_categories': [],
-    'meals': ['lunch', 'dinner'],
+    'meals': ['breakfast', 'lunch', 'dinner'],
     'counters': [{
-        'name': 'Counter 1',
+        'name': 'Counter 1', 'meals': ['breakfast'],
+        'theme_map': {d: 'mix' for d in
+                      ('monday', 'tuesday', 'wednesday', 'thursday', 'friday')},
+        'categories': ['breakfast_main', 'fruit', 'nonveg_sandwich', 'sandwich',
+                       'side', 'salad', 'breakfast_chutney', 'condiment'],
+        'slot_counts': {'side': 1, 'fruit': 2, 'salad': 1, 'sandwich': 1,
+                        'condiment': 1, 'breakfast_main': 1,
+                        'nonveg_sandwich': 1, 'breakfast_chutney': 1},
+    }, {
+        'name': 'Counter 1', 'meals': ['lunch', 'dinner'],
         'theme_map': {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'biryani',
                       'thursday': 'chinese', 'friday': 'north'},
         'categories': ['welcome_drink', 'soup', 'salad', 'bread', 'rice',
@@ -59,6 +69,15 @@ def pins():
 @pytest.fixture(scope='module', params=['lunch', 'dinner'])
 def plan(request):
     """`(meal, solution)` for one real /plan of that service."""
+    return request.param, _solve(request.param)
+
+
+@pytest.fixture(scope='module')
+def breakfast():
+    return _solve('breakfast')
+
+
+def _solve(meal):
     mp = pytest.MonkeyPatch()
     import src.db as db_mod
     fake = FakeSupabase(seed={'clients': [json.loads(json.dumps(RIPPLING))],
@@ -73,10 +92,27 @@ def plan(request):
     reset_for_tests()
     resp = api_app.app.test_client().post('/api/v1/plan', json={
         'client_name': 'Rippling', 'start_date': MONDAY, 'num_days': 5,
-        'time_limit_sec': 30, 'meal': request.param})
+        'time_limit_sec': 30, 'meal': meal})
     mp.undo()
     assert resp.status_code == 200, resp.get_json()
-    return request.param, resp.get_json()['solution']
+    return resp.get_json()['solution']
+
+
+def test_breakfast_rows_as_the_sheet_sets_them(breakfast, df, pins):
+    """Breakfast sheet (17 Nov): Eggs fixed per weekday, Accompaniments 2 fixed
+    daily, non-veg sandwich Thursday only and the veg sandwich every other day,
+    no lunch pin (plain chapati) leaking in, every other dish a breakfast one."""
+    fixed = pins['breakfast']
+    bf = set(df.loc[df['session'] == 'breakfast', 'item'])
+    for wd, day in enumerate(d.get('items') or {} for d in breakfast.values()):
+        dishes = {s: c['item_base'] for s, c in day.items()}
+        assert dishes['side'] == fixed['side'][WEEK[wd]], dishes
+        assert dishes['condiment'] == fixed['condiment'], dishes
+        assert not any(s.startswith('bread') for s in dishes), dishes
+        assert ('nonveg_sandwich' in dishes) == (wd == 3), (wd, dishes)
+        assert ('sandwich' in dishes) == (wd != 3), (wd, dishes)
+        solved = {v for s, v in dishes.items() if s not in ('side', 'condiment')}
+        assert solved <= bf, solved - bf
 
 
 def _cells(sol, base):
