@@ -1672,13 +1672,22 @@ def _saved_weeks_by_meal(api, name, start_iso, days, meals, counter_names_by_mea
     stored menu with fresh ones and skip the exclusions between them. It used
     to replay a lunch-only run alone, so a lunch + dinner site (Rippling) never
     saw the weeks it had saved (owner, 18 Nov).
+
+    A PAST day with nothing saved stays a blank column: there is nothing left
+    to plan for it (owner, 18 Nov: Rippling's 17 Nov was deleted, not served
+    as planned). A missing day from today on still means generate.
     """
+    today = dt.date.today().isoformat()
     by_meal = {}
     for meal in meals:
         saved = api.get_saved_plan(client_name=name, start_date=start_iso,
                                    num_days=days, meal=meal)
         if not saved.get("exists"):
-            return {}
+            covered = set(saved.get("covered_dates") or ())
+            if not covered or any(
+                    d >= today for d, day in (saved.get("solution") or {}).items()
+                    if day.get("is_working_day") and d not in covered):
+                return {}
         blk = flatten_result(saved)
         blk["name"] = counter_names_by_meal[meal][0]
         blk["source"] = "history"

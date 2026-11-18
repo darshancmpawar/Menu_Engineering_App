@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast as _ast
 import copy
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -36,7 +37,7 @@ class _Api:
 
 @pytest.fixture
 def saved_weeks_by_meal():
-    ns = {'flatten_result': lambda saved: {'plan': dict(saved['solution'])}}
+    ns = {'flatten_result': lambda saved: {'plan': dict(saved['solution'])}, 'dt': dt}
     return _app_function('_saved_weeks_by_meal', ns)
 
 
@@ -59,6 +60,39 @@ def test_a_service_without_its_week_means_generate_all(saved_weeks_by_meal):
     assert saved_weeks_by_meal(api, 'Rippling', '2026-11-23', 5,
                                ['lunch', 'dinner'], NAMES) == {}
     assert api.asked == ['lunch', 'dinner']
+
+
+class _GapApi:
+    """16-20 Nov saved except 17 Nov (deleted, owner 18 Nov)."""
+    def __init__(self, missing='2026-11-17'):
+        self.missing = missing
+
+    def get_saved_plan(self, *, client_name, start_date, num_days, meal):
+        days = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20']
+        return {'exists': False, 'covered_dates': [d for d in days if d != self.missing],
+                'solution': {d: {'is_working_day': True, 'items': {}} for d in days}}
+
+
+@pytest.fixture
+def replay_on_18_nov():
+    class _Date(dt.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 18)
+    ns = {'flatten_result': lambda saved: {'plan': dict(saved['solution'])},
+          'dt': type('dt', (), {'date': _Date})}
+    return _app_function('_saved_weeks_by_meal', ns)
+
+
+def test_a_past_day_with_nothing_saved_stays_blank(replay_on_18_nov):
+    got = replay_on_18_nov(_GapApi(), 'Rippling', '2026-11-16', 5, ['lunch', 'dinner'], NAMES)
+    assert set(got) == {'lunch', 'dinner'}
+    assert got['lunch'][0]['plan']['2026-11-17']['items'] == {}
+
+
+def test_a_missing_day_still_to_come_means_generate(replay_on_18_nov):
+    assert replay_on_18_nov(_GapApi('2026-11-19'), 'Rippling', '2026-11-16', 5,
+                            ['lunch', 'dinner'], NAMES) == {}
 
 
 def test_the_saved_plan_uses_the_meals_own_counter_themes(monkeypatch):

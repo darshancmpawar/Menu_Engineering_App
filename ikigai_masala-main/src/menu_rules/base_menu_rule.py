@@ -99,6 +99,7 @@ class MenuRuleType(Enum):
     REPEATABLE_ITEMS = "repeatable_items"
     SAME_DAY_EXCLUSION = "same_day_exclusion"
     SELECTOR_HISTORY_WINDOW = "selector_history_window"
+    PAIRING = "pairing"
     # Synthetic — produced by pool_size_diagnostics(), not by a real
     # rule class. Folds the pre-flight pool-size warnings into the
     # same response surface as everything else so the UI only renders

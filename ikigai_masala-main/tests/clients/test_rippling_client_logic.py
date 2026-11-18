@@ -31,11 +31,13 @@ RIPPLING = {
         'name': 'Counter 1', 'meals': ['breakfast'],
         'theme_map': {d: 'mix' for d in
                       ('monday', 'tuesday', 'wednesday', 'thursday', 'friday')},
+        # Owner's settings, 18 Nov: Veg Healthy on Salad, a Non Veg main row, 3
+        # fruits, and one Accompaniments row of two in place of Breakfast Chutney.
         'categories': ['breakfast_main', 'fruit', 'nonveg_sandwich', 'sandwich',
-                       'side', 'salad', 'breakfast_chutney', 'condiment'],
-        'slot_counts': {'side': 1, 'fruit': 2, 'salad': 1, 'sandwich': 1,
-                        'condiment': 1, 'breakfast_main': 1,
-                        'nonveg_sandwich': 1, 'breakfast_chutney': 1},
+                       'side', 'salad', 'accompaniment', 'condiment', 'nonveg_main'],
+        'slot_counts': {'side': 1, 'fruit': 3, 'salad': 1, 'sandwich': 1,
+                        'condiment': 1, 'breakfast_main': 1, 'nonveg_main': 1,
+                        'nonveg_sandwich': 1, 'accompaniment': 2},
     }, {
         'name': 'Counter 1', 'meals': ['lunch', 'dinner'],
         'theme_map': {'monday': 'mix', 'tuesday': 'mix', 'wednesday': 'biryani',
@@ -99,20 +101,76 @@ def _solve(meal):
 
 
 def test_breakfast_rows_as_the_sheet_sets_them(breakfast, df, pins):
-    """Breakfast sheet (17 Nov): Eggs fixed per weekday, Accompaniments 2 fixed
-    daily, non-veg sandwich Thursday only and the veg sandwich every other day,
-    no bread row from lunch leaking in, every other dish a breakfast one."""
+    """Breakfast sheet (17 Nov) and the three served weeks (2-20 Nov): Eggs fixed
+    per weekday, Accompaniments 2 fixed daily; Veg Healthy (the Salad row) Mon,
+    Tue, Thu, Fri and the Non Veg main, never an egg dish, on Wednesday in its
+    place; veg sandwich Mon-Thu with bread, butter and jam on Tue and Thu, the
+    non-veg sandwich Friday; a different kind of main each day, never a vada;
+    three different fruits; no bread row from lunch; every dish a breakfast one."""
     fixed = pins['breakfast']
-    bf = set(df.loc[df['session'] == 'breakfast', 'item'])
+    bfd = df[df['session'] == 'breakfast'].set_index('item')
+    kinds = []
     for wd, day in enumerate(d.get('items') or {} for d in breakfast.values()):
         dishes = {s: c['item_base'] for s, c in day.items()}
         assert dishes['side'] == fixed['side'][WEEK[wd]], dishes
         assert dishes['condiment'] == fixed['condiment'], dishes
         assert not any(s.startswith('bread') for s in dishes), dishes
-        assert ('nonveg_sandwich' in dishes) == (wd == 3), (wd, dishes)
-        assert ('sandwich' in dishes) == (wd != 3), (wd, dishes)
+        assert ('nonveg_sandwich' in dishes) == (wd == 4), (wd, dishes)
+        assert ('sandwich' in dishes) == (wd != 4), (wd, dishes)
+        if WEEK[wd] in fixed['sandwich']:
+            assert dishes['sandwich'] == fixed['sandwich'][WEEK[wd]], dishes
+        elif 'sandwich' in dishes:
+            assert bfd.loc[dishes['sandwich'], 'sub_category'] != 'bread_butter_jam', dishes
+        assert ('salad' in dishes) == (wd != 2), (wd, dishes)
+        assert ('nonveg_main' in dishes) == (wd == 2), (wd, dishes)
+        if 'salad' in dishes:
+            assert bfd.loc[dishes['salad'], 'category'] == 'healthy_option', dishes
+        if 'nonveg_main' in dishes:
+            assert pd.to_numeric(bfd.loc[dishes['nonveg_main'], 'is_egg_dish']) != 1, dishes
+        assert len({dishes[f'fruit__{i}'] for i in (1, 2, 3)}) == 3, dishes
+        kinds.append(bfd.loc[dishes['breakfast_main'], 'sub_category'])
         solved = {v for s, v in dishes.items() if s not in ('side', 'condiment')}
-        assert solved <= bf, solved - bf
+        assert solved <= set(bfd.index), solved - set(bfd.index)
+    assert len(set(kinds)) == 5 and 'vada' not in kinds, kinds
+
+
+def test_breakfast_accompaniments_follow_the_main(breakfast, df):
+    """Owner, 18 Nov: one Accompaniments row of two, filled to suit the main.
+    Idli, dosa, upma, pongal: a chutney and a sambar (dosa may take saagu);
+    poori: chole or saagu alone; bature and kulcha: chole alone; idiyappam: a
+    curry and coconut milk; paratha: curd, raita or kadhi and a pickle."""
+    bfd = df[df['session'] == 'breakfast'].set_index('item')
+    for d in breakfast.values():
+        dishes = {s: c['item_base'] for s, c in (d.get('items') or {}).items()}
+        main, a1, a2 = dishes['breakfast_main'], dishes['accompaniment__1'], dishes.get('accompaniment__2')
+        kind, sub1 = bfd.loc[main, 'sub_category'], bfd.loc[a1, 'sub_category']
+        sub2 = bfd.loc[a2, 'sub_category'] if a2 else None
+        if any(w in main for w in ('bature', 'bhatura', 'kulcha')):
+            assert 'chole' in a1 and a2 is None, dishes
+        elif 'poori' in main or 'luchi' in main:
+            assert ('chole' in a1 or 'saagu' in a1) and a2 is None, dishes
+        elif kind in ('idly', 'upma', 'pongal'):
+            assert (sub1, sub2) == ('chutney', 'sambar'), dishes
+        elif kind == 'dosa':
+            assert sub1 == 'chutney' and (sub2 == 'sambar' or 'saagu' in a2), dishes
+        elif kind == 'idiyappam':
+            assert any(w in a1 for w in ('kadala', 'kurma', 'korma')) and a2 == 'coconut_milk', dishes
+        else:
+            assert kind == 'paratha', dishes
+            assert any(w in a1 for w in ('curd', 'raita', 'kadhi')) and 'pickle' in a2, dishes
+
+
+def test_rules_naming_a_service_bind_only_that_service():
+    """`meals` on a rule (18 Nov): the breakfast rules never reach lunch, and the
+    lunch bread and second-non-veg rules never reach breakfast."""
+    from src.application.solve_inputs import rules_and_skip_for_client
+    names = {meal: {r.name for r in rules_and_skip_for_client(
+        'Rippling', [], city='Bangalore', meal=meal)[0]} for meal in ('breakfast', 'lunch')}
+    assert 'rippling_breakfast_nonveg_main_wednesday' in names['breakfast']
+    assert 'rippling_breakfast_nonveg_main_wednesday' not in names['lunch']
+    assert {'rippling_dosa_every_10_days', 'rippling_egg_second_row'} <= names['lunch']
+    assert not {'rippling_dosa_every_10_days', 'rippling_egg_second_row'} & names['breakfast']
+    assert 'rippling_kootu_once_a_week' in names['breakfast'] & names['lunch']
 
 
 def _cells(sol, base):
