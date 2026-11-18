@@ -11,10 +11,10 @@ the requirement:
 
   1. ``_build_history_context`` queries ``menu_history`` with a client filter
      and a date filter and **no meal filter**;
-  2. ``explode_history_rows`` throws the ``meal`` column away when it flattens
-     those rows into the ``(client, date, slot, item)`` shape the cooldown
-     reads, so the reader could not tell lunch from dinner even if it wanted
-     to;
+  2. ``banned_items_by_date`` bans a dish from any service; since 17 Nov the
+     rows keep their ``meal``, but it is read for ONE thing only: a re-plan's
+     own rows (same service, same dates) are about to be overwritten, so they
+     ban nothing. Every other row bans across services, both ways in time;
   3. ``/save`` writes BOTH services (note 39), so dinner is in the history to
      begin with.
 
@@ -58,13 +58,23 @@ def _row(days_ago, meal, **menu):
 
 
 class TestTheWindowCannotTellLunchFromDinner:
-    def test_the_meal_is_dropped_on_the_way_in(self):
-        """Fact 2, asserted directly: this is the line that makes the
-        guarantee true, and it is one word long."""
-        long_df = HistoryManager.explode_history_rows(
-            [_row(5, 'dinner', veg_gravy='paneer_butter_masala')])
-        assert 'meal' not in long_df.columns
-        assert list(long_df['item_base']) == ['paneer_butter_masala']
+    def test_the_meal_only_marks_what_a_replan_replaces(self):
+        """Fact 2: re-planning lunch on a day overwrites that day's saved
+        lunch, so it bans nothing; the same day's saved dinner still does."""
+        hm = _history(_row(0, 'lunch', veg_gravy='lunch_dish'),
+                      _row(0, 'dinner', veg_gravy='dinner_dish'))
+        banned = hm.banned_items_by_date([PLAN_DAY], meal='lunch')[PLAN_DAY]
+        assert banned == {'dinner_dish'}
+
+    def test_a_dish_saved_for_a_later_date_is_banned_too(self):
+        """Two-way (owner, 17 Nov). Rippling saved the week's dinners first,
+        then planned lunch, and lunch on the 18th reprinted the welcome drink
+        dinner had on the 20th: a backward-only window could not see it."""
+        hm = _history(_row(-2, 'dinner', welcome_drink='mohabbat_ka_sharbath'),
+                      _row(-22, 'dinner', welcome_drink='far_ahead'))
+        banned = hm.banned_items_by_date([PLAN_DAY], meal='lunch')[PLAN_DAY]
+        assert 'mohabbat_ka_sharbath' in banned
+        assert 'far_ahead' not in banned
 
     def test_last_weeks_dinner_is_banned_from_this_weeks_lunch(self):
         banned = _history(

@@ -241,16 +241,29 @@ class HistoryManager:
         cooldown_days: int = DEFAULT_ITEM_COOLDOWN_DAYS,
         const_slots: List[str] = (),
         repeatable_items: Set[str] = frozenset(),
+        meal: Optional[str] = None,
     ) -> Dict[dt.date, Set[str]]:
-        """Return banned items per date based on recent usage."""
+        """Return banned items per date: anything saved within
+        ``cooldown_days`` BEFORE OR AFTER it, at any service.
+
+        Two-way (owner, 17 Nov): weeks and services are not always planned in
+        date order (Rippling saved dinner before lunch, and next week before
+        this one), and a backward-only window let a lunch reprint a dinner dish
+        saved for two days later. Rows this plan replaces are not history: its
+        own service (*meal*; every service when None) on its own *dates*.
+        """
         h = self._long
         if h is None:
             return {d: set() for d in dates}
+        replaced = h['service_date'].isin(set(dates))
+        if meal is not None and 'meal' in h.columns:
+            replaced &= h['meal'] == normalize_meal(meal)
+        h = h[~replaced]
         const_set = set(const_slots)
         out: Dict[dt.date, Set[str]] = {}
+        span = dt.timedelta(days=cooldown_days)
         for d in dates:
-            start = d - dt.timedelta(days=cooldown_days)
-            m = (h['service_date'] >= start) & (h['service_date'] < d)
+            m = (h['service_date'] >= d - span) & (h['service_date'] <= d + span)
             if 'slot' in h.columns:
                 m &= ~h['slot'].isin(const_set)
             banned = set(h.loc[m, 'item_base'].tolist()) - set(repeatable_items)
@@ -545,19 +558,22 @@ class HistoryManager:
                 continue
             cn = r.get('client_name')
             sd = r.get('service_date')
+            # Kept so the cooldown can tell the rows a re-plan replaces (its
+            # own service) from another service's dishes on the same dates.
+            meal = normalize_meal(r.get('meal'))
             for key, val in menu.items():
                 if isinstance(val, dict):
                     # nested (multi-cuisine): key=counter, val={slot: item}
                     for slot, item in val.items():
                         long_rows.append({
                             'client_name': cn, 'service_date': sd,
-                            'slot': slot, 'item_base': item,
+                            'slot': slot, 'item_base': item, 'meal': meal,
                         })
                 else:
                     # flat (single-cuisine): key=slot, val=item
                     long_rows.append({
                         'client_name': cn, 'service_date': sd,
-                        'slot': key, 'item_base': val,
+                        'slot': key, 'item_base': val, 'meal': meal,
                     })
         return pd.DataFrame(long_rows) if long_rows else None
 

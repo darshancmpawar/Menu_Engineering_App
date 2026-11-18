@@ -703,6 +703,7 @@ def prepare_solver_inputs(
     banned, rb_ban, recent_sigs, recency_by_item = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,
+        meal=meal,
     )
     # A second service on the same dates: the dishes lunch has already taken
     # are banned for dinner. Not read from history — lunch is usually not saved
