@@ -272,8 +272,11 @@ class TestNoDiagnosticNoise:
         })
         body = resp.get_json()
         assert resp.status_code == 200
+        # Owner, 18 Nov: six Pune papads for a seven-day week repeat one. The
+        # planner says so; that note is accepted, not noise to fix.
         noisy = [d for d in body['rule_diagnostics']
-                 if d['severity'] in ('error', 'warning')]
+                 if d['severity'] in ('error', 'warning')
+                 and (d.get('affected') or {}).get('base_slot') != 'papad']
         assert not noisy, noisy
         assert body['summary']['would_succeed'] is True
 
