@@ -127,7 +127,7 @@ class TestServiceDaysMatchTheSample:
         Pune's items also exist in Bangalore, so a spot check would not catch
         a plan built off the wrong ontology."""
         pune_items = set(pune_df['item'])
-        stamped = {'steamed rice', 'Papad'}   # nothing else is stamped now
+        stamped = {'steamed rice'}   # nothing else is stamped now
         for key, day in plan['solution'].items():
             for slot, entry in day['items'].items():
                 name = entry['item_base']

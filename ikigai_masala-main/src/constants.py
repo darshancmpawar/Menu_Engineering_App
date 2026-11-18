@@ -97,6 +97,9 @@ BASE_SLOT_NAMES: List[str] = [
     # other veg categories (shown after the mains)
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
+    # Solved from the Papad category since 2.08.01 (owner, 18 Nov), no longer
+    # the fixed text "Papad".
+    'papad',
     # breakfast only (BREAKFAST_ONLY_SLOTS)
     'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
     'snack', 'fruit', 'condiment',
@@ -104,7 +107,7 @@ BASE_SLOT_NAMES: List[str] = [
     'nonveg_main', 'nonveg_sandwich',
 ]
 
-CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+CONST_SLOTS: List[str] = ['white_rice', 'pickle', 'chutney']
 
 # Breakfast is its own session of the city list (the `session` column). These
 # rows exist only at breakfast; the config editor offers a breakfast service
@@ -180,7 +183,10 @@ COMBO_CATEGORIES: Dict[str, tuple] = {
 # from one client's menu (Booking.com) and switching them on for the other 50
 # Bangalore counters would change every one of their plans.
 DEFAULT_OFF_SLOTS: Set[str] = (
-    {'curd', 'curd_rice', 'infused_water', 'nonveg_soup'}
+    {'curd', 'curd_rice', 'infused_water', 'nonveg_soup',
+     # Opt-in as it was while it was a fixed row: a fresh client still starts
+     # without it, and a session without papads (breakfast) does not need one.
+     'papad'}
     | set(COMBO_CATEGORIES) | set(BREAKFAST_ONLY_SLOTS)
 )
 
@@ -217,6 +223,8 @@ COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     'infused_water', 'nonveg_soup',
     # Breakfast's small rows (6-15 dishes each), same argument.
     'condiment', 'side', 'fruit', 'snack', 'breakfast_chutney',
+    # 4-14 papads a city: no repeat within the week, least recent first after.
+    'papad',
 }
 
 # The two yogurt-side categories are mutually exclusive on a single counter:
@@ -246,7 +254,6 @@ def combo_minority_count(n_days: int) -> int:
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
-    'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'chutney',
 }
@@ -269,6 +276,8 @@ EXEMPT_FROM_CUISINE: Set[str] = {
     # Nor does plain curd, the Curd row's only dish since 2.08.01: narrowed, it
     # warned "0 north curd items" on every North day.
     'curd',
+    # A papad goes with any day's menu.
+    'papad',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}

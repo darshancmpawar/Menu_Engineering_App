@@ -197,7 +197,7 @@ class TestEveryDishIsAChennaiDish:
         """123 of Chennai's items also exist in Bangalore, so a spot check would
         not catch a plan built off the wrong ontology."""
         names = set(chennai_df['item'])
-        stamped = {'steamed rice', 'Papad'}
+        stamped = {'steamed rice'}
         for key, day in plan['solution'].items():
             for slot, entry in (day['items'] or {}).items():
                 item = entry.get('item_base')

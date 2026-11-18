@@ -1,7 +1,7 @@
 """A staple is ONE dish, every day — not a category that rotates.
 
 The client's own definition: "staple means like white rice and pickle. it should
-be the same daily." White rice and papad are const slots and behave that way
+be the same daily." White rice and pickle are const slots and behave that way
 already; the trap is a client sentence like "indian bread will serve chapati as
 staple" being configured as a `slot_composition` over a FAMILY.
 

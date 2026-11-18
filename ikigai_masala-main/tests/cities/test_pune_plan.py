@@ -133,7 +133,7 @@ class TestPuneEndToEnd:
         dishes would not catch it — every dish must be in the Pune list."""
         _resp, body = _plan(pune_client)
         pune_items = set(pune_df['item'])
-        constants = {'steamed rice', 'Papad', 'Pickle', 'chutney'}
+        constants = {'steamed rice', 'Pickle', 'chutney'}
         for key, day in body['solution'].items():
             for slot, entry in day['items'].items():
                 name = entry['item_base']

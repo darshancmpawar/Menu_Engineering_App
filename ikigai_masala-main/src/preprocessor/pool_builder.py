@@ -49,6 +49,7 @@ _SIMPLE_MAPPING: Dict[str, Set[str]] = {
     'nonveg_main': {'nonveg_main'},
     'curd_side': {'curd_side'},
     'dessert': {'dessert'},
+    'papad': {'papad'},
     # Breakfast rows (the breakfast session of the city list).
     'beverage': {'beverage'},
     'breakfast_main': {'breakfast_main'},

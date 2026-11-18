@@ -129,7 +129,6 @@ class TestWhatCountsAsARegion:
         """
         r = Region('X', frozenset({'south_indian'}),
                    {'chutney': SLOT_DISH_FLOOR + 10,
-                    'papad': SLOT_DISH_FLOOR + 10,
                     'pickle': SLOT_DISH_FLOOR + 10,
                     'white_rice': SLOT_DISH_FLOOR + 10,
                     'accompaniment': SLOT_DISH_FLOOR + 10,
