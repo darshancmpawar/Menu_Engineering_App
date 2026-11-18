@@ -165,6 +165,24 @@ class UniqueItemsMenuRule(BaseMenuRule):
         for item_base, vars_ in healthy.items():
             model.Add(sum(vars_) <= 1)
 
+        # Repeats across days, never within one: a three-fruit day is three
+        # different fruits (Rippling breakfast, 18 Nov). Only where the day has
+        # as many distinct candidates as cells, so this cannot starve a day.
+        by_day: Dict[Any, Dict[str, List[Any]]] = {}
+        n_cells: Dict[Any, int] = {}
+        for c in cells:
+            if c.base_slot in relaxed:
+                key = (c.base_slot, c.d_idx)
+                n_cells[key] = n_cells.get(key, 0) + 1
+                for var, row in zip(c.x_vars, c.cand_rows):
+                    by_day.setdefault(key, {}).setdefault(
+                        _norm_str(row.get('item', '')), []).append(var)
+        for key, items in by_day.items():
+            if n_cells[key] > 1 and len(items) >= n_cells[key]:
+                for vars_ in items.values():
+                    if len(vars_) > 1:
+                        model.Add(sum(vars_) <= 1)
+
         # Relaxed does not mean unconstrained. A slot with 4 items over 5 days
         # must repeat exactly once — serving one dish five times satisfies the
         # same lifted constraint but is not the menu anyone wants. Record a

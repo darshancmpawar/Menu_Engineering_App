@@ -264,6 +264,44 @@ rebuilds the 16 November week records without 17 November). A saved week with
 a PAST day nobody saved now opens from history with that day blank (all
 clients); a missing day from today on still means a fresh plan.
 
+### 23. Rippling's breakfast: Veg Healthy, Non Veg main, and three weeks saved
+
+Owner, 18 Nov, from the 2-20 November breakfast sheet. Veg Healthy is the
+Salad row, and every dish the list files as healthy (salads, sundal and
+sprouts, porridge and malt, tikki) is now a Salad dish; ragi malt and the veg
+croissant move there too. Veg Healthy is served Monday, Tuesday, Thursday and
+Friday; a Non Veg main row takes its place on Wednesday, never an egg dish
+(eggs are their own pinned row). The veg sandwich is Monday to Thursday, with
+brown bread, butter and jam pinned on Tuesday and Thursday; the non-veg
+sandwich is Friday, as in all three weeks (the 17 November word was Thursday).
+A different kind of main every day of the week, never a vada on its own; tawa
+kulcha is filed as a paratha and lemon savige as an upma for this. Three
+different fruits a day; with 11 fruits for 15 cells a fruit comes back
+during the week, never twice on one day (any client's row that is short of
+dishes now works this way).
+
+A rule may now name its services (`"meals": ["breakfast"]`); the planner
+applies it to those only. Rippling's lunch rules on the non-veg and raita rows
+and its dosa rules are lunch and dinner only.
+
+The three weeks are saved as Rippling's breakfast history
+(`scripts/backfill_rippling_breakfast_2026-11-02_to_20.sql`). Three dishes are
+added (Green Gram & Sweet Corn Salad, Roasted Sweet Potato Salad, Creamy
+Shredded Chicken Sandwich). A main's vada and the podi topping are not saved.
+
+**Accompaniments follow the main.** Chutney, sambar, curry, curd, raita and
+pickle are one breakfast row, Accompaniments, set to two in the tool in place
+of Breakfast Chutney. A new rule type, `pairing`, fills it to suit the main,
+one dish or two: idli, dosa, upma and pongal take a chutney and a sambar (dosa
+may take saagu); poori takes chole or saagu alone, bature and kulcha chole
+alone; idiyappam a curry and coconut milk; paratha and thepla curd, raita or
+kadhi and a pickle. When the main takes one, the second cell stays blank; a blank
+cell is allowed only here, in breakfast's Accompaniments row (owner). A
+main the table has no pair for (poha, pancakes, a vada alone, kesari bath) is
+not served. Four raitas join the breakfast list (boondi, onion, mixed veg,
+cucumber). Grill veggies and hummus veggies sandwiches were filed with protein
+"egg" and so counted as non-veg; they are veg now.
+
 ## What this does not do
 
 - **The switches need one database change.** Until `features` is added to the
@@ -272,8 +310,6 @@ clients); a missing day from today on still means a fresh plan.
 - **Breakfast dishes have no `item_style` yet.**
 - **Breakfast sambar has four dishes,** so a Sambar row every breakfast cannot
   fill a five-day week. To be decided with the owner.
-- **Two breakfast sandwiches** (grill veggies, hummus veggies) are filed as veg
-  with protein "egg", so they are treated as non-veg.
 - **The swap list on screen still shows kootu under Lentils for Rippling.** A
   planner can still pick one by hand there. The planner itself never puts one
   there.
@@ -291,6 +327,6 @@ clients); a missing day from today on still means a fresh plan.
 
 | Version | Date | Author(s) | Principal changes / reason |
 |---|---|---|---|
-| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered; regional days for lunch and dinner only; a re-plan that cannot keep a saved dish names it; one drink base a week, buttermilk aside (Bangalore); detox and infused waters moved to Infused Water; Papad chosen by the planner, Papad lists cleaned; Rippling's 2-13 Nov menus saved, 59 dishes added; pink item colour; saved weeks reopen for every service, with their regional days; Rippling bread 1 a chapati, bread 2 any other bread, a dosa every 10 days; Rippling's 16-20 Nov menus saved, 28 dishes added; Rippling 17 Nov and 23-27 Nov left blank, a past day nobody saved opens blank. |
+| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered; regional days for lunch and dinner only; a re-plan that cannot keep a saved dish names it; one drink base a week, buttermilk aside (Bangalore); detox and infused waters moved to Infused Water; Papad chosen by the planner, Papad lists cleaned; Rippling's 2-13 Nov menus saved, 59 dishes added; pink item colour; saved weeks reopen for every service, with their regional days; Rippling bread 1 a chapati, bread 2 any other bread, a dosa every 10 days; Rippling's 16-20 Nov menus saved, 28 dishes added; Rippling 17 Nov and 23-27 Nov left blank, a past day nobody saved opens blank; Rippling breakfast: Veg Healthy on the Salad row, Non Veg main on Wednesday, sandwich rows by weekday, one kind of main a day, rules scoped to a service, 2-20 Nov breakfasts saved, 3 dishes added; Accompaniments one row of two that follows the main (new `pairing` rule, a cell may stay blank), 4 breakfast raitas. |
 
 **Previous:** [v2.08.00](IkigaiMasala_Final_v2.08.00_2026-11-16.md)  **Next:** —

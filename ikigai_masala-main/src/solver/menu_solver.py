@@ -27,6 +27,7 @@ from ._helpers import (
 )
 from ..menu_rules.base_menu_rule import BaseMenuRule, MenuRuleSeverity
 from src.constants import (
+    BLANK_ALLOWED_SLOTS,
     canonical_weekday,
     BASE_SLOT_NAMES, CONSTANT_ITEMS, EXEMPT_FROM_CUISINE,
     RICE_EXCLUDE_ITEMS, THEME_FALLBACK_SLOTS,
@@ -1114,8 +1115,9 @@ class MenuSolver:
             # No-good cut: at least one cell must differ from this menu.
             picked = []
             for cell in cells:
-                j = next(idx for idx, v in enumerate(cell.x_vars) if solver.Value(v) == 1)
-                picked.append(cell.x_vars[j])
+                j = next((idx for idx, v in enumerate(cell.x_vars) if solver.Value(v) == 1), None)
+                if j is not None:
+                    picked.append(cell.x_vars[j])
             model.Add(sum(picked) <= len(picked) - 1)
         return out
 
@@ -1185,6 +1187,17 @@ class MenuSolver:
                     "%s.%s() raised: %s",
                     getattr(rule, 'name', type(rule).__name__), hook, exc)
         return out
+
+    def _optional_slot_ids(self) -> set:
+        """Slot ids some rule may leave blank (`optional_slot_ids()`, e.g. a
+        pairing's second accompaniment): those cells hold one dish or none."""
+        out = set()
+        for rule in (self.menu_rules or []):
+            fn = getattr(rule, 'optional_slot_ids', None)
+            if callable(fn):
+                out |= set(fn() or ())
+        # Only the breakfast Accompaniments row may be blank (owner, 18 Nov).
+        return {s for s in out if _base_slot(s) in BLANK_ALLOWED_SLOTS}
 
     def _build_context(
         self, cells, dates, day_types,
@@ -1305,6 +1318,7 @@ class MenuSolver:
         monday_south_lits: List = []
         monday_north_lits: List = []
         theme_fallback_bools: List = []
+        optional = self._optional_slot_ids()
 
         for cell in cells:
             di = cell.d_idx
@@ -1380,8 +1394,12 @@ class MenuSolver:
                     if item_base in forbidden[cell.date, slot_id]:
                         model.Add(var == 0)
 
-            # Exactly one candidate per cell
-            model.Add(sum(x_vars) == 1)
+            # Exactly one candidate per cell; at most one where a rule decides
+            # day by day whether the cell is served (a pairing's blank cell).
+            if slot_id in optional:
+                model.Add(sum(x_vars) <= 1)
+            else:
+                model.Add(sum(x_vars) == 1)
             cell.x_vars = x_vars
             cell.cand_rows = cand_rows
 
@@ -1554,6 +1572,8 @@ class MenuSolver:
                 None,
             )
             if pick_idx is None:
+                if cell.slot_id in self._optional_slot_ids():
+                    continue                      # left blank on purpose
                 raise RuntimeError('Solver solution missing selection in a cell.')
             chosen[cell.date][cell.slot_id] = cell.cand_rows[pick_idx]
         return chosen
