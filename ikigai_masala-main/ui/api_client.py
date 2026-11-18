@@ -360,6 +360,7 @@ class MenuApiClient:
         week_plan: Optional[Dict[str, Dict[str, str]]] = None,
         counters: Optional[List[Dict[str, Any]]] = None,
         meal: Optional[str] = None,
+        regions: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         # /save overwrites on (client, dates, meal) — re-saving the same week
         # is idempotent (DELETE + INSERT under the hood). Pass ``week_plan``
@@ -375,6 +376,8 @@ class MenuApiClient:
         }
         if meal:
             payload["meal"] = meal
+        if regions:
+            payload["regions"] = regions   # {iso: region}, the day's regional day
         if counters is not None:
             payload["counters"] = counters
         else:

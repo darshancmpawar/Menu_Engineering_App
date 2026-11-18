@@ -2252,15 +2252,19 @@ if _blocks and any(b.get("plan") for b in _blocks):
                                for b in _mb if b.get("plan")]
                     if not payload:
                         continue
+                    # Each date's regional day, so the saved week shows it
+                    # again when reopened.
+                    _regions = {k: v for b in _mb for k, v in (b.get("regions") or {}).items()}
                     if _plan_mode == "multi":
                         client.save(client_name=st.session_state.client_name,
                                     week_start=dates_union[0],
-                                    counters=payload, meal=_meal)
+                                    counters=payload, meal=_meal,
+                                    regions=_regions)
                     else:
                         client.save(client_name=st.session_state.client_name,
                                     week_start=dates_union[0],
                                     week_plan=payload[0]["week_plan"],
-                                    meal=_meal)
+                                    meal=_meal, regions=_regions)
                     for b in _mb:
                         if b.get("plan"):
                             b["source"] = "history"

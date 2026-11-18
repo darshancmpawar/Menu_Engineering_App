@@ -86,7 +86,7 @@ from src.explain.evidence import (
 from src.explain.renderer import day_overview
 from api.kitchen_notes_llm import kitchen_notes
 from src.seasonal.bans import bans_by_month, default_matcher, vegetable_label
-from src.ontology.regions import regional_dishes_by_date
+from src.ontology.regions import region_by_name, regional_dishes_by_date
 from api.explain_llm import (
     explain_plan, explain_chef_read, chef_attrs_from_dataframe,
     city_dish_names_from_dataframe,
@@ -1136,6 +1136,25 @@ def _canonicalise_saved_plan(client_name, counter_plans):
     return out, sorted(unknown)
 
 
+def _saved_regions(client_name, raw) -> Dict[str, str]:
+    """``{iso: region}`` limited to the regions the planner offers for the
+    client's city, in their own spelling ("tamil nadu" -> "Tamil Nadu"), so a
+    saved regional day always matches one the planner knows (owner, 18 Nov).
+    Anything else is dropped and logged, never saved."""
+    if not raw:
+        return {}
+    city = (_client_row(client_name) or {}).get('city')
+    known = [r for r in (ontology_repository.regions(city) or []) if r.is_themeable]
+    out = {}
+    for iso, name in dict(raw).items():
+        region = region_by_name(known, str(name or ''))
+        if region:
+            out[str(iso)] = region.name
+        elif str(name or '').strip():
+            logger.warning("save %s: %r is not one of %s's regions; not saved", client_name, name, city)
+    return out
+
+
 @app.route('/api/v1/save', methods=['POST'])
 @rate_limit("write")
 @require_write_token
@@ -1153,6 +1172,9 @@ def save_plan():
         # replaces only the dinner rows for these dates; without it the second
         # save of a day silently deletes the first.
         meal = normalize_meal(data.get('meal'))
+        # The regional day each date was planned with, {iso: region}, kept so
+        # a saved week shows it again when reopened (owner, 18 Nov).
+        regions = _saved_regions(client_name, data.get('regions'))
 
         from src.db import get_supabase
         sb = get_supabase()
@@ -1185,7 +1207,7 @@ def save_plan():
             )
             hm.save_counters(counter_plans, all_dates, client_name, week_start, sig,
                              supabase_client=sb, strip_color_fn=strip_color_suffix,
-                             meal=meal)
+                             meal=meal, regions=regions)
             return jsonify(_saved_response(unknown, meal=meal))
 
         # Single-cuisine (classic) path.
@@ -1205,7 +1227,8 @@ def save_plan():
             strip_color_fn=strip_color_suffix,
         )
         hm.save(week_plan, dates, client_name, week_start, sig,
-                supabase_client=sb, strip_color_fn=strip_color_suffix, meal=meal)
+                supabase_client=sb, strip_color_fn=strip_color_suffix, meal=meal,
+                regions=regions)
 
         return jsonify(_saved_response(unknown, meal=meal))
 
@@ -1312,13 +1335,23 @@ def saved_plan():
         covered = sorted(d.isoformat() for d in enriched.keys())
         exists = len(enriched) == len(weekday_dates) and len(enriched) > 0
 
-        return jsonify({
+        response = {
             'success': True,
             'exists': exists,
             'covered_dates': covered,
             'source': 'history',
             'solution': formatter.to_dict(),
-        })
+        }
+        # The regional day each saved date had, so the header shows it as it
+        # did when the week was planned, with its regional dishes marked.
+        region_days = {k: v for k, v in HistoryManager.load_saved_regions(
+            sb, client_name, weekday_dates, meal=meal).items() if k in set(covered)}
+        if region_days:
+            response['region_days'] = region_days
+            regional = regional_dishes_by_date(df, response['solution'], region_days)
+            if regional:
+                response['regional_dishes'] = regional
+        return jsonify(response)
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
