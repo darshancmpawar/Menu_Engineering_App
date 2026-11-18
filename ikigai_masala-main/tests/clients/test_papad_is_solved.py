@@ -22,7 +22,7 @@ def test_papad_is_a_solved_optional_row():
     assert 'papad' in DEFAULT_OFF_SLOTS
 
 
-def test_a_bangalore_week_serves_five_different_papads(monkeypatch):
+def test_a_bangalore_week_serves_a_different_papad_each_day(monkeypatch):
     from tests.fake_supabase import FakeSupabase
     from tests.client_fixtures import CLIENTS
     import src.db as db_mod
@@ -48,7 +48,8 @@ def test_a_bangalore_week_serves_five_different_papads(monkeypatch):
     papads = set(df.loc[df['course_type'] == 'papad', 'item'].astype(str))
     served = [day['items']['papad'] for day in body['solution'].values()
               if (day.get('items') or {}).get('papad')]
-    assert len(served) == 5, served
+    working = [d for d in body['solution'].values() if d.get('is_working_day')]
+    assert len(served) == len(working) == 4, served   # Clario: Mon-Thu
     assert {c['item_base'] for c in served} <= papads
-    assert len({c['item_base'] for c in served}) == 5, served
+    assert len({c['item_base'] for c in served}) == len(served), served
     assert not any(c['is_pinned'] for c in served), 'Regenerate can change it'
