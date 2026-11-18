@@ -105,6 +105,30 @@ now fixed for lunch and dinner only; set for every session, it was printed at
 breakfast too. Non-veg main on Wednesday, three fruits a day, combos and
 accompaniments that follow the main come in 2.09.00.
 
+### 11. The 21-day no-repeat looks both ways
+
+A dish saved for a date now keeps it off the 21 days before it as well as
+after, at lunch or dinner. Rippling had saved the week's dinners first and
+planned lunch afterwards, and lunch reprinted welcome drinks that dinner
+served two and six days later. Pinned and fixed items stay outside the rule,
+as before.
+
+### 12. Rippling: bread and veg dry
+
+- **Bread row 2 is never plain chapati** (owner, 17 Nov). Only plain chapati
+  itself may repeat; before, the whole chapati/phulka family could, so row 2
+  repeated ragi phulka within three days.
+- **Veg dry stays North and South on Chinese Thursdays.** The Chinese-day
+  filter ignored Rippling's exemption and cut the veg dry list to 64 dishes,
+  one of them South, so from the second week the South Veg Dry row was
+  quietly given a Chinese dish every Thursday.
+- **The Curd row no longer warns on North days.** Plain curd has no regional
+  cuisine to match.
+
+Checked over 25 days of lunch and dinner (five weeks, each saved before the
+next): every week planned, no rule loosened, every Rippling rule held on every
+day, and nothing repeated within 21 days.
+
 ## What this does not do
 
 - **The switches need one database change.** Until `features` is added to the
@@ -127,6 +151,6 @@ accompaniments that follow the main come in 2.09.00.
 
 | Version | Date | Author(s) | Principal changes / reason |
 |---|---|---|---|
-| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows. |
+| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered. |
 
 **Previous:** [v2.08.00](IkigaiMasala_Final_v2.08.00_2026-11-16.md)  **Next:** —
