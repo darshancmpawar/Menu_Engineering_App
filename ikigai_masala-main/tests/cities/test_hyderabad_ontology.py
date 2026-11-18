@@ -188,13 +188,15 @@ class TestWhatQuestAdded:
 
         113 -> 182: the Bangalore cleanup renamed 72 misspelt dishes and merged
         395 same-dish copies into one name each; Hyderabad was not re-cut.
+        182 -> 240: 59 dishes added to Bangalore for Rippling's 2-13 Nov menus
+        (owner, 18 Nov), one of them (lijjat_papad) already in Hyderabad.
         """
         assert _names(hyd) - _names(blr), 'Hyderabad lost its own additions'
         # Bangalore's breakfast session (2.08.01) is not drift: Hyderabad has
         # no breakfast list yet.
         blr_ld = blr[blr['session'].astype(str).str.contains('lunch')]
         drift = sorted(_names(blr_ld) - _names(hyd))
-        assert len(drift) == 182, (len(drift), drift[:10])
+        assert len(drift) == 240, (len(drift), drift[:10])
 
     def test_the_count_is_the_import_s_own(self, quest_rows):
         """Was 101, then 95, then 89, now 93.
