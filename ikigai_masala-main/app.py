@@ -1664,6 +1664,29 @@ def _apply_region_days_to_blocks(api, blocks, region_days, changed_dates):
     return touched, problems
 
 
+def _saved_weeks_by_meal(api, name, start_iso, days, meals, counter_names_by_meal):
+    """``{meal: [block]}`` from history when EVERY planned service has its whole
+    week saved, else ``{}`` (generate instead).
+
+    All or nothing: replaying one service while solving another would mix a
+    stored menu with fresh ones and skip the exclusions between them. It used
+    to replay a lunch-only run alone, so a lunch + dinner site (Rippling) never
+    saw the weeks it had saved (owner, 18 Nov).
+    """
+    by_meal = {}
+    for meal in meals:
+        saved = api.get_saved_plan(client_name=name, start_date=start_iso,
+                                   num_days=days, meal=meal)
+        if not saved.get("exists"):
+            return {}
+        blk = flatten_result(saved)
+        blk["name"] = counter_names_by_meal[meal][0]
+        blk["source"] = "history"
+        blk["meal"] = meal
+        by_meal[meal] = [blk]
+    return by_meal
+
+
 def _solve_counters(api, name, counter_names, start_iso, days, *,
                     shared_categories, shared_excluded, time_limit,
                     meal=None, exclude_by_counter=None, region_days=None,
@@ -1965,33 +1988,19 @@ if generate_clicked:
             per_limit = _PLANNING_TIME_LIMIT_SECONDS
 
         replayed = False
-        if mode != "multi" and plan_meals == [LUNCH]:
-            # Saved-plan replay, unchanged, and only for a lunch-only run:
-            # replaying one service while solving the others would mix a
-            # stored menu with fresh ones and quietly skip the exclusions
-            # between them.
-            try:
-                saved = client.get_saved_plan(
-                    client_name=selected_client,
-                    start_date=start_date.isoformat(), num_days=num_days,
-                    meal=LUNCH)
-            except (ConnectionError, OSError, ValueError, RuntimeError) as e:
-                st.warning(f"Couldn't check saved history ({e}); generating fresh.")
-                saved = {"exists": False}
-
-            if saved.get("exists"):
-                _subtitle_slot.markdown(
-                    _subtitle_html("Loading saved plan"), unsafe_allow_html=True)
-                with st.spinner(f"Loading saved plan for {selected_client}..."):
-                    blk = flatten_result(saved)
-                    blk["name"] = counter_names_by_meal[LUNCH][0]
-                    blk["source"] = "history"
-                    blk["meal"] = LUNCH
-                    st.session_state.plan_blocks = [blk]
-                    st.session_state.meal_blocks = {LUNCH: [blk]}
-                    st.session_state.active_meal = LUNCH
-                    st.session_state.plan_source = "history"
-                    replayed = True
+        try:
+            saved_by_meal = (_saved_weeks_by_meal(
+                client, selected_client, start_date.isoformat(), num_days,
+                plan_meals, counter_names_by_meal) if mode != "multi" else {})
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
+            st.warning(f"Couldn't check saved history ({e}); generating fresh.")
+            saved_by_meal = {}
+        if saved_by_meal:
+            st.session_state.meal_blocks = saved_by_meal
+            st.session_state.active_meal = plan_meals[0]
+            st.session_state.plan_blocks = saved_by_meal[plan_meals[0]]
+            st.session_state.plan_source = "history"
+            replayed = True
 
         if not replayed:
             label = (f"Generating {len(plan_meals)} services"
@@ -2243,15 +2252,19 @@ if _blocks and any(b.get("plan") for b in _blocks):
                                for b in _mb if b.get("plan")]
                     if not payload:
                         continue
+                    # Each date's regional day, so the saved week shows it
+                    # again when reopened.
+                    _regions = {k: v for b in _mb for k, v in (b.get("regions") or {}).items()}
                     if _plan_mode == "multi":
                         client.save(client_name=st.session_state.client_name,
                                     week_start=dates_union[0],
-                                    counters=payload, meal=_meal)
+                                    counters=payload, meal=_meal,
+                                    regions=_regions)
                     else:
                         client.save(client_name=st.session_state.client_name,
                                     week_start=dates_union[0],
                                     week_plan=payload[0]["week_plan"],
-                                    meal=_meal)
+                                    meal=_meal, regions=_regions)
                     for b in _mb:
                         if b.get("plan"):
                             b["source"] = "history"

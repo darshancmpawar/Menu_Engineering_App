@@ -8,6 +8,7 @@ and signatures, and persists completed weeks back to Supabase.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from typing import Dict, List, Optional, Set
 
@@ -15,6 +16,8 @@ import pandas as pd
 
 from ..constants import DEFAULT_ITEM_COOLDOWN_DAYS
 from ..preprocessor.column_mapper import _norm_str
+
+logger = logging.getLogger(__name__)
 
 
 def _missing_meal_column(exc: BaseException) -> bool:
@@ -72,8 +75,40 @@ def _write_week_signature(supabase_client, client_name, week_start,
             {k: v for k, v in row.items() if k != 'meal'}).execute()
 
 
+def _missing_region_column(exc: BaseException) -> bool:
+    """Is *exc* the database saying `menu_history.region` does not exist?"""
+    msg = str(exc).lower()
+    return "region" in msg and (
+        "does not exist" in msg or "could not find" in msg
+        or "schema cache" in msg)
+
+
+def _region_of(regions, d) -> Dict[str, str]:
+    """``{'region': name}`` when *d* was a regional day, else nothing, so a
+    week without one never writes the column at all."""
+    name = str((regions or {}).get(d.isoformat()) or '').strip()
+    return {'region': name} if name else {}
+
+
 def _write_history(supabase_client, day_rows, client_name, date_isos, meal,
                    table='menu_history'):
+    """`_write_day_rows`, then again without `region` on a database that has
+    not added that column yet: a regional day's label is never worth losing
+    the menu over (owner, 18 Nov)."""
+    try:
+        _write_day_rows(supabase_client, day_rows, client_name, date_isos, meal, table)
+    except Exception as exc:
+        if not (any('region' in r for r in day_rows) and _missing_region_column(exc)):
+            raise
+        logger.warning("menu_history.region is missing (run scripts/setup_all.sql); "
+                       "saved %s without its regional days", client_name)
+        _write_day_rows(supabase_client,
+                        [{k: v for k, v in r.items() if k != 'region'} for r in day_rows],
+                        client_name, date_isos, meal, table)
+
+
+def _write_day_rows(supabase_client, day_rows, client_name, date_isos, meal,
+                    table='menu_history'):
     """Replace this (client, dates, meal) slice of history.
 
     Degrades on a database that has not run the `meal` migration, but ONLY for
@@ -385,6 +420,7 @@ class HistoryManager:
         supabase_client,
         strip_color_fn=None,
         meal: str = DEFAULT_MEAL,
+        regions: Optional[Dict[str, str]] = None,
     ):
         """Persist a completed week plan to Supabase with **overwrite**
         semantics.
@@ -424,6 +460,7 @@ class HistoryManager:
                     'service_date': d.isoformat(),
                     'meal': meal,
                     'menu': menu,
+                    **_region_of(regions, d),
                 })
 
         date_isos = [d.isoformat() for d in dates]
@@ -441,6 +478,7 @@ class HistoryManager:
         supabase_client,
         strip_color_fn=None,
         meal: str = DEFAULT_MEAL,
+        regions: Optional[Dict[str, str]] = None,
     ):
         """Persist a multi-cuisine week: one ``menu_history`` row per
         (day, meal) with a **nested** menu ``{counter_name: {slot: item_base}}``.
@@ -471,6 +509,7 @@ class HistoryManager:
                     'meal': meal,
                     'service_date': d.isoformat(),
                     'menu': day_menu,
+                    **_region_of(regions, d),
                 })
 
         date_isos = [d.isoformat() for d in dates]
@@ -539,6 +578,30 @@ class HistoryManager:
                 continue
             out[d] = {slot: (item or '') for slot, item in menu.items()}
         return out
+
+    @staticmethod
+    def load_saved_regions(supabase_client, client_name: str,
+                           dates: List[dt.date], meal: str = DEFAULT_MEAL) -> Dict[str, str]:
+        """``{iso: region}`` for the saved days of *meal* that were regional days.
+
+        A label, read apart from the menu so a database without the column
+        (or any trouble reading it) costs the label and never the saved menu.
+        """
+        if supabase_client is None or not dates:
+            return {}
+        try:
+            resp = (supabase_client.table('menu_history')
+                    .select('service_date, meal, region')
+                    .eq('client_name', client_name)
+                    .in_('service_date', [d.isoformat() for d in dates])
+                    .execute())
+        except Exception:  # noqa: BLE001 — see the docstring
+            logger.warning("could not read regional days for %s", client_name, exc_info=True)
+            return {}
+        want = normalize_meal(meal)
+        return {r['service_date']: str(r['region']) for r in (resp.data or [])
+                if r.get('region') and r.get('service_date')
+                and normalize_meal(r.get('meal')) == want}
 
     # ----- Explode JSONB day rows into the long (per-item) form -----
 

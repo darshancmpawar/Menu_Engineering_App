@@ -1,6 +1,6 @@
 {
   "Rippling": {
-    "_comment": "Bangalore, lunch and dinner sessions on ONE counter ('Counter 1'). Source: the client's requirement sheet (T1-T5) plus the earlier asks (north + south veg dry, chicken + egg on Wednesday, curd and raita apart, bread 1 plain chapati). Live row as of 16 Nov 2026: categories welcome_drink, soup, salad, bread, rice, white_rice, veg_dry, veg_gravy, dal, sambar_rasam, curd, curd_side, nonveg_main, dessert; slot_counts bread 2, veg_dry 2, nonveg_main 2; themes Mon/Tue mix, Wed biryani, Thu chinese, Fri north.",
+    "_comment": "Bangalore, lunch and dinner sessions on ONE counter ('Counter 1'). Source: the client's requirement sheet (T1-T5) plus the earlier asks (north + south veg dry, chicken + egg on Wednesday, curd and raita apart, bread 1 a chapati and bread 2 any other bread with a dosa every 10 days). Live row as of 16 Nov 2026: categories welcome_drink, soup, salad, bread, rice, white_rice, veg_dry, veg_gravy, dal, sambar_rasam, curd, curd_side, nonveg_main, dessert; slot_counts bread 2, veg_dry 2, nonveg_main 2; themes Mon/Tue mix, Wed biryani, Thu chinese, Fri north.",
     "disable": [
       "curd_raita_logic",
       "nonveg_main_daily_pair"
@@ -20,8 +20,10 @@
           "soup",
           "salad",
           "healthy_rice",
-          "veg_dry"
+          "veg_dry",
+          "bread"
         ],
+        "_bread_comment": "Bread is not cuisine-locked (owner, 18 Nov): bread 1 is a chapati and bread 2 any other bread on every day, a dosa included, as the client's own menus serve (a paratha on the Indo-Chinese day, a dosa on mix days). Chennai does the same.",
         "_indian_veg_dry_comment": "The Chinese-day filter does not read exempt_slots: it narrowed Thursday's veg dry to Chinese-style dishes (951 -> 64, south 368 -> 1), so from week 2 the South Veg Dry row had nothing south left and was relaxed (17 Nov, 25-day run). On a Chinese day veg dry stays Indian, north or south.",
         "indian_veg_dry_themes": [
           "chinese"
@@ -33,9 +35,6 @@
             },
             "salad": {
               "cuisine_family": "chinese"
-            },
-            "bread": {
-              "flag": "is_plain_phulka_chapathi"
             }
           }
         }
@@ -136,7 +135,7 @@
         ]
       },
       {
-        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC). The dish itself, not its sub_category: the whole phulka family let bread 2 repeat ragi phulka and rava onion roti within days (17 Nov).",
+        "_comment": "Plain chapati is the house chapati: Bread 1 may serve it on any day, so it is exempt from unique_items and the 21-day window (flavoured chapatis are not). The dish itself, not its sub_category (17 Nov).",
         "name": "rippling_plain_chapati_repeatable",
         "type": "repeatable_items",
         "base_slot": "bread",
@@ -145,8 +144,35 @@
         }
       },
       {
-        "_comment": "Bread 2 is never plain chapati, which is bread 1's pinned dish (owner, 17 Nov).",
-        "name": "rippling_second_bread_not_plain_chapati",
+        "_comment": "Bread 1 varied (owner, 18 Nov: 'any chapati, varied'): plain chapati may repeat, but on 2 days a week at most, or the planner takes it most days (a 23 Nov dinner test had it on 4 of 5).",
+        "name": "rippling_plain_chapati_twice_a_week",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "item": "plain_chapati"
+        },
+        "max_per_week": 2
+      },
+      {
+        "_comment": "Bread 1 is a chapati, plain or flavoured (owner, 18 Nov; it was pinned to plain chapati). is_plain_phulka_chapathi is that family: 54 dishes, the 30 flavoured ones included.",
+        "name": "rippling_first_bread_is_a_chapati",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "slot_indices": [
+          1
+        ],
+        "components": [
+          {
+            "selector": {
+              "flag": "is_plain_phulka_chapathi"
+            },
+            "count": 1
+          }
+        ]
+      },
+      {
+        "_comment": "Bread 2 is any other bread, never a chapati (owner, 18 Nov): parathas, naan, kulcha, dosa, idli and so on.",
+        "name": "rippling_second_bread_not_a_chapati",
         "type": "slot_composition",
         "base_slot": "bread",
         "slot_indices": [
@@ -157,13 +183,79 @@
             "selector": {
               "none_of": [
                 {
-                  "item": "plain_chapati"
+                  "flag": "is_plain_phulka_chapathi"
                 }
               ]
             },
             "count": 1
           }
         ]
+      },
+      {
+        "_comment": "Bangalore keeps dosa, idly, uthappam and the akki/ragi rotti family to a South day; Rippling has none, and the owner wants a dosa every 10 days (18 Nov). Same selector, allowed on south, mix and biryani days: never on the North Friday or the Chinese Thursday.",
+        "name": "south_bread_south_day_only",
+        "type": "selector_frequency",
+        "selector": {
+          "any_of": [
+            {
+              "sub_category": "classic_dosa"
+            },
+            {
+              "sub_category": "masala_/_flavoured_dosa"
+            },
+            {
+              "sub_category": "millet-based_dosa"
+            },
+            {
+              "sub_category": "wheat-based_dosa"
+            },
+            {
+              "sub_category": "lentil-based_dosa_(adai/pesarattu)"
+            },
+            {
+              "sub_category": "uthappam"
+            },
+            {
+              "sub_category": "idli_/_steamed"
+            },
+            {
+              "sub_category": "rotis"
+            },
+            {
+              "flag": "is_dosa_family"
+            },
+            {
+              "flag": "is_rice_bread"
+            }
+          ]
+        },
+        "base_slot": "bread",
+        "allowed_day_types": [
+          "south",
+          "mix",
+          "biryani"
+        ]
+      },
+      {
+        "_comment": "A dosa once every 10 days, compulsory (owner, 18 Nov). No dosa within 10 days of the last one, and once 10 days have passed the week must serve one, so the gap is 10 to 14 days on a five-day week. Counts lunch and dinner history together, like the 21-day window.",
+        "name": "rippling_dosa_every_10_days",
+        "type": "selector_history_window",
+        "base_slot": "bread",
+        "selector": {
+          "flag": "is_dosa"
+        },
+        "window_days": 10,
+        "at_least_once_per_window": true
+      },
+      {
+        "_comment": "The history window cannot see the week being planned, so this keeps it to one dosa inside the week.",
+        "name": "rippling_dosa_once_a_week",
+        "type": "selector_frequency",
+        "base_slot": "bread",
+        "selector": {
+          "flag": "is_dosa"
+        },
+        "max_per_week": 1
       },
       {
         "_comment": "T3: 'Cut fruits or any fruit alone can not come in menu.' fresh_fruit is exactly the 11 fruit-alone desserts (cut fruit, papaya/watermelon cuts, whole banana, orange, seasonal fruit); fruit custard, fruit kesari and banana halwa sit in other sub-categories and stay.",
@@ -233,7 +325,7 @@
     },
     "_combo_by_theme_comment": "Sambar / Rasam is one row (the sambar_rasam combination: rasam three days, sambar two). The biryani day is always rasam, wherever it falls in the plan.",
     "constant_items_by_meal": {
-      "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week. bread__1 = plain chapati at lunch and dinner (per session, not client-wide: a client-wide pin is printed at breakfast too, which has no bread row).",
+      "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week. Bread 1 is no longer pinned (owner, 18 Nov): see the bread rules.",
       "breakfast": {
         "_comment": "Breakfast sheet (owner, 2026-11-17): the Eggs row (on the 'side' category) and Accompaniments 2 (the 'condiment' category) are fixed text.",
         "side": {
@@ -246,7 +338,6 @@
         "condiment": "Chat masala, salt pepper, butter (Amul sachets), kissan jam, ketchup packets"
       },
       "lunch": {
-        "bread__1": "plain chapati",
         "salad": {
           "monday": "Lettuce, cherry tomato, pink carrot, carrot, sauteed babycorn, roasted beetroot, boiled peanuts, millets, pesto chicken",
           "tuesday": "Shredded cabbage, cherry tomato, cucumber, boiled green peas, roasted pumpkin, boiled chickpeas, broken wheat, tandoori soya, onions",
@@ -263,7 +354,6 @@
         }
       },
       "dinner": {
-        "bread__1": "plain chapati",
         "salad": {
           "monday": "Lettuce, cherry tomato, carrot, onions, sauteed babycorn, roasted beetroot, grilled zucchini, boiled peanuts, millet, pesto chicken",
           "tuesday": "Shredded cabbage, cherry tomato, cucumber, onions, boiled green peas, boiled chickpeas, broken wheat, tandoori soya",

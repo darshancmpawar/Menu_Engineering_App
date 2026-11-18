@@ -133,6 +133,9 @@ ALTER TABLE week_signatures ADD COLUMN IF NOT EXISTS meal TEXT NOT NULL DEFAULT 
 -- the constraint is safe here because the widened key is a superset of the old
 -- one — no existing row can collide under it.
 ALTER TABLE menu_history ADD COLUMN IF NOT EXISTS meal TEXT NOT NULL DEFAULT 'lunch';
+-- The regional day a saved date was planned with ('Karnataka', 'Tamil Nadu' ...),
+-- shown again in the day header when the week is reopened. NULL = none.
+ALTER TABLE menu_history ADD COLUMN IF NOT EXISTS region TEXT;
 DO $$
 BEGIN
     IF EXISTS (
