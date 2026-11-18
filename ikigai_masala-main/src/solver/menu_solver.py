@@ -729,8 +729,26 @@ class MenuSolver:
                 dates, expanded_slots, pool_cache, UNIQUENESS_TIGHT_HEADROOM,
             )
             detail = ''
+            # A kept (locked) cell whose dish today's rules filter out cannot
+            # be met by any plan: a regenerate on a week saved before a rule
+            # changed (Rippling's 23 Nov dinner: mixed_curd in Curd, a kootu in
+            # Lentils). Named first, because regenerating the week is the fix.
+            day_index = {d: i for i, d in enumerate(dates)}
+            stale = []
+            for (d, slot_id), item in sorted((locked or {}).items()):
+                cached = pool_cache.get((day_index.get(d), slot_id))
+                if item and cached is not None and _norm_str(item) not in set(
+                        cached[0]['item'].map(_norm_str)):
+                    stale.append(f'{d.isoformat()} {slot_id} {item!r}')
+            if stale:
+                detail += (
+                    ' Kept cell(s) holding a dish the current rules no longer'
+                    ' allow (saved before a rule changed): '
+                    + ', '.join(stale)
+                    + '. Generate the week again, or regenerate those cells too.'
+                )
             if tight:
-                detail = (
+                detail += (
                     ' Tightest slot(s) for this counter — '
                     + ', '.join(
                         f'{s} ({n} distinct item(s) for {c} day-slot(s))'
