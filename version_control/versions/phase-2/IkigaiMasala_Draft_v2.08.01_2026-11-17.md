@@ -129,6 +129,36 @@ Checked over 25 days of lunch and dinner (five weeks, each saved before the
 next): every week planned, no rule loosened, every Rippling rule held on every
 day, and nothing repeated within 21 days.
 
+### 13. Regional days are for lunch and dinner
+
+A regional day changes the lunch and dinner menus only (owner, 18 Nov).
+Breakfast and snacks ignore it, both the day's pick and the weekly default.
+
+### 14. Applying a regional day to Rippling failed
+
+On 18 Nov, applying Karnataka, Punjab and Maharashtra to Rippling's week of
+23 Nov failed for lunch and dinner with "No feasible plan found". Applying a
+region re-plans only the regional days and keeps the rest of the week as it
+is. Two things made that impossible:
+
+- **Thursday's veg dry.** Without the fix in section 12, the plan had no South
+  dish to put in the South Veg Dry row on Thursday, so it served two North
+  dishes there. The re-plan kept Thursday as it was but asked for a South dish
+  again. With section 12, a fresh week takes the regional days for lunch and
+  for dinner (checked against Rippling's saved history).
+- **Weeks saved before 2.08.01.** The dinner week of 23 Nov was saved on
+  17 Nov and holds dishes the new rules remove: Mixed Curd in the Curd row
+  and a kootu in Lentils on Friday. No re-plan can keep those days. The error
+  now names such cells and says to generate the week again.
+
+### 15. One drink base a week
+
+Each drink base (`item_style`) is served at most once a week. Rippling had
+served Orange Cooler on Wednesday and Orange Punch on Thursday, both
+orange-based. Buttermilk is exempt, because it already has its own rule
+(two days a week). This is a Bangalore rule, so Hyderabad and NCR, which
+follow Bangalore's rules, get it too.
+
 ## What this does not do
 
 - **The switches need one database change.** Until `features` is added to the
@@ -146,11 +176,13 @@ day, and nothing repeated within 21 days.
   Pears"), as decided for 2.08.00. Those dishes count as new for one cycle.
 - **Masala Majjige and the existing Masala Buttermilk are the same drink under
   two names.** They are kept apart, as written.
+- **Rippling's weeks saved before 2.08.01 cannot take a regional day** until
+  they are generated again (on hold, owner).
 
 ## Change tracking
 
 | Version | Date | Author(s) | Principal changes / reason |
 |---|---|---|---|
-| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered. |
+| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered; regional days for lunch and dinner only; a re-plan that cannot keep a saved dish names it; one drink base a week, buttermilk aside (Bangalore). |
 
 **Previous:** [v2.08.00](IkigaiMasala_Final_v2.08.00_2026-11-16.md)  **Next:** —
