@@ -570,8 +570,11 @@ class MenuRuleLoader:
         """The client's ``display`` block: how ITS menu is laid out on screen
         and in the Excel export. Empty dict (the shared layout) if unset.
 
-        Keys, both optional: ``order`` (slot ids or base slots, first to last)
-        and ``labels`` (``{slot id or base: row label}``). The veg / non-veg
+        Keys, all optional: ``order`` (slot ids or base slots, first to last),
+        ``labels`` (``{slot id or base: row label}``) and ``by_meal``
+        (``{meal: {order, labels}}``: one service's own order, and labels laid
+        over the client's, since breakfast's rows and names are not lunch's).
+        The veg / non-veg
         marker and "last served" are the client's add-on switches in the
         database (`clients.features`), not here. Malformed values are dropped
         rather than raised on, so a typo costs the layout, never the menu;
@@ -581,13 +584,19 @@ class MenuRuleLoader:
         raw = block.get('display') if isinstance(block, dict) else None
         if not isinstance(raw, dict):
             return {}
-        order, labels = raw.get('order'), raw.get('labels')
-        return {
-            'order': [str(s) for s in order] if isinstance(order, list) else [],
-            'labels': ({str(k): str(v) for k, v in labels.items()
-                        if not str(k).startswith('_')}
-                       if isinstance(labels, dict) else {}),
-        }
+        def _layout(d):
+            order, labels = d.get('order'), d.get('labels')
+            return {
+                'order': [str(s) for s in order] if isinstance(order, list) else [],
+                'labels': ({str(k): str(v) for k, v in labels.items()
+                            if not str(k).startswith('_')}
+                           if isinstance(labels, dict) else {}),
+            }
+        by_meal = raw.get('by_meal')
+        return {**_layout(raw), 'by_meal': (
+            {str(m).strip().lower(): _layout(v) for m, v in by_meal.items()
+             if not str(m).startswith('_') and isinstance(v, dict)}
+            if isinstance(by_meal, dict) else {})}
 
     def get_client_slot_pool_moves(self, client_name: str) -> List[Dict[str, str]]:
         """The client's ``slot_pool_moves``: ``[{from, to, sub_category}, …]``.

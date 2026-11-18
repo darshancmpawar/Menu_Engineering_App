@@ -17,6 +17,7 @@ import json
 import pathlib
 
 from src.client.client_config import AVAILABLE_THEMES
+from src.history import MEALS
 from src.constants import BASE_SLOT_NAMES, COMBO_CATEGORIES, CONST_SLOTS
 from src.menu_rules.menu_rule_loader import CLIENT_RULES_DIR, MenuRuleLoader
 from src.solver.menu_solver import _combo_day_variant, _combo_variant_for
@@ -47,8 +48,11 @@ def test_every_display_block_names_real_slots():
         display = block.get('display')
         if not display:
             continue
-        keys = list(display.get('order') or []) + [
-            k for k in (display.get('labels') or {}) if not k.startswith('_')]
+        by_meal = {m: v for m, v in (display.get('by_meal') or {}).items() if not m.startswith('_')}
+        assert set(by_meal) <= set(MEALS), (path, name, sorted(by_meal))
+        keys = [k for lay in [display, *by_meal.values()]
+                for k in list(lay.get('order') or []) + [
+                    k for k in (lay.get('labels') or {}) if not k.startswith('_')]]
         bad = [k for k in keys if not _real_slot(k)]
         assert not bad, f"{path}: {name} display names unknown slots {bad}"
         # Those two are database switches now (clients.features); in a file
@@ -73,7 +77,8 @@ def test_every_combo_by_theme_names_a_real_slot_component_and_theme():
 
 def test_loader_reads_display_and_combo_by_theme(monkeypatch, tmp_path):
     (tmp_path / 'acme.json').write_text(json.dumps({
-        'Acme': {'display': {'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils', '_x': 'y'}},
+        'Acme': {'display': {'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils', '_x': 'y'},
+                             'by_meal': {'_c': 'x', 'Breakfast': {'order': ['fruit'], 'labels': {'salad': 'Veg Healthy'}}}},
                  'combo_by_theme': {'sambar_rasam': {'biryani': 'rasam'}},
                  'counters': {'Dinner': {'combo_by_theme': {'sambar_rasam': {'north': 'sambar'}}}}},
         'Broken': {'display': {'order': 'dal', 'labels': ['x']}},
@@ -81,8 +86,9 @@ def test_loader_reads_display_and_combo_by_theme(monkeypatch, tmp_path):
     monkeypatch.setattr('src.menu_rules.menu_rule_loader.CLIENT_RULES_DIR', str(tmp_path))
     loader = MenuRuleLoader()
     assert loader.get_client_display('Acme') == {
-        'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils'}}
-    assert loader.get_client_display('Broken') == {'order': [], 'labels': {}}
+        'order': ['dal', 'rice'], 'labels': {'dal': 'Lentils'},
+        'by_meal': {'breakfast': {'order': ['fruit'], 'labels': {'salad': 'Veg Healthy'}}}}
+    assert loader.get_client_display('Broken') == {'order': [], 'labels': {}, 'by_meal': {}}
     assert loader.get_client_display('Nobody') == {}
     assert loader.get_client_combo_by_theme('Acme') == {'sambar_rasam': {'biryani': 'rasam'}}
     # A counter's entry replaces the client-level one for that combination.
@@ -192,6 +198,33 @@ def test_table_rows_follow_the_clients_order_labels_and_markers():
     assert cells['rice']['marker'] == 'veg'
     assert cells['rice']['last'] == 'Last served 27 Jul (7 days ago)'
     assert 'last' not in cells['dal']
+
+
+def test_breakfast_rows_take_the_breakfast_sheet_order_and_names():
+    """Owner, 18 Nov: Rippling's breakfast in the breakfast sheet's order and
+    names (Condiment, not "Accompaniments 2"; Veg Healthy on the Salad row);
+    lunch keeps its own names for the same slot."""
+    import ast
+    import types
+    src = (pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text(encoding='utf-8')
+    fn = next(n for n in ast.parse(src).body
+              if isinstance(n, ast.FunctionDef) and n.name == '_apply_client_display')
+    ns = {'st': types.SimpleNamespace(session_state={}), 'LUNCH': 'lunch',
+          'normalize_features': lambda _: {'veg_markers': False, 'last_served': False},
+          '_cached_client_display': MenuRuleLoader().get_client_display}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), 'app.py', 'exec'), ns)
+    blocks = [{'meal': 'breakfast', 'plan': {}}, {'meal': 'lunch', 'plan': {}}]
+    ns['_apply_client_display'](blocks, 'Rippling')
+    bf, lunch = (b['display'] for b in blocks)
+    assert bf['order'] == ['fruit', 'side', 'salad', 'nonveg_main', 'breakfast_main',
+                           'accompaniment', 'condiment', 'sandwich', 'nonveg_sandwich']
+    assert (bf['labels']['condiment'], bf['labels']['salad']) == ('Condiment', 'Veg Healthy')
+    assert lunch['labels']['salad'] == 'Make Your Own Salad' and lunch['order'][0] == 'welcome_drink'
+    plan = {'2026-11-23': {'condiment': 'Chat masala', 'fruit__1': 'apple', 'accompaniment__1': 'chutney',
+                           'breakfast_main': 'set_dosa', 'salad': 'three_bean_salad'}}
+    rows = day_cells(plan, ['2026-11-23'], {}, {}, display=bf)['rows']
+    assert [r['id'] for r in rows] == ['fruit__1', 'salad', 'breakfast_main', 'accompaniment__1', 'condiment']
+    assert [r['label'] for r in rows] == ['Fresh Fruits', 'Veg Healthy', 'Mains', 'Accompaniments', 'Condiment']
 
 
 def test_no_display_block_changes_nothing():

@@ -1163,7 +1163,10 @@ def _apply_client_display(blocks: list, client_name: str) -> None:
                "last_served": feats["last_served"]}
     served = None
     for b in blocks:
-        b["display"] = display
+        # A service's own order and labels (breakfast's rows are not lunch's).
+        own = (display.get("by_meal") or {}).get(b.get("meal") or LUNCH) or {}
+        b["display"] = {**display, "order": own.get("order") or display.get("order") or [],
+                        "labels": {**(display.get("labels") or {}), **(own.get("labels") or {})}}
         if not (display.get("last_served") and b.get("plan")):
             b.pop("last_served", None)
             continue
