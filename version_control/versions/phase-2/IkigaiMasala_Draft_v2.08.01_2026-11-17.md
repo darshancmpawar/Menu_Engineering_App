@@ -203,6 +203,38 @@ prints. A new colour, pink, is added for the guava and rose drinks. With the
 saved days in place, the planner's 23 Nov week (lunch and dinner) repeats
 nothing served in the 21 days before it.
 
+### 19. Saved weeks open from history for lunch and dinner
+
+Owner, 18 Nov: Rippling's 2-13 November menus were in the database, but
+opening 9 November generated a new plan. The planner only reopened a saved
+week for clients that plan lunch alone. It now reopens it whenever every
+service being planned has that week saved; if one is missing, it generates
+all of them, so a saved menu never sits beside a new one. A reopened week
+also shows the day themes of the service it belongs to.
+
+### 20. Rippling's breads
+
+Owner, 18 Nov:
+
+- **Bread 1 is a chapati, plain or flavoured.** It is no longer fixed to plain
+  chapati. Plain chapati may come back within the week, on 2 days at most;
+  a flavoured chapati follows the 21-day rule like any dish.
+- **Bread 2 is any other bread**: paratha, naan, kulcha, dosa, idli and so on.
+- **A dosa every 10 days.** Not within 10 days of the last one, and once 10
+  days have passed the week must have one, so the gap is 10 to 14 days. It
+  counts lunch and dinner together.
+- Bangalore keeps dosas and other South breads to South days, and limits
+  Chinese-day bread to chapatis. Rippling has no South day and serves
+  parathas on its Chinese day, so for Rippling bread is not tied to the
+  day's cuisine, and South breads are allowed on mix and biryani days (not
+  the North Friday or the Chinese Thursday).
+
+Checked against the live data of 18 November: both saved weeks reopen for
+lunch and dinner with the right themes; the week of 23 November plans for
+lunch and dinner with no rule loosened, one dosa each, nothing repeated
+within 21 days of the saved menus, and a Karnataka day and breakfast both
+plan.
+
 ## What this does not do
 
 - **The switches need one database change.** Until `features` is added to the
@@ -230,6 +262,6 @@ nothing served in the 21 days before it.
 
 | Version | Date | Author(s) | Principal changes / reason |
 |---|---|---|---|
-| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered; regional days for lunch and dinner only; a re-plan that cannot keep a saved dish names it; one drink base a week, buttermilk aside (Bangalore); detox and infused waters moved to Infused Water; Papad chosen by the planner, Papad lists cleaned; Rippling's 2-13 Nov menus saved, 59 dishes added; pink item colour. |
+| 2.08.01 | 17 Nov | Darshan + Claude Code | Veg / non-veg mark after the dish (screen and Excel); Curd row is plain curd for every client; Rippling kootu moved from Lentils to South Veg Dry, at most once in 8 days, regional days exempt (new `slot_pool_moves`, `except_regional_days`); Corn Papad Masala Majjige split, Cinnamon Pears renamed (Bangalore and Hyderabad); four-week check mirrors Generate; `session` column in every city list, 402 breakfast dishes and nine breakfast categories, a solve sees its own session; regional-day apply skips fixed dishes (all clients); six add-on feature switches per client in `clients.features`; counters counted per service; Rippling breakfast rows; 21-day no-repeat looks both ways; Rippling bread row 2 never plain chapati and veg dry North/South on Chinese days; plain curd not theme-filtered; regional days for lunch and dinner only; a re-plan that cannot keep a saved dish names it; one drink base a week, buttermilk aside (Bangalore); detox and infused waters moved to Infused Water; Papad chosen by the planner, Papad lists cleaned; Rippling's 2-13 Nov menus saved, 59 dishes added; pink item colour; saved weeks reopen for every service; Rippling bread 1 a chapati, bread 2 any other bread, a dosa every 10 days. |
 
 **Previous:** [v2.08.00](IkigaiMasala_Final_v2.08.00_2026-11-16.md)  **Next:** —
