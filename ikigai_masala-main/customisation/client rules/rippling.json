@@ -49,6 +49,10 @@
         ],
         "allowed_weekdays": [
           "wed"
+        ],
+        "meals": [
+          "lunch",
+          "dinner"
         ]
       },
       {
@@ -66,6 +70,10 @@
             },
             "count": 1
           }
+        ],
+        "meals": [
+          "lunch",
+          "dinner"
         ]
       },
       {
@@ -83,6 +91,10 @@
             },
             "count": 1
           }
+        ],
+        "meals": [
+          "lunch",
+          "dinner"
         ]
       },
       {
@@ -132,6 +144,10 @@
             },
             "count": 1
           }
+        ],
+        "meals": [
+          "lunch",
+          "dinner"
         ]
       },
       {
@@ -237,7 +253,7 @@
         ]
       },
       {
-        "_comment": "A dosa once every 10 days, compulsory (owner, 18 Nov). No dosa within 10 days of the last one, and once 10 days have passed the week must serve one, so the gap is 10 to 14 days on a five-day week. Counts lunch and dinner history together, like the 21-day window.",
+        "_comment": "A dosa once every 10 days, compulsory (owner, 18 Nov). No dosa within 10 days of the last one, and once 10 days have passed the week must serve one, so the gap is 10 to 14 days on a five-day week. Counts lunch and dinner history together, like the 21-day window. Lunch and dinner only: breakfast has no bread row.",
         "name": "rippling_dosa_every_10_days",
         "type": "selector_history_window",
         "base_slot": "bread",
@@ -245,7 +261,11 @@
           "flag": "is_dosa"
         },
         "window_days": 10,
-        "at_least_once_per_window": true
+        "at_least_once_per_window": true,
+        "meals": [
+          "lunch",
+          "dinner"
+        ]
       },
       {
         "_comment": "The history window cannot see the week being planned, so this keeps it to one dosa inside the week.",
@@ -255,7 +275,11 @@
         "selector": {
           "flag": "is_dosa"
         },
-        "max_per_week": 1
+        "max_per_week": 1,
+        "meals": [
+          "lunch",
+          "dinner"
+        ]
       },
       {
         "_comment": "T3: 'Cut fruits or any fruit alone can not come in menu.' fresh_fruit is exactly the 11 fruit-alone desserts (cut fruit, papaya/watermelon cuts, whole banana, orange, seasonal fruit); fruit custard, fruit kesari and banana halwa sit in other sub-categories and stay.",
@@ -289,25 +313,131 @@
         "except_regional_days": true
       },
       {
-        "_comment": "Breakfast: the non-veg sandwich is Thursday only (owner, 2026-11-17). Lunch and dinner have no such row, so this is breakfast-only by construction.",
-        "name": "rippling_breakfast_nonveg_sandwich_thursday",
+        "_comment": "Breakfast: the non-veg sandwich is Friday only, as served in all three weeks of the owner's breakfast sheet (2-20 Nov); 17 Nov's word was Thursday.",
+        "name": "rippling_breakfast_nonveg_sandwich_friday",
         "type": "slot_day_restriction",
+        "meals": [
+          "breakfast"
+        ],
         "base_slot": "nonveg_sandwich",
         "allowed_weekdays": [
-          "thu"
+          "fri"
         ]
       },
       {
         "_comment": "Breakfast: the veg sandwich steps aside on the non-veg sandwich day.",
-        "name": "rippling_breakfast_veg_sandwich_not_thursday",
+        "name": "rippling_breakfast_veg_sandwich_not_friday",
         "type": "slot_day_restriction",
+        "meals": [
+          "breakfast"
+        ],
         "base_slot": "sandwich",
         "allowed_weekdays": [
           "mon",
           "tue",
           "wed",
+          "thu"
+        ]
+      },
+      {
+        "_comment": "Breakfast: Tuesday and Thursday are bread, butter and jam (pinned below), so it repeats; on Monday and Wednesday a real sandwich, so at most those two.",
+        "name": "rippling_breakfast_bread_jam_repeatable",
+        "type": "repeatable_items",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "sandwich",
+        "selector": {
+          "sub_category": "bread_butter_jam"
+        }
+      },
+      {
+        "name": "rippling_breakfast_bread_jam_tue_thu_only",
+        "type": "selector_frequency",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "sandwich",
+        "selector": {
+          "sub_category": "bread_butter_jam"
+        },
+        "max_per_week": 2
+      },
+      {
+        "_comment": "Breakfast: Veg Healthy is the Salad row (owner, 18 Nov) and the Non Veg main row takes its place on Wednesday.",
+        "name": "rippling_breakfast_veg_healthy_not_wednesday",
+        "type": "slot_day_restriction",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "salad",
+        "allowed_weekdays": [
+          "mon",
+          "tue",
+          "thu",
           "fri"
         ]
+      },
+      {
+        "name": "rippling_breakfast_nonveg_main_wednesday",
+        "type": "slot_day_restriction",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "nonveg_main",
+        "allowed_weekdays": [
+          "wed"
+        ]
+      },
+      {
+        "_comment": "Breakfast: eggs are their own pinned row, so the Wednesday non-veg main is never an egg dish.",
+        "name": "rippling_breakfast_nonveg_main_not_egg",
+        "type": "selector_frequency",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "nonveg_main",
+        "selector": {
+          "flag": "is_egg_dish"
+        },
+        "max": 0
+      },
+      {
+        "_comment": "Breakfast: a different kind of main every day of the week (idli, dosa, pongal, paratha, poori ...), as in all three weeks of the owner's sheet.",
+        "name": "rippling_breakfast_main_one_kind_a_week",
+        "type": "attribute_grouping",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "breakfast_main",
+        "group_by": "sub_category",
+        "max_per_group": 1
+      },
+      {
+        "_comment": "Breakfast: a vada or pakoda only ever comes beside an idli or pongal, never as the main.",
+        "name": "rippling_breakfast_no_vada_main",
+        "type": "selector_frequency",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "breakfast_main",
+        "selector": {
+          "sub_category": "vada"
+        },
+        "max": 0
+      },
+      {
+        "_comment": "Breakfast: each Fruit cell is one fruit; 'seasonal mix fruit bowl (3 varieties)' is the three cells together, not one of them.",
+        "name": "rippling_breakfast_fruit_not_a_bowl",
+        "type": "selector_frequency",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "fruit",
+        "selector": {
+          "item": "seasonal_mix_fruit_bowl_(3_varieties)"
+        },
+        "max": 0
       }
     ],
     "slot_pool_moves": [
@@ -327,7 +457,7 @@
     "constant_items_by_meal": {
       "_comment": "T1: the make-your-own salad (salad row) and dressings (chutney row, labelled 'Dressing') are fixed per weekday and differ between the lunch and dinner sessions of the one counter. Same every week. Bread 1 is no longer pinned (owner, 18 Nov): see the bread rules.",
       "breakfast": {
-        "_comment": "Breakfast sheet (owner, 2026-11-17): the Eggs row (on the 'side' category) and Accompaniments 2 (the 'condiment' category) are fixed text.",
+        "_comment": "Breakfast sheet (owner, 2026-11-17): the Eggs row (on the 'side' category) and Accompaniments 2 (the 'condiment' category) are fixed text. Sandwich on Tuesday and Thursday is brown bread, butter and jam (owner's sheet, 2-20 Nov).",
         "side": {
           "monday": "Boiled Egg, Omelette",
           "tuesday": "Boiled Egg, Omelette",
@@ -335,7 +465,11 @@
           "thursday": "Boiled Egg, Omelette",
           "friday": "Boiled Eggs"
         },
-        "condiment": "Chat masala, salt pepper, butter (Amul sachets), kissan jam, ketchup packets"
+        "condiment": "Chat masala, salt pepper, butter (Amul sachets), kissan jam, ketchup packets",
+        "sandwich": {
+          "tuesday": "brown_bread,_butter_&_jam",
+          "thursday": "brown_bread,_butter_&_jam"
+        }
       },
       "lunch": {
         "salad": {

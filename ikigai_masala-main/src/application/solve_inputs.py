@@ -137,6 +137,12 @@ def rules_and_skip_for_client(
     # counters.
     counter_name = getattr(client_cfg, 'counter_name', None)
     rules = loader.load_for_client(client_name, generic, counter_name)
+    # A rule naming its services (`"meals": ["breakfast"]`) binds only those: one
+    # client block holds every service's rules, and breakfast shares slot names
+    # (salad, nonveg_main) with lunch (Rippling, owner 18 Nov).
+    meal_key = normalize_meal(meal)
+    rules = [r for r in rules
+             if meal_key in {normalize_meal(m) for m in (r.config.get('meals') or [meal_key])}]
     constant_items, whole_slot_bases = _resolve_constant_items(
         client_name,
         loader.get_client_constant_items(client_name, counter_name, meal),

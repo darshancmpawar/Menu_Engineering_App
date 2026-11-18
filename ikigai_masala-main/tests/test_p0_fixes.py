@@ -230,6 +230,17 @@ class TestUniqueItemsRelaxation:
             f"expected all 4 items used with a single repeat, got {picked}"
         )
 
+    def test_relaxed_slot_never_repeats_within_a_day(self):
+        """Rippling breakfast (18 Nov): three fruit cells a day from four fruits
+        must repeat across days, but a day is three DIFFERENT fruits."""
+        m = cp_model.CpModel()
+        cells = _build(m, 5, 'fruit', ['a', 'b', 'c', 'd'], cells_per_day=3)
+        rule = UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'})
+        rule.apply(m, {}, None, {'cells': cells, 'item_to_vars': _item_to_vars(cells)})
+        m.Add(cells[0].x_vars[0] == 1)          # day 0, cell 1 = 'a'
+        m.Add(cells[1].x_vars[0] == 1)          # day 0, cell 2 = 'a' too
+        assert _status(m) == 'INFEASIBLE'
+
 
 # --------------------------------------------------------------------------
 # nonveg biryani weekly cap auto-relax
