@@ -257,8 +257,9 @@ the 2-13 November sheet's "Italian" day is saved as Continental.
 ### 22. Rippling: 17 November and 23-27 November left blank
 
 Owner, 18 Nov. The planner's saved 17 November was not what was served, and
-23-27 November was saved before the new bread rules: both are deleted, every
-service (`scripts/blank_rippling_2026-11-17_and_23_to_27.sql`, which also
+23-27 November was saved before the new bread rules: 17 November lunch and
+dinner and all of 23-27 November are deleted; 17 November breakfast is real
+and stays (`scripts/blank_rippling_2026-11-17_and_23_to_27.sql`, which also
 rebuilds the 16 November week records without 17 November). A saved week with
 a PAST day nobody saved now opens from history with that day blank (all
 clients); a missing day from today on still means a fresh plan.

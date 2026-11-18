@@ -1,10 +1,11 @@
 -- Rippling: 17 Nov and 23-27 Nov 2026 left blank (owner, 18 Nov). 17 Nov was
 -- saved from a planner run that was not what the kitchen served; 23-27 Nov was
--- saved before the new bread rules and will be planned again. Every service.
+-- saved before the new bread rules and will be planned again (every service).
+-- 17 Nov breakfast is real (owner's breakfast sheet) and is not touched.
 -- The 16 Nov week records are rebuilt without 17 Nov. Safe to run twice.
 BEGIN;
 
-DELETE FROM menu_history WHERE client_name = 'Rippling' AND service_date = '2026-11-17';
+DELETE FROM menu_history WHERE client_name = 'Rippling' AND service_date = '2026-11-17' AND meal IN ('lunch', 'dinner');
 DELETE FROM menu_history WHERE client_name = 'Rippling' AND service_date BETWEEN '2026-11-23' AND '2026-11-27';
 DELETE FROM week_signatures WHERE client_name = 'Rippling' AND week_start = '2026-11-23';
 
