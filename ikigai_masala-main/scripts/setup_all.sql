@@ -121,6 +121,12 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS features           JSONB;
 -- more, and dropping a column is the one migration step that cannot be undone
 -- by re-running this file.
 
+-- The week signature is per service too: `_write_week_signature` keys it by
+-- (client, week, meal). Without this column a lunch save falls back to the
+-- meal-free row, and a dinner save writes its menus and then fails here (found
+-- on the live database, 17 Nov: no dinner week had a signature).
+ALTER TABLE week_signatures ADD COLUMN IF NOT EXISTS meal TEXT NOT NULL DEFAULT 'lunch';
+
 -- Migrate menu_history to the (client, date, MEAL) key. Idempotent: the column
 -- is added with a default, existing rows become 'lunch', and the primary key is
 -- only rebuilt when it does not already include `meal`. Dropping and recreating
