@@ -264,6 +264,9 @@ EXEMPT_FROM_CUISINE: Set[str] = {
     # An infused water and a chicken broth carry no regional identity, so the
     # theme filter must not narrow them on a south/north/chinese day.
     'infused_water', 'nonveg_soup',
+    # Nor does plain curd, the Curd row's only dish since 2.08.01: narrowed, it
+    # warned "0 north curd items" on every North day.
+    'curd',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}

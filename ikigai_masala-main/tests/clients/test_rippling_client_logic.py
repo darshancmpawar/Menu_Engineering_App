@@ -206,10 +206,29 @@ def test_curd_is_plain_and_curd_side_is_raita(plan, df):
         assert day and all(_is(df, i, 'is_raita') for i in day.values()), day
 
 
+def test_veg_dry_stays_indian_on_the_chinese_day(df):
+    """Owner, 16 Nov: north and south veg dry irrespective of the theme. The
+    Chinese-day filter ignores exempt_slots, so exempting veg_dry was not
+    enough: Thursday's veg dry was cut to Chinese-style dishes, one of them
+    south, and from week 2 the South row was relaxed (25-day run, 17 Nov)."""
+    import datetime as dt
+    from src.menu_rules.theme_rules import ThemeSlotFilterRule
+    from src.ontology import repository
+    block = json.loads(_RULES.read_text(encoding='utf-8'))['Rippling']
+    rule = ThemeSlotFilterRule(
+        next(r for r in block['rules'] if r['name'] == 'theme_cuisine_filter'))
+    pool = repository.menu_data('Bangalore')[1]['veg_dry']
+    thursday = rule.pre_filter_pool(pool, dt.date(2026, 8, 13), 'veg_dry', 'chinese', {})
+    cuisines = set(thursday['cuisine_family'])
+    assert cuisines == {'north_indian', 'south_indian'}, cuisines
+    assert (thursday['cuisine_family'] == 'south_indian').sum() > 100
+
+
 def test_bread_one_is_plain_chapati(plan, df):
     for day in _cells(plan[1], 'bread'):
         assert len(day) == 2
         assert _is(df, day['bread__1'], 'is_plain_phulka_chapathi'), day
+        assert day['bread__2'] != 'plain_chapati', day    # owner, 17 Nov
 
 
 def test_no_fruit_alone_dessert(plan, df):
