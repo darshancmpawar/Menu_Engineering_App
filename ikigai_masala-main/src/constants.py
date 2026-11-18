@@ -97,6 +97,9 @@ BASE_SLOT_NAMES: List[str] = [
     # other veg categories (shown after the mains)
     'healthy_rice', 'curd', 'curd_side', 'curd_rice',
     'dal_rasam', 'sambar_rasam', 'dal_sambar',
+    # Solved from the Papad category since 2.08.01 (owner, 18 Nov), no longer
+    # the fixed text "Papad".
+    'papad',
     # breakfast only (BREAKFAST_ONLY_SLOTS)
     'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'sandwich',
     'snack', 'fruit', 'condiment',
@@ -104,7 +107,7 @@ BASE_SLOT_NAMES: List[str] = [
     'nonveg_main', 'nonveg_sandwich',
 ]
 
-CONST_SLOTS: List[str] = ['white_rice', 'papad', 'pickle', 'chutney']
+CONST_SLOTS: List[str] = ['white_rice', 'pickle', 'chutney']
 
 # Breakfast is its own session of the city list (the `session` column). These
 # rows exist only at breakfast; the config editor offers a breakfast service
@@ -118,6 +121,8 @@ BREAKFAST_SLOTS: Set[str] = set(BREAKFAST_ONLY_SLOTS) | {
     'salad', 'veg_gravy', 'sambar', 'curd_side', 'nonveg_main'}
 # No row carries the snacks session yet, so a snacks service is not planned.
 SNACKS_NOT_READY = "Snacks menu bank and solver in development."
+# The services a regional day applies to (owner, 18 Nov): not breakfast or snacks.
+REGIONAL_MEALS = frozenset({'lunch', 'dinner'})
 
 # Add-on features, switched per client in the editor (`clients.features`).
 # Every one is OFF until switched on for a client (owner, 2026-11-17); a
@@ -178,7 +183,10 @@ COMBO_CATEGORIES: Dict[str, tuple] = {
 # from one client's menu (Booking.com) and switching them on for the other 50
 # Bangalore counters would change every one of their plans.
 DEFAULT_OFF_SLOTS: Set[str] = (
-    {'curd', 'curd_rice', 'infused_water', 'nonveg_soup'}
+    {'curd', 'curd_rice', 'infused_water', 'nonveg_soup',
+     # Opt-in as it was while it was a fixed row: a fresh client still starts
+     # without it, and a session without papads (breakfast) does not need one.
+     'papad'}
     | set(COMBO_CATEGORIES) | set(BREAKFAST_ONLY_SLOTS)
 )
 
@@ -215,6 +223,8 @@ COOLDOWN_EXEMPT_SLOTS: Set[str] = {
     'infused_water', 'nonveg_soup',
     # Breakfast's small rows (6-15 dishes each), same argument.
     'condiment', 'side', 'fruit', 'snack', 'breakfast_chutney',
+    # 4-14 papads a city: no repeat within the week, least recent first after.
+    'papad',
 }
 
 # The two yogurt-side categories are mutually exclusive on a single counter:
@@ -244,7 +254,6 @@ def combo_minority_count(n_days: int) -> int:
 
 CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
-    'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'chutney',
 }
@@ -264,6 +273,11 @@ EXEMPT_FROM_CUISINE: Set[str] = {
     # An infused water and a chicken broth carry no regional identity, so the
     # theme filter must not narrow them on a south/north/chinese day.
     'infused_water', 'nonveg_soup',
+    # Nor does plain curd, the Curd row's only dish since 2.08.01: narrowed, it
+    # warned "0 north curd items" on every North day.
+    'curd',
+    # A papad goes with any day's menu.
+    'papad',
 }
 
 REPEATABLE_ITEM_BASES: Set[str] = {'curd'}

@@ -67,7 +67,7 @@ class TestClientConstantItemsInPlan:
             start_date=dates[0],
             explicit_dates=dates,
             active_base_slots=['rice'],
-            const_slots=['papad'],
+            const_slots=['pickle'],
             client_constant_items={
                 'curd': {'wednesday': 'Curd', 'thursday': 'Curd'},
                 'curd_side': {'friday': 'raita'},
@@ -82,7 +82,7 @@ class TestClientConstantItemsInPlan:
         assert 'curd_side' not in plan[dates[0]]
         assert plan[dates[2]]['curd_side'] == 'raita'
         assert 'curd' not in plan[dates[2]]
-        assert plan[dates[0]]['papad'] == 'Papad'
+        assert plan[dates[0]]['pickle'] == 'Pickle'
 
     def test_pinned_cells_records_exactly_what_was_pinned(self):
         """The table's pin marker is read from this set.
@@ -95,7 +95,7 @@ class TestClientConstantItemsInPlan:
         dates = [dt.date(2026, 3, 25), dt.date(2026, 3, 26)]  # Wed, Thu
         cfg = SolverConfig(
             days=2, start_date=dates[0], explicit_dates=dates,
-            active_base_slots=['rice'], const_slots=['papad'],
+            active_base_slots=['rice'], const_slots=['pickle'],
             client_constant_items={'curd': {'wednesday': 'Curd'}},
         )
         solver = MenuSolver(pools={}, solver_config=cfg, menu_rules=[])
@@ -103,7 +103,7 @@ class TestClientConstantItemsInPlan:
         solver._rows_to_week_plan({d: {} for d in dates}, dates,
                                   expanded_slots=[])
         assert solver.pinned_cells == {
-            (dates[0], 'papad'), (dates[1], 'papad'),   # global staple, daily
+            (dates[0], 'pickle'), (dates[1], 'pickle'),  # global staple, daily
             (dates[0], 'curd'),                         # Wednesday only
         }
 

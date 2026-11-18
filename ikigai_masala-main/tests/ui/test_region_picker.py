@@ -58,9 +58,11 @@ def test_applying_a_region_never_asks_to_regenerate_a_pinned_cell():
             sent.append(kw['replace_slots'])
             return {'solution': {}}
 
+    from src.constants import REGIONAL_MEALS
     fn = _app_function('_apply_region_days_to_blocks', {
         'st': SimpleNamespace(session_state=SimpleNamespace(client_name='Rippling')),
-        '_PLANNING_TIME_LIMIT_SECONDS': 180,
+        '_PLANNING_TIME_LIMIT_SECONDS': 180, 'LUNCH': 'lunch',
+        'REGIONAL_MEALS': REGIONAL_MEALS,
         'flatten_api_solution': lambda s: ({}, {})})
     day = '2026-08-03'
     block = {'plan': {day: {'salad': 'x', 'bread__1': 'plain chapati', 'dal': 'y',
@@ -70,8 +72,29 @@ def test_applying_a_region_never_asks_to_regenerate_a_pinned_cell():
              'pinned': {day: {'salad', 'bread__1'}}}
     allpinned = {'plan': {day: {'salad': 'x'}}, 'plan_dates': [day],
                  'pinned': {day: {'salad'}}}
-    fn(Api(), [block, allpinned], {day: 'Tamil Nadu'}, [day])
-    assert sent == [{day: ['dal', 'veg_dry__2']}]   # nothing sent for an all-pinned day
+    # Owner, 18 Nov: a regional day is for lunch and dinner only.
+    breakfast = {'plan': {day: {'breakfast_main': 'idly'}}, 'plan_dates': [day],
+                 'meal': 'breakfast'}
+    fn(Api(), [block, allpinned, breakfast], {day: 'Tamil Nadu'}, [day])
+    assert sent == [{day: ['dal', 'veg_dry__2']}]   # nothing for all-pinned or breakfast
+
+
+@pytest.mark.parametrize('meal, applied', [('lunch', True), ('dinner', True),
+                                           ('breakfast', False), ('snacks', False)])
+def test_a_regional_day_applies_to_lunch_and_dinner_only(meal, applied):
+    """The server ignores a regional pick, and the standing pattern, for any
+    other service (owner, 18 Nov)."""
+    from src.application.solve_inputs import _apply_region_days
+    calls = []
+    import src.application.solve_inputs as si
+    real = si.repository.regions
+    si.repository.regions = lambda city: calls.append(city) or ()
+    try:
+        _apply_region_days([], {'meal': meal, 'region_days': {'2026-08-03': 'Tamil Nadu'}},
+                           [dt.date(2026, 8, 3)], None, 'Bangalore', {})
+    finally:
+        si.repository.regions = real
+    assert bool(calls) is applied
 
 META = {
     'theme_compatibility': {

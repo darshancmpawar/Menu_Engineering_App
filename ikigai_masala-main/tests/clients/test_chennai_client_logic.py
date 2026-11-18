@@ -197,7 +197,7 @@ class TestEveryDishIsAChennaiDish:
         """123 of Chennai's items also exist in Bangalore, so a spot check would
         not catch a plan built off the wrong ontology."""
         names = set(chennai_df['item'])
-        stamped = {'steamed rice', 'Papad'}
+        stamped = {'steamed rice'}
         for key, day in plan['solution'].items():
             for slot, entry in (day['items'] or {}).items():
                 item = entry.get('item_base')
@@ -229,8 +229,11 @@ class TestNoDiagnosticNoise:
                 'client_name': 'ToastTab CHN', 'start_date': MONDAY,
                 'num_days': 5,
             }).get_json()
+            # Owner, 18 Nov: Chennai's four papads repeat one a week. The
+            # planner says so; that note is accepted, not noise to fix.
             noisy = [d for d in body['rule_diagnostics']
-                     if d['severity'] in ('error', 'warning')]
+                     if d['severity'] in ('error', 'warning')
+                     and (d.get('affected') or {}).get('base_slot') != 'papad']
             assert not noisy, noisy
         finally:
             db_mod._sb_client = old

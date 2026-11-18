@@ -132,6 +132,10 @@ class AttributeGroupingRule(BaseMenuRule):
         self.max_per_group: Optional[int] = int(mpg) if mpg is not None else None
         mcd = rule_config.get('max_cells_per_day')
         self.max_cells_per_day: Optional[int] = int(mcd) if mcd is not None else None
+        # Values the caps leave alone, for a value another rule already
+        # governs: "a drink base once a week" must not touch buttermilk, which
+        # `welcome_drink_buttermilk` serves on two days of every week.
+        self.exempt_values = {_norm_cell(v) for v in (rule_config.get('exempt_values') or ())}
 
     @property
     def _gap(self) -> int:
@@ -287,7 +291,8 @@ class AttributeGroupingRule(BaseMenuRule):
             if (repeatable_row(row, base_slot)
                     or matches_declared(row, base_slot, declared)):
                 return ''
-            return _norm_cell(row.get(self.group_by, ''))
+            val = _norm_cell(row.get(self.group_by, ''))
+            return '' if val in self.exempt_values else val
 
         # dv_bool[(day_index, value)] = bool var, true iff this scope takes an
         # item whose group_by value == `value` on that day (full reification

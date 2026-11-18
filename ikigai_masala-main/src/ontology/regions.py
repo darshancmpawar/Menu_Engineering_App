@@ -130,7 +130,7 @@ class Region:
 
         Restricted to the slots the SOLVER plans. `slot_counts` is measured
         from `course_type`, which also carries the stamped constants
-        (`chutney`, `papad`, `pickle`, `white_rice`) and the off-plate
+        (`chutney`, `pickle`, `white_rice`) and the off-plate
         `accompaniment` — none of which the solver creates a cell for. The
         corrected Bangalore list took Karnataka's chutneys past the depth
         floor, which would have put `chutney` in a regional floor's

@@ -420,12 +420,12 @@ class TestMultiCounterPlanning:
 
 
 class TestConstantSelection:
-    """Constants (white_rice/papad/pickle/chutney) are per-client selectable
+    """Constants (white_rice/pickle/chutney) are per-client selectable
     now, not force-added to every client."""
 
     def test_only_selected_constants_appear(self, client, auth_headers, fake_supabase):
         client.post('/api/v1/client', json={
-            'name': 'ConstCo', 'active_slots': _VIABLE + ['white_rice', 'papad'],
+            'name': 'ConstCo', 'active_slots': _VIABLE + ['white_rice', 'pickle'],
         }, headers=auth_headers)
         resp = client.post('/api/v1/plan', json={
             'client_name': 'ConstCo', 'start_date': '2026-03-23', 'num_days': 1,
@@ -434,8 +434,8 @@ class TestConstantSelection:
         assert resp.status_code == 200
         day = next(iter(resp.get_json()['solution'].values()))
         slots = set(day.get('items', {}).keys())
-        assert 'white_rice' in slots and 'papad' in slots
-        assert 'pickle' not in slots and 'chutney' not in slots
+        assert 'white_rice' in slots and 'pickle' in slots
+        assert 'chutney' not in slots
 
     def test_a_stamped_constant_is_reported_as_pinned(
         self, client, auth_headers, fake_supabase,
@@ -473,7 +473,7 @@ class TestConstantSelection:
         assert resp.status_code == 200
         day = next(iter(resp.get_json()['solution'].values()))
         slots = set(day.get('items', {}).keys())
-        assert not ({'white_rice', 'papad', 'pickle', 'chutney'} & slots)
+        assert not ({'white_rice', 'pickle', 'chutney'} & slots)
 
 
 class TestDiagnoseEndpoint:

@@ -92,6 +92,15 @@
       "non_consecutive": true
     },
     {
+      "_comment": "Owner, 18 Nov: Rippling served Orange Cooler on Wednesday and Orange Punch on Thursday, both item_style orange_citrus. Each drink base at most once a week (per plan). Buttermilk is exempt: buttermilk_twice_weekly serves it on 2 days.",
+      "name": "welcome_drink_base_once_a_week",
+      "type": "attribute_grouping",
+      "base_slot": "welcome_drink",
+      "group_by": "item_style",
+      "max_per_group": 1,
+      "exempt_values": ["buttermilk"]
+    },
+    {
       "name": "no_repeat_weeks",
       "type": "week_signature_cooldown",
       "cooldown_days": 30

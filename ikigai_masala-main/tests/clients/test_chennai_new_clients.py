@@ -260,7 +260,7 @@ class TestTCL:
             for slot, item in days[wd].items():
                 key = str(item).strip().lower()
                 if key not in lookup.index:
-                    continue        # a CONST slot: steamed rice, papad, pickle
+                    continue        # a CONST slot: steamed rice, pickle
                 row = lookup.loc[key]
                 assert not any(w in key for w in
                                ('paneer', 'mushroom', 'baby_corn', 'babycorn')), \

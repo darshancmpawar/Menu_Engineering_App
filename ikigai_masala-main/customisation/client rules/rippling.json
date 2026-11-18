@@ -22,6 +22,10 @@
           "healthy_rice",
           "veg_dry"
         ],
+        "_indian_veg_dry_comment": "The Chinese-day filter does not read exempt_slots: it narrowed Thursday's veg dry to Chinese-style dishes (951 -> 64, south 368 -> 1), so from week 2 the South Veg Dry row had nothing south left and was relaxed (17 Nov, 25-day run). On a Chinese day veg dry stays Indian, north or south.",
+        "indian_veg_dry_themes": [
+          "chinese"
+        ],
         "slot_pool_by_theme": {
           "chinese": {
             "soup": {
@@ -132,13 +136,34 @@
         ]
       },
       {
-        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC).",
+        "_comment": "Bread 1 is pinned to plain chapati every day below, so it is a staple: exempt from unique_items and the cooldown, else week 2 finds it in history and goes INFEASIBLE (same as DXC). The dish itself, not its sub_category: the whole phulka family let bread 2 repeat ragi phulka and rava onion roti within days (17 Nov).",
         "name": "rippling_plain_chapati_repeatable",
         "type": "repeatable_items",
         "base_slot": "bread",
         "selector": {
-          "sub_category": "plain_chapatti/phulka"
+          "item": "plain_chapati"
         }
+      },
+      {
+        "_comment": "Bread 2 is never plain chapati, which is bread 1's pinned dish (owner, 17 Nov).",
+        "name": "rippling_second_bread_not_plain_chapati",
+        "type": "slot_composition",
+        "base_slot": "bread",
+        "slot_indices": [
+          2
+        ],
+        "components": [
+          {
+            "selector": {
+              "none_of": [
+                {
+                  "item": "plain_chapati"
+                }
+              ]
+            },
+            "count": 1
+          }
+        ]
       },
       {
         "_comment": "T3: 'Cut fruits or any fruit alone can not come in menu.' fresh_fruit is exactly the 11 fruit-alone desserts (cut fruit, papaya/watermelon cuts, whole banana, orange, seasonal fruit); fruit custard, fruit kesari and banana halwa sit in other sub-categories and stay.",

@@ -470,7 +470,7 @@ class TestTekionChn:
             assert day.get('items')
 
     def test_every_dish_comes_from_the_chennai_list(self, api, chn_df):
-        """Const slots are excluded: `white_rice`, `papad` and `pickle` are
+        """Const slots are excluded: `white_rice` and `pickle` are
         stamped labels ("steamed rice"), not solved ontology rows."""
         from src.constants import CONST_SLOTS
         sol = _plan(api, 'Tekion CHN')

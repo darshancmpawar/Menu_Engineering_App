@@ -152,6 +152,17 @@ def test_kootu_is_a_veg_dry_never_a_lentil_and_at_most_once(plan, df):
     assert len(in_veg_dry) <= 1, in_veg_dry
 
 
+def test_a_drink_base_once_a_week_buttermilk_aside(plan, df):
+    """Owner, 18 Nov: Orange Cooler then Orange Punch (both orange_citrus) on
+    back-to-back days. Bangalore's `welcome_drink_base_once_a_week`."""
+    drinks = [i for day in _cells(plan[1], 'welcome_drink') for i in day.values()]
+    styles = [str(_row(df, i).get('item_style')) for i in drinks]
+    others = [s for s in styles if s != 'buttermilk']
+    assert len(others) == len(set(others)), styles
+    # The buttermilk rule counts the flag (ragi ambli carries it too).
+    assert sum(bool(_is(df, i, 'is_buttermilk')) for i in drinks) == 2, drinks
+
+
 def test_kootu_pool_moves_from_lentils_to_veg_dry():
     from src.application.solve_inputs import _apply_slot_pool_moves
     from src.menu_rules.menu_rule_loader import MenuRuleLoader
@@ -206,10 +217,29 @@ def test_curd_is_plain_and_curd_side_is_raita(plan, df):
         assert day and all(_is(df, i, 'is_raita') for i in day.values()), day
 
 
+def test_veg_dry_stays_indian_on_the_chinese_day(df):
+    """Owner, 16 Nov: north and south veg dry irrespective of the theme. The
+    Chinese-day filter ignores exempt_slots, so exempting veg_dry was not
+    enough: Thursday's veg dry was cut to Chinese-style dishes, one of them
+    south, and from week 2 the South row was relaxed (25-day run, 17 Nov)."""
+    import datetime as dt
+    from src.menu_rules.theme_rules import ThemeSlotFilterRule
+    from src.ontology import repository
+    block = json.loads(_RULES.read_text(encoding='utf-8'))['Rippling']
+    rule = ThemeSlotFilterRule(
+        next(r for r in block['rules'] if r['name'] == 'theme_cuisine_filter'))
+    pool = repository.menu_data('Bangalore')[1]['veg_dry']
+    thursday = rule.pre_filter_pool(pool, dt.date(2026, 8, 13), 'veg_dry', 'chinese', {})
+    cuisines = set(thursday['cuisine_family'])
+    assert cuisines == {'north_indian', 'south_indian'}, cuisines
+    assert (thursday['cuisine_family'] == 'south_indian').sum() > 100
+
+
 def test_bread_one_is_plain_chapati(plan, df):
     for day in _cells(plan[1], 'bread'):
         assert len(day) == 2
         assert _is(df, day['bread__1'], 'is_plain_phulka_chapathi'), day
+        assert day['bread__2'] != 'plain_chapati', day    # owner, 17 Nov
 
 
 def test_no_fruit_alone_dessert(plan, df):

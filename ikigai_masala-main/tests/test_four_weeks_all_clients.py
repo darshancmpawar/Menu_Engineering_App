@@ -74,27 +74,36 @@ def _empty_served_days(solution):
             if day.get('is_working_day') is not False and not day.get('items')]
 
 
-def plan_four_weeks(api_app, name, stop_at_first=False):
-    """Plan and save WEEKS weeks as app.py's Generate does; returns failure lines."""
+def plan_four_weeks(api_app, name, stop_at_first=False, weeks=WEEKS, meals=None):
+    """Plan and save *weeks* weeks as app.py's Generate does; returns failure
+    lines. *meals* overrides the client's services."""
+    from src.client.client_config import counter_serves
     from ui.formatters import dishes_from_solution, shared_items_from_solution
 
     cfg = api_app.app.test_client().get(
         f'/api/v1/client-config/{quote(name)}').get_json() or {}
     assert cfg.get('success'), f'{name}: client-config read failed — {cfg}'
-    counters = [c.get('name') or f'Counter {i + 1}'
-                for i, c in enumerate(cfg.get('counters') or [])] or ['Counter 1']
-    meals = list(cfg.get('meals') or DEFAULT_MEALS)
+    all_counters = cfg.get('counters') or []
+
+    def counters_for(meal):
+        """Per service, as app.py's `_client_counter_names`."""
+        serving = [c for c in all_counters if counter_serves(c, meal)] or all_counters
+        return [c.get('name') or f'Counter {i + 1}'
+                for i, c in enumerate(serving)] or ['Counter 1']
+    meals = list(meals or cfg.get('meals') or DEFAULT_MEALS)
     shared = cfg.get('shared_categories') or []
     shared_off = set(cfg.get('shared_categories_excluded_counters') or [])
     meal_shared = cfg.get('meal_shared_categories') or []
-    time_limit = max(45, PLANNING_TIME_LIMIT // (len(counters) * len(meals)))
+    time_limit = max(45, PLANNING_TIME_LIMIT
+                     // sum(len(counters_for(m)) for m in meals))
     failures = []
 
-    for week in range(WEEKS):
+    for week in range(weeks):
         start = (FIRST_MONDAY + dt.timedelta(weeks=week)).isoformat()
         served_so_far: dict = {}   # {counter_index: {iso: [dish, ...]}}
         carried_over: dict = {}    # {counter_index: [[iso, slot_id, dish], ...]}
         for m, meal in enumerate(meals):
+            counters = counters_for(meal)
             solved, shared_items = [], []
             for idx, counter in enumerate(counters):
                 pins = list(carried_over.get(idx) or [])
