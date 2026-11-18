@@ -1269,7 +1269,10 @@ def saved_plan():
         )
         loader = _get_client_loader()
         row = _client_row(client_name)
-        client_cfg = loader.get_client_configs_from_row(client_name, row)[0][1]
+        meal = normalize_meal(request.args.get('meal'))
+        # The counter that serves THIS meal: a site saving one counter per
+        # service lists breakfast first, and its themes are not lunch's.
+        client_cfg = loader.get_client_configs_from_row(client_name, row, meal)[0][1]
         city = row['city']
         # `all_dates` rather than `span_dates`: that name is now the imported
         # helper, and shadowing it here would read as a call site of it.
@@ -1286,8 +1289,7 @@ def saved_plan():
         # over the whole span so a non-working day stays a blank column here
         # too — a saved plan and a fresh one must have the same shape.
         raw_saved = HistoryManager.load_saved_plan(
-            sb, client_name, weekday_dates,
-            meal=normalize_meal(request.args.get('meal')),
+            sb, client_name, weekday_dates, meal=meal,
         )
 
         # Enrich with color suffix so the UI's renderer matches /plan — from the
