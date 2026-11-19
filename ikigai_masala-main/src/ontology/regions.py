@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, Mapping, Optional, Sequence, Tuple
 
-from src.constants import BASE_SLOT_NAMES
+from src.constants import BASE_SLOT_NAMES, BREAKFAST_ONLY_SLOTS
 from ..preprocessor.column_mapper import _norm_cell
 
 #: The column naming the state, and the one saying whether that name IS a state.
@@ -140,7 +140,10 @@ class Region:
         """
         return tuple(sorted(
             s for s, n in self.slot_counts.items()
-            if n >= SLOT_DISH_FLOOR and s in BASE_SLOT_NAMES))
+            # Breakfast rows never carry a region (regional days are lunch and
+            # dinner), and lunch's off-plate `accompaniment` dishes share that name.
+            if n >= SLOT_DISH_FLOOR and s in BASE_SLOT_NAMES
+            and s not in BREAKFAST_ONLY_SLOTS))
 
     @property
     def total_dishes(self) -> int:
