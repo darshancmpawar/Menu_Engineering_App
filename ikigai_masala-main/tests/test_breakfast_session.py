@@ -38,7 +38,11 @@ def test_bangalore_sessions_split_the_list(repo):
     assert len(lunch) + len(breakfast) == len(full)
     assert set(breakfast['session']) == {'breakfast'}
     for slot in BREAKFAST_ONLY_SLOTS:
-        assert len(pools[slot]), slot
+        # Bangalore files its breakfast snacks as healthy options, served on the
+        # Veg Healthy (Salad) row since 18 Nov (owner), so its Snack row is empty.
+        if slot != 'snack':
+            assert len(pools[slot]), slot
+    assert not len(pools['snack']) and len(pools['salad'])
     # The Sandwich row is veg; the non-veg half is its own row.
     nonveg = repo.nonveg_items('Bangalore')
     assert not set(pools['sandwich']['item']) & nonveg
