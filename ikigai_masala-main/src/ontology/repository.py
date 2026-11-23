@@ -75,7 +75,7 @@ class OntologyRepository:
         column names it; no meal means lunch, which is every row the list had
         before breakfast joined it.
         """
-        from src.history import BREAKFAST, normalize_meal
+        from src.history import BREAKFAST, SNACKS, normalize_meal
         from src.ontology.paths import city_excel_path, city_required_slots
         from src.preprocessor.pool_builder import PoolBuilder
 
@@ -89,9 +89,9 @@ class OntologyRepository:
                     # A city ontology covers only the categories that city
                     # serves, so the mandatory-slot check is held to that city's
                     # declared set (data/raw/city_items/ontology_categories.json).
-                    # Breakfast has none of the lunch rows that set names.
+                    # Breakfast and snacks have none of the lunch rows that set names.
                     pools = PoolBuilder.build_pools(
-                        df, required_slots=(set() if meal == BREAKFAST
+                        df, required_slots=(set() if meal in (BREAKFAST, SNACKS)
                                             else city_required_slots(city)))
                     cached = (df, pools)
                     self._menu_data_by_path[(path, meal)] = cached

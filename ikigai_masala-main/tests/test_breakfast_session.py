@@ -10,7 +10,7 @@ import json
 import pandas as pd
 import pytest
 
-from src.constants import BREAKFAST_ONLY_SLOTS, BREAKFAST_SLOTS, SNACKS_NOT_READY
+from src.constants import BREAKFAST_ONLY_SLOTS, BREAKFAST_SLOTS
 from src.ontology.repository import OntologyRepository, _session_rows
 from tests.fake_supabase import FakeSupabase
 
@@ -38,7 +38,11 @@ def test_bangalore_sessions_split_the_list(repo):
     assert len(lunch) + len(breakfast) == len(full)
     assert set(breakfast['session']) == {'breakfast'}
     for slot in BREAKFAST_ONLY_SLOTS:
-        assert len(pools[slot]), slot
+        # Bangalore files its breakfast snacks as healthy options, served on the
+        # Veg Healthy (Salad) row since 18 Nov (owner), so its Snack row is empty.
+        if slot != 'snack':
+            assert len(pools[slot]), slot
+    assert not len(pools['snack']) and len(pools['salad'])
     # The Sandwich row is veg; the non-veg half is its own row.
     nonveg = repo.nonveg_items('Bangalore')
     assert not set(pools['sandwich']['item']) & nonveg
@@ -50,9 +54,14 @@ def test_bangalore_sessions_split_the_list(repo):
     assert not len(lunch_pools['breakfast_main'])
 
 
-@pytest.mark.parametrize('city', ['Chennai', 'Hyderabad', 'NCR', 'Pune'])
+@pytest.mark.parametrize('city', ['Chennai', 'Hyderabad', 'NCR'])
 def test_other_cities_serve_lunch_and_dinner(repo, city):
     assert set(repo.all_rows(city)['session']) == {'lunch,dinner'}
+
+
+def test_pune_adds_corning_chakans_breakfast_and_snacks(repo):
+    assert set(repo.all_rows('Pune')['session']) == {
+        'lunch,dinner', 'breakfast', 'snacks', 'breakfast,snacks'}
 
 
 def test_editor_offers_each_service_its_own_rows():
@@ -109,7 +118,9 @@ def test_a_breakfast_plan_serves_breakfast_dishes_only(repo):
     assert set(served) <= breakfast
 
 
-def test_a_snacks_plan_is_refused_with_the_message():
-    resp = _post('snacks')
-    assert resp.status_code == 400
-    assert resp.get_json()['error'] == SNACKS_NOT_READY
+def test_the_snacks_session_is_its_own_rows(repo):
+    """Snacks plan since 23 Nov (Corning Chakan): the session's own rows, and
+    none of lunch's required rows are asked of it."""
+    df, pools = repo.menu_data('Pune', 'snacks')
+    assert len(df) and all('snacks' in s.split(',') for s in df['session'])
+    assert len(pools['snack']) and len(pools['accompaniment'])
