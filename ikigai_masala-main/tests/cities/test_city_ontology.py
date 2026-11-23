@@ -162,7 +162,8 @@ class TestPuneOntologyFile:
         assert available_pool_tokens(pune_df) == set()
         for pools in ([], ['common'], ['anything']):
             df, _ = OntologyRepository().filtered_menu_data('Pune', pools)
-            assert len(df) == len(pune_df), pools
+            lunch = pune_df['session'].str.contains('lunch')
+            assert len(df) == lunch.sum(), pools
 
 
 class TestPerCityCaches:

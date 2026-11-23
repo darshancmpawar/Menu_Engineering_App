@@ -603,7 +603,7 @@
           "thursday": "Lettuce, cherry tomato, sliced radish, onions, sauteed beetroot, grilled zucchini, kidney beans, broken wheat, boiled eggs",
           "friday": "Shredded cabbage, bell pepper juliennes, green spring onion, cucumber, blanched carrot juliennes, boiled mushrooms, grilled cottage cheese, moong sprouts, sweet potato"
         },
-        "chutney": {
+        "dressing": {
           "monday": "Jalapeno, ranch dressing, honey mustard",
           "tuesday": "Green olives, garlic yogurt dressing, mint chutney mayo",
           "wednesday": "Gherkins, apple vinegar, basil mayo",
@@ -619,7 +619,7 @@
           "thursday": "Lettuce, cherry tomato, carrot, onions, roasted beetroot, sauteed babycorn, grilled zucchini, kidney beans, broken wheat, paneer",
           "friday": "Shredded cabbage, bell pepper juliennes, green spring onion, cucumber, blanched carrot juliennes, boiled mushrooms, grilled cottage cheese, moong sprouts, boiled egg"
         },
-        "chutney": {
+        "dressing": {
           "monday": "Jalapeno, ranch dressing, honey mustard",
           "tuesday": "Green olives, garlic yogurt dressing, mint chutney mayo",
           "wednesday": "Gherkins, apple vinegar, basil mayo",
@@ -633,7 +633,7 @@
       "order": [
         "welcome_drink",
         "salad",
-        "chutney",
+        "dressing",
         "soup",
         "bread",
         "rice",
@@ -652,7 +652,6 @@
       "labels": {
         "welcome_drink": "Welcome Drink",
         "salad": "Make Your Own Salad",
-        "chutney": "Dressing",
         "soup": "Soup",
         "bread": "Indian Bread",
         "rice": "Flavoured Rice",

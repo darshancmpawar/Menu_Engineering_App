@@ -35,11 +35,13 @@ def _pune_row_count():
     The counts below used to be literals and broke every time the ontology
     gained a dish; what they are actually asserting is "this endpoint counted
     PUNE's list, not Bangalore's", which the derived number states directly.
-    Pune is full-pool, so this is also what a client can be served.
+    Pune is full-pool, so this is also what a client can be served. Lunch rows
+    only: Corning Chakan's breakfast and snack rows (23 Nov) are other sessions.
     """
     import pandas as pd
     from src.ontology.paths import city_excel_path
-    return len(pd.read_excel(city_excel_path('Pune')))
+    from src.ontology.repository import _session_rows
+    return len(_session_rows(pd.read_excel(city_excel_path('Pune')), 'lunch'))
 
 
 @pytest.fixture

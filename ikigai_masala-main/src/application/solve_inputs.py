@@ -34,8 +34,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from src.constants import CONST_SLOTS, REGIONAL_MEALS, SNACKS_NOT_READY
-from src.history import SNACKS, normalize_meal
+from src.constants import CONST_SLOTS, REGIONAL_MEALS
+from src.history import normalize_meal
 from src.log_names import APP_LOGGER_NAME
 from src.menu_rules.diagnostics import (
     DiagnoseContext, run_diagnostics, summarize as _summarize_diags,
@@ -638,8 +638,6 @@ def prepare_solver_inputs(
     """
     city = row['city']
     meal = normalize_meal(data.get('meal'))
-    if meal == SNACKS:
-        raise ValueError(SNACKS_NOT_READY)
     # The session's own rows: breakfast plans from breakfast dishes.
     df, pools = repository.filtered_menu_data(city, row['source_pools'], meal)
     pools = _apply_slot_pool_moves(

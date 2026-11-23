@@ -22,6 +22,7 @@ validates, and constrains nothing.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pandas as pd
 import pytest
@@ -117,9 +118,93 @@ def test_every_day_carries_a_soup_or_a_sweet_but_not_both(week):
 
 
 def test_no_liquid_sweets(week, pune):
-    liquid = {str(i).lower() for i, v in zip(pune['item'], pune['is_liquid_dessert'])
-              if pd.to_numeric(v, errors='coerce') == 1}
+    liquid = {str(i).lower() for i, v, s in zip(pune['item'], pune['is_liquid_dessert'], pune['sub_category'])
+              if pd.to_numeric(v, errors='coerce') == 1 or s == 'payasam_/_kheer'}
     assert not [d for d in _slot(week, 'dessert').values() if d in liquid]
+
+
+def test_the_ban_reaches_every_kheer_and_payasam(pune):
+    """Owner, 23 Nov: no kheer or payasam. Three payasams are not flagged
+    liquid, so a flag-only ban let them through."""
+    import json
+    from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule as S
+    rules = json.load(open('customisation/client rules/corning_chakan.json', encoding='utf-8'))[CLIENT]['rules']
+    sel = S._parse_matcher(next(r for r in rules if r['name'] == 'corning_chakan_no_liquid_sweets')['selector'])
+    desserts = pune[pune['course_type'].astype(str).str.lower() == 'dessert']
+    kheers = desserts[desserts['item'].str.contains('kheer|payas|phirni|firni', case=False)]
+    assert len(kheers) >= 20 and {'daliya_payasum', 'gulkand_firni'} <= set(kheers['item'])
+    assert [i for i, row in zip(kheers['item'], kheers.to_dict('records')) if not S._matches(row, sel)] == []
+
+
+def test_salad_and_dressing_follow_the_sheet_by_weekday(week):
+    """'Corning Menu option.xlsx' (owner, 23 Nov). Thursday is the chaat day:
+    no salad or dressing."""
+    salad, dressing = _slot(week, 'salad'), _slot(week, 'dressing')
+    by_day = {_weekday(iso): (salad[iso], dressing[iso]) for iso in week}
+    assert by_day['mon'][0].startswith('iceberg lettuce, cottage cheese')
+    assert by_day['wed'][0].startswith('iceberg lettuce, soya chunks')
+    assert by_day['sun'][0].endswith('roasted sweet potatoes')
+    assert by_day['sat'][1].startswith('herby lemon vinaigrette')
+    assert by_day['tue'][1] == by_day['fri'][1] == by_day['sun'][1] != by_day['mon'][1]
+    assert by_day['thu'] == ('', '')
+
+
+def test_the_preferred_dishes_lead(week):
+    """Owner, 23 Nov ('Preffered items'): picked first wherever the rules
+    allow. A live week filled 28-30 of 33 such cells; most is the claim."""
+    pref = {s['item'] for s in _rule('corning_chakan_preferred_dishes')['selector']['any_of']}
+    cells = [d for day in week.values() for s, d in day.items()
+             if s.split('__')[0] in ('veg_dry', 'veg_gravy', 'dessert', 'soup', 'dal', 'rice')]
+    assert sum(d in pref for d in cells) > len(cells) / 2, cells
+
+
+def _rule(name):
+    rules = json.load(open('customisation/client rules/corning_chakan.json', encoding='utf-8'))[CLIENT]['rules']
+    return next(r for r in rules if r['name'] == name)
+
+
+SESSIONS = {'breakfast': ('breakfast_main', 3, 'corning_chakan_breakfast_sides_follow_the_main'),
+            'snacks': ('snack', 2, 'corning_chakan_snack_sides_follow_the_snack')}
+
+
+@pytest.fixture(params=sorted(SESSIONS))
+def session_week(request, fake_supabase):
+    """A week of breakfast or evening snacks, on the counters the owner sets up:
+    the main row and an Accompaniments row, every day a 'mix' theme."""
+    from api.app import app
+    from tests.client_fixtures import CLIENTS
+    meal = request.param
+    main, n_sides, _ = SESSIONS[meal]
+    base = json.loads(json.dumps(next(c for c in CLIENTS if c['name'] == CLIENT)))
+    session = {'name': 'Counter 1', 'meals': [meal], 'categories': [main, 'accompaniment'],
+               'slot_counts': {main: 1, 'accompaniment': n_sides},
+               'theme_map': {d: 'mix' for d in ('monday', 'tuesday', 'wednesday', 'thursday', 'friday')}}
+    base['meals'] = ['breakfast', 'lunch', 'snacks', 'dinner']
+    base['counters'] = [dict(base['counters'][0], meals=['lunch', 'dinner']), session]
+    fake_supabase.seed('clients', [base])
+    app.config['TESTING'] = True
+    with app.test_client() as c:
+        resp = c.post('/api/v1/plan', json={**BODY, 'meal': meal, 'counter_index': 0})
+    assert resp.status_code == 200, resp.get_json()
+    return meal, {iso: {s: v['item_base'] for s, v in day['items'].items()}
+                  for iso, day in resp.get_json()['solution'].items()}
+
+
+def test_breakfast_and_snacks_are_the_sheet_combos(session_week):
+    """Owner, 23 Nov: each combo is a main and the sides the sheet lists with
+    it, a blank where it has fewer; no main twice in the week; and none of
+    lunch's pinned rows (chapati, salad, dressing) at these services."""
+    meal, week = session_week
+    main, n_sides, rule = SESSIONS[meal]
+    table = {p['when']['item']: p['then'] for p in _rule(rule)['pairs']}
+    mains = [day[main] for day in week.values()]
+    assert len(set(mains)) == len(mains) == 7, mains
+    for day in week.values():
+        assert set(day) <= {main} | {f'accompaniment__{i}' for i in range(1, n_sides + 1)}, day
+        for i, want in enumerate(table[day[main]], start=1):
+            got = day.get(f'accompaniment__{i}')
+            ok = [want['item']] if want and 'item' in want else [s['item'] for s in (want or {}).get('any_of', [])]
+            assert (got is None) if want is None else (got in ok), (day[main], i, got, want)
 
 
 def test_the_starter_is_a_chaat_and_only_on_thursday(week):
@@ -363,7 +448,9 @@ def test_brinjal_sprouts_and_potato_never_share_a_day(week, pune):
     configured.
     """
     for iso, row in week.items():
-        served = [str(v).lower() for v in row.values() if v]
+        # Planned dishes only: the fixed salad is the client's own sheet, and its
+        # Sunday 'roasted sweet potatoes' is not potato (aloo / batata).
+        served = [str(v).lower() for s, v in row.items() if v and s not in ('salad', 'dressing')]
         fams = [n for n, hit in (
             ('brinjal', any(_is_brinjal(d) for d in served)),
             ('sprouts', any(_is_sprout(d) for d in served)),
