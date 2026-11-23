@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from customisation.main import (counters_for_write, seed_counters_for,
                                 service_split_note)
-from src.history import DINNER, LUNCH
+from src.history import BREAKFAST, DINNER, LUNCH, SNACKS
 
 
 def _c(name, cats=('dal',), meals=None):
@@ -50,6 +50,20 @@ class TestWhatATabOpensWith:
 
     def test_an_empty_client_gives_an_empty_seed_not_a_crash(self):
         assert seed_counters_for(LUNCH, []) == []
+
+    def test_breakfast_and_snacks_never_open_as_a_copy_of_lunch(self):
+        """Corning Chakan, 23 Nov: its one shared lunch counter opened Snacks
+        empty and Breakfast with lunch's veg gravy ticked."""
+        lunch = [_c('Counter 1', cats=('soup', 'bread', 'veg_gravy', 'dal'))]
+        assert seed_counters_for(BREAKFAST, lunch) == []
+        assert seed_counters_for(SNACKS, lunch) == []
+        assert seed_counters_for(DINNER, lunch) == lunch
+
+    def test_a_breakfast_only_site_still_opens_its_counter(self):
+        """A one-service site is stored untagged (see counters_for_write)."""
+        bf = [_c('Counter 1', cats=('breakfast_main', 'accompaniment'))]
+        assert seed_counters_for(BREAKFAST, bf) == bf
+        assert seed_counters_for(SNACKS, bf) == []
 
 
 class TestWhatGetsStored:

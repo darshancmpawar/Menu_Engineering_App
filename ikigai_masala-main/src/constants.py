@@ -122,7 +122,8 @@ BREAKFAST_ONLY_SLOTS: List[str] = [
     'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'accompaniment', 'sandwich',
     'nonveg_sandwich', 'snack', 'fruit', 'condiment',
 ]
-BREAKFAST_SLOTS: Set[str] = set(BREAKFAST_ONLY_SLOTS) | {
+# `snack` is the Snacks service's row, not breakfast's (owner, 23 Nov).
+BREAKFAST_SLOTS: Set[str] = (set(BREAKFAST_ONLY_SLOTS) - {'snack'}) | {
     'salad', 'veg_gravy', 'sambar', 'curd_side', 'nonveg_main'}
 # The evening-snacks session: a snack and the accompaniments that go with it
 # (Corning Chakan, owner 23 Nov).

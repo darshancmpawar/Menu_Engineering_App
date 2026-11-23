@@ -69,6 +69,9 @@ def test_editor_offers_each_service_its_own_rows():
     from src.constants import BASE_SLOT_NAMES, CONST_SLOTS
     base, const = categories_for_meal('breakfast', BASE_SLOT_NAMES, CONST_SLOTS)
     assert set(base) == BREAKFAST_SLOTS and const == []
+    assert 'snack' not in base  # the Snacks service's row
+    base, const = categories_for_meal('snacks', BASE_SLOT_NAMES, CONST_SLOTS)
+    assert base == ['accompaniment', 'snack'] and const == []
     base, const = categories_for_meal('dinner', BASE_SLOT_NAMES, CONST_SLOTS)
     assert not set(base) & set(BREAKFAST_ONLY_SLOTS) and const == CONST_SLOTS
 
