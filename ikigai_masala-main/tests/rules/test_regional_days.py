@@ -128,7 +128,7 @@ class TestWhatCountsAsARegion:
         it is just not plannable.
         """
         r = Region('X', frozenset({'south_indian'}),
-                   {'chutney': SLOT_DISH_FLOOR + 10,
+                   {'dressing': SLOT_DISH_FLOOR + 10,
                     'pickle': SLOT_DISH_FLOOR + 10,
                     'white_rice': SLOT_DISH_FLOOR + 10,
                     'accompaniment': SLOT_DISH_FLOOR + 10,

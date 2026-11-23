@@ -331,7 +331,7 @@ def test_salad_and_dressing_are_the_meals_own_pins(plan, pins):
     for wd, day in zip(WEEK, sol.values()):
         items = day['items']
         assert items['salad']['item_base'] == mine['salad'][wd]
-        assert items['chutney']['item_base'] == mine['chutney'][wd]
+        assert items['dressing']['item_base'] == mine['dressing'][wd]
         assert 'white_rice' in items
 
 
@@ -342,4 +342,4 @@ def test_salad_is_non_veg_exactly_when_it_carries_chicken_or_egg(plan, pins):
         words = mine[wd].lower()
         expected = 'chicken' in words or 'egg' in words
         assert day['items']['salad']['is_nonveg'] is expected, (wd, mine[wd])
-        assert day['items']['chutney']['is_nonveg'] is False
+        assert day['items']['dressing']['is_nonveg'] is False

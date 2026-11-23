@@ -218,7 +218,7 @@
         "max_per_week": 1
       },
       {
-        "_comment": "'Khichdi once in fifteen days' is a CADENCE, so this rule is both halves. The ceiling is the 15-day backward window: no second khichdi inside fifteen days of a saved one. The floor is `at_least_once_per_window`: once the family has not been served for 15 days, the plan must serve one. The ceiling alone is satisfied by serving NONE — the sprouts-gravy defect of v2.07.01, a cap written where a floor was asked for, which reads as enforced and is not. Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi) and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. THE GUARANTEED GAP IS 15 DAYS PLUS THE HORIZON MINUS ONE (21 on a 7-day plan): the floor says 'somewhere in this plan', not 'on this date', because pinning the date would fix khichdi to one weekday for ever. The floor stands down, saying so, on a horizon where every khichdi is banned by the item cooldown.",
+        "_comment": "'Khichdi once in fifteen days' is a CADENCE, so this rule is both halves. The ceiling is the 15-day backward window: no second khichdi inside fifteen days of a saved one. The floor is `at_least_once_per_window`: once the family has not been served for 15 days, the plan must serve one. The ceiling alone is satisfied by serving NONE — the sprouts-gravy defect of v2.07.01, a cap written where a floor was asked for, which reads as enforced and is not. Selected by sub_category, not by name: all seven khichdis in the Pune list are `north_khichdi` (dal_khichdi, masala_khichadi, moogdal_khichadi, moong_khichadi, palak_bajra_khichdi, khandeshi_khichadi, sweet_rice_pulao_khichadi) and the spelling runs khichdi / khichadi / khicha across them, so a name match would need three needles and would still miss the next one added. `is_liquid_rice` is set on one of the seven and is not the family. THE GUARANTEED GAP IS 15 DAYS PLUS THE HORIZON MINUS ONE (21 on a 7-day plan): the floor says 'somewhere in this plan', not 'on this date', because pinning the date would fix khichdi to one weekday for ever. The floor stands down, saying so, on a horizon where every khichdi is banned by the item cooldown. Lunch and dinner only: its floor would otherwise report itself relaxed on the breakfast and snacks menus, which have no rice row.",
         "name": "corning_chakan_khichdi_15d_window",
         "type": "selector_history_window",
         "base_slot": "rice",
@@ -226,7 +226,11 @@
           "sub_category": "north_khichdi"
         },
         "window_days": 15,
-        "at_least_once_per_window": true
+        "at_least_once_per_window": true,
+        "meals": [
+          "lunch",
+          "dinner"
+        ]
       },
       {
         "_comment": "The forward half of 'khichdi once in fifteen days': at most one in the week being solved. Same selector as the window above, deliberately — two halves of one requirement must not be able to disagree about what a khichdi is.",
@@ -374,27 +378,728 @@
             }
           ]
         }
+      },
+      {
+        "_comment": "Owner, 23 Nov ('Breakfast menu bank - Corning Chakan'): each breakfast combo is a main on the Breakfast Main row and its sides on the Accompaniments row (x3), exactly as the sheet pairs them; a blank cell where the combo has fewer sides. The sheet's plain 'chutney' is either breakfast chutney. A main is served at most once a week (unique_items), so no main repeats in a week.",
+        "name": "corning_chakan_breakfast_sides_follow_the_main",
+        "type": "pairing",
+        "meals": [
+          "breakfast"
+        ],
+        "when_slot": "breakfast_main",
+        "then_slot": "accompaniment",
+        "pairs": [
+          {
+            "when": {
+              "item": "poha"
+            },
+            "then": [
+              {
+                "item": "sev"
+              },
+              {
+                "item": "sambar"
+              },
+              {
+                "item": "lemon"
+              }
+            ]
+          },
+          {
+            "when": {
+              "item": "methi_paratha"
+            },
+            "then": [
+              {
+                "item": "curd"
+              },
+              {
+                "item": "pickle"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "misal_pav"
+            },
+            "then": [
+              {
+                "item": "lemon_wedges"
+              },
+              {
+                "item": "chopped_onion"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "udid_wada"
+            },
+            "then": [
+              {
+                "item": "sambar"
+              },
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "masala_upma"
+            },
+            "then": [
+              {
+                "item": "coconut_chutney"
+              },
+              {
+                "item": "sev"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "shewai_upma"
+            },
+            "then": [
+              {
+                "item": "coconut_chutney"
+              },
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "sabudana_khichadi"
+            },
+            "then": [
+              {
+                "any_of": [
+                  {
+                    "item": "shengdana_chutney"
+                  },
+                  {
+                    "item": "curd"
+                  }
+                ]
+              },
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "sabudana_wada"
+            },
+            "then": [
+              {
+                "any_of": [
+                  {
+                    "item": "shengdana_chutney"
+                  },
+                  {
+                    "item": "curd"
+                  }
+                ]
+              },
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "batata_wada_pav"
+            },
+            "then": [
+              {
+                "item": "fried_chillies"
+              },
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "idli"
+            },
+            "then": [
+              {
+                "item": "sambar"
+              },
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "veg_idli"
+            },
+            "then": [
+              {
+                "item": "sambar"
+              },
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "masala_idli"
+            },
+            "then": [
+              {
+                "item": "sambar"
+              },
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "mini_uttappa"
+            },
+            "then": [
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              {
+                "item": "sambar"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "mysore_bonda"
+            },
+            "then": [
+              {
+                "any_of": [
+                  {
+                    "item": "coconut_chutney"
+                  },
+                  {
+                    "item": "shengdana_chutney"
+                  }
+                ]
+              },
+              {
+                "item": "sambar"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "batata_wada"
+            },
+            "then": [
+              {
+                "item": "sambar"
+              },
+              null,
+              null
+            ]
+          }
+        ]
+      },
+      {
+        "_comment": "Owner, 23 Nov: each evening-snack combo is a snack on the Snack row and its sides on the Accompaniments row (x2); dabeli, panipuri, matki bhel and ragda pattice come with none.",
+        "name": "corning_chakan_snack_sides_follow_the_snack",
+        "type": "pairing",
+        "meals": [
+          "snacks"
+        ],
+        "when_slot": "snack",
+        "then_slot": "accompaniment",
+        "pairs": [
+          {
+            "when": {
+              "item": "kacchi_dabeli"
+            },
+            "then": [
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "dal_wada"
+            },
+            "then": [
+              {
+                "item": "green_chutney"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "mix_pakoda"
+            },
+            "then": [
+              {
+                "item": "tomato_sauce"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "panipuri"
+            },
+            "then": [
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "dhokla"
+            },
+            "then": [
+              {
+                "item": "green_chutney"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "bread_pattice"
+            },
+            "then": [
+              {
+                "item": "tomato_sauce"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "matki_bhel"
+            },
+            "then": [
+              null,
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "wada_pav"
+            },
+            "then": [
+              {
+                "item": "fried_chillies"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "samosa"
+            },
+            "then": [
+              {
+                "item": "green_chutney"
+              },
+              null
+            ]
+          },
+          {
+            "when": {
+              "item": "kachori"
+            },
+            "then": [
+              {
+                "item": "emli_chutney"
+              },
+              {
+                "item": "green_chutney"
+              }
+            ]
+          },
+          {
+            "when": {
+              "item": "ragda_pattice"
+            },
+            "then": [
+              null,
+              null
+            ]
+          }
+        ]
+      },
+      {
+        "_comment": "Owner, 23 Nov ('Preffered items' sheet): the planner picks these first wherever the rules allow and fills the rest from the Pune list. A preference, not a limit (owner chose it): 27 dry vegs cannot fill 14 meals a week under the 20-day no-repeat. Names are the Pune list's (map reviewed with the owner, 23 Nov).",
+        "name": "corning_chakan_preferred_dishes",
+        "type": "soft_preference",
+        "mode": "prefer_cells",
+        "meals": [
+          "lunch",
+          "dinner"
+        ],
+        "priority": "low",
+        "base_slot": [
+          "veg_dry",
+          "veg_gravy",
+          "dessert",
+          "soup",
+          "dal",
+          "rice"
+        ],
+        "selector": {
+          "any_of": [
+            {
+              "item": "bharwan_bhendi"
+            },
+            {
+              "item": "bhindi_masala"
+            },
+            {
+              "item": "cabbage_masala"
+            },
+            {
+              "item": "tondali_masala"
+            },
+            {
+              "item": "methi_tomato"
+            },
+            {
+              "item": "french_beans_coconut"
+            },
+            {
+              "item": "turai_chana_dry"
+            },
+            {
+              "item": "gawar_masala"
+            },
+            {
+              "item": "paneer_bhurjee"
+            },
+            {
+              "item": "shepu_moongdal"
+            },
+            {
+              "item": "dudhi_masala"
+            },
+            {
+              "item": "tawa_sabzi"
+            },
+            {
+              "item": "wal_papdi"
+            },
+            {
+              "item": "red_pumpkin"
+            },
+            {
+              "item": "moong_methi_dry"
+            },
+            {
+              "item": "suran_chettinad"
+            },
+            {
+              "item": "palak_tomato"
+            },
+            {
+              "item": "capsicum_masala"
+            },
+            {
+              "item": "karela_masala"
+            },
+            {
+              "item": "gobi_masala"
+            },
+            {
+              "item": "veg_kheema"
+            },
+            {
+              "item": "aloo_palak_dry"
+            },
+            {
+              "item": "chavali_sheng_dry"
+            },
+            {
+              "item": "phulgobi_tarkari"
+            },
+            {
+              "item": "tawa_aloo"
+            },
+            {
+              "item": "maharashtrian_baigan_masala_fry"
+            },
+            {
+              "item": "aloo_gobi"
+            },
+            {
+              "item": "veg_bhuna"
+            },
+            {
+              "item": "methi_mutter_malai"
+            },
+            {
+              "item": "rajma_masala"
+            },
+            {
+              "item": "veg_kofta_curry"
+            },
+            {
+              "item": "black_chana"
+            },
+            {
+              "item": "veg_maratha"
+            },
+            {
+              "item": "babycorn_mushroom"
+            },
+            {
+              "item": "chole_masala"
+            },
+            {
+              "item": "lasooni_palak"
+            },
+            {
+              "item": "chawli_masala"
+            },
+            {
+              "item": "veg_korma_masala"
+            },
+            {
+              "item": "dahi_papad_ki_subji"
+            },
+            {
+              "item": "mirch_ka_salan"
+            },
+            {
+              "item": "masoor_masala"
+            },
+            {
+              "item": "mix_sprout_ussal"
+            },
+            {
+              "item": "paneer_do_pyaza"
+            },
+            {
+              "item": "lauki_kofta_curry"
+            },
+            {
+              "item": "stuffed_capsicum"
+            },
+            {
+              "item": "paneer_masala"
+            },
+            {
+              "item": "paneer_kadai"
+            },
+            {
+              "item": "paneer_butter_masala"
+            },
+            {
+              "item": "paneer_tikka_masala"
+            },
+            {
+              "item": "paneer_rajwadi"
+            },
+            {
+              "item": "tawa_paneer"
+            },
+            {
+              "item": "dal_wanga"
+            },
+            {
+              "item": "bharali_wangi"
+            },
+            {
+              "item": "coconut_burfi"
+            },
+            {
+              "item": "motichur_laddu"
+            },
+            {
+              "item": "gulab_jamun"
+            },
+            {
+              "item": "balushahi"
+            },
+            {
+              "item": "jalebi"
+            },
+            {
+              "item": "moong_dal_halwa"
+            },
+            {
+              "item": "shrikhand"
+            },
+            {
+              "item": "stuffed_kala_jamun"
+            },
+            {
+              "item": "jalebi_with_rabdi"
+            },
+            {
+              "item": "shahi_tukda"
+            },
+            {
+              "item": "kala_jamun"
+            },
+            {
+              "item": "palak_soup"
+            },
+            {
+              "item": "manchow_soup"
+            },
+            {
+              "item": "corn_soup"
+            },
+            {
+              "item": "tomato_soup"
+            },
+            {
+              "item": "cream_of_mushroom_soup"
+            },
+            {
+              "item": "hot_and_sour_soup"
+            },
+            {
+              "item": "dal_amritsari"
+            },
+            {
+              "item": "dal_fry"
+            },
+            {
+              "item": "dal_lasooni"
+            },
+            {
+              "item": "dal_tadka"
+            },
+            {
+              "item": "dal_tomato_fry"
+            },
+            {
+              "item": "dal_kolhapuri"
+            },
+            {
+              "item": "dal_kabila"
+            },
+            {
+              "item": "dhaba_dal"
+            },
+            {
+              "item": "dal_milap"
+            },
+            {
+              "item": "jeera_rice"
+            },
+            {
+              "item": "veg_pulao"
+            },
+            {
+              "item": "coriander_rice"
+            },
+            {
+              "item": "peas_pulao"
+            },
+            {
+              "item": "birista_pulao"
+            },
+            {
+              "item": "mint_pulao"
+            },
+            {
+              "item": "tadka_rice"
+            },
+            {
+              "item": "masoor_rice"
+            }
+          ]
+        }
       }
     ],
-    "constant_items": {
-      "_comment": "'Indian Bread staple only Chapati' — the same dish every day, which is what this fleet's rulebooks mean by a staple ('like white rice and pickle'). A pin, not a rule: a `slot_composition` or a `repeatable_items` on the chapati FAMILY would let the slot rotate between plain, palak, carrot and beetroot chapati, which is a variety rule where the client asked for one bread. Pinned to `chapati`, which is a real Pune row; `phulka` is the other dish Pune's R36 staple exemption names and it is not pinned, so the pin alone decides. Same shape as ICON Chn, DXC, SAEL and Corning NCR.",
-      "bread": "chapati",
-      "_salad_comment": "Owner, 23 Nov ('Corning Menu option.xlsx'): salad and dressing fixed by weekday, the same at lunch and dinner. The sheet has no Thursday column, so Thursday has none until the owner gives one. Dressing is its own row, not the chutney (owner: 'chutney and dressing are not the same').",
-      "salad": {
-        "monday": "Iceberg lettuce, cottage cheese, zucchini, boiled fresh beans, bell peppers, American corn",
-        "tuesday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, boiled chana",
-        "wednesday": "Iceberg lettuce, soya chunks, zucchini, boiled fresh beans, bell peppers, American corn",
-        "friday": "Iceberg lettuce, tofu, French beans, bell peppers, boiled babycorn, boiled moong",
-        "saturday": "Capsicum, carrot, soya chunks, cucumber, cauliflower, boiled peanuts",
-        "sunday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, roasted sweet potatoes"
+    "constant_items_by_meal": {
+      "_comment": "'Indian Bread staple only Chapati' — the same dish every day, which is what this fleet's rulebooks mean by a staple ('like white rice and pickle'). A pin, not a rule: a `slot_composition` or a `repeatable_items` on the chapati FAMILY would let the slot rotate between plain, palak, carrot and beetroot chapati, which is a variety rule where the client asked for one bread. Pinned to `chapati`, which is a real Pune row; `phulka` is the other dish Pune's R36 staple exemption names and it is not pinned, so the pin alone decides. Same shape as ICON Chn, DXC, SAEL and Corning NCR. Lunch and dinner only: a client-wide pin would also print at breakfast and snacks. Owner, 23 Nov ('Corning Menu option.xlsx'): salad and dressing fixed by weekday, the same at lunch and dinner. Thursday has none: it is the chaat day (owner). Dressing is its own row, not the chutney (owner: 'chutney and dressing are not the same').",
+      "lunch": {
+        "bread": "chapati",
+        "salad": {
+          "monday": "Iceberg lettuce, cottage cheese, zucchini, boiled fresh beans, bell peppers, American corn",
+          "tuesday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, boiled chana",
+          "wednesday": "Iceberg lettuce, soya chunks, zucchini, boiled fresh beans, bell peppers, American corn",
+          "friday": "Iceberg lettuce, tofu, French beans, bell peppers, boiled babycorn, boiled moong",
+          "saturday": "Capsicum, carrot, soya chunks, cucumber, cauliflower, boiled peanuts",
+          "sunday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, roasted sweet potatoes"
+        },
+        "dressing": {
+          "monday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
+          "tuesday": "Vinaigrette, ginger sesame, honey mustard sauce",
+          "wednesday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
+          "friday": "Vinaigrette, ginger sesame, honey mustard sauce",
+          "saturday": "Herby lemon vinaigrette, creamy dill mayo sauce, peanut dressing",
+          "sunday": "Vinaigrette, ginger sesame, honey mustard sauce"
+        }
       },
-      "dressing": {
-        "monday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
-        "tuesday": "Vinaigrette, ginger sesame, honey mustard sauce",
-        "wednesday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
-        "friday": "Vinaigrette, ginger sesame, honey mustard sauce",
-        "saturday": "Herby lemon vinaigrette, creamy dill mayo sauce, peanut dressing",
-        "sunday": "Vinaigrette, ginger sesame, honey mustard sauce"
+      "dinner": {
+        "bread": "chapati",
+        "salad": {
+          "monday": "Iceberg lettuce, cottage cheese, zucchini, boiled fresh beans, bell peppers, American corn",
+          "tuesday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, boiled chana",
+          "wednesday": "Iceberg lettuce, soya chunks, zucchini, boiled fresh beans, bell peppers, American corn",
+          "friday": "Iceberg lettuce, tofu, French beans, bell peppers, boiled babycorn, boiled moong",
+          "saturday": "Capsicum, carrot, soya chunks, cucumber, cauliflower, boiled peanuts",
+          "sunday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, roasted sweet potatoes"
+        },
+        "dressing": {
+          "monday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
+          "tuesday": "Vinaigrette, ginger sesame, honey mustard sauce",
+          "wednesday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
+          "friday": "Vinaigrette, ginger sesame, honey mustard sauce",
+          "saturday": "Herby lemon vinaigrette, creamy dill mayo sauce, peanut dressing",
+          "sunday": "Vinaigrette, ginger sesame, honey mustard sauce"
+        }
       }
     }
   }
