@@ -117,9 +117,34 @@ def test_every_day_carries_a_soup_or_a_sweet_but_not_both(week):
 
 
 def test_no_liquid_sweets(week, pune):
-    liquid = {str(i).lower() for i, v in zip(pune['item'], pune['is_liquid_dessert'])
-              if pd.to_numeric(v, errors='coerce') == 1}
+    liquid = {str(i).lower() for i, v, s in zip(pune['item'], pune['is_liquid_dessert'], pune['sub_category'])
+              if pd.to_numeric(v, errors='coerce') == 1 or s == 'payasam_/_kheer'}
     assert not [d for d in _slot(week, 'dessert').values() if d in liquid]
+
+
+def test_the_ban_reaches_every_kheer_and_payasam(pune):
+    """Owner, 23 Nov: no kheer or payasam. Three payasams are not flagged
+    liquid, so a flag-only ban let them through."""
+    import json
+    from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule as S
+    rules = json.load(open('customisation/client rules/corning_chakan.json', encoding='utf-8'))[CLIENT]['rules']
+    sel = S._parse_matcher(next(r for r in rules if r['name'] == 'corning_chakan_no_liquid_sweets')['selector'])
+    desserts = pune[pune['course_type'].astype(str).str.lower() == 'dessert']
+    kheers = desserts[desserts['item'].str.contains('kheer|payas|phirni|firni', case=False)]
+    assert len(kheers) >= 20 and {'daliya_payasum', 'gulkand_firni'} <= set(kheers['item'])
+    assert [i for i, row in zip(kheers['item'], kheers.to_dict('records')) if not S._matches(row, sel)] == []
+
+
+def test_salad_and_dressing_follow_the_sheet_by_weekday(week):
+    """'Corning Menu option.xlsx' (owner, 23 Nov). The sheet has no Thursday."""
+    salad, dressing = _slot(week, 'salad'), _slot(week, 'chutney')
+    by_day = {_weekday(iso): (salad[iso], dressing[iso]) for iso in week}
+    assert by_day['mon'][0].startswith('iceberg lettuce, cottage cheese')
+    assert by_day['wed'][0].startswith('iceberg lettuce, soya chunks')
+    assert by_day['sun'][0].endswith('roasted sweet potatoes')
+    assert by_day['sat'][1].startswith('herby lemon vinaigrette')
+    assert by_day['tue'][1] == by_day['fri'][1] == by_day['sun'][1] != by_day['mon'][1]
+    assert by_day['thu'] == ('', '')
 
 
 def test_the_starter_is_a_chaat_and_only_on_thursday(week):
