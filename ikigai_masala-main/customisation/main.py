@@ -21,12 +21,12 @@ from ui.api_client import MenuApiClient
 from ui.branding import logo_img_tag
 from ui.formatters import display_label_for_slot_id
 from src.constants import (
-    BREAKFAST_ONLY_SLOTS, BREAKFAST_SLOTS, DEFAULT_ITEM_COOLDOWN_DAYS,
+    BREAKFAST_ONLY_SLOTS, BREAKFAST_SLOTS, DEFAULT_ITEM_COOLDOWN_DAYS, SNACKS_SLOTS,
     DISPLAY_SLOT_ORDER,
 )
 from customisation.pulse import PULSE_EDITOR_CSS
 from customisation.counter_editor import render_counter_editor
-from src.history import BREAKFAST, LUNCH, MEALS, normalize_meals
+from src.history import BREAKFAST, LUNCH, MEALS, SNACKS, normalize_meals
 from src.client.client_config import normalize_features
 
 #: The editor's add-on switches, in the order shown (keys of FEATURE_DEFAULTS).
@@ -105,9 +105,12 @@ def _default_counter(idx: int, all_base_slots: List[str], const_slots: List[str]
 def categories_for_meal(meal: str, base_slots: List[str],
                         const_slots: List[str]) -> tuple:
     """``(base, const)`` categories one service's editor offers: a breakfast
-    service its breakfast rows only, every other service all the rest."""
+    service its breakfast rows only, a snacks service its snack rows, every
+    other service all the rest."""
     if meal == BREAKFAST:
         return [s for s in base_slots if s in BREAKFAST_SLOTS], []
+    if meal == SNACKS:
+        return [s for s in base_slots if s in SNACKS_SLOTS], []
     return [s for s in base_slots if s not in BREAKFAST_ONLY_SLOTS], list(const_slots)
 
 

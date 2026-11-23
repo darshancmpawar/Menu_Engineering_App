@@ -76,9 +76,9 @@ from ui.formatters import (
 from src.menu_rules.menu_rule_loader import MenuRuleLoader
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import (DEFAULT_MEALS, LUNCH, MEALS, SNACKS,
+from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
                          normalize_meals)
-from src.constants import REGIONAL_MEALS, SNACKS_NOT_READY
+from src.constants import REGIONAL_MEALS
 from src.client.client_config import counter_serves, normalize_features
 from ui.planner_view import (
     date_label,
@@ -533,9 +533,6 @@ with st.sidebar:
              "the dishes of the services before it that day. Solve time "
              "scales with how many you pick.")
     plan_meals = normalize_meals(plan_meals)
-    if SNACKS in plan_meals:
-        st.info(SNACKS_NOT_READY)
-        plan_meals = [m for m in plan_meals if m != SNACKS]
 
     # The client's add-on switches (editor → clients.features) decide which
     # of the sections below exist at all for this client.
