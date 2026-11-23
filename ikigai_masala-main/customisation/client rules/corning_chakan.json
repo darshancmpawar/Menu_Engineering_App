@@ -379,7 +379,7 @@
     "constant_items": {
       "_comment": "'Indian Bread staple only Chapati' — the same dish every day, which is what this fleet's rulebooks mean by a staple ('like white rice and pickle'). A pin, not a rule: a `slot_composition` or a `repeatable_items` on the chapati FAMILY would let the slot rotate between plain, palak, carrot and beetroot chapati, which is a variety rule where the client asked for one bread. Pinned to `chapati`, which is a real Pune row; `phulka` is the other dish Pune's R36 staple exemption names and it is not pinned, so the pin alone decides. Same shape as ICON Chn, DXC, SAEL and Corning NCR.",
       "bread": "chapati",
-      "_salad_comment": "Owner, 23 Nov ('Corning Menu option.xlsx'): salad and dressing fixed by weekday, the same at lunch and dinner. The sheet has no Thursday column, so Thursday has none until the owner gives one. The dressing uses the chutney row, shown as 'Dressing' (Rippling's shape).",
+      "_salad_comment": "Owner, 23 Nov ('Corning Menu option.xlsx'): salad and dressing fixed by weekday, the same at lunch and dinner. The sheet has no Thursday column, so Thursday has none until the owner gives one. Dressing is its own row, not the chutney (owner: 'chutney and dressing are not the same').",
       "salad": {
         "monday": "Iceberg lettuce, cottage cheese, zucchini, boiled fresh beans, bell peppers, American corn",
         "tuesday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, boiled chana",
@@ -388,20 +388,13 @@
         "saturday": "Capsicum, carrot, soya chunks, cucumber, cauliflower, boiled peanuts",
         "sunday": "Tomato, beetroot, cucumber, boiled peanuts, capsicum, roasted sweet potatoes"
       },
-      "chutney": {
+      "dressing": {
         "monday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
         "tuesday": "Vinaigrette, ginger sesame, honey mustard sauce",
         "wednesday": "Garlic & parsley vinaigrette, mint mayo dressing, carrot ginger dressing",
         "friday": "Vinaigrette, ginger sesame, honey mustard sauce",
         "saturday": "Herby lemon vinaigrette, creamy dill mayo sauce, peanut dressing",
         "sunday": "Vinaigrette, ginger sesame, honey mustard sauce"
-      }
-    },
-    "display": {
-      "_comment": "The default row order with Dressing (the chutney row) moved up beside Salad.",
-      "order": ["soup", "salad", "chutney", "bread", "rice", "white_rice", "veg_dry", "veg_gravy", "starter", "dal", "dessert"],
-      "labels": {
-        "chutney": "Dressing"
       }
     }
   }

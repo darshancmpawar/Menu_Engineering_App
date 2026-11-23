@@ -137,7 +137,7 @@ def test_the_ban_reaches_every_kheer_and_payasam(pune):
 
 def test_salad_and_dressing_follow_the_sheet_by_weekday(week):
     """'Corning Menu option.xlsx' (owner, 23 Nov). The sheet has no Thursday."""
-    salad, dressing = _slot(week, 'salad'), _slot(week, 'chutney')
+    salad, dressing = _slot(week, 'salad'), _slot(week, 'dressing')
     by_day = {_weekday(iso): (salad[iso], dressing[iso]) for iso in week}
     assert by_day['mon'][0].startswith('iceberg lettuce, cottage cheese')
     assert by_day['wed'][0].startswith('iceberg lettuce, soya chunks')

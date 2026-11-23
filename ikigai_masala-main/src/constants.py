@@ -107,7 +107,8 @@ BASE_SLOT_NAMES: List[str] = [
     'nonveg_main', 'nonveg_sandwich',
 ]
 
-CONST_SLOTS: List[str] = ['white_rice', 'pickle', 'chutney']
+# `dressing` is the salad's own fixed-text row, never the chutney (owner, 23 Nov).
+CONST_SLOTS: List[str] = ['white_rice', 'pickle', 'chutney', 'dressing']
 
 # Breakfast is its own session of the city list (the `session` column). These
 # rows exist only at breakfast; the config editor offers a breakfast service
@@ -161,7 +162,7 @@ DEFAULT_ITEM_COOLDOWN_DAYS: int = 21
 # rank by this list, so config order and display order always match.
 DISPLAY_SLOT_ORDER: List[str] = [
     'welcome_drink', 'beverage', 'breakfast_main', 'side', 'breakfast_chutney', 'accompaniment',
-    'infused_water', 'soup', 'nonveg_soup', 'salad', 'sandwich', 'snack', 'fruit',
+    'infused_water', 'soup', 'nonveg_soup', 'salad', 'dressing', 'sandwich', 'snack', 'fruit',
     'bread', 'rice', 'white_rice',
     'veg_dry', 'veg_gravy', 'starter', 'dal', 'sambar', 'rasam', 'dessert',
     # other veg categories
@@ -262,6 +263,7 @@ CONSTANT_ITEMS: Dict[str, str] = {
     'white_rice': 'steamed rice',
     'pickle': 'Pickle',
     'chutney': 'chutney',
+    'dressing': 'Dressing',
 }
 
 # Slots the day's theme must NOT hard-filter by cuisine. `dessert` and
@@ -460,6 +462,7 @@ DISPLAY_SLOT_NAME: Dict[str, str] = {
     'papad': 'Papad',
     'pickle': 'Pickle',
     'chutney': 'Chutney',
+    'dressing': 'Dressing',
     'beverage': 'Beverage',
     'breakfast_main': 'Breakfast Main',
     'side': 'Side',
