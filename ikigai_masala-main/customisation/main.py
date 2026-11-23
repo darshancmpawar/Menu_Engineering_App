@@ -186,7 +186,15 @@ def seed_counters_for(meal: str, loaded: List[Dict]) -> List[Dict]:
     form somebody has to fill in twice.
     """
     own = [c for c in loaded if meal in (c.get('meals') or [])]
-    return own or [c for c in loaded if not c.get('meals')] or list(loaded)
+    if own:
+        return own
+    shared = [c for c in loaded if not c.get('meals')] or list(loaded)
+    # Breakfast and snacks serve other rows than lunch: a copy of the lunch
+    # counter opened Snacks empty and Breakfast with lunch's veg gravy ticked.
+    rows = {BREAKFAST: BREAKFAST_SLOTS, SNACKS: SNACKS_SLOTS}.get(meal)
+    if rows is not None:
+        shared = [c for c in shared if set(c.get('categories') or ()) <= rows]
+    return shared
 
 
 def service_split_note(loaded: List[Dict], meals: List[str]) -> str:
@@ -536,8 +544,13 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         seed_mode = 'multi' if len(seed) >= 2 else 'single'
         base, const = categories_for_meal(meal, all_base_slots, const_slots)
         meta = dict(metadata, base_slot_names=base, const_slots=const)
-        # A new breakfast counter starts with every breakfast row; untick.
-        off = () if meal == BREAKFAST else default_off_slots
+        # A new breakfast or snacks counter starts with every row of its
+        # service ticked (untick what the site doesn't serve), themed "mix"
+        # every day: the lunch themes (chinese, biryani) don't apply there.
+        sessions = meal in (BREAKFAST, SNACKS)
+        off = () if sessions else default_off_slots
+        themes = ({d: 'mix' for d in default_theme_map} if sessions
+                  else default_theme_map)
         with st.container(border=True):
             _step_header(
                 2, "Cuisine Counter Setup",
@@ -574,7 +587,7 @@ def render_customisation_editor(api: MenuApiClient, *, launch_mode: bool = False
         def _seed_at(i: int) -> Dict:
             if i < len(seed):
                 return seed[i]
-            return _default_counter(i, base, const, default_theme_map, off)
+            return _default_counter(i, base, const, themes, off)
 
         out: List[Dict] = []
         if not multi:
