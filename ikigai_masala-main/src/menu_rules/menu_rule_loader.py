@@ -50,11 +50,9 @@ RULE_LIBRARY_PATH = os.getenv(
 )
 
 from .base_menu_rule import BaseMenuRule
-from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
 from .coupling_menu_rule import CouplingMenuRule
 from .curd_side_menu_rule import CurdSideMenuRule
-from .premium_menu_rule import PremiumMenuRule
 from .theme_rules import (
     ThemeDayMenuRule,
     ThemeSlotFilterRule,
@@ -73,7 +71,6 @@ from .cooldown_rules import (
 )
 from .nonveg_rules import (
     NonvegBiryaniWeeklyRule,
-    NonvegDryPreferenceRule,
 )
 from .ingredient_ban_rule import IngredientBanRule
 from .seasonal_ban_rule import SeasonalBanRule
@@ -119,14 +116,12 @@ class MenuRuleLoader:
     """Loads menu rules from JSON configuration files."""
 
     RULE_CLASSES = {
-        'cuisine': CuisineMenuRule,
         'color_pairing': ColorPairingMenuRule,
         'color_variety': ColorVarietyMenuRule,
         'unique_items': UniqueItemsMenuRule,
         'theme_day': ThemeDayMenuRule,
         'coupling': CouplingMenuRule,
         'curd_side': CurdSideMenuRule,
-        'premium': PremiumMenuRule,
         'welcome_drink_color': WelcomeDrinkColorMenuRule,
         'welcome_drink_buttermilk': WelcomeDrinkButtermilkRule,
         'week_signature_cooldown': WeekSignatureCooldownMenuRule,
@@ -135,7 +130,6 @@ class MenuRuleLoader:
         'item_cooldown': ItemCooldownMenuRule,
         'ricebread_gap': RiceBreadGapMenuRule,
         'theme_slot_filter': ThemeSlotFilterRule,
-        'nonveg_dry_preference': NonvegDryPreferenceRule,
         'nonveg_biryani_weekly': NonvegBiryaniWeeklyRule,
         'ingredient_ban': IngredientBanRule,
         'seasonal_ban': SeasonalBanRule,

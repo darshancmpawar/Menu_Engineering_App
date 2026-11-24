@@ -10,9 +10,7 @@ import datetime as dt
 import pandas as pd
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.curd_side_menu_rule import CurdSideMenuRule
-from src.menu_rules.premium_menu_rule import PremiumMenuRule
 from src.menu_rules.unique_items_menu_rule import UniqueItemsMenuRule
-from src.menu_rules.cuisine_menu_rule import CuisineMenuRule
 from src.menu_rules.theme_rules import (
     ThemeDayMenuRule,
     ThemeSlotFilterRule,
@@ -28,7 +26,6 @@ from src.menu_rules.cooldown_rules import (
     RiceBreadGapMenuRule,
     WeekSignatureCooldownMenuRule,
 )
-from src.menu_rules.nonveg_rules import NonvegDryPreferenceRule
 from src.menu_rules.base_menu_rule import MenuRuleType
 
 
@@ -72,62 +69,6 @@ class TestCurdSideMenuRule:
         model = cp_model.CpModel()
         rule = CurdSideMenuRule({"name": "curd", "type": "curd_side"})
         rule.apply(model, {}, None, {})
-
-
-# --- PremiumMenuRule ---
-
-class TestPremiumMenuRule:
-    def test_validate(self):
-        rule = PremiumMenuRule({"name": "prem", "type": "premium",
-                                "max_per_day": 1, "min_per_horizon": 1, "max_per_horizon": 2})
-        assert rule.validate_config()
-
-    def test_config_defaults(self):
-        rule = PremiumMenuRule({"name": "prem", "type": "premium"})
-        assert rule.max_per_day == 1
-        assert rule.min_per_horizon == 1
-        assert rule.max_per_horizon == 2
-
-    def test_config_override(self):
-        rule = PremiumMenuRule({"name": "prem", "type": "premium",
-                                "max_per_day": 2, "max_per_horizon": 5})
-        assert rule.max_per_day == 2
-        assert rule.max_per_horizon == 5
-
-    def test_rule_type(self):
-        rule = PremiumMenuRule({"name": "prem", "type": "premium"})
-        assert rule.rule_type == MenuRuleType.PREMIUM
-
-    def test_apply_no_cfg_is_safe(self):
-        from ortools.sat.python import cp_model
-        model = cp_model.CpModel()
-        rule = PremiumMenuRule({"name": "prem", "type": "premium"})
-        rule.apply(model, {}, None, {})
-
-    def test_rejects_min_greater_than_max(self):
-        rule = PremiumMenuRule({
-            "name": "prem", "type": "premium",
-            "min_per_horizon": 3, "max_per_horizon": 1,
-        })
-        assert rule.validate_config() is False
-        errs = rule.validation_errors()
-        assert any("min_per_horizon" in e and "<=" in e for e in errs)
-
-    def test_rejects_negative_bounds(self):
-        rule = PremiumMenuRule({
-            "name": "prem", "type": "premium",
-            "max_per_day": -1,
-        })
-        assert rule.validate_config() is False
-        assert any("max_per_day" in e for e in rule.validation_errors())
-
-    def test_valid_config_has_no_errors(self):
-        rule = PremiumMenuRule({
-            "name": "prem", "type": "premium",
-            "min_per_horizon": 1, "max_per_horizon": 1,
-        })
-        assert rule.validate_config() is True
-        assert rule.validation_errors() == []
 
 
 # --- ThemeDayMenuRule ---
@@ -272,26 +213,6 @@ class TestColorPairingMenuRule:
         rule = ColorPairingMenuRule({"name": "color_pair", "type": "color_pairing",
                                       "course_type_a": "rice", "course_type_b": "veg_gravy"})
         assert rule.rule_type == MenuRuleType.COLOR_PAIRING
-
-
-# --- CuisineMenuRule ---
-
-class TestCuisineMenuRule:
-    def test_validate(self):
-        rule = CuisineMenuRule({"name": "cuisine", "type": "cuisine",
-                                 "cuisine_family": "italian",
-                                 "days_of_week": ["monday", "tuesday"]})
-        assert rule.validate_config()
-
-    def test_validate_fails_without_family(self):
-        rule = CuisineMenuRule({"name": "cuisine", "type": "cuisine"})
-        assert rule.validate_config() is False
-
-    def test_rule_type(self):
-        rule = CuisineMenuRule({"name": "cuisine", "type": "cuisine",
-                                 "cuisine_family": "italian",
-                                 "days_of_week": ["monday"]})
-        assert rule.rule_type == MenuRuleType.CUISINE
 
 
 # --- ItemCooldownMenuRule ---
@@ -489,47 +410,6 @@ class TestThemeSlotFilterRule:
         # North day: bread should be non-south
         filtered = rule.pre_filter_pool(pool, d, 'bread', 'north', {'cfg': cfg})
         assert set(filtered['item']) == {'naan', 'paratha'}
-
-
-# --- NonvegDryPreferenceRule ---
-
-class TestNonvegDryPreferenceRule:
-    def test_validate(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        assert rule.validate_config()
-
-    def test_rule_type(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        assert rule.rule_type == MenuRuleType.NONVEG_DRY_PREFERENCE
-
-    def test_ignores_slot_1(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({'item': ['chicken_gravy'], 'is_nonveg_dry': [0]})
-        d = dt.date(2026, 3, 24)
-        # slot_num=1 should not filter
-        filtered = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south', {'slot_num': 1})
-        assert len(filtered) == 1
-
-    def test_prefers_dry_for_slot_2(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({
-            'item': ['chicken_fry', 'chicken_curry'],
-            'is_nonveg_dry': [1, 0],
-            'sub_category': ['', ''],
-            'key_ingredient': ['chicken', 'chicken'],
-            'category': ['', ''],
-        })
-        d = dt.date(2026, 3, 24)
-        filtered = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south',
-                                         {'slot_num': 2, 'cfg': None,
-                                          'banned_by_date': {}, 'pools': {}})
-        assert list(filtered['item']) == ['chicken_fry']
-
-    def test_apply_is_noop(self):
-        from ortools.sat.python import cp_model
-        model = cp_model.CpModel()
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        rule.apply(model, {}, None, {})
 
 
 # ---------------------------------------------------------------------------

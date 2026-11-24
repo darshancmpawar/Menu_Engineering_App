@@ -300,7 +300,7 @@ def _week_days(week: str) -> Set[dt.date]:
 
 
 def _repeat_message(item: str, where: dt.date, source: str) -> str:
-    """Spec 04 §3.5, verbatim: what happened, then why it is refused."""
+    """What happened, then why it is refused."""
     pretty = item.replace('_', ' ').capitalize()
     day = _day_label(where)
     if source == 'history':

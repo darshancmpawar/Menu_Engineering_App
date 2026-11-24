@@ -376,13 +376,11 @@ Per-client overrides live in `customisation/client rules/<slug>.json`.
 
 | Rule | Kind | Role |
 |---|---|---|
-| `cuisine` | hard | Minimum cuisine variety per day |
 | `color_variety` | hard | Minimum distinct colors per day |
 | `color_pairing` | hard | Maximum same-color items per day |
 | `unique_items` | hard | No repeats within the horizon |
 | `coupling` | hard | Item dependencies (curry ↔ rice, etc.) |
 | `curd_side` | hard | Fill the curd-side slot |
-| `premium` | hard | Per-horizon min / max for premium items |
 | `welcome_drink_color` | hard | Color variety for welcome drinks |
 | `welcome_drink_buttermilk` | hard | Buttermilk (`is_buttermilk`) on exactly N (default 2) welcome-drink days, solver-chosen, non-consecutive |
 | `theme_day` | hard | Monday mix (≥1 south + ≥1 north) |
@@ -390,7 +388,6 @@ Per-client overrides live in `customisation/client rules/<slug>.json`.
 | `item_cooldown` | pre-filter | Ban items used within N days (default 20; overridable per client via `clients.item_cooldown_days`) |
 | `ricebread_gap` | pre-filter | Enforce N-day gap between rice-breads |
 | `nonveg_biryani_weekly` | pre-filter | ≤1 nonveg biryani per week |
-| `nonveg_dry_preference` | pre-filter | Prefer dry nonveg on certain days |
 | `theme_starter_preference` | soft | Bonus for theme-matching starters |
 | `theme_fallback_penalty` | soft | Penalty when a non-theme fallback is used |
 | `week_signature_cooldown` | soft | Avoid re-running a recent week verbatim |
@@ -402,7 +399,6 @@ Stored per client in `customisation/client rules/<slug>.json`, loaded fresh on e
 | Rule | Kind | Role |
 |---|---|---|
 | `ingredient_ban` | pre-filter | Case-insensitive ban by `key_ingredient` **and** `primary_protein` (either field matching the banned token drops the item) |
-| `item_frequency` | hard | Weekly frequency cap by flag / sub-category / item / ingredient |
 | `slot_day_restriction` | skip-cells | Skip a slot on specific weekdays (e.g. no nonveg on Tue/Thu) |
 
 Rule configs are validated at load time. Invalid configs (for example

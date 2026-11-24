@@ -12,7 +12,7 @@ Existing conventions (verified from `api/app.py`): every endpoint is under `/api
 |---|---|---|---|---|
 | POST | `/api/v1/pick` | **New** | Put chosen dishes into cells, audit them, return the updated plan | `@rate_limit("diagnose")` class (cheap). **No** `@solver_gate`: it does not solve |
 | POST | `/api/v1/regenerate` | **Changed** | Reject any cell that is pinned | Existing gate and limit |
-| GET | `/api/v1/pick-candidates` | **New, conditional** | Per-slot city dish list, only if the embed gate in doc 06 trips | `@rate_limit("diagnose")` |
+| GET | `/api/v1/pick-candidates` | **New, conditional** | Per-slot city dish list, only if the embed gate in work order §4.1 trips | `@rate_limit("diagnose")` |
 
 ---
 
@@ -58,8 +58,8 @@ The UI sends one pick per call in v1. The server accepts several and applies the
 | 4 | Every `slot_id` exists in `base_plan` for that date | `unknown_cell` | 400 |
 | 5 | The cell is **not pinned** (staple, `forced_items` pin, client constant) and not an off day | `pinned_cell` | 400 |
 | 6 | `item_base` is a dish of that cell's base slot in the **city list** (D4) | `not_a_slot_dish` | 400 |
-| 7 | **D5**: the dish is not used elsewhere in the same week, in the plan, in other picks of this request, or in saved history (doc 04 §3) | `week_repeat` | 400 |
-| 8 | Stamp and audit (doc 04 §4–§6) | none: always 200 with warnings | 200 |
+| 7 | **D5**: the dish is not used elsewhere in the same week, in the plan, in other picks of this request, or in saved history (work order §6.1b, §6.5) | `week_repeat` | 400 |
+| 8 | Stamp and audit (work order §6) | none: always 200 with warnings | 200 |
 
 Picking the dish that is already in the cell is not an error: the response has `"changed": false`, an unchanged plan and no exception.
 
@@ -106,10 +106,10 @@ Picking the dish that is already in the cell is not an error: the response has `
 
 Rules for the body:
 
-* `solution` has the **same shape** `/regenerate` returns (`SolutionFormatter.to_dict()`), with one new per-item flag, `is_manual`. `is_pinned` is recomputed (doc 04 §2.3).
+* `solution` has the **same shape** `/regenerate` returns (`SolutionFormatter.to_dict()`), with one new per-item flag, `is_manual`. `is_pinned` is recomputed (work order §5.3).
 * `manual_cells` is every cell **picked in this request**. The client unions it into its own session set; the server is stateless.
 * `exceptions` contains only picks that have at least one violation. A clean pick has no entry.
-* `checked` and `not_checked` are **always present**, even when empty, so a client can never mistake an incomplete audit for a complete one (doc 04 §6).
+* `checked` and `not_checked` are **always present**, even when empty, so a client can never mistake an incomplete audit for a complete one (work order §6.3).
 * `severity` is `"warning"` for every violation in v1 (D2). The field exists so a later version can add a level without a contract change.
 * `violations[].code` is from the closed set in §5.
 
@@ -138,11 +138,11 @@ The body and success response are unchanged. New behaviour:
 
 * If any cell in `replace_slots` is pinned, respond 400 `pinned_cell` with `details: {"cells": [{"date": "...", "slot_id": "..."}]}` and **solve nothing**.
 * Today only the table component prevents selecting a pinned cell; the server accepts any cell. This closes that gap for stale tabs and other clients.
-* A request with no pinned cell behaves exactly as before. A test proves `/plan` and `/regenerate` output is unchanged (doc 06, gate G1).
+* A request with no pinned cell behaves exactly as before. A test proves `/plan` and `/regenerate` output is unchanged (work order §8, phase 1 gate).
 
 ---
 
-## 4. `GET /api/v1/pick-candidates` (only if doc 06 gate G5 trips)
+## 4. `GET /api/v1/pick-candidates` (only if the work order §4.1 gate trips)
 
 Query: `client_name`, `city`, `counter_index`, `meal`, `slots` (comma-separated base slots).
 
@@ -259,7 +259,7 @@ Request `picks: {"2026-11-03": {"veg_gravy": "paneer_do_pyaza"}}` →
 ## 8. Compatibility and Pulse
 
 * No existing field changes meaning. `/regenerate` only gains a rejection for a cell it should never have accepted.
-* The contract is stateless and UI-free so the Pulse migration can reuse it unchanged. Hand this document, plus doc 03's string table, to whoever builds the Pulse screen.
+* The contract is stateless and UI-free so the Pulse migration can reuse it unchanged. Hand this document to whoever builds the Pulse screen.
 * Add the three rows from §1 to the endpoint table at the top of `docs/api.md` and the sections of §2–§5 below it. Add a row for `/api/v1/pick` to §3 of `docs/repo_map.md` (one line, per that file's editing rules).
 
 ## 9. Open items for this contract

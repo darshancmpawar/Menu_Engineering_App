@@ -36,7 +36,6 @@ class SolverContext(TypedDict):
     day_color_vars: Dict[Tuple[int, str], List[cp_model.IntVar]]
     day_rice_color_vars: Dict[Tuple[int, str], List[cp_model.IntVar]]
     day_gravy_color_vars: Dict[Tuple[int, str], List[cp_model.IntVar]]
-    day_premium_vars: Dict[int, List[cp_model.IntVar]]
     # (day, colour, slot_id) — keyed by CELL, unlike the others, so
     # `welcome_drink_color` can be scoped to one drink of a pair.
     day_welcome_color_vars: Dict[Tuple[int, str, str], List[cp_model.IntVar]]

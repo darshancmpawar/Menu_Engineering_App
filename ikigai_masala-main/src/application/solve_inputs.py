@@ -508,7 +508,6 @@ def build_solver_config(
         forced_items=dict(forced_items or {}),
         working_days=getattr(client_cfg, 'working_days', None),
         explicit_dates=weekday_dates,
-        premium_flag_col='is_premium_veg' if 'is_premium_veg' in df.columns and int(df['is_premium_veg'].sum()) > 0 else None,
         theme_map=client_cfg.theme_map or None,
         **_rule_solver_overrides(rules),
     )

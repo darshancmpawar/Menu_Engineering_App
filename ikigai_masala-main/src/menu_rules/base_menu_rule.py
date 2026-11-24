@@ -58,7 +58,6 @@ def parse_slot_indices(raw: Any) -> Optional[List[int]]:
 class MenuRuleType(Enum):
     """Types of menu rules supported."""
     # Original MVP rules
-    CUISINE = "cuisine"
     COLOR_PAIRING = "color_pairing"
     COLOR_VARIETY = "color_variety"
     UNIQUE_ITEMS = "unique_items"
@@ -67,7 +66,6 @@ class MenuRuleType(Enum):
     # Hard constraints
     COUPLING = "coupling"
     CURD_SIDE = "curd_side"
-    PREMIUM = "premium"
     WELCOME_DRINK_COLOR = "welcome_drink_color"
     WELCOME_DRINK_BUTTERMILK = "welcome_drink_buttermilk"
     # Cooldown / pre-filter rules
@@ -75,7 +73,6 @@ class MenuRuleType(Enum):
     RICEBREAD_GAP = "ricebread_gap"
     WEEK_SIGNATURE_COOLDOWN = "week_signature_cooldown"
     THEME_SLOT_FILTER = "theme_slot_filter"
-    NONVEG_DRY_PREFERENCE = "nonveg_dry_preference"
     NONVEG_BIRYANI_WEEKLY = "nonveg_biryani_weekly"
     # Soft constraints
     THEME_STARTER_PREFERENCE = "theme_starter_preference"
@@ -194,7 +191,7 @@ class DiagnoseContext:
     pools: Dict[str, pd.DataFrame]                       # base_slot -> DataFrame
     dates: List[dt.date]                                 # weekday dates being planned
     day_types: Dict[dt.date, str]                        # 'mix'|'chinese'|'biryani'|'south'|'north'
-    cfg: "SolverConfig"                                  # cuisine_col, f_chinese_*, premium_flag_col, …
+    cfg: "SolverConfig"                                  # cuisine_col, f_chinese_*, …
     df: pd.DataFrame                                     # full ontology
     banned_by_date: Dict[dt.date, Set[str]]              # from HistoryManager
     ricebread_ban_day: Dict[dt.date, bool]               # from HistoryManager

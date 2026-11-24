@@ -17,11 +17,9 @@ from .diagnostics import (
     has_blocking_errors,
     pool_warnings_projection,
 )
-from .cuisine_menu_rule import CuisineMenuRule
 from .unique_items_menu_rule import UniqueItemsMenuRule
 from .coupling_menu_rule import CouplingMenuRule
 from .curd_side_menu_rule import CurdSideMenuRule
-from .premium_menu_rule import PremiumMenuRule
 
 # Consolidated domain modules
 from .theme_rules import (
@@ -41,7 +39,6 @@ from .cooldown_rules import (
 )
 from .nonveg_rules import (
     NonvegBiryaniWeeklyRule,
-    NonvegDryPreferenceRule,
 )
 
 # Per-client rules
@@ -57,8 +54,7 @@ __all__ = [
     'Diagnostic', 'DiagnosticSeverity', 'DiagnosticPhase', 'DiagnoseContext',
     'run_diagnostics', 'summarize', 'has_blocking_errors',
     'pool_warnings_projection',
-    'CuisineMenuRule', 'UniqueItemsMenuRule', 'CouplingMenuRule',
-    'CurdSideMenuRule', 'PremiumMenuRule',
+    'UniqueItemsMenuRule', 'CouplingMenuRule', 'CurdSideMenuRule',
     # theme
     'ThemeDayMenuRule', 'ThemeSlotFilterRule',
     'ThemeStarterPreferenceRule', 'ThemeFallbackPenaltyRule',
@@ -68,7 +64,7 @@ __all__ = [
     'ItemCooldownMenuRule', 'RiceBreadGapMenuRule',
     'WeekSignatureCooldownMenuRule',
     # nonveg
-    'NonvegBiryaniWeeklyRule', 'NonvegDryPreferenceRule',
+    'NonvegBiryaniWeeklyRule',
     # per-client
     'IngredientBanRule', 'SeasonalBanRule', 'SlotDayRestrictionRule',
 ]
