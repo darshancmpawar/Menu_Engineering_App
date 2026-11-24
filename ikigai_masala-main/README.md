@@ -9,6 +9,11 @@ per-client customizations, and history.
 - **Solver:** Google OR-Tools CP-SAT
 - **Database:** Supabase (PostgreSQL) — clients, history, config
 
+New to the codebase? Start with the
+[product and engineering guide](../docs/product_engineering_guide.md):
+why the tool exists, its architecture, how rules become solver constraints,
+and every city's and client's rules.
+
 ---
 
 ## Quick start
