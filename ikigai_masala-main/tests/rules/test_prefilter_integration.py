@@ -16,7 +16,6 @@ from src.menu_rules.cooldown_rules import (
     ItemCooldownMenuRule, RiceBreadGapMenuRule,
 )
 from src.menu_rules.theme_rules import ThemeSlotFilterRule, _chinese_side_mask
-from src.menu_rules.nonveg_rules import NonvegDryPreferenceRule
 
 
 # ---------------------------------------------------------------------------
@@ -194,60 +193,6 @@ class TestRiceBreadGapEdgeCases:
         result = rule.pre_filter_pool(pool, d, 'bread', 'south',
                                        {'ricebread_ban_day': {d: True}})
         assert len(result) == 1  # No filtering without the column
-
-
-# ---------------------------------------------------------------------------
-# NonvegDryPreferenceRule — edge cases
-# ---------------------------------------------------------------------------
-
-class TestNonvegDryEdgeCases:
-    def test_no_dry_items_falls_back_to_gravy(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({
-            'item': ['chicken_curry', 'mutton_curry'],
-            'is_nonveg_dry': [0, 0],
-            'is_nonveg_gravy': [1, 1],
-            'sub_category': ['', ''],
-            'key_ingredient': ['chicken', 'mutton'],
-            'category': ['', ''],
-        })
-        d = dt.date(2026, 3, 24)
-        result = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south',
-                                       {'slot_num': 2, 'cfg': None,
-                                        'banned_by_date': {}, 'pools': {}})
-        assert len(result) == 2
-
-    def test_no_dry_no_gravy_returns_full(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({
-            'item': ['egg_item'],
-            'is_nonveg_dry': [0],
-            'sub_category': [''],
-            'key_ingredient': ['egg'],
-            'category': [''],
-        })
-        d = dt.date(2026, 3, 24)
-        result = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south',
-                                       {'slot_num': 2, 'cfg': None,
-                                        'banned_by_date': {}, 'pools': {}})
-        assert len(result) == 1
-
-    def test_empty_pool(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({'item': [], 'is_nonveg_dry': []})
-        d = dt.date(2026, 3, 24)
-        result = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south',
-                                       {'slot_num': 2, 'cfg': None,
-                                        'banned_by_date': {}, 'pools': {}})
-        assert len(result) == 0
-
-    def test_slot_num_none_returns_unfiltered(self):
-        rule = NonvegDryPreferenceRule({"name": "nv", "type": "nonveg_dry_preference"})
-        pool = pd.DataFrame({'item': ['x'], 'is_nonveg_dry': [0]})
-        d = dt.date(2026, 3, 24)
-        result = rule.pre_filter_pool(pool, d, 'nonveg_main', 'south',
-                                       {'slot_num': None})
-        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------

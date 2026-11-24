@@ -10,8 +10,8 @@ Purpose: one place where every decision about this feature is recorded, with who
 
 | ID | Decision | Decided by | Date | Consequence for the build |
 |---|---|---|---|---|
-| D1 | The regenerate control gets a mode: **Auto** (today's regenerate) or **Pick** (search by name, scoped to the cell's category). In Pick, the cell itself becomes the search input; there is no separate panel | Owner (Darshan) | 13 Oct 2026 | Table-level toggle in the header; click behaviour depends on mode (spec 03 §3) |
-| D2 | A picked dish **may override and violate rules**. Violations are shown as warnings in an expandable **Exceptions** section | Owner | 13 Oct 2026 | Pick is not a solve; stamp then audit (spec 04) |
+| D1 | The regenerate control gets a mode: **Auto** (today's regenerate) or **Pick** (search by name, scoped to the cell's category). In Pick, the cell itself becomes the search input; there is no separate panel | Owner (Darshan) | 13 Oct 2026 | Table-level toggle in the header; click behaviour depends on mode (work order §3.1) |
+| D2 | A picked dish **may override and violate rules**. Violations are shown as warnings in an expandable **Exceptions** section | Owner | 13 Oct 2026 | Pick is not a solve; stamp then audit (work order §6) |
 | D3 | **Staple and pinned cells cannot be changed** by search or regenerate | Owner | 13 Oct 2026 | Server guard on `/pick` and on `/regenerate`; both are the same set in the code (a cell the solver did not choose) |
 | D4 | Search scope is the **city item list**, not the client's pool | Owner | 13 Oct 2026 | "Not in this client's pool" is a warning, never a filter |
 | D5 | **Hard rule: the same dish cannot appear twice in a week.** A pick that would repeat is blocked, not warned. It is the one rule search cannot override | Owner | 13 Oct 2026 | 400 `week_repeat` on the server; locked rows in search; runs before cooldown |
@@ -28,7 +28,7 @@ The solver stamps `CONST_SLOTS` (`white_rice`, `papad`, `pickle`, `chutney`) and
 
 | ID | Question | Why it matters | Proposed default | Blocks |
 |---|---|---|---|---|
-| O4 | Embed the dish list in the component, or fetch it? | Streamlit resends component arguments on every rerun | Embed and cache; switch to fetch only if the measured gate in spec 06 trips | Phase 4 |
+| O4 | Embed the dish list in the component, or fetch it? | Streamlit resends component arguments on every rerun | Embed and cache; switch to fetch only if the measured gate in work order §4.1 trips | Phase 4 |
 | O5 | Who may override? | The mockup assumes any planner | Any planner; no new permission | none |
 | O6 | Version number and approval | Major versions need Project Manager approval; this is one feature | Draft as **2.08.00** (new endpoint, new capability); PM may prefer 2.07.04 | Release |
 | O7 | Which slots are exempt from D5? | The solver already exempts `REPEATABLE_SLOTS` (`curd`, `curd_rice`) from unique-items | Exempt `REPEATABLE_SLOTS` and pinned staples; nothing else | Phase 2 |
@@ -45,7 +45,7 @@ Replace the "Proposed default" cell with the owner's answer, add the name and da
 |---|---|---|
 | Pick a dish **and** auto-regenerate the rest of the day around it | The pick would have to be injected into the cell's candidate pool, because the pre-filters drop it | v2 work order |
 | Persisting exceptions and reasons | O3 | Separate schema order |
-| Detecting frequency caps, slot composition and colour constraints in Exceptions | They exist only inside the solver model | v2: per-rule feasibility probe (spec 04 §8) |
+| Detecting frequency caps, slot composition and colour constraints in Exceptions | They exist only inside the solver model | v2: per-rule feasibility probe (work order §6.4) |
 | Recording every pick for learning | Not requested | Optional edit-log order |
 | Multiple picks in one Apply from the UI | The API accepts a map; the UI sends one | v1.5 |
 

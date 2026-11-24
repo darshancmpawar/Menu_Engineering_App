@@ -1,6 +1,6 @@
 {
   "Moengage": {
-    "_comment": "Bangalore site (its clients.city is NULL — see scripts/backfill_client_city.sql). Mutton once a month is wired as a CAP now that a client menu import brought `dhaba_style_mutton_curry` into Bangalore; it was inert while the city carried no mutton at all. Cap rather than target for the same reason as Stripe's: with one eligible dish, a positive cadence would force that dish monthly regardless of the rest of the plate.",
+    "_comment": "Bangalore site. Mutton once a month is wired as a CAP now that a client menu import brought `dhaba_style_mutton_curry` into Bangalore; it was inert while the city carried no mutton at all. Cap rather than target for the same reason as Stripe's: with one eligible dish, a positive cadence would force that dish monthly regardless of the rest of the plate.",
     "disable": [],
     "use": [
       {

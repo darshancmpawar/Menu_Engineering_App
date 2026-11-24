@@ -306,11 +306,6 @@ class SolverConfig:
     max_same_color_reach: int = 3        # rulebook 89: one colour may reach this
     max_colors_at_reach: int = 1         # rulebook 91: how many colours may exceed the soft cap
     ignore_rice_gravy_color_diff_on_chinese_day: bool = True
-    # Premium flag column — set when the retained PremiumMenuRule is configured;
-    # feeds day_premium_vars. (The old min/max-per-horizon knobs were removed
-    # with the broad premium rule; the default ruleset uses selector_frequency
-    # exact-1 rules instead.)
-    premium_flag_col: Optional[str] = None
     # Rice exclusions — see src.constants.RICE_EXCLUDE_ITEMS.
     rice_exclude_items: Set[str] = field(default_factory=lambda: set(RICE_EXCLUDE_ITEMS))
     # Cuisine theme settings
@@ -983,13 +978,15 @@ class MenuSolver:
 
                 base_pools[base] = pool2
 
-            # Second pass: per expanded slot (handles slot_num for nonveg_dry etc.)
+            # Second pass: per expanded slot. No current rule reads `slot_num`;
+            # kept because it re-applies every pre-filter to slots 2+, and
+            # dropping that in a cleanup could change plans.
             for slot_id in expanded_slots:
                 base = _base_slot(slot_id)
                 slot_num = _slot_num(slot_id)
                 pool2 = base_pools[base]
 
-                # Apply slot-number-aware pre-filters (e.g. nonveg dry preference)
+                # Re-apply pre-filters with `slot_num` for numbered slots 2+
                 if slot_num is not None and slot_num >= 2:
                     filter_ctx = {**base_filter_ctx, 'slot_num': slot_num}
                     for rule in self.menu_rules:
@@ -1057,13 +1054,13 @@ class MenuSolver:
             model, cells, day_types, locked=locked, forbidden=forbidden,
         )
         (item_to_vars, day_color_vars, day_rice_color_vars,
-         day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+         day_gravy_color_vars, day_welcome_color_vars,
          monday_south_lits, monday_north_lits, theme_fallback_bools) = build_result
 
         context = self._build_context(
             cells, dates, day_types,
             item_to_vars, day_color_vars, day_rice_color_vars,
-            day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+            day_gravy_color_vars, day_welcome_color_vars,
             monday_south_lits, monday_north_lits, theme_fallback_bools,
             known_colors, known_welcome_colors,
         )
@@ -1202,7 +1199,7 @@ class MenuSolver:
     def _build_context(
         self, cells, dates, day_types,
         item_to_vars, day_color_vars, day_rice_color_vars,
-        day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+        day_gravy_color_vars, day_welcome_color_vars,
         monday_south_lits, monday_north_lits, theme_fallback_bools,
         known_colors, known_welcome_colors,
     ) -> SolverContext:
@@ -1220,7 +1217,6 @@ class MenuSolver:
             'day_color_vars': day_color_vars,
             'day_rice_color_vars': day_rice_color_vars,
             'day_gravy_color_vars': day_gravy_color_vars,
-            'day_premium_vars': day_premium_vars,
             'day_welcome_color_vars': day_welcome_color_vars,
             'monday_south_lits': monday_south_lits,
             'monday_north_lits': monday_north_lits,
@@ -1313,7 +1309,6 @@ class MenuSolver:
         day_color_vars: Dict[Tuple, List] = {}
         day_rice_color_vars: Dict[Tuple, List] = {}
         day_gravy_color_vars: Dict[Tuple, List] = {}
-        day_premium_vars: Dict[int, List] = {}
         day_welcome_color_vars: Dict[Tuple, List] = {}
         monday_south_lits: List = []
         monday_north_lits: List = []
@@ -1354,10 +1349,6 @@ class MenuSolver:
                 # the same item may appear on every day.
                 if base not in REPEATABLE_SLOTS:
                     item_to_vars.setdefault(item_base, []).append(var)
-
-                # Premium tracking
-                if self.cfg.premium_flag_col and int(row.get(self.cfg.premium_flag_col, 0)) == 1:
-                    day_premium_vars.setdefault(di, []).append(var)
 
                 # Color tracking
                 if base in self.cfg.color_slots:
@@ -1414,7 +1405,7 @@ class MenuSolver:
                         theme_fallback_bools.append(fb)
 
         return (item_to_vars, day_color_vars, day_rice_color_vars,
-                day_gravy_color_vars, day_premium_vars, day_welcome_color_vars,
+                day_gravy_color_vars, day_welcome_color_vars,
                 monday_south_lits, monday_north_lits, theme_fallback_bools)
 
     # ----- Built-in constraints -----

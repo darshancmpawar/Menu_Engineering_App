@@ -52,15 +52,16 @@ class TestMenuRuleLoader:
     def test_load_from_dict(self):
         config = {
             "rules": [
-                {"name": "test_premium", "type": "premium", "max_per_day": 1,
-                 "min_per_horizon": 1, "max_per_horizon": 2}
+                {"name": "test_premium", "type": "selector_frequency",
+                 "selector": {"flag": "is_premium_gravy"},
+                 "base_slot": "veg_gravy", "exact": 1}
             ]
         }
         loader = MenuRuleLoader()
         rules = loader.load_from_dict(config)
         assert len(rules) == 1
         assert rules[0].name == "test_premium"
-        assert rules[0].rule_type == MenuRuleType.PREMIUM
+        assert rules[0].rule_type == MenuRuleType.SELECTOR_FREQUENCY
 
     def test_unknown_rule_type_skipped(self):
         config = {"rules": [{"name": "bad", "type": "nonexistent"}]}
@@ -74,7 +75,7 @@ class TestMenuRuleLoader:
         # The broad `premium` rule (per-day + weekly cap) was retired per the
         # Bangalore rulebook (§5, rules 45-46) in favour of two slot-specific
         # exactly-one selector_frequency rules.
-        assert len(loader.get_rules_by_type('premium')) == 0
+        assert 'premium' not in MenuRuleLoader.RULE_CLASSES
         premium_exact = [r for r in loader.get_rules_by_type('selector_frequency')
                          if r.name in ('premium_veg_gravy_exactly_one',
                                        'premium_veg_dry_exactly_one')]
@@ -101,12 +102,13 @@ class TestMenuRuleLoader:
         assert 'test_coupling' in desc
 
     def test_rule_repr(self):
-        config = {"rules": [{"name": "test_repr", "type": "premium",
-                              "max_per_day": 1, "min_per_horizon": 1, "max_per_horizon": 2}]}
+        config = {"rules": [{"name": "test_repr", "type": "selector_frequency",
+                              "selector": {"flag": "is_premium_gravy"},
+                              "base_slot": "veg_gravy", "exact": 1}]}
         loader = MenuRuleLoader()
         rules = loader.load_from_dict(config)
         r = repr(rules[0])
-        assert 'PremiumMenuRule' in r
+        assert 'SelectorFrequencyRule' in r
         assert 'test_repr' in r
 
 
@@ -244,8 +246,9 @@ class TestInvalidConfigLogging:
         caplog.set_level(logging.WARNING)
         config = {
             "rules": [{
-                "name": "bad_premium", "type": "premium",
-                "min_per_horizon": 5, "max_per_horizon": 1,
+                "name": "bad_premium", "type": "selector_frequency",
+                "selector": {"flag": "is_premium_gravy"},
+                "min": 5, "max": 1,
             }]
         }
         loader = MenuRuleLoader()
@@ -253,7 +256,7 @@ class TestInvalidConfigLogging:
         assert rules == []
         joined = "\n".join(rec.message for rec in caplog.records)
         assert "bad_premium" in joined
-        assert "min_per_horizon" in joined
+        assert "min (5) must be <= max (1)" in joined
 
 
 class TestCityRules:

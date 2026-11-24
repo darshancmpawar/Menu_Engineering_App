@@ -53,7 +53,7 @@ Facts below were read from the repo unless marked **[unverified]**. Nothing here
 * **Auto:** clicking a pickable cell toggles selection, exactly as today; "Regenerate selected" is unchanged.
 * **Pick:** clicking a pickable cell turns **that cell into a search input** (empty, focused). There is no separate panel and no "select one cell first" rule.
 * Pickable = not pinned and not off. A click on a pinned cell, in either mode, shows the pinned message and does nothing else.
-* Switching mode clears the selection and closes any open edit. Full detail, states, keyboard and strings: `pick_a_dish_docs/03_INTERACTION_SPEC.md`.
+* Switching mode clears the selection and closes any open edit.
 
 ### 3.2 In-cell search
 * The results panel is **in the page flow directly under the row** being edited (not floating, because the component lives in an iframe that sizes to its content).
@@ -219,7 +219,7 @@ Constraint-type rules that only exist inside the CP-SAT model: weekly frequency 
 ### 7.1 `ui/menu_table/index.html`
 * State: `mode` (`auto`|`pick`), `pickCell`, `query`, `highlighted`.
 * `data-act="mode"` segmented control (real `<button aria-pressed>`), table-level, always enabled.
-* In-cell input (a combobox) and the in-flow results panel under the edited row, per `03_INTERACTION_SPEC.md`. **While Editing, typing updates only the results container** and re-measures height; the table is rebuilt only on Apply, Cancel, mode switch or cell click, because rebuilding on a keystroke would drop the input's focus.
+* In-cell input (a combobox) and the in-flow results panel under the edited row. **While Editing, typing updates only the results container** and re-measures height; the table is rebuilt only on Apply, Cancel, mode switch or cell click, because rebuilding on a keystroke would drop the input's focus.
 * Cell flags: `c.manual`, `c.violations` (count); pencil icon, amber background when violations > 0. At most one trailing marker, in this order: tick (selected), warning, pencil (manual), redo (modified).
 * On Apply: `setValue({action: "pick", cell, item, nonce: Date.now()})`, then clear selection.
 * Exceptions panel and banner per artboards 3 and 4 (the panel can live in the component or in Streamlit below it; **prefer the component**, so expand/collapse is local and does not rerun).

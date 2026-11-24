@@ -12,7 +12,6 @@ from ortools.sat.python import cp_model
 
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
 from src.menu_rules.curd_side_menu_rule import CurdSideMenuRule
-from src.menu_rules.premium_menu_rule import PremiumMenuRule
 from src.menu_rules.theme_rules import (
     ThemeDayMenuRule, ThemeStarterPreferenceRule,
 )
@@ -178,55 +177,6 @@ class TestWelcomeDrinkColorConstraint:
         assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
         # They must pick different colors
         assert solver.Value(d0_red) != solver.Value(d1_red)
-
-
-# ---------------------------------------------------------------------------
-# PremiumMenuRule — daily / horizon limits
-# ---------------------------------------------------------------------------
-
-class TestPremiumConstraint:
-    def _make_cfg(self):
-        return type('Cfg', (), {'premium_flag_col': 'is_premium_veg'})()
-
-    def test_max_per_day_enforced(self):
-        model = cp_model.CpModel()
-        p1 = model.NewBoolVar('p1')
-        p2 = model.NewBoolVar('p2')
-        # Try to force both premium items on day 0
-        model.Add(p1 == 1)
-        model.Add(p2 == 1)
-
-        rule = PremiumMenuRule({"name": "prem", "type": "premium",
-                                "max_per_day": 1, "min_per_horizon": 0, "max_per_horizon": 5})
-        ctx = {
-            'cfg': self._make_cfg(),
-            'dates': [dt.date(2026, 3, 23)],
-            'day_premium_vars': {0: [p1, p2]},
-        }
-        rule.apply(model, {}, None, ctx)
-
-        _, status = _solve(model)
-        assert status == cp_model.INFEASIBLE
-
-    def test_horizon_min_enforced(self):
-        model = cp_model.CpModel()
-        p1 = model.NewBoolVar('p1')
-        np1 = model.NewBoolVar('np1')
-        model.Add(p1 + np1 == 1)
-        # Force no premium
-        model.Add(p1 == 0)
-
-        rule = PremiumMenuRule({"name": "prem", "type": "premium",
-                                "max_per_day": 1, "min_per_horizon": 1, "max_per_horizon": 2})
-        ctx = {
-            'cfg': self._make_cfg(),
-            'dates': [dt.date(2026, 3, 23)],
-            'day_premium_vars': {0: [p1]},
-        }
-        rule.apply(model, {}, None, ctx)
-
-        _, status = _solve(model)
-        assert status == cp_model.INFEASIBLE
 
 
 # ---------------------------------------------------------------------------

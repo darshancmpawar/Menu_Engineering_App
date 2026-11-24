@@ -35,12 +35,10 @@ from src.menu_rules.cooldown_rules import (
     RiceBreadGapMenuRule,
 )
 from src.menu_rules.coupling_menu_rule import CouplingMenuRule
-from src.menu_rules.cuisine_menu_rule import CuisineMenuRule
 from src.menu_rules.diagnostics import pool_size_diagnostics, color_variety_diagnostics
 from src.menu_rules.ingredient_ban_rule import IngredientBanRule
 from src.menu_rules.nonveg_rules import NonvegBiryaniWeeklyRule
 from src.menu_rules.selector_frequency_rule import SelectorFrequencyRule
-from src.menu_rules.premium_menu_rule import PremiumMenuRule
 from src.menu_rules.theme_rules import (
     ThemeDayMenuRule,
     ThemeSlotFilterRule,
@@ -60,12 +58,11 @@ class _StubClientCfg:
 @dataclass
 class _StubSolverCfg:
     """Stand-in for SolverConfig — only the fields rule.diagnose()
-    reads (cuisine_col, premium_flag_col, f_*_flags, rice_exclude_items).
+    reads (cuisine_col, f_*_flags, rice_exclude_items).
     """
     cuisine_col: str = 'cuisine_family'
     cuisine_south_value: str = 'south_indian'
     cuisine_north_value: str = 'north_indian'
-    premium_flag_col: Optional[str] = 'is_premium_veg'
     f_chinese_rice: Optional[str] = 'is_chinese_fried_rice'
     f_chinese_nonveg: Optional[str] = 'is_chinese_chicken_gravy'
     f_chinese_veg_gravy: Optional[str] = 'is_chinese_veg_gravy'
@@ -116,7 +113,7 @@ def _ctx(
 class TestDiagnosticDataModel:
     def test_to_dict_round_trip(self):
         d = Diagnostic(
-            rule="x", rule_type="cuisine",
+            rule="x", rule_type="theme_day",
             severity=DiagnosticSeverity.ERROR,
             phase=DiagnosticPhase.APPLY,
             message="msg", suggestion="fix",
@@ -127,7 +124,7 @@ class TestDiagnosticDataModel:
         assert out["severity"] == "error"
         assert out["phase"] == "apply"
         # Other fields are passthrough.
-        assert out["rule_type"] == "cuisine"
+        assert out["rule_type"] == "theme_day"
         assert out["affected"] == {"date": "2026-05-11"}
 
 
@@ -139,8 +136,8 @@ class _BuggyRule(BaseMenuRule):
     """Always raises in diagnose() — guards the freeze-the-planner regression."""
 
     def __init__(self):
-        super().__init__({"name": "buggy", "type": "cuisine"})
-        self.rule_type = MenuRuleType.CUISINE
+        super().__init__({"name": "buggy", "type": "theme_day"})
+        self.rule_type = MenuRuleType.THEME_DAY
 
     def apply(self, *args, **kwargs):
         pass
@@ -182,15 +179,15 @@ class TestAggregator:
 
         class _E(BaseMenuRule):
             def __init__(self):
-                super().__init__({"name": "e", "type": "premium"})
-                self.rule_type = MenuRuleType.PREMIUM
+                super().__init__({"name": "e", "type": "selector_frequency"})
+                self.rule_type = MenuRuleType.SELECTOR_FREQUENCY
 
             def apply(self, *a, **k):
                 pass
 
             def diagnose(self, ctx):
                 return [Diagnostic(
-                    rule="e", rule_type=MenuRuleType.PREMIUM.value,
+                    rule="e", rule_type=MenuRuleType.SELECTOR_FREQUENCY.value,
                     severity=DiagnosticSeverity.ERROR,
                     phase=DiagnosticPhase.APPLY, message="m",
                     suggestion="s", affected={},
@@ -198,15 +195,15 @@ class TestAggregator:
 
         class _W(BaseMenuRule):
             def __init__(self):
-                super().__init__({"name": "w", "type": "cuisine"})
-                self.rule_type = MenuRuleType.CUISINE
+                super().__init__({"name": "w", "type": "theme_day"})
+                self.rule_type = MenuRuleType.THEME_DAY
 
             def apply(self, *a, **k):
                 pass
 
             def diagnose(self, ctx):
                 return [Diagnostic(
-                    rule="w", rule_type=MenuRuleType.CUISINE.value,
+                    rule="w", rule_type=MenuRuleType.THEME_DAY.value,
                     severity=DiagnosticSeverity.WARNING,
                     phase=DiagnosticPhase.APPLY, message="m",
                     suggestion="s", affected={},
@@ -221,9 +218,9 @@ class TestAggregator:
 
     def test_summarize_counts_and_would_succeed(self):
         diags = [
-            Diagnostic("a", "cuisine", DiagnosticSeverity.WARNING,
+            Diagnostic("a", "theme_day", DiagnosticSeverity.WARNING,
                        DiagnosticPhase.APPLY, "m", "s"),
-            Diagnostic("b", "cuisine", DiagnosticSeverity.INFO,
+            Diagnostic("b", "theme_day", DiagnosticSeverity.INFO,
                        DiagnosticPhase.APPLY, "m", "s"),
         ]
         s = summarize(diags)
@@ -231,7 +228,7 @@ class TestAggregator:
                      "would_succeed": True}
 
         diags.append(Diagnostic(
-            "c", "premium", DiagnosticSeverity.ERROR,
+            "c", "selector_frequency", DiagnosticSeverity.ERROR,
             DiagnosticPhase.APPLY, "m", "s",
         ))
         s = summarize(diags)
@@ -486,27 +483,6 @@ class TestThemeSlotFilterDiagnose:
         assert any(x.severity == DiagnosticSeverity.WARNING for x in diags)
 
 
-class TestCuisineDiagnose:
-    def test_info_when_no_matching_cuisine_items(self):
-        d = dt.date(2026, 5, 13)  # Wednesday
-        pool = pd.DataFrame({
-            'item': ['x', 'y'],
-            'cuisine_family': ['north_indian', 'south_indian'],
-        })
-        ctx = _ctx(
-            pools={'veg_gravy': pool}, dates=[d], day_types={d: 'mix'},
-            active_base_slots=['veg_gravy'],
-        )
-        rule = CuisineMenuRule({
-            'name': 'italian_wed', 'type': 'cuisine',
-            'cuisine_family': 'italian', 'days_of_week': ['wednesday'],
-        })
-        diags = rule.diagnose(ctx)
-        # No italian items anywhere → no-op constraint → INFO.
-        assert len(diags) == 1
-        assert diags[0].severity == DiagnosticSeverity.INFO
-
-
 class TestCouplingDiagnose:
     def test_warning_on_rice_bread_without_liquid_rice(self):
         bread = pd.DataFrame({
@@ -523,39 +499,6 @@ class TestCouplingDiagnose:
         diags = rule.diagnose(ctx)
         warns = [x for x in diags if 'liquid-rice' in x.message]
         assert warns and warns[0].severity == DiagnosticSeverity.WARNING
-
-
-class TestPremiumDiagnose:
-    def test_error_when_min_per_horizon_unreachable(self):
-        dates = [dt.date(2026, 5, 11), dt.date(2026, 5, 12)]
-        # No premium items in any pool.
-        pool = pd.DataFrame({'item': ['a', 'b'], 'is_premium_veg': [0, 0]})
-        ctx = _ctx(
-            pools={'veg_gravy': pool},
-            dates=dates,
-            day_types={d: 'mix' for d in dates},
-            active_base_slots=['veg_gravy'],
-        )
-        rule = PremiumMenuRule({
-            'name': 'prem', 'type': 'premium',
-            'min_per_horizon': 1, 'max_per_horizon': 2,
-        })
-        diags = rule.diagnose(ctx)
-        assert any(x.severity == DiagnosticSeverity.ERROR for x in diags)
-
-    def test_no_diagnostic_when_min_is_zero(self):
-        d = dt.date(2026, 5, 11)
-        pool = pd.DataFrame({'item': ['a'], 'is_premium_veg': [0]})
-        ctx = _ctx(
-            pools={'veg_gravy': pool}, dates=[d], day_types={d: 'mix'},
-            active_base_slots=['veg_gravy'],
-        )
-        rule = PremiumMenuRule({
-            'name': 'prem', 'type': 'premium',
-            'min_per_horizon': 0, 'max_per_horizon': 2,
-        })
-        # min_per_horizon=0 → constraint is "0 to 2", always satisfiable.
-        assert rule.diagnose(ctx) == []
 
 
 class TestIngredientBanDiagnose:

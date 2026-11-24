@@ -120,7 +120,7 @@ two weeks. The slot itself looks healthy, which is why nothing reports it.
 |---|---:|---:|---|---|
 | NCR `is_nonveg_dry` | **11** | ~15 | Siemens — `nonveg_main_daily_pair` wants one dry dish EVERY day; its slot has 150 rows, of which 11 are dry | ⚠️ open |
 | Bangalore `is_fish_dish` | **3** | ~5 | Stripe — `stripe_fish_1x_week` wants a fish weekly; three cannot cover five weeks under a 20-day hold | ⚠️ open |
-| Chennai `curd_rice` | **2** | ~5 | ToastTab CHN — already **D4** in `data_fixes_for_client.md` | ⚠️ open |
+| Chennai `curd_rice` | **2** | ~5 | ToastTab CHN | ⚠️ open |
 
 All three degrade the same way: the counter plans two weeks fine and then
 returns 500. Adding dishes is the fix in every case — none is a rule conflict,
