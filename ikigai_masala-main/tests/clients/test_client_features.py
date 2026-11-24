@@ -5,10 +5,6 @@ menu, ask the chef, the banned-vegetable panel, the veg / non-veg marker and
 last served. Unset means off: the owner turns each on per client.
 """
 
-import json
-
-import pytest
-
 from src.client.client_config import normalize_features
 from src.constants import FEATURE_DEFAULTS
 from tests.fake_supabase import FakeSupabase
