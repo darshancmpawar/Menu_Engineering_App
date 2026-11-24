@@ -4,8 +4,6 @@ papad each day of the week (a cooldown-exempt side, like soup), and it is not
 a pinned cell, so Regenerate can change it."""
 from __future__ import annotations
 
-import pytest
-
 from src.constants import (
     BASE_SLOT_NAMES, CONST_SLOTS, CONSTANT_ITEMS, COOLDOWN_EXEMPT_SLOTS,
     DEFAULT_OFF_SLOTS, EXEMPT_FROM_CUISINE,

@@ -1101,6 +1101,61 @@
           "sunday": "Vinaigrette, ginger sesame, honey mustard sauce"
         }
       }
+    },
+    "display": {
+      "_comment": "Owner, 24 Nov: Corning Chakan's row order and names, on screen and in the Excel export. Lunch and dinner share them. Flavoured rice (Mon/Tue/Thu/Fri/Sun) and white rice (Wed/Sat) never fall on the same day, so both rows read Rice and sit together. The starter row is the Thursday chaat.",
+      "order": [
+        "veg_dry",
+        "veg_gravy",
+        "dal",
+        "rice",
+        "white_rice",
+        "bread",
+        "papad",
+        "salad",
+        "dressing",
+        "starter",
+        "chutney",
+        "soup",
+        "dessert"
+      ],
+      "labels": {
+        "veg_dry": "Dry Veg",
+        "veg_gravy": "Gravy Veg",
+        "dal": "Dal",
+        "rice": "Rice",
+        "white_rice": "Rice",
+        "bread": "Chapati",
+        "papad": "Papad",
+        "salad": "Salad",
+        "dressing": "Dressings",
+        "starter": "Chaat",
+        "chutney": "Chutney",
+        "soup": "Soup",
+        "dessert": "Dessert"
+      },
+      "by_meal": {
+        "breakfast": {
+          "order": [
+            "breakfast_main",
+            "accompaniment"
+          ],
+          "labels": {
+            "breakfast_main": "Main",
+            "accompaniment": "Accompaniments"
+          }
+        },
+        "snacks": {
+          "order": [
+            "snack",
+            "accompaniment"
+          ],
+          "labels": {
+            "snack": "Snacks Main",
+            "accompaniment": "Accompaniments"
+          }
+        }
+      }
     }
   }
 }

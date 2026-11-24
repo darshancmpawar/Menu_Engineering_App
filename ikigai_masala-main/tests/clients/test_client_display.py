@@ -227,6 +227,39 @@ def test_breakfast_rows_take_the_breakfast_sheet_order_and_names():
     assert [r['label'] for r in rows] == ['Fresh Fruits', 'Veg Healthy', 'Mains', 'Accompaniments', 'Condiment']
 
 
+def test_corning_chakan_rows_follow_the_owners_order_in_every_service():
+    """Owner, 24 Nov: lunch and dinner Dry Veg ... Dessert; breakfast and
+    snacks the main, then its accompaniments."""
+    import ast
+    import types
+    src = (pathlib.Path(__file__).resolve().parents[2] / 'app.py').read_text(encoding='utf-8')
+    fn = next(n for n in ast.parse(src).body
+              if isinstance(n, ast.FunctionDef) and n.name == '_apply_client_display')
+    ns = {'st': types.SimpleNamespace(session_state={}), 'LUNCH': 'lunch',
+          'normalize_features': lambda _: {'veg_markers': False, 'last_served': False},
+          '_cached_client_display': MenuRuleLoader().get_client_display}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), 'app.py', 'exec'), ns)
+    blocks = [{'meal': m, 'plan': {}} for m in ('breakfast', 'lunch', 'snacks', 'dinner')]
+    ns['_apply_client_display'](blocks, 'Corning Chakan')
+    bf, lunch, snacks, dinner = (b['display'] for b in blocks)
+    day = '2026-11-25'
+    meal_plan = {day: {'dessert': 'rasmalai', 'soup': 'tomato_soup', 'chutney': 'garlic_chutney',
+                       'salad': 'x', 'dressing': 'y', 'papad': 'masala_papad', 'bread': 'chapati',
+                       'white_rice': 'White Rice', 'dal': 'dal_tadka', 'veg_gravy': 'paneer_masala',
+                       'veg_dry': 'aloo_gobi'}}
+    for disp in (lunch, dinner):
+        rows = day_cells(meal_plan, [day], {}, {}, display=disp)['rows']
+        assert [r['label'] for r in rows] == [
+            'Dry Veg', 'Gravy Veg', 'Dal', 'Rice', 'Chapati', 'Papad', 'Salad',
+            'Dressings', 'Chutney', 'Soup', 'Dessert']
+    bf_plan = {day: {'accompaniment__2': 'sambar', 'accompaniment__1': 'sev', 'breakfast_main': 'poha'}}
+    rows = day_cells(bf_plan, [day], {}, {}, display=bf)['rows']
+    assert [r['label'] for r in rows] == ['Main', 'Accompaniments', 'Accompaniments']
+    sn_plan = {day: {'accompaniment__1': 'green_chutney', 'snack': 'samosa'}}
+    rows = day_cells(sn_plan, [day], {}, {}, display=snacks)['rows']
+    assert [r['label'] for r in rows] == ['Snacks Main', 'Accompaniments']
+
+
 def test_no_display_block_changes_nothing():
     args = day_cells(_PLAN, ['2026-08-03'], {}, _NONVEG)
     assert [r['id'] for r in args['rows']] == list(_PLAN['2026-08-03'])
