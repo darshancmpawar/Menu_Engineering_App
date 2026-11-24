@@ -149,6 +149,43 @@ def test_salad_and_dressing_follow_the_sheet_by_weekday(week):
     assert by_day['thu'] == ('', '')
 
 
+def test_a_chaat_day_has_no_salad_or_dressing_even_when_ticked(fake_supabase):
+    """Owner, 24 Nov: on a day chaat is served, salad and dressing are blank.
+    With the Salad and Dressing categories ticked on the counter, the solver
+    would otherwise fill Thursday's salad from the list and stamp the
+    default dressing text."""
+    from api.app import app
+    from tests.client_fixtures import CLIENTS
+    client = json.loads(json.dumps(next(c for c in CLIENTS if c['name'] == CLIENT)))
+    counter = client['counters'][0]
+    counter['categories'] += ['salad', 'dressing']
+    counter['slot_counts']['salad'] = 1
+    fake_supabase.seed('clients', [client])
+    app.config['TESTING'] = True
+    with app.test_client() as c:
+        resp = c.post('/api/v1/plan', json=BODY)
+    assert resp.status_code == 200, resp.get_json()
+    week = {iso: {s: v['item_base'] for s, v in day['items'].items()}
+            for iso, day in resp.get_json()['solution'].items()}
+    starter, salad, dressing = (_slot(week, s) for s in ('starter', 'salad', 'dressing'))
+    chaat_days = [iso for iso in week if starter[iso]]
+    assert chaat_days, starter
+    for iso in chaat_days:
+        assert (salad[iso], dressing[iso]) == ('', ''), (iso, salad[iso], dressing[iso])
+    assert all(salad[iso] and dressing[iso] for iso in week if iso not in chaat_days)
+
+
+def test_salad_and_dressing_are_off_exactly_on_the_chaat_days():
+    """The chaat day is written once per slot; a test keeps them in step."""
+    def days(slot):
+        return {d for r in json.load(open('customisation/client rules/corning_chakan.json',
+                                          encoding='utf-8'))[CLIENT]['rules']
+                if r.get('type') == 'slot_day_restriction' and r.get('base_slot') == slot
+                for d in r['allowed_weekdays']}
+    week = {'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'}
+    assert days('salad') == days('dressing') == week - days('starter')
+
+
 def test_the_preferred_dishes_lead(week):
     """Owner, 23 Nov ('Preffered items'): picked first wherever the rules
     allow. A live week filled 28-30 of 33 such cells; most is the claim."""
