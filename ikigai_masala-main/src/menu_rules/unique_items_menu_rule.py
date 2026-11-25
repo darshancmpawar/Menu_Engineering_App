@@ -18,6 +18,7 @@ from .base_menu_rule import (
     MenuRuleType,
 )
 from src.constants import (
+    BLANK_ALLOWED_SLOTS,
     OBJECTIVE_TIER_WEIGHTS,
     REPEATABLE_SLOTS,
     repeatable_row,
@@ -78,7 +79,11 @@ def starved_slots(cells, declared=None) -> Dict[str, int]:
             cell.base_slot, {'cells': 0, 'items': set(), 'staple': False})
         entry['cells'] += 1
         for row in cell.cand_rows:
-            if (repeatable_row(row, cell.base_slot)
+            # Except in Accompaniments: there a pairing rule names each main's
+            # sides, so plain curd cannot stand in for the sambar idli asks for
+            # (Corning Chakan's breakfast was infeasible past 7 days, 25 Nov).
+            if cell.base_slot not in BLANK_ALLOWED_SLOTS and (
+                    repeatable_row(row, cell.base_slot)
                     or matches_declared(row, cell.base_slot, declared)):
                 # A staple can cover any number of cells on its own, so its
                 # presence means this slot can never be arithmetically starved.

@@ -208,9 +208,20 @@ SESSIONS = {'breakfast': ('breakfast_main', 3, 'corning_chakan_breakfast_sides_f
 def session_week(request, fake_supabase):
     """A week of breakfast or evening snacks, on the counters the owner sets up:
     the main row and an Accompaniments row, every day a 'mix' theme."""
+    return _session_plan(fake_supabase, request.param, BODY)
+
+
+def test_a_fortnight_of_breakfast_has_fourteen_different_mains(fake_supabase):
+    """25 Nov: past 7 days breakfast was infeasible. Plain curd in the
+    Accompaniments row read as a staple, so every other side stayed once per
+    plan and only 7 mains could ever be accompanied."""
+    _assert_sheet_combos(*_session_plan(
+        fake_supabase, 'breakfast', {**BODY, 'start_date': '2026-12-01', 'num_days': 14}), days=14)
+
+
+def _session_plan(fake_supabase, meal, body):
     from api.app import app
     from tests.client_fixtures import CLIENTS
-    meal = request.param
     main, n_sides, _ = SESSIONS[meal]
     base = json.loads(json.dumps(next(c for c in CLIENTS if c['name'] == CLIENT)))
     session = {'name': 'Counter 1', 'meals': [meal], 'categories': [main, 'accompaniment'],
@@ -221,7 +232,7 @@ def session_week(request, fake_supabase):
     fake_supabase.seed('clients', [base])
     app.config['TESTING'] = True
     with app.test_client() as c:
-        resp = c.post('/api/v1/plan', json={**BODY, 'meal': meal, 'counter_index': 0})
+        resp = c.post('/api/v1/plan', json={**body, 'meal': meal, 'counter_index': 0})
     assert resp.status_code == 200, resp.get_json()
     return meal, {iso: {s: v['item_base'] for s, v in day['items'].items()}
                   for iso, day in resp.get_json()['solution'].items()}
@@ -231,11 +242,14 @@ def test_breakfast_and_snacks_are_the_sheet_combos(session_week):
     """Owner, 23 Nov: each combo is a main and the sides the sheet lists with
     it, a blank where it has fewer; no main twice in the week; and none of
     lunch's pinned rows (chapati, salad, dressing) at these services."""
-    meal, week = session_week
+    _assert_sheet_combos(*session_week, days=7)
+
+
+def _assert_sheet_combos(meal, week, days):
     main, n_sides, rule = SESSIONS[meal]
     table = {p['when']['item']: p['then'] for p in _rule(rule)['pairs']}
     mains = [day[main] for day in week.values()]
-    assert len(set(mains)) == len(mains) == 7, mains
+    assert len(set(mains)) == len(mains) == days, mains
     for day in week.values():
         assert set(day) <= {main} | {f'accompaniment__{i}' for i in range(1, n_sides + 1)}, day
         for i, want in enumerate(table[day[main]], start=1):
