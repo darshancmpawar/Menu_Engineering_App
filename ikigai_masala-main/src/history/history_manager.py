@@ -371,6 +371,20 @@ class HistoryManager:
             out[str(item_base)] = max(0, (as_of - last_date).days)
         return out
 
+    def served_by_date(self, before: dt.date) -> Dict[dt.date, Set[str]]:
+        """``{date: {item_base}}`` for every saved date before *before*: the
+        ORDER past menus came in, where ``days_since_last_served`` keeps only
+        each dish's latest date."""
+        h = self._long
+        if h is None or len(h) == 0:
+            return {}
+        sub = h.loc[h['service_date'] < before, ['service_date', 'item_base']]
+        out: Dict[dt.date, Set[str]] = {}
+        for d, item in zip(sub['service_date'], sub['item_base']):
+            if item:
+                out.setdefault(d, set()).add(str(item))
+        return out
+
     def recent_week_signatures(
         self,
         week_start: dt.date,

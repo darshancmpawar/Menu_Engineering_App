@@ -47,6 +47,16 @@ class TestTheExclusionPayload:
         out = dishes_from_solution(_sol({'2026-09-21': {'curd__1': 'nandini_curd'}}))
         assert out['2026-09-21'] == ['nandini_curd']
 
+    def test_a_side_that_may_repeat_is_banned_on_its_own_day_only(self):
+        """Owner, 25 Nov: a chutney may come back another day, never twice in
+        one day — so it goes on its own date, the dal on every date."""
+        out = dishes_from_solution(_sol({
+            '2026-09-21': {'chutney': 'tomato_chutney', 'dal__1': 'dal_tadka'},
+            '2026-09-22': {'chutney': 'ginger_chutney'},
+        }))
+        assert out['2026-09-21'] == ['dal_tadka', 'tomato_chutney']
+        assert out['2026-09-22'] == ['dal_tadka', 'ginger_chutney']
+
     def test_an_empty_plan_sends_nothing(self):
         assert dishes_from_solution({}) == {}
         assert dishes_from_solution({'2026-09-21': {'items': {}}}) == {}

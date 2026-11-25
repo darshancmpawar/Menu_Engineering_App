@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.constants import DISPLAY_SLOT_NAME, BASE_SLOT_NAMES, DISPLAY_SLOT_ORDER  # noqa: F401
+from src.constants import COOLDOWN_EXEMPT_SLOTS
 from ui.theme_tokens import ITEM_COLOR_MAP, PULSE_THEME_COLORS
 
 
@@ -182,20 +183,30 @@ def dishes_from_solution(raw_solution: Dict[str, Any],
     """
     keep = {str(s).strip() for s in (keep_slots or ()) if str(s).strip()}
     dishes: set = set()
-    for day_data in (raw_solution or {}).values():
+    same_day: Dict[str, set] = {}
+    for iso, day_data in (raw_solution or {}).items():
         items = day_data.get('items') if isinstance(day_data, dict) else None
         if not isinstance(items, dict):
             continue
         for slot_id, meta in items.items():
-            if str(slot_id).split('__')[0] in keep:
+            base = str(slot_id).split('__')[0]
+            if base in keep:
                 continue
             name = meta.get('item_base') or meta.get('item') if isinstance(meta, dict) else meta
-            if name:
+            if not name:
+                continue
+            # A side that may come back on another day (chutney, soup, papad,
+            # accompaniments) is still not served twice in ONE day: banned on
+            # its own date only (owner, 25 Nov), and the cooldown filter reads
+            # it for those rows only.
+            if base in COOLDOWN_EXEMPT_SLOTS:
+                same_day.setdefault(str(iso), set()).add(str(name))
+            else:
                 dishes.add(str(name))
-    if not dishes:
+    if not dishes and not same_day:
         return {}
-    every = sorted(dishes)
-    return {str(d): list(every) for d in (raw_solution or {})}
+    return {str(d): sorted(dishes | same_day.get(str(d), set()))
+            for d in (raw_solution or {})}
 
 
 def meal_difference(first: Dict[str, Any], second: Dict[str, Any]) -> Dict[str, Any]:

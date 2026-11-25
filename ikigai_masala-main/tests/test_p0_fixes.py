@@ -199,6 +199,18 @@ class TestUniqueItemsRelaxation:
         m.Add(healthy[1].x_vars[0] == 1)
         assert _status(m) == 'INFEASIBLE'
 
+    def test_a_chutney_may_repeat_on_another_day(self):
+        """Owner, 25 Nov: "chutney can repeat". The same chutney forced on two
+        days is allowed; the same dal is not."""
+        for slot, ok in (('chutney', True), ('dal', False)):
+            m = cp_model.CpModel()
+            cells = _build(m, 2, slot, ['a', 'b'])
+            for c in cells:
+                m.Add(c.x_vars[0] == 1)
+            UniqueItemsMenuRule({'name': 'u', 'type': 'unique_items'}).apply(
+                m, {}, None, {'cells': cells, 'item_to_vars': _item_to_vars(cells)})
+            assert (_status(m) in ('OPTIMAL', 'FEASIBLE')) == ok, slot
+
     def test_relaxed_slot_still_maximises_variety(self):
         """Relaxed must not mean "serve one dish five times".
 

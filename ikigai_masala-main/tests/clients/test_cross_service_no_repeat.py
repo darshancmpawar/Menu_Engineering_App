@@ -207,5 +207,22 @@ def test_a_real_lunch_plan_will_not_reprint_last_weeks_dinner(
         f'{seeded} was served at dinner five days ago and is back at lunch')
 
 
+def test_a_side_the_cooldown_skips_is_not_served_twice_in_one_day():
+    """Owner, 25 Nov: "chutney can repeat but not same in a day's sessions".
+    The chutney row skips the cooldown, so lunch's chutney is banned at dinner
+    on ITS day only (`excluded_today`), never by history; a staple still repeats."""
+    import types
+    import pandas as pd
+    from src.menu_rules.cooldown_rules import ItemCooldownMenuRule
+    rule = ItemCooldownMenuRule({'name': 'c', 'type': 'item_cooldown'})
+    mon, tue = dt.date(2026, 12, 7), dt.date(2026, 12, 8)
+    pool = pd.DataFrame({'item': ['tomato_chutney', 'ginger_chutney', 'curd']})
+    ctx = {'cfg': types.SimpleNamespace(excluded_today={mon: {'tomato_chutney', 'curd'}}),
+           'banned_by_date': {mon: {'ginger_chutney'}, tue: {'ginger_chutney'}}}
+    kept = lambda d: list(rule.pre_filter_pool(pool, d, 'chutney', 'mix', ctx)['item'])
+    assert kept(mon) == ['ginger_chutney', 'curd']
+    assert kept(tue) == ['tomato_chutney', 'ginger_chutney', 'curd']
+
+
 if __name__ == '__main__':      # a runnable check without pytest
     raise SystemExit(pytest.main([__file__, '-q']))

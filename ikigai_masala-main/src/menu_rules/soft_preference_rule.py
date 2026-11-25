@@ -50,8 +50,8 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     ``low`` = preferred. Never ``high``/``theme`` — note 32.
 
   * ``avoid_repeated_sequence`` — penalise a dish following the same dish a
-    second time: twice in this plan, or as it did last round (read from how
-    many days ago each dish was last served). For a short list that has to
+    second time: twice in this plan, or as it did on any two consecutive
+    saved days (``cfg.served_before``). For a short list that has to
     repeat, so the second round is not the first one in the same order
     (Corning Chakan's breakfast and snacks, owner 25 Nov). Requires
     ``base_slot``: it builds one variable per dish pair per day.
@@ -74,6 +74,7 @@ priority-tier (lexicographic) objective is the proper long-term fix; until
 then these weights are a documented approximation.
 """
 
+import datetime as dt
 import logging
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
@@ -316,15 +317,17 @@ class SoftPreferenceRule(BaseMenuRule):
                     if name:
                         day_items[c.d_idx][name].append(v)
         names = {i for items in day_items.values() for i in items}
-        # Last round's order: dishes last served on consecutive days before
-        # the plan, oldest first.
-        ago = sorted(((d, i) for i, d in (context.get('recency_by_item') or {}).items()
-                      if i in names), reverse=True)
-        before = {(a, b) for (da, a), (db, b) in zip(ago, ago[1:]) if da - db == 1}
+        # Past rounds' order: every dish-after-dish on consecutive saved days.
+        dates = context.get('dates') or []
+        served = getattr(context.get('cfg'), 'served_before', None) or {}
+        served = {d: {_norm_str(i) for i in items} & names for d, items in served.items()}
+        before = {(a, b) for d, today in served.items()
+                  for a in today for b in served.get(d + dt.timedelta(days=1), ())}
         follows: Dict[tuple, list] = defaultdict(list)
         n_vars = 0
         # The day before the plan is part of the sequence too.
-        for a in (i for d, i in ago if d == 1):
+        eve = served.get(dates[0] - dt.timedelta(days=1), ()) if dates else ()
+        for a in eve:
             for b, lb in (day_items.get(0) or {}).items():
                 if a != b:
                     n_vars += 1
