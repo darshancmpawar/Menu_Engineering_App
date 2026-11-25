@@ -49,6 +49,13 @@ infeasible. This one class covers the rulebook's common soft patterns via a
     to named themes. ``priority`` is the strength: ``medium`` = strong,
     ``low`` = preferred. Never ``high``/``theme`` — note 32.
 
+  * ``avoid_repeated_sequence`` — penalise a dish following the same dish a
+    second time: twice in this plan, or as it did last round (read from how
+    many days ago each dish was last served). For a short list that has to
+    repeat, so the second round is not the first one in the same order
+    (Corning Chakan's breakfast and snacks, owner 25 Nov). Requires
+    ``base_slot``: it builds one variable per dish pair per day.
+
 Config::
 
     {
@@ -85,7 +92,7 @@ _SCOPES = frozenset({'horizon', 'week', 'day'})
 _MODES = frozenset({
     'different_day', 'avoid_consecutive', 'avoid_attribute_repeat',
     'prefer_day_types', 'prefer_daily', 'prefer_cells', 'match_attribute',
-    'prefer_attribute_spread', 'prefer_with',
+    'prefer_attribute_spread', 'prefer_with', 'avoid_repeated_sequence',
 })
 
 
@@ -187,6 +194,8 @@ class SoftPreferenceRule(BaseMenuRule):
             errs.append("different_day requires selector_a and selector_b")
         if self.mode == 'avoid_consecutive' and not self._sel:
             errs.append("avoid_consecutive requires selector")
+        if self.mode == 'avoid_repeated_sequence' and not self.base_slots:
+            errs.append("avoid_repeated_sequence requires base_slot")
         if self.mode == 'avoid_attribute_repeat' and not self.group_by:
             errs.append("avoid_attribute_repeat requires group_by")
         if self.mode == 'prefer_attribute_spread':
@@ -296,6 +305,49 @@ class SoftPreferenceRule(BaseMenuRule):
         return []
 
     # ----- helpers -----
+
+    def _repeated_sequence_terms(self, model, cells, n, context, w) -> List:
+        """One penalty for every time a dish follows the same dish again."""
+        day_items: Dict[int, Dict[str, list]] = defaultdict(lambda: defaultdict(list))
+        for c in cells:
+            if c.base_slot in self.base_slots:
+                for v, r in zip(c.x_vars, c.cand_rows):
+                    name = _norm_str(str(r.get('item', '')))
+                    if name:
+                        day_items[c.d_idx][name].append(v)
+        names = {i for items in day_items.values() for i in items}
+        # Last round's order: dishes last served on consecutive days before
+        # the plan, oldest first.
+        ago = sorted(((d, i) for i, d in (context.get('recency_by_item') or {}).items()
+                      if i in names), reverse=True)
+        before = {(a, b) for (da, a), (db, b) in zip(ago, ago[1:]) if da - db == 1}
+        follows: Dict[tuple, list] = defaultdict(list)
+        n_vars = 0
+        # The day before the plan is part of the sequence too.
+        for a in (i for d, i in ago if d == 1):
+            for b, lb in (day_items.get(0) or {}).items():
+                if a != b:
+                    n_vars += 1
+                    t = model.NewBoolVar(f'{self.name}_f{n_vars}')
+                    model.Add(t >= sum(lb))
+                    follows[(a, b)].append(t)
+        for di in range(n - 1):
+            today, tomorrow = day_items.get(di) or {}, day_items.get(di + 1) or {}
+            for a, la in today.items():
+                for b, lb in tomorrow.items():
+                    if a != b:
+                        n_vars += 1
+                        t = model.NewBoolVar(f'{self.name}_f{n_vars}')
+                        model.Add(t >= sum(la) + sum(lb) - 1)
+                        follows[(a, b)].append(t)
+        over = []
+        for k, ((a, b), ts) in enumerate(sorted(follows.items())):
+            again = 1 if (a, b) in before else 0
+            if len(ts) + again >= 2:
+                o = model.NewIntVar(0, len(ts), f'{self.name}_again{k}')
+                model.Add(o >= sum(ts) + again - 1)
+                over.append(o)
+        return [sum(over) * (-abs(w))] if over else []
 
     def _day_slot_lits(self, cells, di, base_slot, matcher):
         """Item vars in (day di, base_slot) whose row matches `matcher`.
@@ -588,6 +640,9 @@ class SoftPreferenceRule(BaseMenuRule):
                     model.Add(gap == 1 - h)
                     misses.append(gap)
             return [sum(misses) * (-abs(w))] if misses else []
+
+        if self.mode == 'avoid_repeated_sequence':
+            return self._repeated_sequence_terms(model, cells, n, context, w)
 
         if self.mode == 'avoid_consecutive':
             day_has = {}
