@@ -113,7 +113,7 @@ def menu_table_html(plan: dict, plan_dates: list, day_types: dict,
     all_slots = set()
     for d_str in plan_dates:
         all_slots.update(plan.get(d_str, {}).keys())
-    sorted_slots = sorted(all_slots, key=slot_sort_key)
+    sorted_slots = sorted(all_slots, key=lambda s: (slot_sort_key(s), s))
     body_html = ''
     for slot_id in sorted_slots:
         body_html += f'<tr><td>{display_label_for_slot_id(slot_id)}</td>'
@@ -237,9 +237,10 @@ def plan_xlsx(blocks: List[Dict], client_name: str) -> bytes:
                                end_row=2, end_column=col + 1)
 
         # Body rows.
+        # Ties (accompaniment__1 / __2) by slot id: a set has no order.
         slots = sorted(
             {s for d in dates for s in b["plan"].get(d, {})},
-            key=lambda s: slot_sort_key(s, display.get("order")),
+            key=lambda s: (slot_sort_key(s, display.get("order")), s),
         )
         for r, slot_id in enumerate(slots, start=3):
             cat = ws.cell(row=r, column=1, value=display_label_for_slot_id(

@@ -297,7 +297,7 @@ def day_cells(plan: dict, dates: List[str], day_types: dict,
             if slot_id not in slot_ids:
                 slot_ids.append(slot_id)
     if display.get("order"):
-        slot_ids.sort(key=lambda s: slot_sort_key(s, display["order"]))
+        slot_ids.sort(key=lambda s: (slot_sort_key(s, display["order"]), s))
     markers = bool(display.get("veg_markers"))
 
     rows = []

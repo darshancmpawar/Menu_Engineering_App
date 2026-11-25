@@ -805,6 +805,66 @@
         ]
       },
       {
+        "_comment": "Owner, 25 Nov: a breakfast or snack main may repeat once the list runs out (more days than mains), but never twice within a week. min_days_between 6 = at most once in any 7 consecutive days.",
+        "name": "corning_chakan_main_not_twice_a_week",
+        "type": "attribute_grouping",
+        "meals": [
+          "breakfast",
+          "snacks"
+        ],
+        "base_slot": [
+          "breakfast_main",
+          "snack"
+        ],
+        "group_by": "item",
+        "min_days_between": 6,
+        "across_plans": true
+      },
+      {
+        "_comment": "Owner, 25 Nov: never the same type of main on consecutive days. The type is the list's sub_category: idly, vada, upma ... at breakfast; chaat / tikki, pakora / bajji ... at snacks.",
+        "name": "corning_chakan_main_type_not_on_consecutive_days",
+        "type": "attribute_grouping",
+        "meals": [
+          "breakfast",
+          "snacks"
+        ],
+        "base_slot": [
+          "breakfast_main",
+          "snack"
+        ],
+        "group_by": "sub_category",
+        "non_consecutive": true,
+        "across_plans": true
+      },
+      {
+        "_comment": "Owner, 25 Nov: once every main has been served, the next round must not come back in the same order. A dish following the same dish again (in this plan, or as last round) is penalised.",
+        "name": "corning_chakan_main_order_mixed_each_round",
+        "type": "soft_preference",
+        "mode": "avoid_repeated_sequence",
+        "priority": "medium",
+        "meals": [
+          "breakfast",
+          "snacks"
+        ],
+        "base_slot": [
+          "breakfast_main",
+          "snack"
+        ]
+      },
+      {
+        "_comment": "15 breakfast mains cannot sit out the 20-day cooldown: a second fortnight had only 8 left. 'Not twice in a week' (corning_chakan_main_not_twice_a_week, which also reaches back over the plan's start) replaces it for breakfast mains. Snacks are already exempt (COOLDOWN_EXEMPT_SLOTS).",
+        "name": "corning_chakan_breakfast_main_skips_the_long_cooldown",
+        "type": "repeatable_items",
+        "scope": "cooldown",
+        "meals": [
+          "breakfast"
+        ],
+        "base_slot": "breakfast_main",
+        "selector": {
+          "course_type": "breakfast_main"
+        }
+      },
+      {
         "_comment": "Owner, 23 Nov ('Preffered items' sheet): the planner picks these first wherever the rules allow and fills the rest from the Pune list. A preference, not a limit (owner chose it): 27 dry vegs cannot fill 14 meals a week under the 20-day no-repeat. Names are the Pune list's (map reviewed with the owner, 23 Nov).",
         "name": "corning_chakan_preferred_dishes",
         "type": "soft_preference",

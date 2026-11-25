@@ -219,6 +219,35 @@ def test_a_fortnight_of_breakfast_has_fourteen_different_mains(fake_supabase):
         fake_supabase, 'breakfast', {**BODY, 'start_date': '2026-12-01', 'num_days': 14}), days=14)
 
 
+@pytest.mark.parametrize('meal', sorted(SESSIONS))
+def test_two_fortnights_of_mains_never_repeat_in_a_week_or_cycle(fake_supabase, meal):
+    """Owner, 25 Nov: a main may repeat once the list runs out, but never the
+    same type on consecutive days, never the same dish within a week (across
+    two plans too), and the next round not in the same order as the last."""
+    main = SESSIONS[meal][0]
+    body = {**BODY, 'num_days': 14}
+    _, first = _session_plan(fake_supabase, meal, {**body, 'start_date': '2026-12-01'})
+    fake_supabase.seed('menu_history', [
+        {'client_name': CLIENT, 'service_date': iso, 'meal': meal, 'menu': day, 'region': None}
+        for iso, day in first.items()])
+    _, second = _session_plan(fake_supabase, meal, {**body, 'start_date': '2026-12-15'})
+    seq = [day[main] for _, day in sorted({**first, **second}.items())]
+    rows = repository.all_rows('Pune')
+    kind = dict(zip(rows['item'], rows['sub_category']))
+    for i, dish in enumerate(seq):
+        assert dish not in seq[i + 1:i + 7], (i, dish)               # not twice in 7 days
+        if i:
+            assert kind[dish] != kind[seq[i - 1]], (i, seq[i - 1], dish)
+    # Not the same order: no dish follows the same dish twice within a plan,
+    # and no three dishes of the first plan come back in a row in the second.
+    # (History keeps each dish's LAST serving, so an older pair can recur once.)
+    for plan in (seq[:14], seq[13:]):
+        pairs = list(zip(plan, plan[1:]))
+        assert len(pairs) == len(set(pairs)), plan
+    runs = lambda s: {tuple(s[i:i + 3]) for i in range(len(s) - 2)}
+    assert not runs(seq[:14]) & runs(seq[14:]), seq
+
+
 def _session_plan(fake_supabase, meal, body):
     from api.app import app
     from tests.client_fixtures import CLIENTS

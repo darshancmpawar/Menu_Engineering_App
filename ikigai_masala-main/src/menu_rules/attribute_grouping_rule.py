@@ -27,7 +27,8 @@ Config::
         "min_days_between": null,     # ... or N CLEAR days between repeats
         "per_base_slot": false,       # constrain each slot on its own
         "require_value": false,       # a blank value is not eligible at all
-        "max_per_group": null         # each value appears on <= N days / horizon
+        "max_per_group": null,        # each value appears on <= N days / horizon
+        "across_plans": false         # the gap also counts saved days before the plan
     }
 
 At least one of ``non_consecutive`` / ``min_days_between`` / ``max_per_group``
@@ -250,9 +251,17 @@ class AttributeGroupingRule(BaseMenuRule):
         # string hashing is salted per process, so a hash here would give the
         # same model different variable names on each run — the reproducibility
         # `val_idx` already goes out of its way to preserve.
+        # `across_plans`: the gap reaches back over the plan's start. History
+        # says how many days ago each dish was served; its row gives the value.
+        cfg = context.get('cfg')
+        back = None
+        if self.config.get('across_plans') and self._gap >= 1 and dates and cfg is not None:
+            recency = context.get('recency_by_item') or {}
+            start = getattr(cfg, 'start_date', None) or dates[0]
+            back = {di: (recency, (d - start).days) for di, d in enumerate(dates)}
         for si, (scope_name, scope_cells) in enumerate(self._scopes(cells)):
             self._apply_scope(model, link_any, scope_cells, len(dates),
-                              scope_name, declared, si)
+                              scope_name, declared, si, back)
 
     def _scopes(self, cells):
         """The cell groups this rule constrains independently.
@@ -278,7 +287,7 @@ class AttributeGroupingRule(BaseMenuRule):
         return sorted(by_slot.items())
 
     def _apply_scope(self, model, link_any, cells, n_days, scope_name,
-                     declared, scope_idx=0):
+                     declared, scope_idx=0, back=None):
         from .unique_items_menu_rule import matches_declared
 
         def value_of(row, base_slot):
@@ -343,6 +352,22 @@ class AttributeGroupingRule(BaseMenuRule):
             return
         window = gap + 1
 
+        # A value served k days before the plan started may not come back
+        # inside the gap either (Corning Chakan: not the same breakfast twice
+        # in a week, nor yesterday's type today, across two plans). Only dishes
+        # still among the candidates are known; a day left with nothing is not
+        # banned.
+        dish_value = {_norm_str(str(r.get('item', ''))): value_of(r, c.base_slot)
+                      for c in cells for r in c.cand_rows} if back else {}
+        for di, (recency, offset) in (back or {}).items():
+            recent = {dish_value[dish] for dish, k in recency.items()
+                      if dish_value.get(dish) and k + offset <= gap}
+            vals = [v for (d, v) in dv_bool if d == di]
+            too_soon = [v for v in vals if v in recent]
+            if too_soon and len(too_soon) < len(vals):
+                for v in too_soon:
+                    model.Add(dv_bool[(di, v)] == 0)
+
         # The same value may not be chosen twice inside a sliding window of
         # `window` service days — UNLESS the days in it have nothing else to
         # switch to.
@@ -382,8 +407,13 @@ class AttributeGroupingRule(BaseMenuRule):
                 # other day — the long-standing check, kept exactly.
                 sizes = sorted((len(v) for v in dishes_by_value.values()),
                                reverse=True)
-                achievable = sum(sizes[1:]) >= n_days // 2
-                shortfall = sum(sizes[1:])
+                # Fewer dishes than cells: unique_items lets each one repeat,
+                # about cells / dishes times (Corning Chakan's 11 snacks over
+                # 14 days), so count those uses, not one per dish.
+                n_dishes = len(set().union(*dishes_by_value.values()))
+                uses = -(-len(cells) // n_dishes) if n_dishes < len(cells) else 1
+                achievable = sum(sizes[1:]) * uses >= n_days // 2
+                shortfall = sum(sizes[1:]) * uses
                 need = n_days // 2
             else:
                 # A wider window needs a distinct value for every cell in it.
