@@ -208,9 +208,49 @@ SESSIONS = {'breakfast': ('breakfast_main', 3, 'corning_chakan_breakfast_sides_f
 def session_week(request, fake_supabase):
     """A week of breakfast or evening snacks, on the counters the owner sets up:
     the main row and an Accompaniments row, every day a 'mix' theme."""
+    return _session_plan(fake_supabase, request.param, BODY)
+
+
+def test_a_fortnight_of_breakfast_has_fourteen_different_mains(fake_supabase):
+    """25 Nov: past 7 days breakfast was infeasible. Plain curd in the
+    Accompaniments row read as a staple, so every other side stayed once per
+    plan and only 7 mains could ever be accompanied."""
+    _assert_sheet_combos(*_session_plan(
+        fake_supabase, 'breakfast', {**BODY, 'start_date': '2026-12-01', 'num_days': 14}), days=14)
+
+
+@pytest.mark.parametrize('meal', sorted(SESSIONS))
+def test_two_fortnights_of_mains_never_repeat_in_a_week_or_cycle(fake_supabase, meal):
+    """Owner, 25 Nov: a main may repeat once the list runs out, but never the
+    same type on consecutive days, never the same dish within a week (across
+    two plans too), and the next round not in the same order as the last."""
+    main = SESSIONS[meal][0]
+    body = {**BODY, 'num_days': 14}
+    _, first = _session_plan(fake_supabase, meal, {**body, 'start_date': '2026-12-01'})
+    fake_supabase.seed('menu_history', [
+        {'client_name': CLIENT, 'service_date': iso, 'meal': meal, 'menu': day, 'region': None}
+        for iso, day in first.items()])
+    _, second = _session_plan(fake_supabase, meal, {**body, 'start_date': '2026-12-15'})
+    seq = [day[main] for _, day in sorted({**first, **second}.items())]
+    rows = repository.all_rows('Pune')
+    kind = dict(zip(rows['item'], rows['sub_category']))
+    for i, dish in enumerate(seq):
+        assert dish not in seq[i + 1:i + 7], (i, dish)               # not twice in 7 days
+        if i:
+            assert kind[dish] != kind[seq[i - 1]], (i, seq[i - 1], dish)
+    # Not the same order: no dish follows the same dish twice within a plan,
+    # and no three dishes of the first plan come back in a row in the second.
+    # (History keeps each dish's LAST serving, so an older pair can recur once.)
+    for plan in (seq[:14], seq[13:]):
+        pairs = list(zip(plan, plan[1:]))
+        assert len(pairs) == len(set(pairs)), plan
+    runs = lambda s: {tuple(s[i:i + 3]) for i in range(len(s) - 2)}
+    assert not runs(seq[:14]) & runs(seq[14:]), seq
+
+
+def _session_plan(fake_supabase, meal, body):
     from api.app import app
     from tests.client_fixtures import CLIENTS
-    meal = request.param
     main, n_sides, _ = SESSIONS[meal]
     base = json.loads(json.dumps(next(c for c in CLIENTS if c['name'] == CLIENT)))
     session = {'name': 'Counter 1', 'meals': [meal], 'categories': [main, 'accompaniment'],
@@ -221,7 +261,7 @@ def session_week(request, fake_supabase):
     fake_supabase.seed('clients', [base])
     app.config['TESTING'] = True
     with app.test_client() as c:
-        resp = c.post('/api/v1/plan', json={**BODY, 'meal': meal, 'counter_index': 0})
+        resp = c.post('/api/v1/plan', json={**body, 'meal': meal, 'counter_index': 0})
     assert resp.status_code == 200, resp.get_json()
     return meal, {iso: {s: v['item_base'] for s, v in day['items'].items()}
                   for iso, day in resp.get_json()['solution'].items()}
@@ -231,11 +271,14 @@ def test_breakfast_and_snacks_are_the_sheet_combos(session_week):
     """Owner, 23 Nov: each combo is a main and the sides the sheet lists with
     it, a blank where it has fewer; no main twice in the week; and none of
     lunch's pinned rows (chapati, salad, dressing) at these services."""
-    meal, week = session_week
+    _assert_sheet_combos(*session_week, days=7)
+
+
+def _assert_sheet_combos(meal, week, days):
     main, n_sides, rule = SESSIONS[meal]
     table = {p['when']['item']: p['then'] for p in _rule(rule)['pairs']}
     mains = [day[main] for day in week.values()]
-    assert len(set(mains)) == len(mains) == 7, mains
+    assert len(set(mains)) == len(mains) == days, mains
     for day in week.values():
         assert set(day) <= {main} | {f'accompaniment__{i}' for i in range(1, n_sides + 1)}, day
         for i, want in enumerate(table[day[main]], start=1):

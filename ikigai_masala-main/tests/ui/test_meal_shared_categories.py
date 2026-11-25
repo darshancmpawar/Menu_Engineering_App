@@ -139,12 +139,15 @@ class TestThePlannerWiresBothHalves:
     def test_the_ban_is_told_which_slots_to_skip(self):
         assert '_exclusions_from(blocks, keep_slots=meal_shared)' in self._src()
 
-    def test_the_pins_are_taken_from_the_first_service_only(self):
+    def test_the_pins_are_taken_from_lunch(self):
         """"The same as Lunch" means lunch, not "the same as whatever came
-        before" — a three-service client's snacks must not reset the carry."""
+        before": snacks must not reset the carry, and with breakfast ticked
+        (Corning Chakan, 25 Nov) the first service is breakfast, which has
+        none of these rows. The first service only stands in when no lunch is
+        planned."""
         src = self._src()
         i = src.index('carried_over = _meal_shared_from(blocks, meal_shared)')
-        assert 'if _i == 0:' in src[i - 200:i]
+        assert 'if _meal == LUNCH or (_i == 0 and LUNCH not in plan_meals):' in src[i - 300:i]
 
     def test_the_pins_are_passed_to_the_later_service(self):
         assert 'meal_shared_by_counter=carried_over or None' in self._src()

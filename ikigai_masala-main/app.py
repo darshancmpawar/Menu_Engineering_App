@@ -76,7 +76,7 @@ from ui.formatters import (
 from src.menu_rules.menu_rule_loader import MenuRuleLoader
 # The two service names. Imported rather than spelled as literals so the UI,
 # the API payloads and the history key cannot drift apart.
-from src.history import (DEFAULT_MEALS, LUNCH, MEALS,
+from src.history import (BREAKFAST, DEFAULT_MEALS, LUNCH, MEALS, SNACKS,
                          normalize_meals)
 from src.constants import REGIONAL_MEALS
 from src.client.client_config import counter_serves, normalize_features
@@ -1989,10 +1989,14 @@ if generate_clicked:
         # running four services solves four times as many models for one
         # click, and a budget that ignored that would quadruple the wait
         # rather than split it.
+        # Breakfast and snacks are small models that solve in seconds, so they
+        # do not take a share: counting them halved dinner's time once Corning
+        # Chakan ticked all four services, and its dinner stopped solving.
         per_limit = max(
             45,
             _PLANNING_TIME_LIMIT_SECONDS
-            // max(1, sum(len(counter_names_by_meal[m]) for m in plan_meals)))
+            // max(1, sum(len(counter_names_by_meal[m]) for m in plan_meals
+                          if m not in (BREAKFAST, SNACKS))))
         if mode != "multi" and len(plan_meals) == 1:
             per_limit = _PLANNING_TIME_LIMIT_SECONDS
 
@@ -2043,6 +2047,9 @@ if generate_clicked:
                     by_meal[_meal] = blocks
                     if _i == 0:
                         diags, summary = d, s
+                    # Lunch, when it is planned: with breakfast ticked the
+                    # first service is breakfast, which has none of these rows.
+                    if _meal == LUNCH or (_i == 0 and LUNCH not in plan_meals):
                         carried_over = _meal_shared_from(blocks, meal_shared)
                     served_so_far = _merge_exclusions(
                         served_so_far,

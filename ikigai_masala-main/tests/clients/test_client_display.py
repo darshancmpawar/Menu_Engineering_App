@@ -255,6 +255,12 @@ def test_corning_chakan_rows_follow_the_owners_order_in_every_service():
     bf_plan = {day: {'accompaniment__2': 'sambar', 'accompaniment__1': 'sev', 'breakfast_main': 'poha'}}
     rows = day_cells(bf_plan, [day], {}, {}, display=bf)['rows']
     assert [r['label'] for r in rows] == ['Main', 'Accompaniments', 'Accompaniments']
+    # Side 1 above side 2, on screen and in Excel (25 Nov: Excel sorted a set).
+    assert [r['id'] for r in rows] == ['breakfast_main', 'accompaniment__1', 'accompaniment__2']
+    from openpyxl import load_workbook
+    ws = load_workbook(io.BytesIO(plan_xlsx([{'name': 'Breakfast', 'plan': bf_plan, 'plan_dates': [day],
+                                              'nonveg': {}, 'display': bf}], 'X'))).active
+    assert [ws.cell(row=r, column=2).value for r in range(3, 6)] == ['Poha', 'Sev', 'Sambar']
     sn_plan = {day: {'accompaniment__1': 'green_chutney', 'snack': 'samosa'}}
     rows = day_cells(sn_plan, [day], {}, {}, display=snacks)['rows']
     assert [r['label'] for r in rows] == ['Snacks Main', 'Accompaniments']
