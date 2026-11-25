@@ -20,6 +20,7 @@ from .base_menu_rule import (
 from src.constants import (
     BLANK_ALLOWED_SLOTS,
     OBJECTIVE_TIER_WEIGHTS,
+    REPEAT_ALLOWED_SLOTS,
     REPEATABLE_SLOTS,
     repeatable_row,
 )
@@ -135,7 +136,9 @@ class UniqueItemsMenuRule(BaseMenuRule):
         repeatable.discard('')
 
         self._repeat_penalty_vars = []
-        relaxed = starved_slots(cells, declared) if cells else {}
+        starved = starved_slots(cells, declared) if cells else {}
+        relaxed = {**{c.base_slot: 1 for c in cells if c.base_slot in REPEAT_ALLOWED_SLOTS},
+                   **starved}
         if not relaxed:
             # Fast path — identical to the original global constraint.
             for item_base, vars_ in item_to_vars.items():
@@ -143,7 +146,7 @@ class UniqueItemsMenuRule(BaseMenuRule):
                     model.Add(sum(vars_) <= 1)
             return
 
-        for slot, avg in sorted(relaxed.items()):
+        for slot, avg in sorted(starved.items()):   # a REPEAT_ALLOWED row is by design
             logger.warning(
                 "unique_items: slot %r has fewer distinct eligible items than "
                 "cells to fill (each item would be needed ~%d time(s)); "

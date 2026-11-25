@@ -707,7 +707,7 @@ def prepare_solver_inputs(
             selector_windows.append((
                 r.resolved_items, r.window_days,
                 set(region_days) if r.except_regional_days else set()))
-    banned, rb_ban, recent_sigs, recency_by_item = _build_history_context(
+    banned, rb_ban, recent_sigs, recency_by_item, served = _build_history_context(
         df, client_name, start_date, weekday_dates, window_days=window_days,
         cooldown_days=cooldown_days, selector_windows=selector_windows,
         meal=meal,
@@ -725,6 +725,8 @@ def prepare_solver_inputs(
         combo_by_theme=MenuRuleLoader().get_client_combo_by_theme(
             client_name, getattr(client_cfg, 'counter_name', None)),
     )
+    cfg.excluded_today = merge_excluded_items({}, data.get('exclude_items'), weekday_dates)
+    cfg.served_before = served
 
     return SolverInputs(
         client_name=client_name,

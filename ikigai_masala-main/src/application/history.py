@@ -101,4 +101,4 @@ def _build_history_context(
         start_date, const_slots=CONST_SLOTS,
         repeatable_items=REPEATABLE_ITEM_BASES,
     )
-    return banned, rb_ban, recent_sigs, recency_by_item
+    return banned, rb_ban, recent_sigs, recency_by_item, hm.served_by_date(start_date)

@@ -837,6 +837,22 @@
         "across_plans": true
       },
       {
+        "_comment": "Owner, 25 Nov: nor the same key ingredient on consecutive days. Sabudana khichadi then sabudana wada are two types (upma, vada) of one ingredient; idli then uttappa are both rice.",
+        "name": "corning_chakan_main_ingredient_not_on_consecutive_days",
+        "type": "attribute_grouping",
+        "meals": [
+          "breakfast",
+          "snacks"
+        ],
+        "base_slot": [
+          "breakfast_main",
+          "snack"
+        ],
+        "group_by": "key_ingredient",
+        "non_consecutive": true,
+        "across_plans": true
+      },
+      {
         "_comment": "Owner, 25 Nov: once every main has been served, the next round must not come back in the same order. A dish following the same dish again (in this plan, or as last round) is penalised.",
         "name": "corning_chakan_main_order_mixed_each_round",
         "type": "soft_preference",

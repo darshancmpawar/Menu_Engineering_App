@@ -134,6 +134,10 @@ REGIONAL_MEALS = frozenset({'lunch', 'dinner'})
 # snacks (owner, 18 + 23 Nov): Accompaniments holds the sides the main asks for.
 BLANK_ALLOWED_SLOTS = frozenset({'accompaniment'})
 BLANK_ALLOWED_MEALS = frozenset({'breakfast', 'snacks'})
+# Rows whose dish may come back on another day of a plan (owner, 25 Nov: "chutney
+# can repeat"). unique_items charges each repeat instead of forbidding it, so
+# they still vary whenever the list allows.
+REPEAT_ALLOWED_SLOTS = frozenset({'chutney'})
 
 # Add-on features, switched per client in the editor (`clients.features`).
 # Every one is OFF until switched on for a client (owner, 2026-11-17); a

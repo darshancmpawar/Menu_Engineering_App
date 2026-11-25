@@ -280,6 +280,13 @@ class SolverConfig:
     # pinned item, so the rules see it; pins with no ontology match are stamped
     # post-solve via ``client_constant_items`` instead.
     forced_items: Optional[Dict[Any, str]] = None
+    # ``{date: {dish}}`` an earlier service of the same day already served
+    # (the caller's ``exclude_items``, without history): the cooldown filter
+    # applies it to the rows the cooldown otherwise skips (chutney, soup ...).
+    excluded_today: Optional[Dict[Any, Set[str]]] = None
+    # ``{date: {dish}}`` for each saved date before the plan: the order past
+    # menus came in (``avoid_repeated_sequence`` reads it).
+    served_before: Optional[Dict[Any, Set[str]]] = None
     # ``{combo slot: component}`` naming which half of a combination category
     # gets the MAJORITY of the days for this counter. `COMBO_CATEGORIES` picks
     # one globally — dal leads `dal_sambar`, rasam leads `sambar_rasam` — and a

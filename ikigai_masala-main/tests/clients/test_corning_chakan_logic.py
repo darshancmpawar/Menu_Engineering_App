@@ -234,18 +234,42 @@ def test_two_fortnights_of_mains_never_repeat_in_a_week_or_cycle(fake_supabase, 
     seq = [day[main] for _, day in sorted({**first, **second}.items())]
     rows = repository.all_rows('Pune')
     kind = dict(zip(rows['item'], rows['sub_category']))
+    base = dict(zip(rows['item'], rows['key_ingredient']))
     for i, dish in enumerate(seq):
         assert dish not in seq[i + 1:i + 7], (i, dish)               # not twice in 7 days
-        if i:
+        if i:   # nor the same type or key ingredient as yesterday (sabudana, 25 Nov)
             assert kind[dish] != kind[seq[i - 1]], (i, seq[i - 1], dish)
-    # Not the same order: no dish follows the same dish twice within a plan,
-    # and no three dishes of the first plan come back in a row in the second.
-    # (History keeps each dish's LAST serving, so an older pair can recur once.)
-    for plan in (seq[:14], seq[13:]):
-        pairs = list(zip(plan, plan[1:]))
-        assert len(pairs) == len(set(pairs)), plan
-    runs = lambda s: {tuple(s[i:i + 3]) for i in range(len(s) - 2)}
-    assert not runs(seq[:14]) & runs(seq[14:]), seq
+            assert base[dish] != base[seq[i - 1]], (i, seq[i - 1], dish)
+    # Not the same order: across both plans, no dish follows the same dish twice.
+    pairs = list(zip(seq, seq[1:]))
+    assert len(pairs) == len(set(pairs)), seq
+
+
+def test_lunch_and_dinner_never_share_a_chutney_on_one_day(fake_supabase):
+    """Owner, 25 Nov: "chutney can repeat but not same in a day's sessions".
+    14 chutneys for 14 days left dinner no room once one was unavailable, so a
+    chutney may now come back on another day, but never at lunch and dinner
+    of the same day."""
+    from api.app import app
+    from tests.client_fixtures import CLIENTS
+    from ui.formatters import dishes_from_solution
+    client = json.loads(json.dumps(next(c for c in CLIENTS if c['name'] == CLIENT)))
+    counter = client['counters'][0]
+    counter['categories'] = counter['categories'] + ['chutney']
+    counter['slot_counts'] = dict(counter['slot_counts'], chutney=1)
+    fake_supabase.seed('clients', [client])
+    app.config['TESTING'] = True
+    body = {**BODY, 'start_date': '2026-12-01', 'num_days': 14, 'time_limit_seconds': 90}
+    keep = ['dessert', 'soup', 'bread']
+    with app.test_client() as c:
+        lunch = c.post('/api/v1/plan', json={**body, 'meal': 'lunch'}).get_json()['solution']
+        resp = c.post('/api/v1/plan', json={**body, 'meal': 'dinner', 'exclude_items':
+                                            dishes_from_solution(lunch, keep_slots=keep)})
+    assert resp.status_code == 200, resp.get_json()
+    dinner = resp.get_json()['solution']
+    for iso in lunch:
+        at = lambda plan: (plan[iso]['items'].get('chutney') or {}).get('item_base')
+        assert at(lunch) != at(dinner), (iso, at(lunch))
 
 
 def _session_plan(fake_supabase, meal, body):

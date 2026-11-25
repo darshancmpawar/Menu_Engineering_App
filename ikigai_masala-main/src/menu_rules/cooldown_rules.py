@@ -115,8 +115,19 @@ class ItemCooldownMenuRule(BaseMenuRule):
         # but KEEP unique_items: small condiment pools must not be drained empty
         # by the 21-day hard ban, yet should still vary within the week and only
         # repeat once every distinct dish is used (freshness rotates them).
-        if base_slot in REPEATABLE_SLOTS or base_slot in COOLDOWN_EXEMPT_SLOTS:
+        if base_slot in REPEATABLE_SLOTS:
             return pool
+        if base_slot in COOLDOWN_EXEMPT_SLOTS:
+            # No history ban, but not what an earlier service served TODAY
+            # (owner, 25 Nov: a chutney may repeat, never twice in one day).
+            cfg = filter_context.get('cfg')
+            today = (getattr(cfg, 'excluded_today', None) or {}).get(date)
+            if not today or len(pool) == 0:
+                return pool
+            staple = self._staple_mask(
+                pool, base_slot, filter_context.get('extra_repeatable') or {})
+            kept = pool[~(pool['item'].isin(today) & ~staple)]
+            return kept if len(kept) else pool
         banned_by_date: Dict[dt.date, Set[str]] = filter_context.get('banned_by_date', {})
         banned = banned_by_date.get(date, set())
         if not banned or len(pool) == 0:
